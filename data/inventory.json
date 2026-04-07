@@ -1,0 +1,114 @@
+{
+  "coils": {
+    "c_section_23": {
+      "name": "23\" 10GA C-Section (Columns & Rafters)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 10.83,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "z_purlin_20": {
+      "name": "20.125\" 12GA Z-Purlin",
+      "gauge": "12GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 7.43,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "angle_4_16ga": {
+      "name": "4\" 16GA Angle (Sag Rods)",
+      "gauge": "16GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.86,
+      "lbs_per_lft": 0.8656,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "spartan_rib_48": {
+      "name": "48\" 29GA Spartan Rib Panel",
+      "gauge": "29GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.795,
+      "lbs_per_lft": 2.81,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "plate_6_10ga": {
+      "name": "6\" 10GA Plate (Interior Purlin Plates)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 2.83,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "plate_9_10ga": {
+      "name": "9\" 10GA Plate (Exterior Purlin Plates)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 4.24,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "strap_15_10ga": {
+      "name": "1.5\" 10GA Strap (Straps & Braces)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 0.706,
+      "coil_max_lbs": 8000,
+      "orders": []
+    }
+  },
+  "rebar": {
+    "a706_6": {"size": "#6", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 1.502},
+    "a706_7": {"size": "#7", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 2.044},
+    "a706_8": {"size": "#8", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 2.670},
+    "a706_9": {"size": "#9", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 3.400},
+    "a706_10": {"size": "#10", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 4.303},
+    "a706_11": {"size": "#11", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 5.313}
+  },
+  "purchased": {
+    "cap_plates": {"name": "3/4\"×26\"×14\" Cap Plates", "stock_qty": 0, "committed_qty": 0, "price_each": 95.00},
+    "gusset_triangles": {"name": "6\"×6\"×3/8\" Gusset Triangles", "stock_qty": 0, "committed_qty": 0, "price_each": 13.00}
+  },
+  "mill_certs": [],
+  "projects": {},
+  "settings": {
+    "default_lead_time_weeks": 8,
+    "low_stock_alert_weeks": 8,
+    "reorder_multiplier": 1.2
+  }
+}

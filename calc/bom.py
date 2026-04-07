@@ -1,0 +1,1079 @@
+"""
+Structures America Material Takeoff Calculator
+Core BOM Calculation Engine — v2.3
+
+Key structural logic:
+  TEE frame:    1 center column per frame, rafter = full building width
+  2-POST frame: 2 columns per frame (at 1/3 and 2/3 of width), rafter = full width
+  Column count: n_bays = floor(length / max_bay), n_columns = n_bays + 1
+                overhangs are equal at each end = (length - n_bays*max_bay) / 2
+  Column height: clear_height + angle_addition + embedment + buffer
+  Panels:       eave-to-eave (no ridge), split at nearest purlin to center
+  Sag rods:     2 per rafter x 2 pieces each (max 20'3" piece) = 4 pieces/rafter
+  Purlins:      floor(width/spacing)+1 lines x building_length
+  Trim:         all 4 sides, sticks with 3" overlap
+"""
+
+import math
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict, Any
+
+from calc.defaults import (
+    COILS, PURCHASED_ITEMS, REBAR, SCREWS, TRIM,
+    WASTE_FACTORS, DEFAULTS, PITCH_OPTIONS, ROOF_SLOPES,
+    LABOR, WELDING_CONSUMABLES,
+    get_purlin_spacing, get_rebar_size
+)
+
+
+# ─────────────────────────────────────────────
+# INPUT DATA STRUCTURES
+# ─────────────────────────────────────────────
+
+@dataclass
+class ProjectInfo:
+    name: str = ""
+    job_code: str = ""
+    address: str = ""
+    city: str = ""
+    state: str = "TX"
+    zip_code: str = ""
+    customer_name: str = ""
+    quote_date: str = ""
+    wind_speed_mph: float = 115.0
+    footing_depth_ft: float = 10.0
+    markup_pct: float = 35.0
+    include_trim: bool = False
+
+
+@dataclass
+class BuildingConfig:
+    building_id: str = "B1"
+    building_name: str = "Building 1"
+    type: str = "2post"             # '2post' or 'tee'
+    width_ft: float = 40.0          # full building width (eave to eave)
+    length_ft: float = 200.0        # total building length
+    clear_height_ft: float = 14.0   # clearance height at eave
+    max_bay_ft: float = 36.0        # max spacing between column frames
+    pitch_key: str = "1/4:12"       # key from PITCH_OPTIONS
+    purlin_spacing_override: Optional[float] = None   # None = auto-calc
+    embedment_ft: float = 4.333     # 4'-4" default
+    column_buffer_ft: float = 0.5   # 6" buffer
+    reinforced: bool = True         # True: rebar = depth+8'; False: depth-embedment
+    rebar_col_size: Optional[str] = None   # None = auto; "#5" through "#11"
+    rebar_beam_size: Optional[str] = None
+    # Column placement mode
+    overhang_mode: str = "none"        # 'none' or '1space'
+    space_width_ft: float = 0.0        # parking stall width; 0 = use legacy equal-overhang
+    # Rafter-to-Purlin Straps (merged: was hurricane_straps + bottom_braces)
+    straps_per_rafter: int = 4      # 1 purlin in from each eave × 2 straps per position = 4
+    strap_length_in: float = 28.0
+    # Wall options
+    include_back_wall: bool = False     # 1 long rear wall
+    include_end_walls: bool = False     # 2 short gable end walls
+    include_side_walls: bool = False    # both long side walls (front + back)
+    wall_girt_spacing_override: Optional[float] = None  # None = same auto as roof purlins
+    # Rafter rebar
+    include_rafter_rebar: bool = False
+    rebar_rafter_size: Optional[str] = "#9"
+    # Misc
+    include_trim: bool = False
+    welding_cost_per_5000sqft: float = 300.0
+    include_labor: bool = True
+    coil_prices: Optional[Dict] = None   # {"c_section_23": 0.85, ...}
+
+
+@dataclass
+class BOMLineItem:
+    category: str
+    item_id: str
+    description: str
+    qty: float
+    unit: str
+    unit_weight_lbs: float = 0.0
+    total_weight_lbs: float = 0.0
+    unit_cost: float = 0.0
+    total_cost: float = 0.0
+    waste_factor: float = 0.0
+    notes: str = ""
+    piece_count: int = 0
+    piece_length_in: float = 0.0
+
+
+@dataclass
+class BuildingBOM:
+    building: BuildingConfig
+    line_items: List[BOMLineItem] = field(default_factory=list)
+    total_weight_lbs: float = 0.0
+    total_material_cost: float = 0.0
+    total_sell_price: float = 0.0
+    geometry: Dict = field(default_factory=dict)
+    errors: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ProjectBOM:
+    project: ProjectInfo
+    buildings: List[BuildingBOM] = field(default_factory=list)
+    total_material_cost: float = 0.0
+    total_sell_price: float = 0.0
+    total_weight_lbs: float = 0.0
+    summary_by_coil: Dict = field(default_factory=dict)
+
+
+# ─────────────────────────────────────────────
+# GEOMETRY HELPERS
+# ─────────────────────────────────────────────
+
+def get_slope_deg(pitch_key: str) -> float:
+    po = PITCH_OPTIONS.get(pitch_key)
+    if po:
+        return po["deg"]
+    rs = ROOF_SLOPES.get(pitch_key)
+    if rs:
+        return rs["deg"]
+    return PITCH_OPTIONS["1/4:12"]["deg"]
+
+
+def calc_column_count(length_ft: float, max_bay_ft: float):
+    """
+    Equal-overhang column placement (legacy / no space_width set).
+    Returns (n_columns, bay_size_ft, overhang_ft).
+    n_bays = floor(length/max_bay); n_columns = n_bays+1
+    """
+    n_bays = max(1, math.floor(length_ft / max_bay_ft))
+    n_columns = n_bays + 1
+    overhang = (length_ft - n_bays * max_bay_ft) / 2.0
+    return n_columns, max_bay_ft, overhang
+
+
+def _build_bays(n_spaces: int, space_width_ft: float, max_sp_per_bay: int) -> list:
+    """
+    Fill n_spaces parking stalls into bays of max_sp_per_bay.
+    If spaces don't divide evenly, the short bay is placed at the center index.
+    Returns list of bay widths in feet.
+    """
+    if n_spaces <= 0:
+        return []
+    n_full = n_spaces // max_sp_per_bay
+    short_spaces = n_spaces % max_sp_per_bay
+    full_bay = max_sp_per_bay * space_width_ft
+    if short_spaces == 0:
+        return [full_bay] * n_full
+    short_bay = short_spaces * space_width_ft
+    total_bays = n_full + 1
+    center_idx = total_bays // 2
+    bays = []
+    for i in range(total_bays):
+        bays.append(short_bay if i == center_idx else full_bay)
+    return bays
+
+
+def calc_space_based_columns(length_ft: float, space_width_ft: float,
+                              max_bay_ft: float, overhang_mode: str = 'none'):
+    """
+    Space-based column placement for carports / RV storage.
+
+    Parking stalls define the module. Bays hold up to 3 stalls (or
+    floor(max_bay / space_width) stalls, whichever is smaller).
+    Short bays (when spaces don't divide evenly) are placed at the center.
+
+    overhang_mode:
+        'none'   — columns at both building ends, spans the full length
+        '1space' — roof cantilevers 1 stall width at each end; first/last
+                   columns are set in 1 space_width from the building ends
+
+    Returns
+    -------
+    n_frames : int
+        Number of column frame lines (positions)
+    col_positions : list[float]
+        Position of each frame in feet from the building start (0 = front face)
+    bay_sizes : list[float]
+        Width of each bay in feet (len == n_frames - 1)
+    overhang_ft : float
+        Cantilever length at each end (0 if 'none')
+    warning : str or None
+        Set if length_ft is not a whole multiple of space_width_ft
+    """
+    # ── Validate clean multiple ─────────────────────────────────────────
+    remainder = length_ft % space_width_ft
+    warning = None
+    if remainder > 0.01:
+        nearest = round(length_ft / space_width_ft) * space_width_ft
+        warning = (
+            f"Building length {length_ft:.0f}' is not an even multiple of "
+            f"{space_width_ft:.1f}' space width ({remainder:.1f}' remainder). "
+            f"Nearest clean length: {nearest:.0f}'."
+        )
+
+    n_total_spaces = round(length_ft / space_width_ft)
+
+    # max spaces per bay: bounded by max_bay_ft AND hard cap of 3
+    max_sp_per_bay = max(1, min(3, math.floor(max_bay_ft / space_width_ft)))
+
+    if overhang_mode == '1space':
+        overhang_ft = space_width_ft
+        interior_spaces = max(1, n_total_spaces - 2)
+    else:
+        overhang_ft = 0.0
+        interior_spaces = n_total_spaces
+
+    bay_sizes = _build_bays(interior_spaces, space_width_ft, max_sp_per_bay)
+
+    # Build frame positions
+    start = overhang_ft
+    positions = [round(start, 6)]
+    for bay in bay_sizes:
+        positions.append(round(positions[-1] + bay, 6))
+
+    n_frames = len(positions)
+    return n_frames, positions, bay_sizes, overhang_ft, warning
+
+
+def calc_rafter_slope_length(width_ft: float, slope_deg: float) -> float:
+    """Full rafter slope length eave-to-eave through peak (symmetric gable)."""
+    half = width_ft / 2.0
+    rise = half * math.tan(math.radians(slope_deg))
+    return 2.0 * math.sqrt(half**2 + rise**2)
+
+
+def calc_column_height(clear_height_ft, width_ft, col_type, slope_deg,
+                        embedment_ft, buffer_ft) -> float:
+    """
+    Physical cut length: clear_height + angle_addition + embedment + buffer
+    TEE: column at center (width/2 from eave)
+    2-post: columns at 1/3 span from each eave
+    """
+    tan_s = math.tan(math.radians(slope_deg))
+    dist = width_ft / 2.0 if col_type == "tee" else width_ft / 3.0
+    return clear_height_ft + dist * tan_s + embedment_ft + buffer_ft
+
+
+def calc_purlin_lines(width_ft: float, spacing_ft: float) -> int:
+    return math.floor(width_ft / spacing_ft) + 1
+
+
+def calc_panel_split(width_ft: float, spacing_ft: float):
+    """
+    Find nearest purlin to center for panel split.
+    Returns (front_piece_ft, back_piece_ft, split_purlin_pos_ft).
+    Front piece = split_pos + 3" overlap. Back piece = width - split_pos.
+    """
+    overlap_ft = 3.0 / 12.0
+    center = width_ft / 2.0
+    n_lines = calc_purlin_lines(width_ft, spacing_ft)
+    positions = [i * spacing_ft for i in range(n_lines)]
+    split_pos = min(positions, key=lambda p: abs(p - center))
+    return split_pos + overlap_ft, width_ft - split_pos, split_pos
+
+
+def calc_trim_sticks(length_ft, width_ft, stick_ft=10.0, overlap_in=3.0) -> int:
+    """Total trim sticks for all 4 sides with overlap."""
+    usable = stick_ft - (overlap_in / 12.0)
+    return math.ceil(length_ft / usable) * 2 + math.ceil(width_ft / usable) * 2
+
+
+def coil_price(coil_id: str, overrides: Optional[Dict]) -> float:
+    if overrides and coil_id in overrides:
+        return float(overrides[coil_id])
+    return COILS[coil_id]["price_per_lb"]
+
+
+# ─────────────────────────────────────────────
+# MAIN BOM CALCULATOR
+# ─────────────────────────────────────────────
+
+class BOMCalculator:
+
+    def __init__(self, project: ProjectInfo):
+        self.project = project
+
+    def calculate_building(self, bldg: BuildingConfig) -> BuildingBOM:
+        result = BuildingBOM(building=bldg)
+        items = []
+        cp = bldg.coil_prices
+
+        # Slope
+        slope_deg = get_slope_deg(bldg.pitch_key)
+        tan_slope = math.tan(math.radians(slope_deg))
+
+        # Column layout
+        col_positions = None
+        bay_sizes_list = None
+        if bldg.space_width_ft and bldg.space_width_ft > 0:
+            n_frames, col_positions, bay_sizes_list, overhang_ft, space_warn = \
+                calc_space_based_columns(
+                    bldg.length_ft, bldg.space_width_ft,
+                    bldg.max_bay_ft, bldg.overhang_mode)
+            bay_size_ft = max(bay_sizes_list) if bay_sizes_list else bldg.max_bay_ft
+            if space_warn:
+                result.errors.append(space_warn)
+        else:
+            n_frames, bay_size_ft, overhang_ft = calc_column_count(
+                bldg.length_ft, bldg.max_bay_ft)
+            bay_sizes_list = [bay_size_ft] * (n_frames - 1)
+
+        n_bays = n_frames - 1
+        n_struct_cols = n_frames if bldg.type == "tee" else n_frames * 2
+
+        # Rafter: 1 per frame, full width
+        n_rafters = n_frames
+        rafter_slope_ft = calc_rafter_slope_length(bldg.width_ft, slope_deg)
+
+        # Column height
+        col_ht_ft = calc_column_height(
+            bldg.clear_height_ft, bldg.width_ft, bldg.type,
+            slope_deg, bldg.embedment_ft, bldg.column_buffer_ft)
+        col_ht_in = col_ht_ft * 12.0
+        angle_add_in = (bldg.width_ft / (2 if bldg.type == "tee" else 3)) * tan_slope * 12
+
+        # Purlin spacing
+        if bldg.purlin_spacing_override:
+            purlin_spacing = bldg.purlin_spacing_override
+            purlin_auto = False
+        else:
+            purlin_spacing = get_purlin_spacing(bldg.width_ft)
+            purlin_auto = True
+        n_purlin_lines = calc_purlin_lines(bldg.width_ft, purlin_spacing)
+        n_interior_lines = max(0, n_purlin_lines - 2)
+
+        # Panel split
+        panel_front_ft, panel_back_ft, split_pos_ft = calc_panel_split(
+            bldg.width_ft, purlin_spacing)
+        panel_coverage_ft = COILS["spartan_rib_48"]["panel_coverage_ft"]
+        n_panel_runs = math.ceil(bldg.length_ft / panel_coverage_ft)
+        n_panel_pieces = n_panel_runs * 2
+        total_panel_net = n_panel_runs * (panel_front_ft + panel_back_ft)
+
+        # Sag rods: 2 rods/rafter x 2 pieces/rod = 4 pieces/rafter
+        overlap_ft = DEFAULTS["sag_rod_overlap_in"] / 12.0
+        sag_front_ft = split_pos_ft + overlap_ft
+        sag_back_ft = bldg.width_ft - split_pos_ft
+        n_sag_pieces = n_rafters * 4   # 2 rods x 2 pieces
+        total_sag_net = n_rafters * 2 * (sag_front_ft + sag_back_ft)
+
+        # Rebar selection
+        auto_rebar = get_rebar_size(bldg.type, bldg.width_ft,
+                                     self.project.wind_speed_mph, bay_size_ft)
+        rebar_col_key = (bldg.rebar_col_size
+                         if bldg.rebar_col_size and bldg.rebar_col_size != "auto"
+                         else auto_rebar.get("column"))
+        rebar_beam_key = (bldg.rebar_beam_size
+                          if bldg.rebar_beam_size and bldg.rebar_beam_size != "auto"
+                          else auto_rebar.get("beam"))
+
+        # Footing depth (needed for geometry dict and rebar calc below)
+        footing_depth = self.project.footing_depth_ft
+
+        # Save geometry for display
+        result.geometry = {
+            "n_frames": n_frames,
+            "n_bays": n_bays,
+            "bay_size_ft": round(bay_size_ft, 2),
+            "bay_sizes_list": [round(b, 2) for b in bay_sizes_list] if bay_sizes_list else [],
+            "col_positions": [round(p, 2) for p in col_positions] if col_positions else [],
+            "overhang_ft": round(overhang_ft, 2),
+            "overhang_mode": bldg.overhang_mode,
+            "space_width_ft": bldg.space_width_ft,
+            "n_struct_cols": n_struct_cols,
+            "n_rafters": n_rafters,
+            "rafter_slope_ft": round(rafter_slope_ft, 2),
+            "col_ht_ft": round(col_ht_ft, 2),
+            "col_ht_in": round(col_ht_in, 1),
+            "angle_add_in": round(angle_add_in, 2),
+            "slope_deg": round(slope_deg, 2),
+            "purlin_spacing_ft": purlin_spacing,
+            "purlin_auto": purlin_auto,
+            "n_purlin_lines": n_purlin_lines,
+            "n_interior_lines": n_interior_lines,
+            "panel_front_ft": round(panel_front_ft, 2),
+            "panel_back_ft": round(panel_back_ft, 2),
+            "split_pos_ft": round(split_pos_ft, 2),
+            "n_panel_runs": n_panel_runs,
+            "n_panel_pieces": n_panel_pieces,
+            "sag_front_in": round(sag_front_ft * 12, 1),
+            "sag_back_in": round(sag_back_ft * 12, 1),
+            "rebar_col": rebar_col_key,
+            "rebar_beam": rebar_beam_key,
+            # Passed to Titan Carports Construction Calc
+            "concrete_cy": 0.0,          # filled in after concrete calc below
+            "concrete_n_piers": 0,       # filled after concrete calc
+            "footing_depth_ft": round(footing_depth, 2),
+        }
+
+        wf = WASTE_FACTORS["10GA"]
+        # ── COIL 1: Columns ──────────────────────────────────────────────
+        coil = COILS["c_section_23"]
+        ppb = coil_price("c_section_23", cp)
+        col_net = n_struct_cols * col_ht_ft * 2
+        col_raw = col_net * (1 + wf)
+        col_wt = col_raw * coil["lbs_per_lft"]
+        col_cost_v = col_wt * ppb
+        items.append(BOMLineItem(
+            category="Structural Steel - Coil 1",
+            item_id="c_section_columns",
+            description=(f"23\" 10GA C-Section — Columns "
+                         f"({n_struct_cols} pcs, {col_ht_ft:.2f}' ea)"),
+            qty=round(col_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(col_wt, 1),
+            unit_cost=ppb, total_cost=round(col_cost_v, 2),
+            waste_factor=wf,
+            notes=(f"{n_struct_cols} cols x {col_ht_ft:.2f}' "
+                   f"({bldg.clear_height_ft}'clr + {angle_add_in:.2f}\"ang + "
+                   f"{bldg.embedment_ft*12:.0f}\"emb + {bldg.column_buffer_ft*12:.0f}\"buf)"
+                   f" x 2 C-sections"),
+            piece_count=n_struct_cols,
+            piece_length_in=round(col_ht_in, 1),
+        ))
+
+        # ── COIL 1: Rafters ──────────────────────────────────────────────
+        raft_net = n_rafters * rafter_slope_ft * 2
+        raft_raw = raft_net * (1 + wf)
+        raft_wt = raft_raw * coil["lbs_per_lft"]
+        raft_cost_v = raft_wt * ppb
+        items.append(BOMLineItem(
+            category="Structural Steel - Coil 1",
+            item_id="c_section_rafters",
+            description=(f"23\" 10GA C-Section — Rafters "
+                         f"({n_rafters} pcs, {rafter_slope_ft:.2f}' ea)"),
+            qty=round(raft_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(raft_wt, 1),
+            unit_cost=ppb, total_cost=round(raft_cost_v, 2),
+            waste_factor=wf,
+            notes=(f"{n_rafters} rafters x {rafter_slope_ft:.2f}' "
+                   f"(full {bldg.width_ft}' width along slope) x 2 C-sections"),
+            piece_count=n_rafters,
+            piece_length_in=round(rafter_slope_ft * 12, 1),
+        ))
+
+        # ── COIL 2: Z-Purlins ────────────────────────────────────────────
+        coil = COILS["z_purlin_20"]
+        wf2 = WASTE_FACTORS["12GA"]
+        ppb = coil_price("z_purlin_20", cp)
+        purlin_net = n_purlin_lines * bldg.length_ft
+        purlin_raw = purlin_net * (1 + wf2)
+        purlin_wt = purlin_raw * coil["lbs_per_lft"]
+        purlin_cost_v = purlin_wt * ppb
+        items.append(BOMLineItem(
+            category="Structural Steel - Coil 2",
+            item_id="z_purlin",
+            description=(f"20.125\" 12GA Z-Purlin "
+                         f"({n_purlin_lines} lines x {bldg.length_ft:.0f}', {purlin_spacing}' OC)"),
+            qty=round(purlin_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(purlin_wt, 1),
+            unit_cost=ppb, total_cost=round(purlin_cost_v, 2),
+            waste_factor=wf2,
+            notes=(f"{n_purlin_lines} lines x {bldg.length_ft:.0f}' = "
+                   f"{purlin_net:.0f} LFT net | "
+                   f"{'Auto' if purlin_auto else 'Manual'} {purlin_spacing}' OC "
+                   f"across {bldg.width_ft}' width"),
+            piece_count=n_purlin_lines * n_bays,
+            piece_length_in=round(bay_size_ft * 12, 1),
+        ))
+
+        # ── COIL 3: Sag Rods ─────────────────────────────────────────────
+        coil = COILS["angle_4_16ga"]
+        wf3 = WASTE_FACTORS["16GA"]
+        ppb = coil_price("angle_4_16ga", cp)
+        sag_raw = total_sag_net * (1 + wf3)
+        sag_wt = sag_raw * coil["lbs_per_lft"]
+        sag_cost_v = sag_wt * ppb
+        items.append(BOMLineItem(
+            category="Structural Steel - Coil 3",
+            item_id="sag_rods",
+            description=(f"4\" 16GA Angle — Sag Rods 2\"x2\" "
+                         f"({n_sag_pieces} pcs: "
+                         f"{n_sag_pieces//2} x {sag_front_ft*12:.1f}\" + "
+                         f"{n_sag_pieces//2} x {sag_back_ft*12:.1f}\")"),
+            qty=round(sag_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(sag_wt, 1),
+            unit_cost=ppb, total_cost=round(sag_cost_v, 2),
+            waste_factor=wf3,
+            notes=(f"{n_rafters} rafters x 2 rods x 2 pcs = {n_sag_pieces} pcs | "
+                   f"Split @ {split_pos_ft:.1f}' purlin + 3\" overlap"),
+            piece_count=n_sag_pieces,
+            piece_length_in=round(sag_front_ft * 12, 1),
+        ))
+
+        # ── COIL 4: Spartan Rib Panels ───────────────────────────────────
+        coil = COILS["spartan_rib_48"]
+        wf4 = WASTE_FACTORS["29GA"]
+        ppb = coil_price("spartan_rib_48", cp)
+        panel_raw = total_panel_net * (1 + wf4)
+        panel_wt = panel_raw * coil["lbs_per_lft"]
+        panel_cost_v = panel_wt * ppb
+        items.append(BOMLineItem(
+            category="Roof Panels - Coil 4",
+            item_id="spartan_rib",
+            description=(f"48\" 29GA Spartan Rib Panel "
+                         f"({n_panel_pieces} pcs: "
+                         f"{n_panel_runs} x {panel_front_ft*12:.1f}\" + "
+                         f"{n_panel_runs} x {panel_back_ft*12:.1f}\")"),
+            qty=round(panel_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(panel_wt, 1),
+            unit_cost=ppb, total_cost=round(panel_cost_v, 2),
+            waste_factor=wf4,
+            notes=(f"{bldg.length_ft*12:.0f}\" / {coil['panel_coverage_in']}\" = "
+                   f"{n_panel_runs} runs | "
+                   f"Split @ {split_pos_ft:.1f}' purlin: "
+                   f"{panel_front_ft*12:.1f}\" + {panel_back_ft*12:.1f}\" | "
+                   f"Net: {total_panel_net:.0f} LFT"),
+            piece_count=n_panel_pieces,
+            piece_length_in=round(panel_front_ft * 12, 1),
+        ))
+
+        # ── COIL 5: Interior Purlin Plates ───────────────────────────────
+        coil = COILS["plate_6_10ga"]
+        ppb = coil_price("plate_6_10ga", cp)
+        n_int_plates = n_frames * n_interior_lines
+        int_plate_raw = n_int_plates * coil["plate_length_ft"] * (1 + wf)
+        int_plate_wt = int_plate_raw * coil["lbs_per_lft"]
+        int_plate_cost_v = int_plate_wt * ppb
+        items.append(BOMLineItem(
+            category="Connection Hardware - Coil 5",
+            item_id="interior_plates",
+            description=(f"6\" 10GA — Interior Purlin Plates 10\"x6\" "
+                         f"({n_int_plates} pcs, 8 holes each)"),
+            qty=round(int_plate_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(int_plate_wt, 1),
+            unit_cost=ppb, total_cost=round(int_plate_cost_v, 2),
+            waste_factor=wf,
+            notes=(f"{n_frames} frames x {n_interior_lines} interior lines "
+                   f"({n_purlin_lines} total - 2 eave) = {n_int_plates} plates"),
+            piece_count=n_int_plates, piece_length_in=10.0,
+        ))
+
+        # ── COIL 6: Exterior/Eave Purlin Plates ──────────────────────────
+        coil = COILS["plate_9_10ga"]
+        ppb = coil_price("plate_9_10ga", cp)
+        n_ext_plates = n_frames * 2
+        ext_plate_raw = n_ext_plates * coil["plate_length_ft"] * (1 + wf)
+        ext_plate_wt = ext_plate_raw * coil["lbs_per_lft"]
+        ext_plate_cost_v = ext_plate_wt * ppb
+        items.append(BOMLineItem(
+            category="Connection Hardware - Coil 6",
+            item_id="exterior_plates",
+            description=(f"9\" 10GA — Exterior Purlin Plates 24\"x9\" "
+                         f"({n_ext_plates} pcs, 8 holes each)"),
+            qty=round(ext_plate_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(ext_plate_wt, 1),
+            unit_cost=ppb, total_cost=round(ext_plate_cost_v, 2),
+            waste_factor=wf,
+            notes=f"{n_frames} frames x 2 eave purlins = {n_ext_plates} plates",
+            piece_count=n_ext_plates, piece_length_in=24.0,
+        ))
+
+        # ── COIL 7: Rafter-to-Purlin Straps ──────────────────────────────
+        # 4 per rafter: 1 purlin in from each eave = 2 positions × 2 straps per position
+        coil = COILS["strap_15_10ga"]
+        ppb = coil_price("strap_15_10ga", cp)
+        n_straps = n_rafters * bldg.straps_per_rafter
+        strap_raw = (n_straps * bldg.strap_length_in / 12) * (1 + wf)
+        strap_wt = strap_raw * coil["lbs_per_lft"]
+        strap_cost_v = strap_wt * ppb
+        items.append(BOMLineItem(
+            category="Connection Hardware - Coil 7",
+            item_id="straps_braces",
+            description=(f"1.5\" 10GA — Rafter-to-Purlin Straps "
+                         f"({n_straps} pcs, {bldg.strap_length_in:.0f}\" ea)"),
+            qty=round(strap_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=coil["lbs_per_lft"],
+            total_weight_lbs=round(strap_wt, 1),
+            unit_cost=ppb, total_cost=round(strap_cost_v, 2),
+            waste_factor=wf,
+            notes=(f"{n_rafters} rafters × {bldg.straps_per_rafter} straps/rafter "
+                   f"(1 purlin in from each eave × 2 per position) = {n_straps} pcs | "
+                   f"{bldg.strap_length_in:.0f}\" each"),
+            piece_count=n_straps,
+            piece_length_in=bldg.strap_length_in,
+        ))
+
+        # ── Splice Plates (Coil 1) — triggered when rafter > 53' ─────────
+        if rafter_slope_ft > 53.0:
+            splice_plate_ft = 118.0 / 12.0   # 9'10" = 118"
+            n_splice_plates = n_rafters * 2   # 2 per rafter (one each side of web)
+            splice_net = n_splice_plates * splice_plate_ft
+            splice_raw = splice_net * (1 + wf)
+            splice_coil = COILS["c_section_23"]
+            splice_ppb = coil_price("c_section_23", cp)
+            splice_wt = splice_raw * splice_coil["lbs_per_lft"]
+            splice_cost_v = splice_wt * splice_ppb
+            items.append(BOMLineItem(
+                category="Structural Steel - Coil 1",
+                item_id="splice_plates",
+                description=(f"23\" 10GA — Splice Plates "
+                             f"({n_splice_plates} pcs, 118\" = 9'10\" ea)"),
+                qty=round(splice_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=splice_coil["lbs_per_lft"],
+                total_weight_lbs=round(splice_wt, 1),
+                unit_cost=splice_ppb, total_cost=round(splice_cost_v, 2),
+                waste_factor=wf,
+                notes=(f"Rafter slope {rafter_slope_ft:.1f}' > 53' triggers splice | "
+                       f"{n_rafters} rafters × 2 plates (one each side of web) = {n_splice_plates} pcs | "
+                       f"Position: nearest purlin ≤10' from column end, between two purlins"),
+                piece_count=n_splice_plates,
+                piece_length_in=118.0,
+            ))
+
+        # ── Cap Plates ───────────────────────────────────────────────────
+        cap = PURCHASED_ITEMS["cap_plate"]
+        n_cap = n_struct_cols * cap["qty_per_column"]
+        cap_cost_v = n_cap * cap["price_each"]
+        items.append(BOMLineItem(
+            category="Purchased Items", item_id="cap_plates",
+            description=f"3/4\"x26\"x14\" Cap Plates ({n_cap} pcs)",
+            qty=n_cap, unit="EA",
+            unit_cost=cap["price_each"], total_cost=cap_cost_v,
+            notes=f"{n_struct_cols} columns x 2 per column",
+        ))
+
+        # ── Gusset Triangles ─────────────────────────────────────────────
+        gusset = PURCHASED_ITEMS["gusset_triangle"]
+        n_gussets = n_struct_cols * gusset["qty_per_column"]
+        gusset_cost_v = n_gussets * gusset["price_each"]
+        slope_key = min(gusset["sizes_by_slope"].keys(), key=lambda k: abs(k - slope_deg))
+        gusset_sizes = gusset["sizes_by_slope"][slope_key]
+        gusset_size_str = ", ".join([f"{s[1]} pcs @ hyp={s[0]}'" for s in gusset_sizes])
+        items.append(BOMLineItem(
+            category="Purchased Items", item_id="gusset_triangles",
+            description=f"6\"x6\"x3/8\" Gusset Triangles ({n_gussets} pcs)",
+            qty=n_gussets, unit="EA",
+            unit_cost=gusset["price_each"], total_cost=gusset_cost_v,
+            notes=f"{n_struct_cols} cols x 4 per col | {gusset_size_str}",
+        ))
+
+        # ── Rebar ────────────────────────────────────────────────────────
+        stick_ft = REBAR["stick_length_ft"]
+        rebar_ppb = REBAR["price_per_lb"]
+        rebar_wf = WASTE_FACTORS["rebar"]
+
+        if rebar_col_key and rebar_col_key in REBAR["sizes"]:
+            rb = REBAR["sizes"][rebar_col_key]
+            col_rebar_len = (footing_depth + 8.0 if bldg.reinforced
+                             else footing_depth - bldg.embedment_ft)
+            sticks_per_col = math.ceil(col_rebar_len / stick_ft)
+            # 4 sticks per column — one per corner of the C-section box (reinforced or not)
+            n_col_sticks = n_struct_cols * sticks_per_col * 4
+            col_rebar_lbs = n_col_sticks * stick_ft * rb["lbs_per_lft"] * (1 + rebar_wf)
+            col_rebar_cost = col_rebar_lbs * rebar_ppb
+            items.append(BOMLineItem(
+                category="Rebar",
+                item_id=f"rebar_col_{rebar_col_key.replace('#','')}",
+                description=(f"A706 {rebar_col_key} Column Rebar, 40' Sticks "
+                             f"({n_col_sticks} sticks)"),
+                qty=n_col_sticks, unit="EA (sticks)",
+                unit_weight_lbs=stick_ft * rb["lbs_per_lft"],
+                total_weight_lbs=round(col_rebar_lbs, 1),
+                unit_cost=stick_ft * rb["lbs_per_lft"] * rebar_ppb,
+                total_cost=round(col_rebar_cost, 2),
+                waste_factor=rebar_wf,
+                notes=(f"{rebar_col_key} @ {rb['lbs_per_lft']} LBS/LFT | "
+                       f"{n_struct_cols} cols × 4 corners × {sticks_per_col} stick(s)/corner = {n_col_sticks} sticks | "
+                       f"{'Reinforced: depth+8ft' if bldg.reinforced else 'Standard: depth-embed'}"),
+            ))
+
+        if rebar_beam_key and rebar_beam_key in REBAR["sizes"]:
+            rb = REBAR["sizes"][rebar_beam_key]
+            sticks_per_raft = math.ceil(rafter_slope_ft / stick_ft)
+            n_beam_sticks = n_rafters * sticks_per_raft
+            beam_rebar_lbs = n_beam_sticks * stick_ft * rb["lbs_per_lft"] * (1 + rebar_wf)
+            beam_rebar_cost = beam_rebar_lbs * rebar_ppb
+            items.append(BOMLineItem(
+                category="Rebar",
+                item_id=f"rebar_beam_{rebar_beam_key.replace('#','')}",
+                description=(f"A706 {rebar_beam_key} Beam Rebar, 40' Sticks "
+                             f"({n_beam_sticks} sticks)"),
+                qty=n_beam_sticks, unit="EA (sticks)",
+                unit_weight_lbs=stick_ft * rb["lbs_per_lft"],
+                total_weight_lbs=round(beam_rebar_lbs, 1),
+                unit_cost=stick_ft * rb["lbs_per_lft"] * rebar_ppb,
+                total_cost=round(beam_rebar_cost, 2),
+                waste_factor=rebar_wf,
+                notes=(f"{rebar_beam_key} @ {rb['lbs_per_lft']} LBS/LFT | "
+                       f"{n_rafters} rafters x {sticks_per_raft} stick(s)"),
+            ))
+
+        # ── Concrete (quantity stored in geometry for Titan Carports calc) ──
+        # Concrete is NOT a fabrication item — it is a site/construction cost
+        # handled by the Titan Carports Construction Quote Calculator.
+        r_ft = (24 / 2.0) / 12.0
+        vol_cy = math.pi * r_ft**2 * footing_depth / 27.0
+        concrete_net = n_struct_cols * vol_cy
+        concrete_wf = WASTE_FACTORS["concrete"]
+        concrete_total_cy = round(concrete_net * (1 + concrete_wf), 2)
+        # (not appended to items — saved in geometry below for TC import)
+        result.geometry["concrete_cy"] = concrete_total_cy
+        result.geometry["concrete_n_piers"] = n_struct_cols
+
+        # ── Rafter Rebar (optional toggle) ───────────────────────────────
+        if bldg.include_rafter_rebar:
+            rebar_rafter_key = (bldg.rebar_rafter_size
+                                if bldg.rebar_rafter_size and bldg.rebar_rafter_size != "auto"
+                                else "#9")
+            if rebar_rafter_key in REBAR["sizes"]:
+                rb = REBAR["sizes"][rebar_rafter_key]
+                # 4 corners × ceil((rafter_slope_ft - 10') / 20') sticks per rafter
+                sticks_per_side = max(1, math.ceil(max(0.0, rafter_slope_ft - 10.0) / 20.0))
+                sticks_per_rafter = 4 * sticks_per_side
+                n_rafter_rebar_sticks = n_rafters * sticks_per_rafter
+                rafter_rebar_lbs = (n_rafter_rebar_sticks * stick_ft
+                                    * rb["lbs_per_lft"] * (1 + rebar_wf))
+                rafter_rebar_cost = rafter_rebar_lbs * rebar_ppb
+                items.append(BOMLineItem(
+                    category="Rebar",
+                    item_id=f"rebar_rafter_{rebar_rafter_key.replace('#','')}",
+                    description=(f"A706 {rebar_rafter_key} Rafter Rebar, 40' Sticks "
+                                 f"({n_rafter_rebar_sticks} sticks)"),
+                    qty=n_rafter_rebar_sticks, unit="EA (sticks)",
+                    unit_weight_lbs=stick_ft * rb["lbs_per_lft"],
+                    total_weight_lbs=round(rafter_rebar_lbs, 1),
+                    unit_cost=stick_ft * rb["lbs_per_lft"] * rebar_ppb,
+                    total_cost=round(rafter_rebar_cost, 2),
+                    waste_factor=rebar_wf,
+                    notes=(f"{rebar_rafter_key} @ {rb['lbs_per_lft']} LBS/LFT | "
+                           f"{n_rafters} rafters × 4 corners × {sticks_per_side} stick(s)/corner = "
+                           f"{n_rafter_rebar_sticks} sticks | "
+                           f"ceil(({rafter_slope_ft:.1f}' - 10') / 20') = {sticks_per_side}/corner"),
+                ))
+
+        # ── WALL PANELS & GIRTS ───────────────────────────────────────────
+        # Wall panel height = clear_height + (14" rafter + 12" purlin - 6" clearance)/12
+        wall_panel_ht = bldg.clear_height_ft + (14 + 12 - 6) / 12.0   # +1.6667'
+        peak_ht = bldg.clear_height_ft + (bldg.width_ft / 2.0) * tan_slope
+        wall_girt_sp = (bldg.wall_girt_spacing_override
+                        or get_purlin_spacing(bay_size_ft))
+        panel_cov_ft = COILS["spartan_rib_48"]["panel_coverage_ft"]
+        wf2_z = WASTE_FACTORS["12GA"]
+        wf4_p = WASTE_FACTORS["29GA"]
+
+        def _wall_item(label, wall_length_ft, wall_height_ft):
+            """Return (girt_item, panel_item) for a wall section."""
+            n_girt_lines = math.floor(wall_height_ft / wall_girt_sp) + 1
+            girt_net = n_girt_lines * wall_length_ft
+            girt_raw = girt_net * (1 + wf2_z)
+            z_coil = COILS["z_purlin_20"]
+            z_ppb = coil_price("z_purlin_20", cp)
+            girt_wt = girt_raw * z_coil["lbs_per_lft"]
+            girt_cost = girt_wt * z_ppb
+            girt_item = BOMLineItem(
+                category=f"Wall Steel - Coil 2",
+                item_id=f"wall_girts_{label.lower().replace(' ','_')}",
+                description=(f"20.125\" 12GA Z-Girts — {label} "
+                             f"({n_girt_lines} lines × {wall_length_ft:.0f}', {wall_girt_sp:.1f}' OC)"),
+                qty=round(girt_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=z_coil["lbs_per_lft"],
+                total_weight_lbs=round(girt_wt, 1),
+                unit_cost=z_ppb, total_cost=round(girt_cost, 2),
+                waste_factor=wf2_z,
+                notes=(f"{n_girt_lines} girt lines × {wall_length_ft:.0f}' = "
+                       f"{girt_net:.0f} LFT net | {wall_girt_sp:.1f}' OC spacing"),
+                piece_count=n_girt_lines * n_bays,
+                piece_length_in=round(bay_size_ft * 12, 1),
+            )
+            n_panel_runs_w = math.ceil(wall_length_ft / panel_cov_ft)
+            panel_net_w = n_panel_runs_w * wall_height_ft
+            panel_raw_w = panel_net_w * (1 + wf4_p)
+            p_coil = COILS["spartan_rib_48"]
+            p_ppb = coil_price("spartan_rib_48", cp)
+            panel_wt_w = panel_raw_w * p_coil["lbs_per_lft"]
+            panel_cost_w = panel_wt_w * p_ppb
+            panel_item = BOMLineItem(
+                category="Wall Panels - Coil 4",
+                item_id=f"wall_panels_{label.lower().replace(' ','_')}",
+                description=(f"48\" 29GA Spartan Rib Wall Panel — {label} "
+                             f"({n_panel_runs_w} runs × {wall_height_ft:.2f}')"),
+                qty=round(panel_raw_w, 2), unit="LFT (coil)",
+                unit_weight_lbs=p_coil["lbs_per_lft"],
+                total_weight_lbs=round(panel_wt_w, 1),
+                unit_cost=p_ppb, total_cost=round(panel_cost_w, 2),
+                waste_factor=wf4_p,
+                notes=(f"{n_panel_runs_w} runs × {wall_height_ft:.2f}' = "
+                       f"{panel_net_w:.0f} LFT net | "
+                       f"Coverage {p_coil['panel_coverage_in']}\" per run | "
+                       f"Panels run vertically (ribs up/down)"),
+                piece_count=n_panel_runs_w,
+                piece_length_in=round(wall_height_ft * 12, 1),
+            )
+            return girt_item, panel_item
+
+        if bldg.include_back_wall:
+            g, p = _wall_item("Back Wall", bldg.length_ft, wall_panel_ht)
+            items.append(g); items.append(p)
+
+        if bldg.include_end_walls:
+            # Two gable end walls — use peak height (panels run to peak)
+            g, p = _wall_item("End Walls (×2)", bldg.width_ft * 2, peak_ht)
+            items.append(g); items.append(p)
+
+        if bldg.include_side_walls:
+            # Both long side walls (front + back, or both open sides)
+            g, p = _wall_item("Side Walls (×2)", bldg.length_ft * 2, wall_panel_ht)
+            items.append(g); items.append(p)
+
+        # ── TEK Neoprene Screws ──────────────────────────────────────────
+        # 3 special rows (eave1, seam, eave2) = 10 each; rest = 5 each
+        per_eave = SCREWS["tek_neoprene"]["per_eave_or_seam_row"]   # 10
+        per_field = SCREWS["tek_neoprene"]["per_field_row"]          # 5
+        n_special = 3
+        n_field_rows = max(0, n_purlin_lines - n_special)
+        screws_per_run = n_special * per_eave + n_field_rows * per_field
+        tek_neo = n_panel_runs * screws_per_run
+        tek_neo_ppb = SCREWS["tek_neoprene"]["price_per_box"]
+        tek_neo_box_qty = SCREWS["tek_neoprene"]["box_qty"]
+        tek_neo_boxes = math.ceil(tek_neo / tek_neo_box_qty)
+        tek_neo_cost = tek_neo_boxes * tek_neo_ppb
+        items.append(BOMLineItem(
+            category="Fasteners", item_id="tek_neoprene",
+            description=(f"3/4\" TEK w/ Neoprene Washer — Panel/Wall to Purlin/Girt "
+                         f"({tek_neo:,} pcs / {tek_neo_boxes} boxes of {tek_neo_box_qty:,})"),
+            qty=tek_neo_boxes, unit="BOX",
+            unit_cost=tek_neo_ppb,
+            total_cost=round(tek_neo_cost, 2),
+            notes=(f"{n_panel_runs} runs × {screws_per_run} screws/run | "
+                   f"{n_purlin_lines} rows: 3×{per_eave} (eaves+seam) + "
+                   f"{n_field_rows}×{per_field} (field) = {screws_per_run}/run | "
+                   f"${tek_neo_ppb:.2f}/box of {tek_neo_box_qty:,}"),
+            piece_count=tek_neo,
+        ))
+
+        # ── TEK Structural Screws ─────────────────────────────────────────
+        n_total_plates = n_int_plates + n_ext_plates
+        tek_struct = n_total_plates * SCREWS["tek_structural"]["per_plate"]
+        tek_str_ppb = SCREWS["tek_structural"]["price_per_box"]
+        tek_str_box_qty = SCREWS["tek_structural"]["box_qty"]
+        tek_str_boxes = math.ceil(tek_struct / tek_str_box_qty)
+        tek_str_cost = tek_str_boxes * tek_str_ppb
+        items.append(BOMLineItem(
+            category="Fasteners", item_id="tek_structural",
+            description=(f"3/4\" TEK No Washer — Structural "
+                         f"({tek_struct:,} pcs / {tek_str_boxes} boxes of {tek_str_box_qty:,})"),
+            qty=tek_str_boxes, unit="BOX",
+            unit_cost=tek_str_ppb,
+            total_cost=round(tek_str_cost, 2),
+            notes=(f"{n_total_plates} plates × 8 screws/plate | "
+                   f"${tek_str_ppb:.2f}/box of {tek_str_box_qty:,}"),
+            piece_count=tek_struct,
+        ))
+
+        # ── Trim (if enabled) ─────────────────────────────────────────────
+        if bldg.include_trim:
+            n_trim = calc_trim_sticks(bldg.length_ft, bldg.width_ft,
+                                      TRIM["stick_length_ft"], TRIM["overlap_in"])
+            stitch_total = n_trim * SCREWS["stitch"]["per_trim_stick"]
+            items.append(BOMLineItem(
+                category="Fasteners", item_id="stitch_screws",
+                description=f"1/4\"-14 x 7/8\" Stitch Screw — Trim ({stitch_total:,} pcs)",
+                qty=stitch_total, unit="EA",
+                notes=f"{n_trim} sticks x 5 screws/stick",
+            ))
+            usable = TRIM["stick_length_ft"] - (TRIM["overlap_in"] / 12.0)
+            fb = math.ceil(bldg.length_ft / usable) * 2
+            ends = math.ceil(bldg.width_ft / usable) * 2
+            items.append(BOMLineItem(
+                category="Trim", item_id="j_channel_trim",
+                description=f"J-Channel Trim, 10' sticks ({n_trim} sticks) — Home Depot",
+                qty=n_trim, unit="EA",
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"Front+Back: {fb} sticks | Ends: {ends} sticks | "
+                       f"All 4 sides with 3\" overlap. Priced separately."),
+            ))
+
+        # ── Welding & Finishing Consumables ──────────────────────────────
+        sqft = bldg.width_ft * bldg.length_ft
+        welding_cost = (sqft / 5000.0) * bldg.welding_cost_per_5000sqft
+        items.append(BOMLineItem(
+            category="Consumables",
+            item_id="welding_consumables",
+            description="Welding Wire/Rod, Welding Gas, Cold Galvanized Paint",
+            qty=round(sqft, 0), unit="SQFT",
+            unit_cost=round(bldg.welding_cost_per_5000sqft / 5000.0, 6),
+            total_cost=round(welding_cost, 2),
+            notes=(f"${bldg.welding_cost_per_5000sqft:.2f} per 5,000 SQFT | "
+                   f"{sqft:.0f} SQFT footprint | "
+                   f"Welding wire, welding gas, cold galvanize paint"),
+        ))
+
+        # ── Fabrication Labor ─────────────────────────────────────────────
+        labor_days_detail = {}
+        labor_raw_cost = 0.0
+        if bldg.include_labor:
+            lr = LABOR["rates"]
+            effective_daily = LABOR["effective_daily_rate"]   # $1,056/day incl. 10% overhead
+
+            # Column and rafter days (piece-based, sequential — same equipment)
+            days_cols = math.ceil(n_struct_cols / lr["box_pieces_per_day"])
+            days_rafts = math.ceil(n_rafters / lr["box_pieces_per_day"])
+
+            # Purlin days (roll-based)
+            purlin_roll_wt = COILS["z_purlin_20"]["roll_weight_lbs"]
+            purlin_total_wt = sum(i.total_weight_lbs for i in items
+                                  if "z_purlin" in i.item_id)
+            purlin_rolls = math.ceil(purlin_total_wt / purlin_roll_wt) if purlin_total_wt > 0 else 0
+            days_purlins = math.ceil(purlin_rolls / lr["purlin_rolls_per_day"]) if purlin_rolls > 0 else 0
+
+            # Panel days (roll-based)
+            panel_roll_wt = COILS["spartan_rib_48"]["roll_weight_lbs"]
+            panel_total_wt = sum(i.total_weight_lbs for i in items
+                                 if "spartan_rib" in i.item_id)
+            panel_rolls = math.ceil(panel_total_wt / panel_roll_wt) if panel_total_wt > 0 else 0
+            days_panels = math.ceil(panel_rolls / lr["panel_rolls_per_day"]) if panel_rolls > 0 else 0
+
+            # Angle (sag rod) days (roll-based)
+            angle_roll_wt = COILS["angle_4_16ga"]["roll_weight_lbs"]
+            angle_total_wt = sum(i.total_weight_lbs for i in items
+                                 if "sag_rod" in i.item_id)
+            angle_rolls = math.ceil(angle_total_wt / angle_roll_wt) if angle_total_wt > 0 else 0
+            days_angle = math.ceil(angle_rolls / lr["angle_rolls_per_day"]) if angle_rolls > 0 else 0
+
+            # Total days = max(cols+rafters stream, purlins, panels, angle)
+            box_stream_days = days_cols + days_rafts
+            total_fab_days = max(box_stream_days, days_purlins, days_panels, days_angle)
+
+            labor_raw_cost = total_fab_days * effective_daily
+            markup = self.project.markup_pct / 100.0
+            labor_sell = round(labor_raw_cost * (1 + markup), 2)
+
+            labor_days_detail = {
+                "days_columns": days_cols,
+                "days_rafters": days_rafts,
+                "days_purlins": days_purlins,
+                "days_panels": days_panels,
+                "days_angle": days_angle,
+                "box_stream_days": box_stream_days,
+                "total_fab_days": total_fab_days,
+                "daily_rate": LABOR["daily_rate"],
+                "overhead_pct": LABOR["overhead_pct"],
+                "effective_daily_rate": effective_daily,
+                "labor_raw_cost": round(labor_raw_cost, 2),
+                "labor_sell_price": labor_sell,
+                "crew_size": LABOR["crew_size"],
+            }
+
+        # Totals (materials only — labor is tracked separately in geometry/labor)
+        total_wt = sum(i.total_weight_lbs for i in items)
+        total_mat = sum(i.total_cost for i in items)
+        markup = self.project.markup_pct / 100.0
+        result.line_items = items
+        result.total_weight_lbs = round(total_wt, 1)
+        result.total_material_cost = round(total_mat, 2)
+        result.total_sell_price = round(total_mat * (1 + markup), 2)
+        result.geometry["labor"] = labor_days_detail
+        result.geometry["wall_panel_ht"] = round(wall_panel_ht, 3)
+        result.geometry["peak_ht"] = round(peak_ht, 2)
+        return result
+
+    def calculate_project(self, buildings: List[BuildingConfig]) -> ProjectBOM:
+        proj = ProjectBOM(project=self.project)
+        for b in buildings:
+            proj.buildings.append(self.calculate_building(b))
+        proj.total_weight_lbs = round(sum(b.total_weight_lbs for b in proj.buildings), 1)
+        proj.total_material_cost = round(sum(b.total_material_cost for b in proj.buildings), 2)
+        # Sell price includes material sell price + all building labor sell prices
+        mat_sell = sum(b.total_sell_price for b in proj.buildings)
+        labor_sell_total = sum(
+            b.geometry.get("labor", {}).get("labor_sell_price", 0.0)
+            for b in proj.buildings
+        )
+        proj.total_sell_price = round(mat_sell + labor_sell_total, 2)
+
+        coil_sum = {}
+        for bb in proj.buildings:
+            for item in bb.line_items:
+                if item.unit == "LFT (coil)":
+                    cid = item.item_id
+                    if cid not in coil_sum:
+                        coil_sum[cid] = {
+                            "description": item.description.split("(")[0].strip(),
+                            "total_lft": 0.0, "total_lbs": 0.0, "total_cost": 0.0,
+                        }
+                    coil_sum[cid]["total_lft"] += item.qty
+                    coil_sum[cid]["total_lbs"] += item.total_weight_lbs
+                    coil_sum[cid]["total_cost"] += item.total_cost
+        proj.summary_by_coil = coil_sum
+        return proj
+
+
+# ─────────────────────────────────────────────
+# JSON SERIALIZATION
+# ─────────────────────────────────────────────
+
+def bom_to_dict(bom: ProjectBOM) -> dict:
+    buildings_out = []
+    for bb in bom.buildings:
+        items_out = [{
+            "category": i.category, "item_id": i.item_id,
+            "description": i.description, "qty": round(i.qty, 2),
+            "unit": i.unit,
+            "unit_weight_lbs": round(i.unit_weight_lbs, 4),
+            "total_weight_lbs": round(i.total_weight_lbs, 1),
+            "unit_cost": round(i.unit_cost, 4),
+            "total_cost": round(i.total_cost, 2),
+            "waste_factor": round(i.waste_factor, 4),
+            "notes": i.notes,
+            "piece_count": i.piece_count,
+            "piece_length_in": round(i.piece_length_in, 2),
+        } for i in bb.line_items]
+
+        labor = bb.geometry.get("labor", {})
+        buildings_out.append({
+            "building_id": bb.building.building_id,
+            "errors": bb.errors,
+            "building_name": bb.building.building_name,
+            "type": bb.building.type,
+            "width_ft": bb.building.width_ft,
+            "length_ft": bb.building.length_ft,
+            "clear_height_ft": bb.building.clear_height_ft,
+            "max_bay_ft": bb.building.max_bay_ft,
+            "pitch_key": bb.building.pitch_key,
+            "purlin_spacing_override": bb.building.purlin_spacing_override,
+            "embedment_ft": bb.building.embedment_ft,
+            "column_buffer_ft": bb.building.column_buffer_ft,
+            "reinforced": bb.building.reinforced,
+            "rebar_col_size": bb.building.rebar_col_size,
+            "rebar_beam_size": bb.building.rebar_beam_size,
+            "include_rafter_rebar": bb.building.include_rafter_rebar,
+            "rebar_rafter_size": bb.building.rebar_rafter_size,
+            "include_trim": bb.building.include_trim,
+            "include_back_wall": bb.building.include_back_wall,
+            "include_end_walls": bb.building.include_end_walls,
+            "include_side_walls": bb.building.include_side_walls,
+            "include_labor": bb.building.include_labor,
+            "geometry": bb.geometry,
+            "line_items": items_out,
+            "total_weight_lbs": bb.total_weight_lbs,
+            "total_material_cost": bb.total_material_cost,
+            "total_sell_price": bb.total_sell_price,
+            # Labor (separate from material sell price)
+            "labor_total_days": labor.get("total_fab_days", 0),
+            "labor_raw_cost": labor.get("labor_raw_cost", 0.0),
+            "labor_sell_price": labor.get("labor_sell_price", 0.0),
+        })
+
+    return {
+        "project": {
+            "name": bom.project.name, "job_code": bom.project.job_code,
+            "address": bom.project.address, "city": bom.project.city,
+            "state": bom.project.state, "zip_code": bom.project.zip_code,
+            "customer_name": bom.project.customer_name,
+            "quote_date": bom.project.quote_date,
+            "wind_speed_mph": bom.project.wind_speed_mph,
+            "footing_depth_ft": bom.project.footing_depth_ft,
+            "markup_pct": bom.project.markup_pct,
+        },
+        "buildings": buildings_out,
+        "total_weight_lbs": bom.total_weight_lbs,
+        "total_material_cost": bom.total_material_cost,
+        "total_sell_price": bom.total_sell_price,
+        "total_labor_sell_price": round(
+            sum(b.get("labor_sell_price", 0.0) for b in buildings_out), 2),
+        "total_labor_days": sum(b.get("labor_total_days", 0) for b in buildings_out),
+        "summary_by_coil": bom.summary_by_coil,
+    }

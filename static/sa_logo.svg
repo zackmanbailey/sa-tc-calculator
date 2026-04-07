@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" width="220" height="220">
+  <!-- Structures America geometric eagle logo -->
+  <!-- Left wing - outer feathers -->
+  <polygon points="110,105 20,15 55,80" fill="#cccccc"/>
+  <polygon points="20,15 55,80 5,60" fill="#e8e8e8"/>
+  <polygon points="5,60 20,15 0,35" fill="#f0f0f0"/>
+  <!-- Left wing - inner feathers -->
+  <polygon points="110,105 55,80 45,115" fill="#999999"/>
+  <polygon points="55,80 20,15 30,90" fill="#bbbbbb"/>
+  <polygon points="30,90 55,80 45,115" fill="#aaaaaa"/>
+  <!-- Left wing - mid feathers -->
+  <polygon points="110,105 45,115 65,130" fill="#777777"/>
+  <!-- Right wing - outer feathers (mirror) -->
+  <polygon points="110,105 200,15 165,80" fill="#cccccc"/>
+  <polygon points="200,15 165,80 215,60" fill="#e8e8e8"/>
+  <polygon points="215,60 200,15 220,35" fill="#f0f0f0"/>
+  <!-- Right wing - inner feathers -->
+  <polygon points="110,105 165,80 175,115" fill="#999999"/>
+  <polygon points="165,80 200,15 190,90" fill="#bbbbbb"/>
+  <polygon points="190,90 165,80 175,115" fill="#aaaaaa"/>
+  <!-- Right wing - mid feathers -->
+  <polygon points="110,105 175,115 155,130" fill="#777777"/>
+  <!-- Body / chest -->
+  <polygon points="95,95 110,70 125,95 110,145" fill="#555555"/>
+  <polygon points="95,95 80,120 110,145" fill="#444444"/>
+  <polygon points="125,95 140,120 110,145" fill="#666666"/>
+  <!-- Head -->
+  <polygon points="100,72 110,55 120,72 110,85" fill="#444444"/>
+  <!-- Eye highlights -->
+  <circle cx="105" cy="73" r="3" fill="#888888"/>
+  <circle cx="115" cy="73" r="3" fill="#888888"/>
+  <!-- Text: STRUCTURES -->
+  <text x="110" y="175" text-anchor="middle" font-family="Arial Black, Arial" font-weight="900" font-size="22" letter-spacing="3" fill="#1a1a1a">STRUCTURES</text>
+  <!-- Decorative lines around AMERICA -->
+  <line x1="20" y1="195" x2="65" y2="195" stroke="#1a1a1a" stroke-width="1.5"/>
+  <line x1="155" y1="195" x2="200" y2="195" stroke="#1a1a1a" stroke-width="1.5"/>
+  <!-- Text: AMERICA -->
+  <text x="110" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-weight="400" font-size="15" letter-spacing="5" fill="#1a1a1a">AMERICA</text>
+</svg>
