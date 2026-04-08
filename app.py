@@ -161,7 +161,7 @@ LOGIN_HTML = r"""<!DOCTYPE html>
     </div>
     <button type="submit" class="btn-login">Sign In</button>
   </form>
-  <div class="footer-text">Internal use only · v2.6</div>
+  <div class="footer-text">Internal use only · v2.7</div>
 </div>
 <script>
 async function doLogin(e) {
@@ -464,7 +464,7 @@ MAIN_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Structures America + Titan Carports Calculator v2.6</title>
+<title>Structures America + Titan Carports Calculator v2.7</title>
 <style>
 :root {
   --sa-dark:#1A1A2E; --sa-blue:#1F4E79; --sa-blue-m:#2E75B6;
@@ -597,11 +597,18 @@ input[type=checkbox]{width:auto;margin-right:6px}
       <text x="200" y="148" font-family="Arial Black,Arial" font-weight="900" font-size="44" letter-spacing="3" fill="#C00000">CARPORTS</text>
     </svg>
   </div>
-  <div class="version" style="margin-left:12px">v2.6</div>
+  <div class="version" style="margin-left:12px">v2.7</div>
   <div id="auth-controls" style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <a href="/admin" style="color:#C89A2E;font-size:11px;font-weight:700;text-decoration:none" title="User Management">👤 Admin</a>
     <a href="/auth/logout" style="background:rgba(155,28,28,.5);border:1px solid rgba(155,28,28,.7);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;color:#ffaaaa;text-decoration:none">Log Out</a>
   </div>
+</div>
+
+<!-- Inventory Alert Banner (hidden by default, shown by JS) -->
+<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab')[4].classList.add('active')">
+  <span style="font-weight:700">⚠️ Inventory Alert:</span>
+  <span id="inv-alert-text"></span>
+  <span style="float:right;color:#666;font-size:11px">Click to view →</span>
 </div>
 
 <!-- Tabs -->
@@ -610,7 +617,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
   <div class="tab" onclick="showTab('bom')">📋 Bill of Materials</div>
   <div class="tab" onclick="showTab('pricing')">💰 Price Overrides</div>
   <div class="tab" onclick="showTab('labels')">🏷️ Shop Labels</div>
-  <div class="tab" onclick="showTab('inventory')">📦 Inventory</div>
+  <div class="tab" onclick="showTab('inventory')">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
 </div>
 
 <!-- Main -->
@@ -621,7 +628,9 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
     <!-- Recent Projects -->
     <div class="card">
-      <div class="card-hdr" style="background:var(--sa-gold);color:var(--sa-dark)"><span class="icon">📂</span>Projects</div>
+      <div class="card-hdr" style="background:var(--sa-gold);color:var(--sa-dark)"><span class="icon">📂</span>Projects
+        <span id="version-badge" style="display:none;margin-left:auto;background:#1F4E79;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700">v1</span>
+      </div>
       <div class="card-body" style="padding:10px 14px">
         <div style="display:flex;gap:6px;align-items:center">
           <select id="recent_projects" style="flex:1;font-size:12px;padding:5px 8px" onchange="loadProject(this.value)">
@@ -630,7 +639,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
           <button class="btn btn-primary btn-sm" onclick="loadRecentProjects()" title="Refresh list" style="padding:5px 8px">🔄</button>
         </div>
         <div style="display:flex;gap:6px;margin-top:6px">
-          <button class="btn btn-green btn-sm" style="flex:1;font-size:11px" onclick="saveProjectManual()">💾 Save Project</button>
+          <button class="btn btn-green btn-sm" style="flex:1;font-size:11px" onclick="saveProjectManual()">💾 Save (New Revision)</button>
+          <button class="btn btn-outline btn-sm" style="font-size:11px" onclick="showRevisionHistory()">📋 History</button>
         </div>
       </div>
     </div>
@@ -844,7 +854,25 @@ window.onload = function() {
   addBuilding();
   renderBuildingList();
   loadRecentProjects();
+  // Check inventory alerts on page load (runs in background)
+  checkInventoryAlerts();
 };
+
+async function checkInventoryAlerts() {
+  try {
+    const resp = await fetch('/api/inventory');
+    const data = await resp.json();
+    let outCount = 0, lowCount = 0;
+    for (const [id, coil] of Object.entries(data.coils || {})) {
+      const avail = (coil.stock_lbs || 0) - (coil.committed_lbs || 0);
+      const minStock = coil.min_stock_lbs || 0;
+      if (avail <= 0) outCount++;
+      else if (minStock > 0 && avail < minStock) lowCount++;
+      else if (avail < 2000) lowCount++;
+    }
+    updateInventoryAlerts(outCount, lowCount);
+  } catch(e) { /* silent */ }
+}
 
 // ─────────────────────────────────────────────
 // TABS
@@ -1925,6 +1953,8 @@ function scheduleSave() {
   _autoSaveTimer = setTimeout(autoSaveProject, 2000);
 }
 
+let currentVersion = 0;  // Current project version number
+
 async function autoSaveProject() {
   if (!currentBOM) return;
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
@@ -1938,12 +1968,17 @@ async function autoSaveProject() {
     manual_items: manualItems,
   };
   try {
-    await fetch('/api/project/save', {
+    const resp = await fetch('/api/project/save', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
-    console.log('[AutoSave] Project saved:', jobCode);
+    const result = await resp.json();
+    if (result.ok && result.version) {
+      currentVersion = result.version;
+      updateVersionBadge();
+    }
+    console.log('[AutoSave] Project saved:', jobCode, 'v' + (result.version || '?'));
   } catch(e) { console.warn('[AutoSave] Failed:', e); }
 }
 
@@ -1952,7 +1987,16 @@ async function saveProjectManual() {
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
   if (!jobCode) { alert('Please enter a Job Code first.'); return; }
   await autoSaveProject();
-  alert('Project saved: ' + jobCode);
+  alert('Project saved as v' + currentVersion + ': ' + jobCode);
+  loadRecentProjects();
+}
+
+function updateVersionBadge() {
+  const badge = document.getElementById('version-badge');
+  if (badge && currentVersion > 0) {
+    badge.textContent = 'v' + currentVersion;
+    badge.style.display = 'inline-block';
+  }
 }
 
 async function loadRecentProjects() {
@@ -1963,20 +2007,24 @@ async function loadRecentProjects() {
     if (!sel) return;
     sel.innerHTML = '<option value="">— Recent Projects —</option>';
     for (const p of (data.projects || [])) {
+      const vLabel = p.n_versions > 1 ? ' [' + p.n_versions + ' revisions]' : '';
       const label = p.job_code + (p.project_name ? ' — ' + p.project_name : '') +
+                    ' v' + (p.version || 1) + vLabel +
                     (p.saved_at ? ' (' + p.saved_at.slice(0,10) + ')' : '');
       sel.innerHTML += '<option value="' + p.job_code + '">' + label + '</option>';
     }
   } catch(e) { console.warn('Failed to load projects:', e); }
 }
 
-async function loadProject(jobCode) {
+async function loadProject(jobCode, version) {
   if (!jobCode) return;
   try {
+    const payload = { job_code: jobCode };
+    if (version) payload.version = version;
     const resp = await fetch('/api/project/load', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ job_code: jobCode }),
+      body: JSON.stringify(payload),
     });
     const result = await resp.json();
     if (!result.ok) { alert('Load failed: ' + (result.error||'unknown')); return; }
@@ -2015,10 +2063,126 @@ async function loadProject(jobCode) {
     // Restore price overrides & manual items
     priceOverrides = d.price_overrides || {};
     manualItems = d.manual_items || [];
+    currentVersion = d.version || 1;
+    updateVersionBadge();
     if (currentBOM) renderPricingTab();
 
-    alert('Project loaded: ' + jobCode);
+    alert('Project loaded: ' + jobCode + ' (v' + currentVersion + ')');
   } catch(e) { alert('Load error: ' + e.message); }
+}
+
+async function showRevisionHistory() {
+  const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
+  if (!jobCode) { alert('Enter a Job Code or load a project first.'); return; }
+  try {
+    const resp = await fetch('/api/project/revisions', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ job_code: jobCode }),
+    });
+    const result = await resp.json();
+    if (!result.ok || !result.revisions.length) {
+      alert('No revisions found for ' + jobCode);
+      return;
+    }
+    // Render revision history in a modal-style overlay
+    let html = '<div id="revision-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">';
+    html += '<div style="background:#fff;border-radius:10px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+    html += '<h2 style="font-size:16px;color:#1F4E79;margin:0">📋 Revision History — ' + jobCode + '</h2>';
+    html += '<button onclick="document.getElementById(\'revision-overlay\').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#888">✕</button>';
+    html += '</div>';
+
+    // Compare selector
+    html += '<div style="background:#F0F4FA;border-radius:6px;padding:12px;margin-bottom:16px">';
+    html += '<div style="font-size:11px;font-weight:700;color:#1F4E79;text-transform:uppercase;margin-bottom:8px">Compare Versions</div>';
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    html += '<select id="compare_va" style="padding:5px 8px;font-size:12px;border:1px solid #ccc;border-radius:3px">';
+    for (const r of result.revisions) {
+      html += '<option value="' + r.version + '"' + (r.version === 1 ? ' selected' : '') + '>v' + r.version + '</option>';
+    }
+    html += '</select>';
+    html += '<span style="font-size:12px;color:#888">vs</span>';
+    html += '<select id="compare_vb" style="padding:5px 8px;font-size:12px;border:1px solid #ccc;border-radius:3px">';
+    for (const r of result.revisions) {
+      html += '<option value="' + r.version + '"' + (r.version === result.revisions[result.revisions.length-1].version ? ' selected' : '') + '>v' + r.version + '</option>';
+    }
+    html += '</select>';
+    html += '<button class="btn btn-primary btn-sm" onclick="compareVersions(\'' + jobCode + '\')">🔍 Compare</button>';
+    html += '</div>';
+    html += '<div id="compare-results" style="margin-top:12px"></div>';
+    html += '</div>';
+
+    // Version list
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<tr style="background:#1F4E79;color:#fff"><th style="padding:8px;text-align:left">Version</th><th style="padding:8px">Saved</th><th style="padding:8px">By</th><th style="padding:8px;text-align:right">Sell Total</th><th style="padding:8px;text-align:center">Overrides</th><th style="padding:8px"></th></tr>';
+    for (const r of result.revisions.reverse()) {
+      const isCurrent = r.version === currentVersion;
+      html += '<tr style="border-bottom:1px solid #eee;' + (isCurrent ? 'background:#FFF8E0' : '') + '">';
+      html += '<td style="padding:8px;font-weight:700;color:#1F4E79">v' + r.version + (isCurrent ? ' ← current' : '') + '</td>';
+      html += '<td style="padding:8px;color:#888">' + (r.saved_at || '').slice(0, 16).replace('T', ' ') + '</td>';
+      html += '<td style="padding:8px">' + (r.saved_by || '—') + '</td>';
+      html += '<td style="padding:8px;text-align:right;font-weight:600">$' + (r.total_sell || 0).toLocaleString('en-US',{minimumFractionDigits:2}) + '</td>';
+      html += '<td style="padding:8px;text-align:center">' + (r.n_overrides > 0 ? r.n_overrides + ' edits' : '—') + (r.n_manual > 0 ? ' + ' + r.n_manual + ' manual' : '') + '</td>';
+      html += '<td style="padding:8px"><button class="btn btn-outline btn-sm" style="padding:3px 10px;font-size:11px" onclick="document.getElementById(\'revision-overlay\').remove();loadProject(\'' + jobCode + '\',' + r.version + ')">Load</button></td>';
+      html += '</tr>';
+    }
+    html += '</table>';
+    html += '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function compareVersions(jobCode) {
+  const va = parseInt(document.getElementById('compare_va')?.value);
+  const vb = parseInt(document.getElementById('compare_vb')?.value);
+  if (!va || !vb || va === vb) { alert('Select two different versions.'); return; }
+  const el = document.getElementById('compare-results');
+  if (el) el.innerHTML = '<div style="color:#888;font-size:12px">Loading comparison...</div>';
+  try {
+    const resp = await fetch('/api/project/compare', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ job_code: jobCode, version_a: va, version_b: vb }),
+    });
+    const result = await resp.json();
+    if (!result.ok) { el.innerHTML = '<div style="color:red">Error: ' + (result.error||'') + '</div>'; return; }
+
+    let html = '';
+    if (result.diffs.length === 0) {
+      html = '<div style="color:#2E7D32;font-weight:600;font-size:12px">✅ No price differences between v' + va + ' and v' + vb + '</div>';
+    } else {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">';
+      html += '<tr style="background:#555;color:#fff"><th style="padding:5px">Item</th><th style="padding:5px;text-align:right">v' + va + ' Cost</th><th style="padding:5px;text-align:right">v' + vb + ' Cost</th><th style="padding:5px;text-align:right">Diff</th></tr>';
+      for (const d of result.diffs) {
+        const diff_val = d.type === 'manual'
+          ? (d.ext_b - d.ext_a)
+          : (d.sell_b || d.cost_b || 0) - (d.sell_a || d.cost_a || 0);
+        const diffColor = diff_val > 0 ? '#C00000' : diff_val < 0 ? '#2E7D32' : '#888';
+        const diffSign = diff_val > 0 ? '+' : '';
+        const label = d.type === 'manual'
+          ? '📦 ' + (d.category || '') + ': ' + (d.description || '?') + (d.added ? ' (NEW)' : '') + (d.removed ? ' (REMOVED)' : '')
+          : '🏗️ ' + (d.building || '') + ' — ' + (d.description || '?');
+        const val_a = d.type === 'manual' ? d.ext_a : (d.sell_a || d.cost_a || 0);
+        const val_b = d.type === 'manual' ? d.ext_b : (d.sell_b || d.cost_b || 0);
+        html += '<tr style="border-bottom:1px solid #eee">';
+        html += '<td style="padding:4px">' + label + '</td>';
+        html += '<td style="padding:4px;text-align:right">$' + val_a.toFixed(2) + '</td>';
+        html += '<td style="padding:4px;text-align:right">$' + val_b.toFixed(2) + '</td>';
+        html += '<td style="padding:4px;text-align:right;font-weight:700;color:' + diffColor + '">' + diffSign + '$' + diff_val.toFixed(2) + '</td>';
+        html += '</tr>';
+      }
+      // Total row
+      const totalDiff = (result.total_sell_b||0) - (result.total_sell_a||0);
+      const tdColor = totalDiff > 0 ? '#C00000' : totalDiff < 0 ? '#2E7D32' : '#888';
+      html += '<tr style="background:#F0F4FA;font-weight:700"><td style="padding:5px">TOTAL (BOM Sell)</td>';
+      html += '<td style="padding:5px;text-align:right">$' + (result.total_sell_a||0).toLocaleString('en-US',{minimumFractionDigits:2}) + '</td>';
+      html += '<td style="padding:5px;text-align:right">$' + (result.total_sell_b||0).toLocaleString('en-US',{minimumFractionDigits:2}) + '</td>';
+      html += '<td style="padding:5px;text-align:right;color:' + tdColor + '">' + (totalDiff>0?'+':'') + '$' + totalDiff.toFixed(2) + '</td>';
+      html += '</tr></table>';
+    }
+    if (el) el.innerHTML = html;
+  } catch(e) { if (el) el.innerHTML = '<div style="color:red">Error: ' + e.message + '</div>'; }
 }
 
 // ─────────────────────────────────────────────
@@ -2173,6 +2337,7 @@ function renderInventory(data) {
           <th style="text-align:right">In Stock (LBS)</th>
           <th style="text-align:right">Committed (LBS)</th>
           <th style="text-align:right">Available (LBS)</th>
+          <th style="text-align:right">Min Stock</th>
           <th style="text-align:right">Price/LB</th>
           <th>Lead Time</th>
           <th>Status</th>
@@ -2188,25 +2353,34 @@ function renderInventory(data) {
     certsByCoil[key] = (certsByCoil[key] || 0) + 1;
   }
 
+  let alertsOut = 0, alertsLow = 0;
   for (const [id, coil] of Object.entries(data.coils || {})) {
     const avail = (coil.stock_lbs || 0) - (coil.committed_lbs || 0);
-    const status = avail <= 0 ? 'OUT' : avail < 2000 ? 'LOW' : 'OK';
+    const minStock = coil.min_stock_lbs || 0;
+    const status = avail <= 0 ? 'OUT' : (minStock > 0 && avail < minStock) ? 'LOW' : avail < 2000 ? 'LOW' : 'OK';
+    if (status === 'OUT') alertsOut++;
+    else if (status === 'LOW') alertsLow++;
     const statusClass = status === 'OK' ? 'stock-ok' : status === 'LOW' ? 'stock-low' : 'stock-out';
+    const rowBg = status === 'OUT' ? 'background:#FFF0F0' : status === 'LOW' ? 'background:#FFFBE6' : '';
     const nCerts = certsByCoil[id] || 0;
     const certBadge = nCerts > 0
       ? `<span style="background:#E8F5E9;color:#2E7D32;border-radius:10px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;margin-left:4px"
            onclick="filterCerts('${id}')" title="Show certs for this coil">📜 ${nCerts} cert${nCerts>1?'s':''}</span>`
       : `<span style="color:#bbb;font-size:10px;margin-left:4px">no certs</span>`;
     html += `
-      <tr>
+      <tr style="${rowBg}">
         <td>${coil.name} ${certBadge}</td>
         <td>${coil.gauge}</td>
         <td style="text-align:right">${(coil.stock_lbs||0).toLocaleString()}</td>
         <td style="text-align:right">${(coil.committed_lbs||0).toLocaleString()}</td>
         <td style="text-align:right;font-weight:600">${avail.toLocaleString()}</td>
+        <td style="text-align:right">
+          <input type="number" value="${minStock}" min="0" step="100" style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid ${minStock>0?'#C89A2E':'#ddd'};border-radius:3px"
+            onchange="updateMinStock('${id}', parseFloat(this.value)||0)"/>
+        </td>
         <td style="text-align:right">$${coil.price_per_lb}</td>
         <td>${coil.lead_time_weeks} wks</td>
-        <td><span class="${statusClass}">${status}</span></td>
+        <td><span class="${statusClass}">${status === 'OUT' ? '🔴 OUT' : status === 'LOW' ? '🟡 LOW' : '🟢 OK'}</span></td>
         <td>
           <input type="number" id="inv_${id}" placeholder="Add LBS" style="width:90px;padding:4px 6px;font-size:11px;border:1px solid #ccc;border-radius:3px"/>
           <button class="btn btn-primary btn-sm" style="padding:4px 8px;font-size:11px"
@@ -2220,6 +2394,9 @@ function renderInventory(data) {
   }
 
   html += `</tbody></table></div></div>`;
+
+  // Update alert banner and tab badge
+  updateInventoryAlerts(alertsOut, alertsLow);
 
   // ── Add New Coil Form ──────────────────────────────────────────────────
   html += `
@@ -2448,6 +2625,57 @@ function renderInventory(data) {
   </div>`;
 
   el.innerHTML = html;
+}
+
+function updateInventoryAlerts(outCount, lowCount) {
+  const banner = document.getElementById('inv-alert-banner');
+  const bannerText = document.getElementById('inv-alert-text');
+  const tabBadge = document.getElementById('inv-tab-badge');
+
+  if (outCount > 0 || lowCount > 0) {
+    let parts = [];
+    if (outCount > 0) parts.push(outCount + ' OUT OF STOCK');
+    if (lowCount > 0) parts.push(lowCount + ' LOW');
+    if (bannerText) bannerText.textContent = parts.join(' · ') + ' — click to manage inventory';
+
+    if (banner) {
+      banner.style.display = 'block';
+      if (outCount > 0) {
+        banner.style.background = '#FFEBEE';
+        banner.style.borderBottomColor = '#EF9A9A';
+        banner.style.color = '#B71C1C';
+      } else {
+        banner.style.background = '#FFF3CD';
+        banner.style.borderBottomColor = '#FFD43B';
+        banner.style.color = '#856404';
+      }
+    }
+    if (tabBadge) {
+      tabBadge.textContent = outCount > 0 ? outCount + ' OUT' : lowCount + ' LOW';
+      tabBadge.style.display = 'inline';
+      tabBadge.style.background = outCount > 0 ? '#C00000' : '#E65100';
+    }
+  } else {
+    if (banner) banner.style.display = 'none';
+    if (tabBadge) tabBadge.style.display = 'none';
+  }
+}
+
+async function updateMinStock(coilId, minLbs) {
+  try {
+    const resp = await fetch('/api/inventory');
+    const inv = await resp.json();
+    if (inv.coils && inv.coils[coilId]) {
+      inv.coils[coilId].min_stock_lbs = minLbs;
+      await fetch('/api/inventory/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(inv),
+      });
+      // Re-render to update statuses
+      renderInventory(inv);
+    }
+  } catch(e) { console.warn('Failed to update min stock:', e); }
 }
 
 async function deleteCoil(coilId, coilName) {
@@ -2710,7 +2938,7 @@ TC_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Titan Carports — Construction Quote v2.6</title>
+<title>Titan Carports — Construction Quote v2.7</title>
 <style>
 :root {
   --tc-dark:#1C1C2E; --tc-red:#C00000; --tc-red-l:#FFF0F0;
@@ -2812,7 +3040,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
     <div style="font-size:11px;color:#aaa">Construction Quote Calculator</div>
   </div>
   <div class="spacer"></div>
-  <div class="version">v2.6</div>
+  <div class="version">v2.7</div>
 </div>
 
 <!-- Tabs -->
@@ -4054,26 +4282,54 @@ class CoilDeleteHandler(BaseHandler):
 class ProjectSaveHandler(BaseHandler):
     """
     POST /api/project/save
-    Saves full project state (project info, buildings, BOM data, price overrides, manual items)
-    to data/projects/{job_code}.json
+    Auto-versioned save: data/projects/{job_code}/v1.json, v2.json, ...
+    Also keeps a 'current.json' symlink-style copy for quick loading.
+    Each save auto-increments the version number.
     """
     def post(self):
         try:
+            import re, glob
             body = json_decode(self.request.body)
             job_code = body.get("job_code", "").strip()
             if not job_code:
                 self.write(json_encode({"ok": False, "error": "No job_code"}))
                 return
-            import re
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            projects_dir = os.path.join(BASE_DIR, "data", "projects")
-            os.makedirs(projects_dir, exist_ok=True)
-            fpath = os.path.join(projects_dir, f"{safe_name}.json")
+            proj_dir = os.path.join(BASE_DIR, "data", "projects", safe_name)
+            os.makedirs(proj_dir, exist_ok=True)
+
+            # Find next version number
+            existing = glob.glob(os.path.join(proj_dir, "v*.json"))
+            max_v = 0
+            for fp in existing:
+                bn = os.path.basename(fp)
+                try:
+                    v = int(bn.replace("v", "").replace(".json", ""))
+                    max_v = max(max_v, v)
+                except ValueError:
+                    pass
+            next_v = max_v + 1
+
             body["saved_at"] = datetime.datetime.now().isoformat()
-            with open(fpath, "w") as f:
+            body["version"] = next_v
+            body["saved_by"] = self.get_current_user() or "unknown"
+
+            # Save versioned file
+            vpath = os.path.join(proj_dir, f"v{next_v}.json")
+            with open(vpath, "w") as f:
                 json.dump(body, f, indent=2)
+
+            # Also save as current.json (latest version for quick load)
+            cpath = os.path.join(proj_dir, "current.json")
+            with open(cpath, "w") as f:
+                json.dump(body, f, indent=2)
+
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "file": f"{safe_name}.json"}))
+            self.write(json_encode({
+                "ok": True,
+                "version": next_v,
+                "file": f"{safe_name}/v{next_v}.json",
+            }))
         except Exception as e:
             import traceback
             self.set_status(500)
@@ -4082,14 +4338,26 @@ class ProjectSaveHandler(BaseHandler):
 
 
 class ProjectLoadHandler(BaseHandler):
-    """POST /api/project/load — Load a saved project by job_code."""
+    """POST /api/project/load — Load a saved project by job_code, optionally a specific version."""
     def post(self):
         try:
+            import re
             body = json_decode(self.request.body)
             job_code = body.get("job_code", "").strip()
-            import re
+            version = body.get("version", None)  # None = load latest (current.json)
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            fpath = os.path.join(BASE_DIR, "data", "projects", f"{safe_name}.json")
+            proj_dir = os.path.join(BASE_DIR, "data", "projects", safe_name)
+
+            # Support both new versioned format and legacy flat format
+            if os.path.isdir(proj_dir):
+                if version:
+                    fpath = os.path.join(proj_dir, f"v{version}.json")
+                else:
+                    fpath = os.path.join(proj_dir, "current.json")
+            else:
+                # Legacy flat format: data/projects/{safe_name}.json
+                fpath = os.path.join(BASE_DIR, "data", "projects", f"{safe_name}.json")
+
             if not os.path.isfile(fpath):
                 self.write(json_encode({"ok": False, "error": "Project not found"}))
                 return
@@ -4103,24 +4371,188 @@ class ProjectLoadHandler(BaseHandler):
             self.write(json_encode({"error": str(e)}))
 
 
+class ProjectRevisionsHandler(BaseHandler):
+    """POST /api/project/revisions — List all versions of a project."""
+    def post(self):
+        try:
+            import re, glob
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(BASE_DIR, "data", "projects", safe_name)
+            revisions = []
+            if os.path.isdir(proj_dir):
+                for fp in sorted(glob.glob(os.path.join(proj_dir, "v*.json"))):
+                    bn = os.path.basename(fp)
+                    try:
+                        v = int(bn.replace("v", "").replace(".json", ""))
+                        with open(fp) as f:
+                            data = json.load(f)
+                        revisions.append({
+                            "version": v,
+                            "saved_at": data.get("saved_at", ""),
+                            "saved_by": data.get("saved_by", ""),
+                            "total_sell": data.get("bom_data", {}).get("total_sell_price", 0),
+                            "n_manual": len(data.get("manual_items", [])),
+                            "n_overrides": sum(len(v) for v in (data.get("price_overrides") or {}).values())
+                                           if isinstance(data.get("price_overrides"), dict) else 0,
+                        })
+                    except Exception:
+                        pass
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "revisions": revisions}))
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
+class ProjectCompareHandler(BaseHandler):
+    """POST /api/project/compare — Compare two versions of a project.
+    Body: { job_code, version_a, version_b }
+    Returns line-by-line diffs in sell prices, manual items, and totals."""
+    def post(self):
+        try:
+            import re
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            va = int(body.get("version_a", 1))
+            vb = int(body.get("version_b", 2))
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(BASE_DIR, "data", "projects", safe_name)
+
+            def load_version(v):
+                fp = os.path.join(proj_dir, f"v{v}.json")
+                if not os.path.isfile(fp):
+                    return None
+                with open(fp) as f:
+                    return json.load(f)
+
+            data_a = load_version(va)
+            data_b = load_version(vb)
+            if not data_a or not data_b:
+                self.write(json_encode({"ok": False, "error": "One or both versions not found"}))
+                return
+
+            # Build comparison
+            diffs = []
+
+            # Compare BOM line items per building
+            bldgs_a = (data_a.get("bom_data") or {}).get("buildings", [])
+            bldgs_b = (data_b.get("bom_data") or {}).get("buildings", [])
+            overrides_a = data_a.get("price_overrides") or {}
+            overrides_b = data_b.get("price_overrides") or {}
+            markup_a = ((data_a.get("project") or data_a.get("bom_data", {}).get("project", {})).get("markup_pct", 35)) / 100
+            markup_b = ((data_b.get("project") or data_b.get("bom_data", {}).get("project", {})).get("markup_pct", 35)) / 100
+
+            max_bldgs = max(len(bldgs_a), len(bldgs_b))
+            for bi in range(max_bldgs):
+                ba = bldgs_a[bi] if bi < len(bldgs_a) else None
+                bb = bldgs_b[bi] if bi < len(bldgs_b) else None
+                bname = (bb or ba or {}).get("building_name", f"Building {bi+1}")
+                items_a = (ba or {}).get("line_items", [])
+                items_b = (bb or {}).get("line_items", [])
+                max_items = max(len(items_a), len(items_b))
+                for li in range(max_items):
+                    ia = items_a[li] if li < len(items_a) else {}
+                    ib = items_b[li] if li < len(items_b) else {}
+                    ov_a = (overrides_a.get(str(bi)) or {}).get(str(li))
+                    ov_b = (overrides_b.get(str(bi)) or {}).get(str(li))
+                    cost_a = (ov_a or {}).get("cost", ia.get("total_cost", 0)) if ov_a else ia.get("total_cost", 0)
+                    cost_b = (ov_b or {}).get("cost", ib.get("total_cost", 0)) if ov_b else ib.get("total_cost", 0)
+                    sell_a = (ov_a or {}).get("sell", cost_a * (1 + markup_a)) if ov_a else cost_a * (1 + markup_a)
+                    sell_b = (ov_b or {}).get("sell", cost_b * (1 + markup_b)) if ov_b else cost_b * (1 + markup_b)
+                    desc = ib.get("description") or ia.get("description") or "?"
+                    if abs(cost_a - cost_b) > 0.01 or abs(sell_a - sell_b) > 0.01:
+                        diffs.append({
+                            "type": "line_item",
+                            "building": bname,
+                            "description": desc,
+                            "cost_a": round(cost_a, 2), "cost_b": round(cost_b, 2),
+                            "sell_a": round(sell_a, 2), "sell_b": round(sell_b, 2),
+                        })
+
+            # Compare manual items
+            man_a = data_a.get("manual_items", [])
+            man_b = data_b.get("manual_items", [])
+            all_descs = set()
+            for m in man_a + man_b:
+                all_descs.add(m.get("description", "?"))
+            for desc in sorted(all_descs):
+                a_item = next((m for m in man_a if m.get("description") == desc), None)
+                b_item = next((m for m in man_b if m.get("description") == desc), None)
+                ext_a = (a_item["qty"] * a_item["sell_price"]) if a_item else 0
+                ext_b = (b_item["qty"] * b_item["sell_price"]) if b_item else 0
+                if abs(ext_a - ext_b) > 0.01 or (a_item is None) != (b_item is None):
+                    diffs.append({
+                        "type": "manual",
+                        "description": desc,
+                        "category": (b_item or a_item or {}).get("category", ""),
+                        "ext_a": round(ext_a, 2), "ext_b": round(ext_b, 2),
+                        "added": a_item is None,
+                        "removed": b_item is None,
+                    })
+
+            # Total comparison
+            total_a = (data_a.get("bom_data") or {}).get("total_sell_price", 0)
+            total_b = (data_b.get("bom_data") or {}).get("total_sell_price", 0)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "version_a": va, "version_b": vb,
+                "total_sell_a": round(total_a, 2),
+                "total_sell_b": round(total_b, 2),
+                "diffs": diffs,
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
 class ProjectListHandler(BaseHandler):
-    """GET /api/projects — List all saved projects."""
+    """GET /api/projects — List all saved projects (reads current.json from each project dir)."""
     def get(self):
+        import glob
         projects_dir = os.path.join(BASE_DIR, "data", "projects")
         os.makedirs(projects_dir, exist_ok=True)
         result = []
-        for fname in sorted(os.listdir(projects_dir), reverse=True):
-            if fname.endswith(".json"):
-                fpath = os.path.join(projects_dir, fname)
+        # New versioned format: subdirectories with current.json
+        for d in sorted(os.listdir(projects_dir), reverse=True):
+            dpath = os.path.join(projects_dir, d)
+            if os.path.isdir(dpath):
+                cpath = os.path.join(dpath, "current.json")
+                if os.path.isfile(cpath):
+                    try:
+                        with open(cpath) as f:
+                            data = json.load(f)
+                        n_versions = len(glob.glob(os.path.join(dpath, "v*.json")))
+                        result.append({
+                            "job_code": data.get("job_code", d),
+                            "project_name": data.get("project", {}).get("name", ""),
+                            "customer": data.get("project", {}).get("customer_name", ""),
+                            "saved_at": data.get("saved_at", ""),
+                            "version": data.get("version", 1),
+                            "n_versions": n_versions,
+                            "file": d,
+                        })
+                    except Exception:
+                        pass
+            elif d.endswith(".json"):
+                # Legacy flat format
                 try:
-                    with open(fpath) as f:
+                    with open(dpath) as f:
                         data = json.load(f)
                     result.append({
-                        "job_code": data.get("job_code", fname.replace(".json", "")),
+                        "job_code": data.get("job_code", d.replace(".json", "")),
                         "project_name": data.get("project", {}).get("name", ""),
                         "customer": data.get("project", {}).get("customer_name", ""),
                         "saved_at": data.get("saved_at", ""),
-                        "file": fname,
+                        "version": 1,
+                        "n_versions": 1,
+                        "file": d,
                     })
                 except Exception:
                     pass
@@ -4510,6 +4942,8 @@ def make_app():
         (r"/coil/([^/]+)",               CoilDetailHandler),
         (r"/api/project/save",           ProjectSaveHandler),
         (r"/api/project/load",           ProjectLoadHandler),
+        (r"/api/project/revisions",      ProjectRevisionsHandler),
+        (r"/api/project/compare",        ProjectCompareHandler),
         (r"/api/projects",               ProjectListHandler),
         (r"/tc/export/pdf",              TCExportPDFHandler),
         (r"/tc/export/excel",       TCExportExcelHandler),
@@ -4548,7 +4982,7 @@ if __name__ == "__main__":
 
     auth_status = "ON — login required" if AUTH_ENABLED else "OFF — open access (local mode)"
     print("=" * 60)
-    print("  SA + TC Combined Calculator  v2.6")
+    print("  SA + TC Combined Calculator  v2.7")
     print(f"  SA Material Takeoff:  http://localhost:{args.port}/")
     print(f"  TC Construction Quote: http://localhost:{args.port}/tc")
     if AUTH_ENABLED:
