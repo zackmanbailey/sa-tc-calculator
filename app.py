@@ -161,7 +161,7 @@ LOGIN_HTML = r"""<!DOCTYPE html>
     </div>
     <button type="submit" class="btn-login">Sign In</button>
   </form>
-  <div class="footer-text">Internal use only · v2.4</div>
+  <div class="footer-text">Internal use only · v2.6</div>
 </div>
 <script>
 async function doLogin(e) {
@@ -464,7 +464,7 @@ MAIN_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Structures America + Titan Carports Calculator v2.4</title>
+<title>Structures America + Titan Carports Calculator v2.6</title>
 <style>
 :root {
   --sa-dark:#1A1A2E; --sa-blue:#1F4E79; --sa-blue-m:#2E75B6;
@@ -597,7 +597,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
       <text x="200" y="148" font-family="Arial Black,Arial" font-weight="900" font-size="44" letter-spacing="3" fill="#C00000">CARPORTS</text>
     </svg>
   </div>
-  <div class="version" style="margin-left:12px">v2.4</div>
+  <div class="version" style="margin-left:12px">v2.6</div>
   <div id="auth-controls" style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <a href="/admin" style="color:#C89A2E;font-size:11px;font-weight:700;text-decoration:none" title="User Management">👤 Admin</a>
     <a href="/auth/logout" style="background:rgba(155,28,28,.5);border:1px solid rgba(155,28,28,.7);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:700;color:#ffaaaa;text-decoration:none">Log Out</a>
@@ -608,6 +608,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
 <div id="tabs">
   <div class="tab active" onclick="showTab('calc')">⚙️ Calculator</div>
   <div class="tab" onclick="showTab('bom')">📋 Bill of Materials</div>
+  <div class="tab" onclick="showTab('pricing')">💰 Price Overrides</div>
   <div class="tab" onclick="showTab('labels')">🏷️ Shop Labels</div>
   <div class="tab" onclick="showTab('inventory')">📦 Inventory</div>
 </div>
@@ -617,6 +618,22 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
   <!-- SIDEBAR: Project + Building Setup -->
   <div id="sidebar">
+
+    <!-- Recent Projects -->
+    <div class="card">
+      <div class="card-hdr" style="background:var(--sa-gold);color:var(--sa-dark)"><span class="icon">📂</span>Projects</div>
+      <div class="card-body" style="padding:10px 14px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="recent_projects" style="flex:1;font-size:12px;padding:5px 8px" onchange="loadProject(this.value)">
+            <option value="">— Recent Projects —</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="loadRecentProjects()" title="Refresh list" style="padding:5px 8px">🔄</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-green btn-sm" style="flex:1;font-size:11px" onclick="saveProjectManual()">💾 Save Project</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Project Info -->
     <div class="card">
@@ -727,6 +744,17 @@ input[type=checkbox]{width:auto;margin-right:6px}
       </div>
     </div>
 
+    <!-- Price Overrides Tab -->
+    <div id="tab-pricing" class="tab-content hidden">
+      <div class="section-hdr">Price Overrides & Manual Line Items</div>
+      <div id="pricing-content">
+        <div class="alert alert-info">
+          Run <strong>CALCULATE BOM</strong> first, then use this tab to edit prices per line item,
+          add manual items (trim, hardware, freight), and see live totals.
+        </div>
+      </div>
+    </div>
+
     <!-- Labels Tab -->
     <div id="tab-labels" class="tab-content hidden">
       <div class="section-hdr">Shop Fabrication Labels</div>
@@ -795,6 +823,14 @@ let buildings = [];
 let currentBOM = null;
 let currentLabels = null;
 
+// ── Price Overrides State ──────────────────
+// priceOverrides[bldgIdx][lineIdx] = { cost: number, sell: number }
+let priceOverrides = {};
+// manualItems: array of { category, description, qty, unit, unit_cost, sell_price, notes }
+let manualItems = [];
+// Auto-save debounce
+let _autoSaveTimer = null;
+
 const WIND_BY_STATE = {TX:115,NM:115,CO:115,FL:140,CA:115,AZ:115,NV:115,OK:130,KS:130,NE:130};
 const FOOTING_BY_STATE = {TX:10,NM:10,CO:10,FL:12,CA:10,Default:10};
 
@@ -807,6 +843,7 @@ window.onload = function() {
   document.getElementById('proj_date').value = `${mm}/${dd}/${yyyy}`;
   addBuilding();
   renderBuildingList();
+  loadRecentProjects();
 };
 
 // ─────────────────────────────────────────────
@@ -818,6 +855,7 @@ function showTab(name) {
   document.getElementById('tab-' + name).classList.remove('hidden');
   event.target.classList.add('active');
   if (name === 'inventory') loadInventory();
+  if (name === 'pricing') renderPricingTab();
 }
 
 // ─────────────────────────────────────────────
@@ -1438,7 +1476,9 @@ async function calculate() {
       return;
     }
     currentBOM = data;
+    priceOverrides = {};  // Reset overrides on new calc
     renderBOM(data);
+    renderPricingTab();
     // Switch to BOM tab
     document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1501,6 +1541,7 @@ function renderBOM(data) {
   <div class="btn-group" style="margin-bottom:16px">
     <button class="btn btn-green" onclick="downloadExcel()">📊 Download Excel BOM</button>
     <button class="btn btn-red" onclick="downloadPDF()">📄 Download PDF Quote</button>
+    <button class="btn btn-primary" onclick="saveProjectManual()">💾 Save Project</button>
     <button class="btn btn-gold" style="margin-left:auto" onclick="sendToTCQuote()">🏗️ Send to TC Construction Quote →</button>
   </div>
   `;
@@ -1608,7 +1649,10 @@ function renderBOM(data) {
 // ─────────────────────────────────────────────
 function sendToTCQuote() {
   if (!currentBOM) { alert('Please calculate BOM first.'); return; }
-  const sellPrice = currentBOM.total_sell_price || 0;
+  // Use adjusted totals if price overrides / manual items exist
+  const totals = getAdjustedTotals();
+  const sellPrice = (Object.keys(priceOverrides).length > 0 || manualItems.length > 0)
+    ? totals.grand : (currentBOM.total_sell_price || 0);
   const nCols = (currentBOM.buildings || []).reduce((s, b) => s + (b.geometry?.n_struct_cols || 0), 0);
   const footingDepth = currentBOM.project?.footing_depth_ft || 10;
   const projName = currentBOM.project?.name || '';
@@ -1627,6 +1671,354 @@ function sendToTCQuote() {
     length: length,
   });
   window.open('/tc?' + params.toString(), '_blank');
+}
+
+// ─────────────────────────────────────────────
+// PRICE OVERRIDES & MANUAL ITEMS
+// ─────────────────────────────────────────────
+
+function getAdjustedTotals() {
+  // Calculate totals including price overrides and manual items
+  if (!currentBOM) return { material: 0, sell: 0, manual: 0, grand: 0 };
+  const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
+  let totalMaterial = 0, totalSell = 0;
+
+  for (let bi = 0; bi < currentBOM.buildings.length; bi++) {
+    const bldg = currentBOM.buildings[bi];
+    for (let li = 0; li < bldg.line_items.length; li++) {
+      const item = bldg.line_items[li];
+      const key = bi + '_' + li;
+      const ov = (priceOverrides[bi] || {})[li];
+      if (ov && ov.cost !== undefined) {
+        totalMaterial += ov.cost;
+        totalSell += (ov.sell !== undefined) ? ov.sell : ov.cost * (1 + markup);
+      } else {
+        totalMaterial += item.total_cost || 0;
+        totalSell += (item.total_cost || 0) * (1 + markup);
+      }
+    }
+    // Add labor
+    totalSell += bldg.labor_sell_price || 0;
+  }
+
+  // Manual items
+  let manualTotal = 0;
+  for (const m of manualItems) {
+    manualTotal += (m.qty || 0) * (m.sell_price || 0);
+  }
+
+  return {
+    material: totalMaterial,
+    sell: totalSell,
+    manual: manualTotal,
+    grand: totalSell + manualTotal,
+  };
+}
+
+function renderPricingTab() {
+  const el = document.getElementById('pricing-content');
+  if (!currentBOM) {
+    el.innerHTML = '<div class="alert alert-info">Run <strong>CALCULATE BOM</strong> first, then use this tab to edit prices.</div>';
+    return;
+  }
+
+  const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
+  const totals = getAdjustedTotals();
+
+  let html = `
+  <div class="stats-grid" id="pricing-summary">
+    <div class="stat-card">
+      <div class="stat-label">Calculated Material</div>
+      <div class="stat-value" style="color:var(--sa-green)">$${(currentBOM.total_material_cost||0).toLocaleString('en-US',{minimumFractionDigits:2})}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Adjusted Material</div>
+      <div class="stat-value" style="color:var(--sa-blue)" id="adj-material">$${totals.material.toLocaleString('en-US',{minimumFractionDigits:2})}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Manual Items</div>
+      <div class="stat-value" style="color:#7A5C00" id="adj-manual">$${totals.manual.toLocaleString('en-US',{minimumFractionDigits:2})}</div>
+    </div>
+    <div class="stat-card" style="border:2px solid var(--sa-red)">
+      <div class="stat-label">Grand Total (Sell)</div>
+      <div class="stat-value" style="color:var(--sa-red)" id="adj-grand">$${totals.grand.toLocaleString('en-US',{minimumFractionDigits:2})}</div>
+      <div class="stat-unit">materials + labor + manual</div>
+    </div>
+  </div>`;
+
+  // Per-building editable table
+  for (let bi = 0; bi < currentBOM.buildings.length; bi++) {
+    const bldg = currentBOM.buildings[bi];
+    const bldgLabel = bldg.building_name || ('Building ' + (bi + 1));
+    html += `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-hdr" style="background:var(--sa-blue)">
+        <span class="icon">🏗️</span> ${bldgLabel} — Price Overrides
+      </div>
+      <div class="card-body" style="padding:0">
+        <table class="bom-table">
+          <thead><tr>
+            <th>Category</th><th>Description</th>
+            <th style="text-align:right">Qty</th><th>Unit</th>
+            <th style="text-align:right">Orig Cost</th>
+            <th style="text-align:right">New Cost</th>
+            <th style="text-align:right">Sell Price</th>
+            <th style="text-align:right">Markup %</th>
+            <th></th>
+          </tr></thead><tbody>`;
+
+    let lastCat = null;
+    for (let li = 0; li < bldg.line_items.length; li++) {
+      const item = bldg.line_items[li];
+      if (item.category !== lastCat) {
+        lastCat = item.category;
+        html += '<tr class="cat-row"><td colspan="9">' + item.category + '</td></tr>';
+      }
+      const origCost = item.total_cost || 0;
+      const ov = (priceOverrides[bi] || {})[li];
+      const isEdited = ov && ov.cost !== undefined;
+      const editCost = isEdited ? ov.cost : origCost;
+      const editSell = isEdited && ov.sell !== undefined ? ov.sell : editCost * (1 + markup);
+      const markupPct = editCost > 0 ? ((editSell / editCost - 1) * 100).toFixed(1) : '—';
+      const qty = typeof item.qty === 'number' ? item.qty.toLocaleString('en-US',{maximumFractionDigits:2}) : item.qty;
+
+      html += `<tr${isEdited?' style="background:#FFF8E0"':''}>
+        <td></td>
+        <td>${item.description}</td>
+        <td style="text-align:right">${qty}</td>
+        <td>${item.unit}</td>
+        <td style="text-align:right;${isEdited?'text-decoration:line-through;color:#bbb':''}">$${origCost.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+        <td style="text-align:right">
+          <input type="number" value="${editCost.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px"
+            onchange="overrideCost(${bi},${li},parseFloat(this.value))" oninput="liveUpdateTotals()"/>
+        </td>
+        <td style="text-align:right">
+          <input type="number" value="${editSell.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px"
+            onchange="overrideSell(${bi},${li},parseFloat(this.value))" oninput="liveUpdateTotals()"/>
+        </td>
+        <td style="text-align:right;font-size:11px;color:#888">${markupPct}%</td>
+        <td>${isEdited?'<button style="border:none;background:none;cursor:pointer;font-size:14px" title="Reset to calculated" onclick="resetOverride('+bi+','+li+')">↩</button>':''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div></div>';
+  }
+
+  // ── Manual Line Items Section ──────────────
+  html += `
+  <div class="card" style="margin-top:16px">
+    <div class="card-hdr" style="background:var(--sa-gold);color:#1C1C2E">
+      <span class="icon">➕</span> Manual Line Items (Trim, Hardware, Freight, etc.)
+    </div>
+    <div class="card-body">
+      <table class="bom-table" id="manual-items-table">
+        <thead><tr>
+          <th>Category</th><th>Description</th>
+          <th style="text-align:right">Qty</th><th>Unit</th>
+          <th style="text-align:right">Unit Price</th>
+          <th style="text-align:right">Extended</th>
+          <th></th>
+        </tr></thead>
+        <tbody>`;
+
+  for (let mi = 0; mi < manualItems.length; mi++) {
+    const m = manualItems[mi];
+    const ext = (m.qty || 0) * (m.sell_price || 0);
+    html += `<tr>
+      <td>
+        <select style="font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px" onchange="manualItems[${mi}].category=this.value;scheduleSave()">
+          <option value="Trim" ${m.category==='Trim'?'selected':''}>Trim</option>
+          <option value="Hardware" ${m.category==='Hardware'?'selected':''}>Hardware</option>
+          <option value="Freight" ${m.category==='Freight'?'selected':''}>Freight</option>
+          <option value="Fasteners" ${m.category==='Fasteners'?'selected':''}>Fasteners</option>
+          <option value="Accessories" ${m.category==='Accessories'?'selected':''}>Accessories</option>
+          <option value="Other" ${m.category==='Other'?'selected':''}>Other</option>
+        </select>
+      </td>
+      <td><input type="text" value="${(m.description||'').replace(/"/g,'&quot;')}" style="font-size:12px;padding:3px 6px;border:1px solid #ddd;border-radius:3px;width:100%"
+        onchange="manualItems[${mi}].description=this.value;scheduleSave()"/></td>
+      <td style="text-align:right"><input type="number" value="${m.qty||0}" step="0.01" style="width:70px;font-size:12px;padding:3px 6px;text-align:right;border:1px solid #ddd;border-radius:3px"
+        onchange="manualItems[${mi}].qty=parseFloat(this.value)||0;renderPricingTab()" oninput="liveUpdateTotals()"/></td>
+      <td>
+        <select style="font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px" onchange="manualItems[${mi}].unit=this.value;scheduleSave()">
+          <option value="EA" ${m.unit==='EA'?'selected':''}>EA</option>
+          <option value="LF" ${m.unit==='LF'?'selected':''}>LF</option>
+          <option value="SQ" ${m.unit==='SQ'?'selected':''}>SQ</option>
+          <option value="LOT" ${m.unit==='LOT'?'selected':''}>LOT</option>
+          <option value="LBS" ${m.unit==='LBS'?'selected':''}>LBS</option>
+        </select>
+      </td>
+      <td style="text-align:right"><input type="number" value="${(m.sell_price||0).toFixed(2)}" step="0.01" style="width:90px;font-size:12px;padding:3px 6px;text-align:right;border:1px solid #ddd;border-radius:3px"
+        onchange="manualItems[${mi}].sell_price=parseFloat(this.value)||0;renderPricingTab()" oninput="liveUpdateTotals()"/></td>
+      <td style="text-align:right;font-weight:600">$${ext.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+      <td><button class="btn btn-red btn-sm" style="padding:2px 8px;font-size:11px" onclick="manualItems.splice(${mi},1);renderPricingTab()">✕</button></td>
+    </tr>`;
+  }
+
+  html += `</tbody></table>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-gold btn-sm" onclick="addManualItem('Trim','','LF')">+ Trim</button>
+        <button class="btn btn-gold btn-sm" onclick="addManualItem('Hardware','','EA')">+ Hardware</button>
+        <button class="btn btn-gold btn-sm" onclick="addManualItem('Freight','Freight & Delivery','LOT')">+ Freight</button>
+        <button class="btn btn-gold btn-sm" onclick="addManualItem('Fasteners','','EA')">+ Fasteners</button>
+        <button class="btn btn-outline btn-sm" onclick="addManualItem('Other','','EA')">+ Other</button>
+      </div>
+    </div>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function overrideCost(bi, li, val) {
+  if (!priceOverrides[bi]) priceOverrides[bi] = {};
+  const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
+  const existing = priceOverrides[bi][li] || {};
+  priceOverrides[bi][li] = { cost: val, sell: existing.sell !== undefined ? existing.sell : val * (1 + markup) };
+  scheduleSave();
+  // Don't re-render entire tab to preserve focus — just update totals
+  liveUpdateTotals();
+}
+
+function overrideSell(bi, li, val) {
+  if (!priceOverrides[bi]) priceOverrides[bi] = {};
+  const existing = priceOverrides[bi][li] || {};
+  const item = currentBOM.buildings[bi].line_items[li];
+  const cost = existing.cost !== undefined ? existing.cost : (item.total_cost || 0);
+  priceOverrides[bi][li] = { cost: cost, sell: val };
+  scheduleSave();
+  liveUpdateTotals();
+}
+
+function resetOverride(bi, li) {
+  if (priceOverrides[bi]) {
+    delete priceOverrides[bi][li];
+    if (Object.keys(priceOverrides[bi]).length === 0) delete priceOverrides[bi];
+  }
+  scheduleSave();
+  renderPricingTab();
+}
+
+function addManualItem(category, description, unit) {
+  manualItems.push({
+    category: category || 'Other',
+    description: description || '',
+    qty: 1,
+    unit: unit || 'EA',
+    sell_price: 0,
+    notes: '',
+  });
+  renderPricingTab();
+}
+
+function liveUpdateTotals() {
+  const totals = getAdjustedTotals();
+  const fmt = (n) => '$' + n.toLocaleString('en-US',{minimumFractionDigits:2});
+  const matEl = document.getElementById('adj-material');
+  const manEl = document.getElementById('adj-manual');
+  const grandEl = document.getElementById('adj-grand');
+  if (matEl) matEl.textContent = fmt(totals.material);
+  if (manEl) manEl.textContent = fmt(totals.manual);
+  if (grandEl) grandEl.textContent = fmt(totals.grand);
+}
+
+function scheduleSave() {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(autoSaveProject, 2000);
+}
+
+async function autoSaveProject() {
+  if (!currentBOM) return;
+  const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
+  if (!jobCode) return;
+  const payload = {
+    job_code: jobCode,
+    project: currentBOM.project,
+    buildings: buildings,
+    bom_data: currentBOM,
+    price_overrides: priceOverrides,
+    manual_items: manualItems,
+  };
+  try {
+    await fetch('/api/project/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    console.log('[AutoSave] Project saved:', jobCode);
+  } catch(e) { console.warn('[AutoSave] Failed:', e); }
+}
+
+async function saveProjectManual() {
+  if (!currentBOM) { alert('Please calculate BOM first.'); return; }
+  const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
+  if (!jobCode) { alert('Please enter a Job Code first.'); return; }
+  await autoSaveProject();
+  alert('Project saved: ' + jobCode);
+}
+
+async function loadRecentProjects() {
+  try {
+    const resp = await fetch('/api/projects');
+    const data = await resp.json();
+    const sel = document.getElementById('recent_projects');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Recent Projects —</option>';
+    for (const p of (data.projects || [])) {
+      const label = p.job_code + (p.project_name ? ' — ' + p.project_name : '') +
+                    (p.saved_at ? ' (' + p.saved_at.slice(0,10) + ')' : '');
+      sel.innerHTML += '<option value="' + p.job_code + '">' + label + '</option>';
+    }
+  } catch(e) { console.warn('Failed to load projects:', e); }
+}
+
+async function loadProject(jobCode) {
+  if (!jobCode) return;
+  try {
+    const resp = await fetch('/api/project/load', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ job_code: jobCode }),
+    });
+    const result = await resp.json();
+    if (!result.ok) { alert('Load failed: ' + (result.error||'unknown')); return; }
+    const d = result.data;
+
+    // Restore project info fields
+    if (d.project) {
+      const p = d.project;
+      if (p.name) document.getElementById('proj_name').value = p.name;
+      if (p.customer_name) document.getElementById('proj_customer').value = p.customer_name;
+      if (p.address) document.getElementById('proj_address').value = p.address;
+      if (p.city) document.getElementById('proj_city').value = p.city;
+      if (p.state) document.getElementById('proj_state').value = p.state;
+      if (p.zip_code) document.getElementById('proj_zip').value = p.zip_code;
+      if (p.quote_date) document.getElementById('proj_date').value = p.quote_date;
+      if (p.wind_speed_mph) document.getElementById('proj_wind').value = p.wind_speed_mph;
+      if (p.footing_depth_ft) document.getElementById('proj_footing').value = p.footing_depth_ft;
+      if (p.markup_pct) document.getElementById('proj_markup').value = p.markup_pct;
+    }
+    if (d.job_code) document.getElementById('proj_jobcode').value = d.job_code;
+
+    // Restore buildings
+    if (d.buildings && d.buildings.length > 0) {
+      buildings = d.buildings;
+      bldgCounter = buildings.length;
+      renderBuildingList();
+      renderBuildingForms();
+    }
+
+    // Restore BOM data
+    if (d.bom_data) {
+      currentBOM = d.bom_data;
+      renderBOM(currentBOM);
+    }
+
+    // Restore price overrides & manual items
+    priceOverrides = d.price_overrides || {};
+    manualItems = d.manual_items || [];
+    if (currentBOM) renderPricingTab();
+
+    alert('Project loaded: ' + jobCode);
+  } catch(e) { alert('Load error: ' + e.message); }
 }
 
 // ─────────────────────────────────────────────
@@ -1821,11 +2213,62 @@ function renderInventory(data) {
             onclick="updateStock('${id}')">Update</button>
           <button class="btn btn-gold btn-sm" style="padding:4px 7px;font-size:11px;margin-left:4px" title="Print inventory sticker for this coil"
             onclick="quickPrintSticker('${id}', ${JSON.stringify(coil.name||'').replace(/'/g,"\\'")} )">🏷️</button>
+          <button class="btn btn-red btn-sm" style="padding:4px 7px;font-size:11px;margin-left:4px" title="Permanently delete this coil + certs"
+            onclick="deleteCoil('${id}', ${JSON.stringify(coil.name||id).replace(/'/g,"\\'")})">🗑️</button>
         </td>
       </tr>`;
   }
 
   html += `</tbody></table></div></div>`;
+
+  // ── Add New Coil Form ──────────────────────────────────────────────────
+  html += `
+  <div class="card" style="margin-top:16px">
+    <div class="card-hdr" style="background:var(--sa-green);color:#fff"><span class="icon">➕</span>Add New Coil to Inventory</div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:12px">
+        <div class="form-group">
+          <label>Coil ID *</label>
+          <div style="display:flex;gap:4px">
+            <input type="text" id="new_coil_id" placeholder="COIL-2026-001" style="font-size:12px;flex:1"/>
+            <button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:10px;white-space:nowrap" onclick="document.getElementById('new_coil_id').value=generateCoilId()">Auto</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Material Name *</label>
+          <input type="text" id="new_coil_name" placeholder='e.g. 23" 10GA C-Section' style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>Gauge</label>
+          <input type="text" id="new_coil_gauge" placeholder="e.g. 10GA" style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>Stock (LBS)</label>
+          <input type="number" id="new_coil_stock" value="0" style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>Price / LB ($)</label>
+          <input type="number" id="new_coil_price" value="0" step="0.01" style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>LBS / LFT</label>
+          <input type="number" id="new_coil_lbs_lft" value="0" step="0.01" style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>Lead Time (wks)</label>
+          <input type="number" id="new_coil_lead" value="8" style="font-size:12px"/>
+        </div>
+        <div class="form-group">
+          <label>Min Order (LBS)</label>
+          <input type="number" id="new_coil_min_order" value="5000" style="font-size:12px"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-green" onclick="addNewCoil()">➕ Add Coil</button>
+        <div id="new-coil-status" style="font-size:12px;color:#666"></div>
+      </div>
+    </div>
+  </div>`;
 
   // ── Mill Certificates ──────────────────────────────────────────────────
   const allCerts = data.mill_certs || [];
@@ -2007,6 +2450,38 @@ function renderInventory(data) {
   el.innerHTML = html;
 }
 
+async function deleteCoil(coilId, coilName) {
+  if (!confirm('⚠️ PERMANENTLY DELETE coil "' + coilName + '" (ID: ' + coilId + ')?\n\nThis will also delete all associated mill certificates and PDF files.\n\nThis cannot be undone.')) return;
+  if (!confirm('Are you SURE? Type OK to confirm.\n\nDeleting: ' + coilId)) return;
+  try {
+    const resp = await fetch('/api/inventory/delete', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ coil_id: coilId }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      loadInventory();
+    } else {
+      alert('Delete failed: ' + (result.error || 'unknown error'));
+    }
+  } catch(e) { alert('Delete error: ' + e.message); }
+}
+
+function generateCoilId() {
+  const year = new Date().getFullYear();
+  // Look at existing coil IDs to find the next number
+  const existingIds = [...document.querySelectorAll('#inventory-content .inv-table tbody tr')]
+    .map(r => r.querySelector('td')?.textContent || '');
+  let maxNum = 0;
+  const re = /COIL-(\d{4})-(\d+)/;
+  for (const id of existingIds) {
+    const m = id.match(re);
+    if (m && parseInt(m[1]) === year) maxNum = Math.max(maxNum, parseInt(m[2]));
+  }
+  return 'COIL-' + year + '-' + String(maxNum + 1).padStart(3, '0');
+}
+
 function onStickerCoilChange() {
   const sel  = document.getElementById('stk_coil_id');
   const coilId = sel?.value || '';
@@ -2115,6 +2590,70 @@ async function quickPrintSticker(coilId, coilName) {
   URL.revokeObjectURL(url);
 }
 
+async function addNewCoil() {
+  const coilId = document.getElementById('new_coil_id')?.value.trim();
+  const name   = document.getElementById('new_coil_name')?.value.trim();
+  if (!coilId || !name) { alert('Coil ID and Material Name are required.'); return; }
+
+  const statusEl = document.getElementById('new-coil-status');
+  if (statusEl) statusEl.textContent = 'Adding...';
+
+  const newCoil = {
+    coil_id: coilId,
+    format: 'pdf',
+    coil: {
+      description:   name,
+      gauge:         document.getElementById('new_coil_gauge')?.value.trim() || '',
+      qty_on_hand:   parseFloat(document.getElementById('new_coil_stock')?.value) || 0,
+      create_entry:  true,
+    }
+  };
+
+  // Use the sticker endpoint to create entry (it handles creation)
+  // But we also need price_per_lb etc. so let's use a direct inventory update approach
+  try {
+    const invResp = await fetch('/api/inventory');
+    const inv = await invResp.json();
+    if (inv.coils && inv.coils[coilId]) {
+      alert('Coil ID "' + coilId + '" already exists. Choose a different ID.');
+      if (statusEl) statusEl.textContent = '';
+      return;
+    }
+    inv.coils = inv.coils || {};
+    inv.coils[coilId] = {
+      name:           name,
+      gauge:          document.getElementById('new_coil_gauge')?.value.trim() || '',
+      stock_lbs:      parseFloat(document.getElementById('new_coil_stock')?.value) || 0,
+      stock_lft:      0,
+      committed_lbs:  0,
+      min_order_lbs:  parseFloat(document.getElementById('new_coil_min_order')?.value) || 5000,
+      lead_time_weeks: parseInt(document.getElementById('new_coil_lead')?.value) || 8,
+      price_per_lb:   parseFloat(document.getElementById('new_coil_price')?.value) || 0,
+      lbs_per_lft:    parseFloat(document.getElementById('new_coil_lbs_lft')?.value) || 0,
+      coil_max_lbs:   8000,
+      orders:         [],
+    };
+    // Save via a direct PUT-style update to inventory
+    await fetch('/api/inventory/save', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(inv),
+    });
+    if (statusEl) statusEl.textContent = '✅ Coil added!';
+    // Clear form
+    document.getElementById('new_coil_id').value = '';
+    document.getElementById('new_coil_name').value = '';
+    document.getElementById('new_coil_gauge').value = '';
+    document.getElementById('new_coil_stock').value = '0';
+    document.getElementById('new_coil_price').value = '0';
+    document.getElementById('new_coil_lbs_lft').value = '0';
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+    loadInventory();
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ Error: ' + e.message;
+  }
+}
+
 async function addMillCert() {
   const coilId  = document.getElementById('cert_material').value;
   const heat    = document.getElementById('cert_heat').value.trim();
@@ -2171,7 +2710,7 @@ TC_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Titan Carports — Construction Quote v2.4</title>
+<title>Titan Carports — Construction Quote v2.6</title>
 <style>
 :root {
   --tc-dark:#1C1C2E; --tc-red:#C00000; --tc-red-l:#FFF0F0;
@@ -2273,7 +2812,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
     <div style="font-size:11px;color:#aaa">Construction Quote Calculator</div>
   </div>
   <div class="spacer"></div>
-  <div class="version">v2.4</div>
+  <div class="version">v2.6</div>
 </div>
 
 <!-- Tabs -->
@@ -3362,6 +3901,20 @@ class InventoryUpdateHandler(BaseHandler):
         self.write(json_encode({"ok": True}))
 
 
+class InventorySaveHandler(BaseHandler):
+    """POST /api/inventory/save — Save full inventory JSON (used by addNewCoil)."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            save_inventory(body)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
 class InventoryCertHandler(BaseHandler):
     """Legacy JSON-only cert add (kept for backward compat)."""
     def post(self):
@@ -3449,6 +4002,131 @@ class CertFileHandler(BaseHandler):
 # ─────────────────────────────────────────────
 # COIL STICKER HANDLERS
 # ─────────────────────────────────────────────
+
+class CoilDeleteHandler(BaseHandler):
+    """
+    POST /api/inventory/delete
+    Body JSON: { coil_id: "xxx" }
+    Permanently removes the coil and all associated mill certs + cert PDF files.
+    """
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            coil_id = body.get("coil_id", "").strip()
+            if not coil_id:
+                self.write(json_encode({"ok": False, "error": "No coil_id provided"}))
+                return
+
+            data = load_inventory()
+            coils = data.get("coils", {})
+            if coil_id not in coils:
+                self.write(json_encode({"ok": False, "error": f"Coil '{coil_id}' not found"}))
+                return
+
+            # Remove the coil
+            del coils[coil_id]
+
+            # Remove associated mill certs and delete their PDF files
+            old_certs = data.get("mill_certs", [])
+            kept_certs = []
+            for cert in old_certs:
+                if (cert.get("coil_id") or cert.get("material", "")) == coil_id:
+                    # Delete the PDF file if it exists
+                    fname = cert.get("filename")
+                    if fname:
+                        fpath = os.path.join(CERTS_DIR, fname)
+                        if os.path.isfile(fpath):
+                            os.remove(fpath)
+                else:
+                    kept_certs.append(cert)
+            data["mill_certs"] = kept_certs
+
+            save_inventory(data)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "deleted": coil_id}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectSaveHandler(BaseHandler):
+    """
+    POST /api/project/save
+    Saves full project state (project info, buildings, BOM data, price overrides, manual items)
+    to data/projects/{job_code}.json
+    """
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "No job_code"}))
+                return
+            import re
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            projects_dir = os.path.join(BASE_DIR, "data", "projects")
+            os.makedirs(projects_dir, exist_ok=True)
+            fpath = os.path.join(projects_dir, f"{safe_name}.json")
+            body["saved_at"] = datetime.datetime.now().isoformat()
+            with open(fpath, "w") as f:
+                json.dump(body, f, indent=2)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "file": f"{safe_name}.json"}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectLoadHandler(BaseHandler):
+    """POST /api/project/load — Load a saved project by job_code."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            import re
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            fpath = os.path.join(BASE_DIR, "data", "projects", f"{safe_name}.json")
+            if not os.path.isfile(fpath):
+                self.write(json_encode({"ok": False, "error": "Project not found"}))
+                return
+            with open(fpath) as f:
+                data = json.load(f)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
+class ProjectListHandler(BaseHandler):
+    """GET /api/projects — List all saved projects."""
+    def get(self):
+        projects_dir = os.path.join(BASE_DIR, "data", "projects")
+        os.makedirs(projects_dir, exist_ok=True)
+        result = []
+        for fname in sorted(os.listdir(projects_dir), reverse=True):
+            if fname.endswith(".json"):
+                fpath = os.path.join(projects_dir, fname)
+                try:
+                    with open(fpath) as f:
+                        data = json.load(f)
+                    result.append({
+                        "job_code": data.get("job_code", fname.replace(".json", "")),
+                        "project_name": data.get("project", {}).get("name", ""),
+                        "customer": data.get("project", {}).get("customer_name", ""),
+                        "saved_at": data.get("saved_at", ""),
+                        "file": fname,
+                    })
+                except Exception:
+                    pass
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"projects": result}))
+
 
 class CoilStickerHandler(BaseHandler):
     """
@@ -3823,11 +4501,16 @@ def make_app():
         (r"/api/labels/csv",        LabelsCsvHandler),
         (r"/api/inventory",              InventoryHandler),
         (r"/api/inventory/update",       InventoryUpdateHandler),
+        (r"/api/inventory/save",         InventorySaveHandler),
         (r"/api/inventory/cert",         InventoryCertHandler),
         (r"/api/inventory/cert/upload",  InventoryCertUploadHandler),
         (r"/certs/([^/]+)",              CertFileHandler),
+        (r"/api/inventory/delete",       CoilDeleteHandler),
         (r"/api/inventory/sticker",      CoilStickerHandler),
         (r"/coil/([^/]+)",               CoilDetailHandler),
+        (r"/api/project/save",           ProjectSaveHandler),
+        (r"/api/project/load",           ProjectLoadHandler),
+        (r"/api/projects",               ProjectListHandler),
         (r"/tc/export/pdf",              TCExportPDFHandler),
         (r"/tc/export/excel",       TCExportExcelHandler),
         (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": static_path}),
@@ -3865,7 +4548,7 @@ if __name__ == "__main__":
 
     auth_status = "ON — login required" if AUTH_ENABLED else "OFF — open access (local mode)"
     print("=" * 60)
-    print("  SA + TC Combined Calculator  v2.5")
+    print("  SA + TC Combined Calculator  v2.6")
     print(f"  SA Material Takeoff:  http://localhost:{args.port}/")
     print(f"  TC Construction Quote: http://localhost:{args.port}/tc")
     if AUTH_ENABLED:

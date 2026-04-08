@@ -61,12 +61,25 @@
       "min_order_lbs": 2000,
       "lead_time_weeks": 8,
       "price_per_lb": 0.82,
-      "lbs_per_lft": 2.83,
+      "lbs_per_lft": 1.04,
       "coil_max_lbs": 8000,
       "orders": []
     },
-    "plate_9_10ga": {
-      "name": "9\" 10GA Plate (Exterior Purlin Plates)",
+    "strap_16ga": {
+      "name": "16GA Hurricane Strap Coil",
+      "gauge": "16GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.86,
+      "lbs_per_lft": 0.65,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "gusset_10ga": {
+      "name": "10GA Gusset Plate Coil",
       "gauge": "10GA",
       "stock_lbs": 0,
       "stock_lft": 0,
@@ -74,41 +87,10 @@
       "min_order_lbs": 2000,
       "lead_time_weeks": 8,
       "price_per_lb": 0.82,
-      "lbs_per_lft": 4.24,
-      "coil_max_lbs": 8000,
-      "orders": []
-    },
-    "strap_15_10ga": {
-      "name": "1.5\" 10GA Strap (Straps & Braces)",
-      "gauge": "10GA",
-      "stock_lbs": 0,
-      "stock_lft": 0,
-      "committed_lbs": 0,
-      "min_order_lbs": 2000,
-      "lead_time_weeks": 8,
-      "price_per_lb": 0.82,
-      "lbs_per_lft": 0.706,
+      "lbs_per_lft": 4.0,
       "coil_max_lbs": 8000,
       "orders": []
     }
   },
-  "rebar": {
-    "a706_6": {"size": "#6", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 1.502},
-    "a706_7": {"size": "#7", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 2.044},
-    "a706_8": {"size": "#8", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 2.670},
-    "a706_9": {"size": "#9", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 3.400},
-    "a706_10": {"size": "#10", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 4.303},
-    "a706_11": {"size": "#11", "stock_sticks": 0, "committed_sticks": 0, "price_per_lb": 0.62, "lbs_per_lft": 5.313}
-  },
-  "purchased": {
-    "cap_plates": {"name": "3/4\"×26\"×14\" Cap Plates", "stock_qty": 0, "committed_qty": 0, "price_each": 95.00},
-    "gusset_triangles": {"name": "6\"×6\"×3/8\" Gusset Triangles", "stock_qty": 0, "committed_qty": 0, "price_each": 13.00}
-  },
-  "mill_certs": [],
-  "projects": {},
-  "settings": {
-    "default_lead_time_weeks": 8,
-    "low_stock_alert_weeks": 8,
-    "reorder_multiplier": 1.2
-  }
+  "mill_certs": []
 }
