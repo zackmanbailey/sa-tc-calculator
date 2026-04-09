@@ -1,413 +1,239 @@
+from templates.shared_styles import DESIGN_SYSTEM_CSS
+
 DASHBOARD_HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TitanForge - Dashboard</title>
+    <title>TitanForge — Dashboard</title>
     <style>
-        :root {
-            --color-navy: #0F172A;
-            --color-steel-blue: #1E40AF;
-            --color-orange: #F59E0B;
-            --color-white: #F8FAFC;
-            --color-dark-gray: #1F2937;
-            --color-light-gray: #E5E7EB;
-            --color-border: #D1D5DB;
-            --color-text: #111827;
-            --color-text-light: #6B7280;
-            --color-success: #10B981;
-            --color-danger: #EF4444;
-            --color-warning: #F59E0B;
-            --color-info: #3B82F6;
-            --border-radius-sm: 6px;
-            --border-radius-md: 8px;
-            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-            --transition: all 0.3s ease;
-        }
+""" + DESIGN_SYSTEM_CSS + r"""
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: var(--color-white);
-            color: var(--color-text);
-            line-height: 1.6;
-        }
-
-        /* TOP NAVIGATION BAR */
-        .navbar {
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            background-color: var(--color-navy);
-            color: white;
-            padding: 1rem 2rem;
-            box-shadow: var(--shadow-md);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 2rem;
-        }
-
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-weight: 700;
-            font-size: 1.25rem;
-        }
-
-        .navbar-logo {
-            width: 32px;
-            height: 32px;
-        }
-
-        .navbar-nav {
-            display: flex;
-            gap: 2rem;
-            align-items: center;
-            flex: 1;
-            justify-content: center;
-        }
-
-        .navbar-nav a {
-            color: white;
-            text-decoration: none;
-            font-size: 0.95rem;
-            transition: var(--transition);
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius-sm);
-        }
-
-        .navbar-nav a:hover,
-        .navbar-nav a.active {
-            background-color: var(--color-steel-blue);
-            color: var(--color-orange);
-        }
-
-        .navbar-right {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-        }
-
-        .inventory-alert {
-            position: relative;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .inventory-alert:hover {
-            color: var(--color-orange);
-        }
-
-        .alert-badge {
-            position: absolute;
-            top: -8px;
-            right: -8px;
-            background-color: var(--color-danger);
-            color: white;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 700;
-        }
-
-        .user-section {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .role-badge {
-            background-color: var(--color-steel-blue);
-            padding: 0.25rem 0.75rem;
-            border-radius: var(--border-radius-sm);
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-
-        .logout-btn {
-            background-color: var(--color-danger);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius-sm);
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: var(--transition);
-        }
-
-        .logout-btn:hover {
-            background-color: #DC2626;
-        }
-
-        /* MAIN CONTAINER */
+        /* ── Dashboard-Specific Styles ──────────────────── */
         .container {
-            max-width: 1920px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: var(--tf-sp-6) var(--tf-sp-8);
         }
 
-        /* HEADER */
+        /* Page Header */
         .page-header {
-            margin-bottom: 2rem;
+            margin-bottom: var(--tf-sp-6);
         }
 
         .page-title {
-            font-size: 2rem;
+            font-size: var(--tf-text-2xl);
             font-weight: 700;
-            color: var(--color-navy);
-            margin-bottom: 0.5rem;
+            color: var(--tf-gray-900);
+            letter-spacing: -0.02em;
         }
 
         .page-subtitle {
-            color: var(--color-text-light);
-            font-size: 1rem;
+            color: var(--tf-gray-500);
+            font-size: var(--tf-text-base);
+            margin-top: var(--tf-sp-1);
         }
 
-        /* STATS GRID */
+        /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--tf-sp-4);
+            margin-bottom: var(--tf-sp-8);
         }
 
         .stat-card {
-            background-color: white;
-            border: 1px solid var(--color-border);
-            border-radius: var(--border-radius-md);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
+            background: var(--tf-surface);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius-lg);
+            padding: var(--tf-sp-5);
+            display: flex;
+            align-items: center;
+            gap: var(--tf-sp-4);
+            transition: all var(--tf-duration) var(--tf-ease);
         }
 
         .stat-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: var(--color-steel-blue);
-        }
-
-        .stat-label {
-            color: var(--color-text-light);
-            font-size: 0.9rem;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--color-navy);
+            box-shadow: var(--tf-shadow-md);
+            border-color: var(--tf-blue);
         }
 
         .stat-icon {
             width: 48px;
             height: 48px;
-            background-color: var(--color-steel-blue);
-            border-radius: var(--border-radius-md);
+            border-radius: var(--tf-radius);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
-        /* SECTION HEADERS */
+        .stat-icon.blue   { background: var(--tf-blue-light); }
+        .stat-icon.amber  { background: var(--tf-amber-light); }
+        .stat-icon.green  { background: var(--tf-success-bg); }
+        .stat-icon.purple { background: #EDE9FE; }
+
+        .stat-info { flex: 1; }
+
+        .stat-label {
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+            color: var(--tf-gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .stat-value {
+            font-size: var(--tf-text-2xl);
+            font-weight: 700;
+            color: var(--tf-gray-900);
+            line-height: 1.2;
+            margin-top: 2px;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            gap: var(--tf-sp-3);
+            margin-bottom: var(--tf-sp-8);
+            flex-wrap: wrap;
+        }
+
+        /* Section Headers */
         .section-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
-            margin-top: 2rem;
+            margin-bottom: var(--tf-sp-5);
         }
 
         .section-title {
-            font-size: 1.5rem;
+            font-size: var(--tf-text-lg);
             font-weight: 700;
-            color: var(--color-navy);
+            color: var(--tf-gray-900);
         }
 
+        /* View Toggle */
         .view-toggle {
             display: flex;
-            gap: 0.5rem;
-            background-color: var(--color-light-gray);
-            padding: 0.25rem;
-            border-radius: var(--border-radius-sm);
+            background: var(--tf-gray-100);
+            padding: 3px;
+            border-radius: var(--tf-radius);
         }
 
         .toggle-btn {
-            background-color: transparent;
+            background: transparent;
             border: none;
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius-sm);
+            padding: 8px 16px;
+            border-radius: var(--tf-radius-sm);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: var(--tf-text-sm);
             font-weight: 600;
-            transition: var(--transition);
-            color: var(--color-text-light);
+            color: var(--tf-gray-500);
+            transition: all var(--tf-duration) var(--tf-ease);
         }
 
         .toggle-btn.active {
-            background-color: white;
-            color: var(--color-navy);
-            box-shadow: var(--shadow-sm);
+            background: var(--tf-surface);
+            color: var(--tf-gray-900);
+            box-shadow: var(--tf-shadow-sm);
         }
 
-        /* QUICK ACTIONS */
-        .quick-actions {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-        }
-
-        .btn {
-            background-color: var(--color-steel-blue);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: var(--border-radius-sm);
-            cursor: pointer;
-            font-size: 0.95rem;
-            font-weight: 600;
-            transition: var(--transition);
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .btn:hover {
-            background-color: #1e3a8a;
-            box-shadow: var(--shadow-md);
-        }
-
-        .btn-primary {
-            background-color: var(--color-steel-blue);
-        }
-
-        .btn-primary:hover {
-            background-color: #1e3a8a;
-        }
-
-        .btn-secondary {
-            background-color: var(--color-orange);
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background-color: #D97706;
-        }
-
-        .btn-sm {
-            padding: 0.5rem 1rem;
-            font-size: 0.85rem;
-        }
-
-        .btn-icon {
-            width: 20px;
-            height: 20px;
-        }
-
-        /* KANBAN VIEW */
+        /* ── Kanban ─────────────────────────────────────── */
         .kanban-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: var(--tf-sp-4);
+            margin-bottom: var(--tf-sp-8);
         }
 
         .kanban-column {
-            background-color: var(--color-light-gray);
-            border-radius: var(--border-radius-md);
-            padding: 1rem;
+            background: var(--tf-gray-50);
+            border-radius: var(--tf-radius-lg);
+            padding: var(--tf-sp-4);
+            border: 1px solid var(--tf-border);
+            min-height: 200px;
         }
 
         .column-header {
+            font-size: var(--tf-text-xs);
             font-weight: 700;
-            color: var(--color-navy);
-            margin-bottom: 1rem;
-            font-size: 0.95rem;
+            color: var(--tf-gray-600);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.06em;
+            margin-bottom: var(--tf-sp-3);
+            padding-bottom: var(--tf-sp-2);
+            border-bottom: 2px solid var(--tf-border);
         }
 
+        /* Project Cards — 4 meaningful colors instead of 8 */
         .project-card {
-            background-color: white;
-            border-left: 4px solid var(--color-steel-blue);
-            border-radius: var(--border-radius-md);
-            padding: 1rem;
-            margin-bottom: 1rem;
+            background: var(--tf-surface);
+            border-left: 4px solid var(--tf-gray-300);
+            border-radius: var(--tf-radius);
+            padding: var(--tf-sp-4);
+            margin-bottom: var(--tf-sp-3);
             cursor: pointer;
-            transition: var(--transition);
-            box-shadow: var(--shadow-sm);
+            transition: all var(--tf-duration) var(--tf-ease);
+            box-shadow: var(--tf-shadow-sm);
         }
 
         .project-card:hover {
-            box-shadow: var(--shadow-md);
-            transform: translateY(-2px);
+            box-shadow: var(--tf-shadow-md);
+            transform: translateY(-1px);
         }
 
-        .project-card.quote { border-left-color: #94A3B8; }
-        .project-card.contract { border-left-color: #3B82F6; }
-        .project-card.engineering { border-left-color: #8B5CF6; }
-        .project-card.shop-drawings { border-left-color: #EC4899; }
-        .project-card.fabrication { border-left-color: #F59E0B; }
-        .project-card.shipping { border-left-color: #10B981; }
-        .project-card.install { border-left-color: #06B6D4; }
-        .project-card.complete { border-left-color: #14B8A6; }
+        /* Stage colors: 4 groups instead of 8 */
+        .project-card.quote,
+        .project-card.contract          { border-left-color: var(--tf-blue); }
+        .project-card.engineering,
+        .project-card.shop-drawings     { border-left-color: #7C3AED; }
+        .project-card.fabrication       { border-left-color: var(--tf-amber); }
+        .project-card.shipping,
+        .project-card.install           { border-left-color: var(--tf-success); }
+        .project-card.complete          { border-left-color: var(--tf-gray-400); }
 
         .card-job-code {
+            font-size: var(--tf-text-xs);
             font-weight: 700;
-            color: var(--color-navy);
-            font-size: 0.9rem;
+            color: var(--tf-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
         }
 
         .card-project-name {
+            font-size: var(--tf-text-base);
             font-weight: 600;
-            color: var(--color-text);
-            margin-top: 0.5rem;
-            font-size: 0.95rem;
+            color: var(--tf-gray-900);
+            margin-top: var(--tf-sp-1);
+            line-height: 1.3;
         }
 
         .card-customer {
-            color: var(--color-text-light);
-            font-size: 0.85rem;
-            margin-top: 0.25rem;
+            font-size: var(--tf-text-xs);
+            color: var(--tf-gray-500);
+            margin-top: var(--tf-sp-1);
         }
 
         .card-price {
-            color: var(--color-steel-blue);
+            font-size: var(--tf-text-sm);
             font-weight: 700;
-            margin-top: 0.75rem;
-            font-size: 0.9rem;
+            color: var(--tf-success);
+            margin-top: var(--tf-sp-3);
+            padding-top: var(--tf-sp-2);
+            border-top: 1px solid var(--tf-gray-100);
         }
 
-        .card-price.hidden {
-            display: none;
-        }
+        .card-price.hidden { display: none; }
 
-        /* TABLE VIEW */
+        /* ── Table View ─────────────────────────────────── */
         .table-container {
-            background-color: white;
-            border-radius: var(--border-radius-md);
-            box-shadow: var(--shadow-sm);
-            overflow-x: auto;
+            background: var(--tf-surface);
+            border-radius: var(--tf-radius-lg);
+            border: 1px solid var(--tf-border);
+            overflow: hidden;
         }
 
         .table {
@@ -415,124 +241,116 @@ DASHBOARD_HTML = r"""
             border-collapse: collapse;
         }
 
-        .table thead {
-            background-color: var(--color-light-gray);
-            border-bottom: 2px solid var(--color-border);
-        }
-
-        .table th {
-            padding: 1rem;
+        .table thead th {
+            background: var(--tf-navy);
+            color: #fff;
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: var(--tf-sp-3) var(--tf-sp-4);
             text-align: left;
-            font-weight: 700;
-            color: var(--color-navy);
-            font-size: 0.9rem;
             cursor: pointer;
             user-select: none;
-            transition: var(--transition);
+            white-space: nowrap;
+            transition: background var(--tf-duration) var(--tf-ease);
         }
 
-        .table th:hover {
-            background-color: var(--color-border);
-        }
+        .table thead th:hover { background: var(--tf-navy-light); }
 
         .table td {
-            padding: 1rem;
-            border-bottom: 1px solid var(--color-border);
+            padding: var(--tf-sp-3) var(--tf-sp-4);
+            border-bottom: 1px solid var(--tf-gray-100);
+            font-size: var(--tf-text-sm);
         }
 
         .table tbody tr {
-            transition: var(--transition);
             cursor: pointer;
+            transition: background var(--tf-duration) var(--tf-ease);
         }
 
-        .table tbody tr:hover {
-            background-color: #F9FAFB;
-        }
+        .table tbody tr:hover td { background: var(--tf-blue-light); }
 
+        .price.hidden { display: none; }
+
+        /* Stage Badges — 4 semantic colors */
         .stage-badge {
-            display: inline-block;
-            padding: 0.375rem 0.75rem;
-            border-radius: var(--border-radius-sm);
-            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: var(--tf-text-xs);
             font-weight: 600;
-            text-transform: capitalize;
+            white-space: nowrap;
         }
 
-        .stage-quote { background-color: #E2E8F0; color: #334155; }
-        .stage-contract { background-color: #DBEAFE; color: #1E40AF; }
-        .stage-engineering { background-color: #EDE9FE; color: #6D28D9; }
-        .stage-shop-drawings { background-color: #FCE7F3; color: #BE185D; }
-        .stage-fabrication { background-color: #FEF3C7; color: #92400E; }
-        .stage-shipping { background-color: #DCFCE7; color: #166534; }
-        .stage-install { background-color: #CFFAFE; color: #164E63; }
-        .stage-complete { background-color: #CCFBF1; color: #134E4A; }
+        .stage-quote,
+        .stage-contract          { background: var(--tf-blue-light); color: var(--tf-blue); }
+        .stage-engineering,
+        .stage-shop-drawings     { background: #EDE9FE; color: #6D28D9; }
+        .stage-fabrication       { background: var(--tf-amber-light); color: #92400E; }
+        .stage-shipping,
+        .stage-install           { background: var(--tf-success-bg); color: var(--tf-success); }
+        .stage-complete          { background: var(--tf-gray-100); color: var(--tf-gray-600); }
 
-        .price.hidden {
-            display: none;
-        }
-
-        /* INVENTORY ALERTS */
-        .alerts-section {
-            display: none;
-        }
-
-        .alerts-section.show {
-            display: block;
-        }
+        /* ── Inventory Alerts ───────────────────────────── */
+        .alerts-section { display: none; margin-bottom: var(--tf-sp-6); }
+        .alerts-section.show { display: block; animation: fadeIn 200ms var(--tf-ease); }
 
         .alerts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--tf-sp-4);
         }
 
         .alert-card {
-            border-radius: var(--border-radius-md);
-            padding: 1.5rem;
-            box-shadow: var(--shadow-sm);
+            border-radius: var(--tf-radius);
+            padding: var(--tf-sp-4);
             cursor: pointer;
-            transition: var(--transition);
+            transition: all var(--tf-duration) var(--tf-ease);
             border-left: 4px solid;
         }
 
-        .alert-card:hover {
-            box-shadow: var(--shadow-md);
-            transform: translateY(-2px);
-        }
+        .alert-card:hover { box-shadow: var(--tf-shadow-md); transform: translateY(-1px); }
+        .alert-card.danger  { background: var(--tf-danger-bg); border-left-color: var(--tf-danger); }
+        .alert-card.warning { background: var(--tf-warning-bg); border-left-color: var(--tf-warning); }
 
-        .alert-card.danger {
-            background-color: #FEE2E2;
-            border-left-color: var(--color-danger);
-        }
+        .alert-title { font-weight: 700; color: var(--tf-gray-900); font-size: var(--tf-text-sm); margin-bottom: var(--tf-sp-1); }
+        .alert-message { color: var(--tf-gray-600); font-size: var(--tf-text-sm); }
 
-        .alert-card.warning {
-            background-color: #FEF3C7;
-            border-left-color: var(--color-warning);
+        /* Alert bell in topbar */
+        .inventory-alert {
+            position: relative;
+            cursor: pointer;
+            transition: color var(--tf-duration) var(--tf-ease);
         }
+        .inventory-alert:hover { color: var(--tf-amber); }
 
-        .alert-title {
+        .alert-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: var(--tf-danger);
+            color: #fff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
             font-weight: 700;
-            color: var(--color-navy);
-            margin-bottom: 0.5rem;
         }
 
-        .alert-message {
-            color: var(--color-text);
-            font-size: 0.9rem;
-        }
-
-        /* MODAL */
+        /* ── Modal ──────────────────────────────────────── */
         .modal {
             display: none;
             position: fixed;
+            inset: 0;
             z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.3s ease;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            animation: fadeIn 200ms var(--tf-ease);
         }
 
         .modal.show {
@@ -541,442 +359,343 @@ DASHBOARD_HTML = r"""
             justify-content: center;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         .modal-content {
-            background-color: white;
-            border-radius: var(--border-radius-md);
-            width: 90%;
-            max-width: 900px;
+            background: var(--tf-surface);
+            border-radius: var(--tf-radius-xl);
+            width: 92%;
+            max-width: 860px;
             max-height: 85vh;
             overflow-y: auto;
-            box-shadow: var(--shadow-lg);
-            animation: slideUp 0.3s ease;
+            box-shadow: var(--tf-shadow-lg);
+            animation: slideUp 250ms var(--tf-ease);
         }
 
         @keyframes slideUp {
-            from {
-                transform: translateY(50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(20px); opacity: 0; }
+            to   { transform: translateY(0); opacity: 1; }
         }
 
         .modal-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--color-border);
-            background-color: var(--color-light-gray);
+            align-items: flex-start;
+            padding: var(--tf-sp-6);
+            border-bottom: 1px solid var(--tf-border);
         }
 
         .modal-title {
-            font-size: 1.5rem;
+            font-size: var(--tf-text-lg);
             font-weight: 700;
-            color: var(--color-navy);
+            color: var(--tf-gray-900);
         }
 
-        .modal-badge-group {
-            display: flex;
-            gap: 0.75rem;
-            margin-top: 0.5rem;
-        }
+        .modal-badge-group { display: flex; gap: var(--tf-sp-2); margin-top: var(--tf-sp-2); }
 
         .modal-badge {
-            display: inline-block;
-            padding: 0.375rem 0.75rem;
-            background-color: var(--color-steel-blue);
-            color: white;
-            border-radius: var(--border-radius-sm);
-            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: var(--tf-text-xs);
             font-weight: 600;
+            color: #fff;
         }
 
         .close-btn {
             background: none;
             border: none;
-            font-size: 2rem;
+            font-size: 1.5rem;
             cursor: pointer;
-            color: var(--color-text-light);
-            transition: var(--transition);
+            color: var(--tf-gray-400);
+            padding: var(--tf-sp-2);
+            border-radius: var(--tf-radius-sm);
+            transition: all var(--tf-duration) var(--tf-ease);
+            line-height: 1;
         }
+        .close-btn:hover { background: var(--tf-gray-100); color: var(--tf-gray-800); }
 
-        .close-btn:hover {
-            color: var(--color-navy);
-        }
+        .modal-body { padding: var(--tf-sp-6); }
 
-        .modal-body {
-            padding: 2rem;
-        }
-
+        /* Modal Tabs */
         .tab-buttons {
             display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            border-bottom: 2px solid var(--color-border);
+            gap: var(--tf-sp-1);
+            border-bottom: 2px solid var(--tf-border);
+            margin-bottom: var(--tf-sp-6);
         }
 
         .tab-btn {
             background: none;
             border: none;
-            padding: 1rem 0;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--color-text-light);
+            padding: var(--tf-sp-3) var(--tf-sp-4);
+            font-size: var(--tf-text-sm);
+            font-weight: 500;
+            color: var(--tf-gray-500);
             cursor: pointer;
-            transition: var(--transition);
-            border-bottom: 3px solid transparent;
+            border-bottom: 2px solid transparent;
             margin-bottom: -2px;
+            transition: all var(--tf-duration) var(--tf-ease);
         }
 
-        .tab-btn.active {
-            color: var(--color-steel-blue);
-            border-bottom-color: var(--color-steel-blue);
-        }
+        .tab-btn:hover { color: var(--tf-gray-700); }
+        .tab-btn.active { color: var(--tf-blue); border-bottom-color: var(--tf-blue); font-weight: 600; }
 
-        .tab-content {
-            display: none;
-        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-        .tab-content.active {
-            display: block;
-        }
-
+        /* Info Grid (Overview) */
         .info-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: var(--tf-sp-4);
         }
 
         .info-item {
-            border: 1px solid var(--color-border);
-            border-radius: var(--border-radius-md);
-            padding: 1rem;
-            background-color: var(--color-white);
+            background: var(--tf-gray-50);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            padding: var(--tf-sp-4);
         }
 
         .info-label {
-            color: var(--color-text-light);
-            font-size: 0.9rem;
+            font-size: var(--tf-text-xs);
             font-weight: 600;
+            color: var(--tf-gray-500);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
+            letter-spacing: 0.04em;
+            margin-bottom: var(--tf-sp-1);
         }
 
         .info-value {
-            color: var(--color-navy);
-            font-size: 1rem;
+            font-size: var(--tf-text-md);
             font-weight: 600;
+            color: var(--tf-gray-900);
         }
 
-        /* DOCUMENTS SECTION */
+        /* Documents */
         .document-categories {
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
+            gap: var(--tf-sp-2);
+            margin-bottom: var(--tf-sp-4);
             flex-wrap: wrap;
         }
 
         .doc-category-btn {
-            background-color: var(--color-light-gray);
-            border: 1px solid var(--color-border);
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius-sm);
+            background: var(--tf-gray-50);
+            border: 1px solid var(--tf-border);
+            padding: 8px 16px;
+            border-radius: 999px;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: var(--tf-text-xs);
             font-weight: 600;
-            transition: var(--transition);
+            color: var(--tf-gray-600);
+            transition: all var(--tf-duration) var(--tf-ease);
         }
 
         .doc-category-btn.active {
-            background-color: var(--color-steel-blue);
-            color: white;
-            border-color: var(--color-steel-blue);
+            background: var(--tf-blue);
+            color: #fff;
+            border-color: var(--tf-blue);
         }
 
         .upload-zone {
-            border: 2px dashed var(--color-border);
-            border-radius: var(--border-radius-md);
-            padding: 2rem;
+            border: 2px dashed var(--tf-gray-300);
+            border-radius: var(--tf-radius-lg);
+            padding: var(--tf-sp-8) var(--tf-sp-6);
             text-align: center;
             cursor: pointer;
-            transition: var(--transition);
-            background-color: var(--color-white);
-            margin-bottom: 1.5rem;
+            transition: all var(--tf-duration) var(--tf-ease);
+            background: var(--tf-gray-50);
+            margin-bottom: var(--tf-sp-5);
         }
 
         .upload-zone:hover {
-            border-color: var(--color-steel-blue);
-            background-color: #F0F9FF;
+            border-color: var(--tf-blue-mid);
+            background: var(--tf-blue-light);
         }
 
         .upload-zone.dragover {
-            border-color: var(--color-orange);
-            background-color: #FFFBEB;
+            border-color: var(--tf-amber);
+            background: var(--tf-amber-light);
         }
 
-        .upload-text {
-            color: var(--color-text-light);
-            font-size: 0.95rem;
-        }
-
-        .upload-highlight {
-            color: var(--color-steel-blue);
-            font-weight: 600;
-        }
+        .upload-text { color: var(--tf-gray-500); font-size: var(--tf-text-sm); }
+        .upload-highlight { color: var(--tf-blue); font-weight: 600; }
 
         .file-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: var(--tf-sp-3);
         }
 
         .file-card {
-            border: 1px solid var(--color-border);
-            border-radius: var(--border-radius-md);
-            padding: 1rem;
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            padding: var(--tf-sp-4) var(--tf-sp-3);
             text-align: center;
-            transition: var(--transition);
+            transition: all var(--tf-duration) var(--tf-ease);
             position: relative;
+            background: var(--tf-surface);
         }
 
-        .file-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: var(--color-steel-blue);
-        }
+        .file-card:hover { box-shadow: var(--tf-shadow-md); border-color: var(--tf-blue); }
 
-        .file-icon {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .file-name {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: var(--color-text);
-            word-break: break-all;
-            margin-bottom: 0.5rem;
-        }
-
+        .file-icon { font-size: 2rem; margin-bottom: var(--tf-sp-2); }
+        .file-name { font-size: var(--tf-text-xs); font-weight: 600; color: var(--tf-gray-700); word-break: break-all; }
         .file-delete {
-            background: none;
-            border: none;
-            color: var(--color-danger);
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0.25rem;
-            transition: var(--transition);
+            background: none; border: none; color: var(--tf-gray-400); cursor: pointer;
+            font-size: 1rem; padding: var(--tf-sp-1); margin-top: var(--tf-sp-2);
+            transition: color var(--tf-duration) var(--tf-ease);
         }
+        .file-delete:hover { color: var(--tf-danger); }
+        .file-delete.hidden { display: none; }
 
-        .file-delete:hover {
-            color: #DC2626;
-        }
-
-        .file-delete.hidden {
-            display: none;
-        }
-
-        /* REVISIONS TABLE */
+        /* Revisions Table */
         .revisions-table {
             width: 100%;
             border-collapse: collapse;
+            font-size: var(--tf-text-sm);
         }
 
-        .revisions-table thead {
-            background-color: var(--color-light-gray);
-        }
-
-        .revisions-table th,
-        .revisions-table td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid var(--color-border);
-        }
-
-        .revisions-table th {
+        .revisions-table thead th {
+            background: var(--tf-gray-50);
+            font-size: var(--tf-text-xs);
             font-weight: 700;
-            color: var(--color-navy);
-            font-size: 0.9rem;
+            color: var(--tf-gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: var(--tf-sp-3);
+            text-align: left;
+            border-bottom: 2px solid var(--tf-border);
         }
 
-        .revisions-table tbody tr:hover {
-            background-color: #F9FAFB;
+        .revisions-table td {
+            padding: var(--tf-sp-3);
+            border-bottom: 1px solid var(--tf-gray-100);
         }
+
+        .revisions-table tbody tr:hover td { background: var(--tf-blue-light); }
 
         .revision-action-btn {
-            background-color: var(--color-steel-blue);
-            color: white;
+            padding: 5px 12px;
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+            background: var(--tf-blue);
+            color: #fff;
             border: none;
-            padding: 0.375rem 0.75rem;
-            border-radius: var(--border-radius-sm);
+            border-radius: var(--tf-radius-sm);
             cursor: pointer;
-            font-size: 0.8rem;
-            transition: var(--transition);
-            margin-right: 0.5rem;
+            margin-right: var(--tf-sp-2);
+            transition: background var(--tf-duration) var(--tf-ease);
         }
 
-        .revision-action-btn:hover {
-            background-color: #1e3a8a;
+        .revision-action-btn:hover { background: #1D4ED8; }
+
+        /* Navbar extras */
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: var(--tf-sp-3);
         }
 
-        /* RESPONSIVE */
-        @media (max-width: 1024px) {
-            .navbar {
-                flex-direction: column;
-                gap: 1rem;
-                padding: 1rem;
-            }
-
-            .navbar-nav {
-                flex-direction: column;
-                gap: 0.5rem;
-                justify-content: flex-start;
-            }
-
-            .navbar-right {
-                flex-direction: column;
-                width: 100%;
-            }
-
-            .container {
-                padding: 1rem;
-            }
-
-            .stats-grid {
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            }
-
-            .kanban-container {
-                grid-template-columns: 1fr;
-            }
-
-            .modal-content {
-                width: 95%;
-                max-height: 90vh;
-            }
+        .role-badge {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--tf-amber);
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
         }
 
-        @media (max-width: 768px) {
-            .navbar-nav {
-                display: none;
-            }
-
-            .page-title {
-                font-size: 1.5rem;
-            }
-
-            .section-title {
-                font-size: 1.25rem;
-            }
-
-            .quick-actions {
-                flex-direction: column;
-            }
-
-            .btn {
-                width: 100%;
-                justify-content: center;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .file-list {
-                grid-template-columns: 1fr;
-            }
+        .logout-btn {
+            background: none;
+            color: var(--tf-gray-400);
+            border: 1px solid var(--tf-gray-600);
+            padding: 6px 14px;
+            border-radius: var(--tf-radius-sm);
+            cursor: pointer;
+            font-size: var(--tf-text-xs);
+            font-weight: 500;
+            transition: all var(--tf-duration) var(--tf-ease);
         }
+        .logout-btn:hover { color: #fff; border-color: var(--tf-gray-400); }
 
-        /* LOADING STATE */
-        .loading {
-            opacity: 0.6;
-            pointer-events: none;
-        }
+        /* Loading / Empty States */
+        .loading { opacity: 0.5; pointer-events: none; }
 
         .spinner {
-            border: 4px solid var(--color-light-gray);
-            border-top: 4px solid var(--color-steel-blue);
+            border: 3px solid var(--tf-gray-200);
+            border-top: 3px solid var(--tf-blue-mid);
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 2rem auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            width: 36px;
+            height: 36px;
+            animation: tf-spin 0.7s ease-in-out infinite;
+            margin: var(--tf-sp-8) auto;
         }
 
         .empty-state {
             text-align: center;
-            padding: 3rem 1rem;
-            color: var(--color-text-light);
+            padding: var(--tf-sp-12) var(--tf-sp-4);
+            color: var(--tf-gray-500);
         }
 
-        .empty-state-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
+        .empty-state-icon { font-size: 2.5rem; margin-bottom: var(--tf-sp-3); opacity: 0.5; }
+        .empty-state-title { font-size: var(--tf-text-md); font-weight: 700; color: var(--tf-gray-700); margin-bottom: var(--tf-sp-2); }
+
+        /* ── Responsive ─────────────────────────────────── */
+        @media (max-width: 1280px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
-        .empty-state-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--color-navy);
-            margin-bottom: 0.5rem;
+        @media (max-width: 1024px) {
+            .container { padding: var(--tf-sp-4); }
+            .kanban-container { grid-template-columns: repeat(2, 1fr); }
+            .modal-content { width: 95%; max-height: 90vh; }
+        }
+
+        @media (max-width: 768px) {
+            .tf-topbar nav { display: none; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .kanban-container { grid-template-columns: 1fr; }
+            .quick-actions { flex-direction: column; }
+            .page-title { font-size: var(--tf-text-xl); }
+            .section-title { font-size: var(--tf-text-md); }
         }
     </style>
 </head>
 <body>
     <script>
-        // Role-based access control
         const USER_ROLE = '{{USER_ROLE}}';
         const USER_NAME = '{{USER_NAME}}';
     </script>
 
     <!-- TOP NAVIGATION BAR -->
-    <nav class="navbar">
-        <div class="navbar-brand">
-            <svg class="navbar-logo" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-                <!-- Anvil Icon -->
-                <rect x="8" y="20" width="24" height="15" fill="none" stroke="#F59E0B" stroke-width="2" rx="2"/>
-                <rect x="10" y="18" width="20" height="3" fill="#F59E0B"/>
-                <circle cx="12" cy="14" r="2" fill="#F59E0B"/>
-                <circle cx="28" cy="14" r="2" fill="#F59E0B"/>
-                <line x1="12" y1="16" x2="12" y2="18" stroke="#F59E0B" stroke-width="1.5"/>
-                <line x1="28" y1="16" x2="28" y2="18" stroke="#F59E0B" stroke-width="1.5"/>
-            </svg>
+    <div class="tf-topbar">
+        <a href="/" class="tf-logo">
+            <div class="tf-logo-icon">&#9878;</div>
             TITANFORGE
-        </div>
+        </a>
 
-        <div class="navbar-nav">
-            <a href="#" class="nav-link active" data-section="dashboard">Dashboard</a>
-            <a href="#" class="nav-link" data-section="calculator">SA Calculator</a>
-            <a href="#" class="nav-link" data-section="quote">TC Quote</a>
-            <a href="#" class="nav-link" data-section="inventory">Inventory</a>
-        </div>
+        <nav>
+            <a href="/" class="active">Dashboard</a>
+            <a href="/sa">SA Calculator</a>
+            <a href="/tc">TC Quote</a>
+        </nav>
 
-        <div class="navbar-right">
+        <div class="tf-user">
             <div class="inventory-alert" id="inventoryAlert" style="display: none;">
-                <span>🔔</span>
+                <span style="font-size: 1.2rem;">&#128276;</span>
                 <span class="alert-badge" id="alertCount">0</span>
             </div>
             <div class="user-section">
                 <span id="userName">User</span>
-                <span class="role-badge" id="userRole">User</span>
+                <span class="role-badge" id="userRole">USER</span>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
             </div>
         </div>
-    </nav>
+    </div>
 
     <!-- MAIN CONTENT -->
     <div class="container">
@@ -989,41 +708,33 @@ DASHBOARD_HTML = r"""
         <!-- STATS GRID -->
         <div class="stats-grid" id="statsGrid">
             <div class="stat-card">
-                <div class="stat-icon">📊</div>
-                <div class="stat-label">Active Projects</div>
-                <div class="stat-value" id="activeProjects">-</div>
+                <div class="stat-icon blue">&#128202;</div>
+                <div class="stat-info">
+                    <div class="stat-label">Active Projects</div>
+                    <div class="stat-value" id="activeProjects">&mdash;</div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon">🔧</div>
-                <div class="stat-label">In Fabrication</div>
-                <div class="stat-value" id="inFabrication">-</div>
+                <div class="stat-icon amber">&#128295;</div>
+                <div class="stat-info">
+                    <div class="stat-label">In Fabrication</div>
+                    <div class="stat-value" id="inFabrication">&mdash;</div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon">📦</div>
-                <div class="stat-label">Ready to Ship</div>
-                <div class="stat-value" id="readyToShip">-</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">💰</div>
-                <div class="stat-label">Pipeline Value</div>
-                <div class="stat-value" id="pipelineValue">-</div>
+                <div class="stat-icon green">&#128230;</div>
+                <div class="stat-info">
+                    <div class="stat-label">Ready to Ship</div>
+                    <div class="stat-value" id="readyToShip">&mdash;</div>
+                </div>
             </div>
         </div>
 
         <!-- QUICK ACTIONS -->
         <div class="quick-actions">
-            <button class="btn btn-primary" onclick="openNewProjectForm()">
-                <span>+</span> New Project
-            </button>
-            <button class="btn btn-secondary" onclick="navigateTo('calculator')">
-                Open SA Calculator
-            </button>
-            <button class="btn btn-secondary" onclick="navigateTo('quote')">
-                Open TC Quote
-            </button>
-            <button class="btn btn-secondary" onclick="navigateTo('inventory')">
-                View Inventory
-            </button>
+            <button class="tf-btn tf-btn-primary" onclick="openNewProjectForm()">+ New Project</button>
+            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/sa'">SA Calculator</button>
+            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/tc'">TC Quote</button>
         </div>
 
         <!-- INVENTORY ALERTS -->
@@ -1038,12 +749,8 @@ DASHBOARD_HTML = r"""
         <div class="section-header">
             <h2 class="section-title">Project Pipeline</h2>
             <div class="view-toggle">
-                <button class="toggle-btn active" id="kanbanToggle" onclick="switchView('kanban')">
-                    Kanban View
-                </button>
-                <button class="toggle-btn" id="tableToggle" onclick="switchView('table')">
-                    Table View
-                </button>
+                <button class="toggle-btn active" id="kanbanToggle" onclick="switchView('kanban')">Board</button>
+                <button class="toggle-btn" id="tableToggle" onclick="switchView('table')">Table</button>
             </div>
         </div>
 
@@ -1055,13 +762,13 @@ DASHBOARD_HTML = r"""
             <table class="table">
                 <thead>
                     <tr>
-                        <th onclick="sortTable('jobCode')">Job Code ↕</th>
-                        <th onclick="sortTable('name')">Project Name ↕</th>
-                        <th onclick="sortTable('customer')">Customer ↕</th>
-                        <th onclick="sortTable('stage')">Stage ↕</th>
-                        <th class="price" onclick="sortTable('price')">Sell Price ↕</th>
-                        <th onclick="sortTable('updated')">Last Updated ↕</th>
-                        <th onclick="sortTable('version')">Version ↕</th>
+                        <th onclick="sortTable('jobCode')">Job Code</th>
+                        <th onclick="sortTable('name')">Project</th>
+                        <th onclick="sortTable('customer')">Customer</th>
+                        <th onclick="sortTable('stage')">Stage</th>
+                        <th class="price" onclick="sortTable('price')">Sell Price</th>
+                        <th onclick="sortTable('updated')">Updated</th>
+                        <th onclick="sortTable('version')">Ver</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -1098,7 +805,7 @@ DASHBOARD_HTML = r"""
                     <div class="upload-zone" id="uploadZone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" onclick="document.getElementById('fileInput').click()">
                         <p class="upload-text">
                             <span class="upload-highlight">Click to upload</span> or drag and drop<br>
-                            <span style="font-size: 0.85rem;">PDF, DOCX, XLSX, Images</span>
+                            <span style="font-size: 0.8rem; color: var(--tf-gray-400);">PDF, DOCX, XLSX, Images</span>
                         </p>
                     </div>
                     <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)" multiple accept=".pdf,.docx,.xlsx,.jpg,.png,.gif">
@@ -1125,7 +832,7 @@ DASHBOARD_HTML = r"""
     </div>
 
     <script>
-        // Global state
+        // ── Global State ──────────────────────────────────
         let allProjects = [];
         let currentView = 'kanban';
         let currentProject = null;
@@ -1133,42 +840,33 @@ DASHBOARD_HTML = r"""
         let currentSortDirection = 'asc';
         let inventoryAlerts = [];
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             initializePage();
         });
 
         function initializePage() {
-            // Set user info
             if (USER_NAME && USER_NAME !== '{{USER_NAME}}') {
                 document.getElementById('userName').textContent = USER_NAME;
             }
-
             const roleText = USER_ROLE && USER_ROLE !== '{{USER_ROLE}}' ? USER_ROLE : 'User';
             document.getElementById('userRole').textContent = roleText.toUpperCase();
 
-            // Load data
             loadProjects();
             loadInventoryAlerts();
             setupEventListeners();
 
-            // Hide pricing for certain roles
             if (USER_ROLE === 'shop') {
                 document.querySelectorAll('.price').forEach(el => el.classList.add('hidden'));
             }
         }
 
         function setupEventListeners() {
-            // Modal close on background click
             document.getElementById('projectModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeProjectModal();
-                }
+                if (e.target === this) closeProjectModal();
             });
         }
 
         function loadProjects() {
-            // Simulate API call - replace with actual fetch
             fetch('/api/projects')
                 .then(response => response.json())
                 .then(data => {
@@ -1178,7 +876,6 @@ DASHBOARD_HTML = r"""
                 })
                 .catch(error => {
                     console.error('Error loading projects:', error);
-                    // Fallback mock data
                     allProjects = generateMockProjects();
                     updateStats();
                     renderProjects();
@@ -1194,14 +891,12 @@ DASHBOARD_HTML = r"""
                 })
                 .catch(error => {
                     console.error('Error loading inventory:', error);
-                    // No alerts if API fails
                 });
         }
 
         function generateMockProjects() {
             const stages = ['quote', 'contract', 'engineering', 'shop-drawings', 'fabrication', 'shipping', 'install', 'complete'];
             const mockProjects = [];
-
             for (let i = 1; i <= 12; i++) {
                 mockProjects.push({
                     id: i,
@@ -1221,20 +916,14 @@ DASHBOARD_HTML = r"""
             const activeCount = allProjects.filter(p => p.stage !== 'complete').length;
             const fabricatingCount = allProjects.filter(p => p.stage === 'fabrication').length;
             const readyCount = allProjects.filter(p => p.stage === 'shipping').length;
-            const totalValue = allProjects.reduce((sum, p) => sum + (p.sellPrice || 0), 0);
-
             document.getElementById('activeProjects').textContent = activeCount;
             document.getElementById('inFabrication').textContent = fabricatingCount;
             document.getElementById('readyToShip').textContent = readyCount;
-            document.getElementById('pipelineValue').textContent = '$' + totalValue.toLocaleString();
         }
 
         function renderProjects() {
-            if (currentView === 'kanban') {
-                renderKanban();
-            } else {
-                renderTable();
-            }
+            if (currentView === 'kanban') renderKanban();
+            else renderTable();
         }
 
         function renderKanban() {
@@ -1252,7 +941,6 @@ DASHBOARD_HTML = r"""
                 const header = document.createElement('div');
                 header.className = 'column-header';
                 header.textContent = columnHeader + ' (' + projects.length + ')';
-
                 column.appendChild(header);
 
                 projects.forEach(project => {
@@ -1266,7 +954,7 @@ DASHBOARD_HTML = r"""
 
         function createProjectCard(project) {
             const card = document.createElement('div');
-            card.className = 'project-card ' + project.stage.replace('-', '-');
+            card.className = 'project-card ' + project.stage;
             card.onclick = () => openProjectModal(project);
 
             const jobCode = document.createElement('div');
@@ -1306,15 +994,13 @@ DASHBOARD_HTML = r"""
                 const stageLabel = project.stage.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                 const stageBadgeClass = 'stage-' + project.stage.replace('_', '-');
 
-                row.innerHTML = `
-                    <td>${project.jobCode}</td>
-                    <td><strong>${project.name}</strong></td>
-                    <td>${project.customer}</td>
-                    <td><span class="stage-badge ${stageBadgeClass}">${stageLabel}</span></td>
-                    <td class="price">$${project.sellPrice.toLocaleString()}</td>
-                    <td>${new Date(project.lastUpdated).toLocaleDateString()}</td>
-                    <td>${project.version}</td>
-                `;
+                row.innerHTML = '<td><strong>' + project.jobCode + '</strong></td>'
+                    + '<td>' + project.name + '</td>'
+                    + '<td>' + project.customer + '</td>'
+                    + '<td><span class="stage-badge ' + stageBadgeClass + '">' + stageLabel + '</span></td>'
+                    + '<td class="price">$' + project.sellPrice.toLocaleString() + '</td>'
+                    + '<td>' + new Date(project.lastUpdated).toLocaleDateString() + '</td>'
+                    + '<td>' + project.version + '</td>';
 
                 tableBody.appendChild(row);
             });
@@ -1333,7 +1019,7 @@ DASHBOARD_HTML = r"""
             inventoryAlerts.forEach(alert => {
                 const alertCard = document.createElement('div');
                 alertCard.className = 'alert-card ' + (alert.severity === 'danger' ? 'danger' : 'warning');
-                alertCard.onclick = () => navigateTo('inventory');
+                alertCard.onclick = () => window.location.href = '/sa';
 
                 const title = document.createElement('div');
                 title.className = 'alert-title';
@@ -1348,7 +1034,6 @@ DASHBOARD_HTML = r"""
                 alertsGrid.appendChild(alertCard);
             });
 
-            // Update alert badge
             const alertCount = inventoryAlerts.length;
             if (alertCount > 0) {
                 document.getElementById('inventoryAlert').style.display = 'block';
@@ -1358,15 +1043,10 @@ DASHBOARD_HTML = r"""
 
         function switchView(view) {
             currentView = view;
-
-            // Update toggle buttons
             document.getElementById('kanbanToggle').classList.toggle('active', view === 'kanban');
             document.getElementById('tableToggle').classList.toggle('active', view === 'table');
-
-            // Update visibility
             document.getElementById('kanbanView').style.display = view === 'kanban' ? 'grid' : 'none';
             document.getElementById('tableView').style.display = view === 'table' ? 'block' : 'none';
-
             renderProjects();
         }
 
@@ -1381,17 +1061,8 @@ DASHBOARD_HTML = r"""
             allProjects.sort((a, b) => {
                 let aVal = a[column];
                 let bVal = b[column];
-
-                if (column === 'price') {
-                    aVal = a.sellPrice;
-                    bVal = b.sellPrice;
-                }
-
-                if (typeof aVal === 'string') {
-                    aVal = aVal.toLowerCase();
-                    bVal = bVal.toLowerCase();
-                }
-
+                if (column === 'price') { aVal = a.sellPrice; bVal = b.sellPrice; }
+                if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase(); }
                 const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
                 return currentSortDirection === 'asc' ? comparison : -comparison;
             });
@@ -1401,16 +1072,14 @@ DASHBOARD_HTML = r"""
 
         function openProjectModal(project) {
             currentProject = project;
-
-            // Set title and badges
-            document.getElementById('modalTitle').textContent = project.jobCode + ' - ' + project.name;
+            document.getElementById('modalTitle').textContent = project.jobCode + ' — ' + project.name;
             const badgeGroup = document.getElementById('modalBadgeGroup');
             badgeGroup.innerHTML = '';
 
             const stageBadge = document.createElement('span');
             stageBadge.className = 'modal-badge';
             stageBadge.style.backgroundColor = '#1E40AF';
-            stageBadge.textContent = project.stage.toUpperCase();
+            stageBadge.textContent = project.stage.toUpperCase().replace('-', ' ');
 
             const versionBadge = document.createElement('span');
             versionBadge.className = 'modal-badge';
@@ -1420,10 +1089,7 @@ DASHBOARD_HTML = r"""
             badgeGroup.appendChild(stageBadge);
             badgeGroup.appendChild(versionBadge);
 
-            // Load project details
             loadProjectDetails(project.id);
-
-            // Show modal
             document.getElementById('projectModal').classList.add('show');
         }
 
@@ -1433,7 +1099,6 @@ DASHBOARD_HTML = r"""
         }
 
         function loadProjectDetails(projectId) {
-            // Simulate API call
             fetch('/api/project/load', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1447,7 +1112,6 @@ DASHBOARD_HTML = r"""
                 })
                 .catch(error => {
                     console.error('Error loading project:', error);
-                    // Use current project data
                     renderProjectOverview(currentProject);
                 });
         }
@@ -1468,18 +1132,14 @@ DASHBOARD_HTML = r"""
 
             infoItems.forEach(item => {
                 if (item.hidden) return;
-
                 const infoItem = document.createElement('div');
                 infoItem.className = 'info-item';
-
                 const label = document.createElement('div');
                 label.className = 'info-label';
                 label.textContent = item.label;
-
                 const value = document.createElement('div');
                 value.className = 'info-value';
                 value.textContent = item.value;
-
                 infoItem.appendChild(label);
                 infoItem.appendChild(value);
                 overviewInfo.appendChild(infoItem);
@@ -1487,7 +1147,6 @@ DASHBOARD_HTML = r"""
         }
 
         function loadProjectDocuments(projectId) {
-            // Mock document categories
             const categories = ['Quotes', 'Contracts', 'Engineering', 'Shop Drawings', 'Other'];
             const docCategories = document.getElementById('docCategories');
             docCategories.innerHTML = '';
@@ -1500,14 +1159,12 @@ DASHBOARD_HTML = r"""
                 docCategories.appendChild(btn);
             });
 
-            // Mock files
             const mockFiles = [
                 { name: 'Quote_v1.pdf', type: 'pdf', category: 'Quotes' },
                 { name: 'Contract_signed.docx', type: 'docx', category: 'Contracts' },
                 { name: 'BOM.xlsx', type: 'xlsx', category: 'Engineering' },
                 { name: 'Drawing_01.pdf', type: 'pdf', category: 'Shop Drawings' }
             ];
-
             renderDocuments(mockFiles);
         }
 
@@ -1525,18 +1182,10 @@ DASHBOARD_HTML = r"""
                 const fileCard = document.createElement('div');
                 fileCard.className = 'file-card';
 
-                const iconMap = {
-                    pdf: '📄',
-                    docx: '📘',
-                    xlsx: '📊',
-                    jpg: '🖼️',
-                    png: '🖼️',
-                    gif: '🖼️'
-                };
-
+                const iconMap = { pdf: '&#128196;', docx: '&#128216;', xlsx: '&#128202;', jpg: '&#128444;', png: '&#128444;', gif: '&#128444;' };
                 const icon = document.createElement('div');
                 icon.className = 'file-icon';
-                icon.textContent = iconMap[file.type] || '📁';
+                icon.innerHTML = iconMap[file.type] || '&#128193;';
 
                 const name = document.createElement('div');
                 name.className = 'file-name';
@@ -1548,8 +1197,8 @@ DASHBOARD_HTML = r"""
                 if (USER_ROLE !== 'viewer') {
                     const deleteBtn = document.createElement('button');
                     deleteBtn.className = 'file-delete';
-                    deleteBtn.textContent = '🗑️';
-                    deleteBtn.onclick = () => deleteFile(file.name);
+                    deleteBtn.innerHTML = '&#128465;';
+                    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(file.name); };
                     fileCard.appendChild(deleteBtn);
                 }
 
@@ -1557,163 +1206,73 @@ DASHBOARD_HTML = r"""
             });
         }
 
-        function handleDragOver(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            document.getElementById('uploadZone').classList.add('dragover');
-        }
-
-        function handleDragLeave(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            document.getElementById('uploadZone').classList.remove('dragover');
-        }
-
+        function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); document.getElementById('uploadZone').classList.add('dragover'); }
+        function handleDragLeave(e) { e.preventDefault(); e.stopPropagation(); document.getElementById('uploadZone').classList.remove('dragover'); }
         function handleDrop(e) {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             document.getElementById('uploadZone').classList.remove('dragover');
-
-            const files = e.dataTransfer.files;
-            uploadFiles(files);
+            uploadFiles(e.dataTransfer.files);
         }
-
-        function handleFileSelect(e) {
-            const files = e.target.files;
-            uploadFiles(files);
-        }
+        function handleFileSelect(e) { uploadFiles(e.target.files); }
 
         function uploadFiles(files) {
-            if (USER_ROLE === 'viewer') {
-                alert('You do not have permission to upload files.');
-                return;
-            }
-
+            if (USER_ROLE === 'viewer') { alert('You do not have permission to upload files.'); return; }
             const formData = new FormData();
-            for (let file of files) {
-                formData.append('files', file);
-            }
-
-            fetch('/api/project/docs/upload', {
-                method: 'POST',
-                body: formData
-            })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Files uploaded:', data);
-                    loadProjectDocuments(currentProject.id);
-                })
-                .catch(error => {
-                    console.error('Upload error:', error);
-                    alert('Failed to upload files.');
-                });
+            for (let file of files) formData.append('files', file);
+            fetch('/api/project/docs/upload', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => { console.log('Files uploaded:', data); loadProjectDocuments(currentProject.id); })
+                .catch(e => { console.error('Upload error:', e); alert('Failed to upload files.'); });
         }
 
         function deleteFile(fileName) {
             if (USER_ROLE === 'viewer') return;
-
             if (confirm('Delete this file?')) {
-                fetch('/api/project/docs/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fileName: fileName })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('File deleted:', data);
-                        loadProjectDocuments(currentProject.id);
-                    })
-                    .catch(error => console.error('Delete error:', error));
+                fetch('/api/project/docs/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: fileName }) })
+                    .then(r => r.json()).then(data => { console.log('File deleted:', data); loadProjectDocuments(currentProject.id); })
+                    .catch(e => console.error('Delete error:', e));
             }
         }
 
         function loadProjectRevisions(projectId) {
-            fetch('/api/project/revisions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: projectId })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    renderRevisions(data.revisions || []);
-                })
-                .catch(error => {
-                    console.error('Error loading revisions:', error);
-                    renderRevisions([]);
-                });
+            fetch('/api/project/revisions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: projectId }) })
+                .then(r => r.json()).then(data => { renderRevisions(data.revisions || []); })
+                .catch(e => { console.error('Error loading revisions:', e); renderRevisions([]); });
         }
 
         function renderRevisions(revisions) {
             const revisionsBody = document.getElementById('revisionsBody');
             revisionsBody.innerHTML = '';
-
             if (revisions.length === 0) {
-                revisionsBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem; color: #6B7280;">No revisions found</td></tr>';
+                revisionsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--tf-gray-400);">No revisions found</td></tr>';
                 return;
             }
-
             revisions.forEach((rev, idx) => {
                 const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td><strong>v${rev.version}</strong></td>
-                    <td>${new Date(rev.date).toLocaleDateString()}</td>
-                    <td>${rev.author}</td>
-                    <td>${rev.notes || '-'}</td>
-                    <td>
-                        <button class="revision-action-btn" onclick="loadRevision('${rev.version}')">Load</button>
-                        ${idx > 0 ? '<button class="revision-action-btn" onclick="compareRevisions(\'${rev.version}\')">Compare</button>' : ''}
-                    </td>
-                `;
+                row.innerHTML = '<td><strong>v' + rev.version + '</strong></td>'
+                    + '<td>' + new Date(rev.date).toLocaleDateString() + '</td>'
+                    + '<td>' + rev.author + '</td>'
+                    + '<td>' + (rev.notes || '—') + '</td>'
+                    + '<td><button class="revision-action-btn" onclick="loadRevision(\'' + rev.version + '\')">Load</button>'
+                    + (idx > 0 ? '<button class="revision-action-btn" onclick="compareRevisions(\'' + rev.version + '\')">Compare</button>' : '')
+                    + '</td>';
                 revisionsBody.appendChild(row);
             });
         }
 
-        function loadRevision(version) {
-            alert('Loading revision ' + version);
-            // TODO: Implement revision loading
-        }
-
-        function compareRevisions(version) {
-            alert('Comparing revisions');
-            // TODO: Implement revision comparison
-        }
+        function loadRevision(version) { alert('Loading revision ' + version); }
+        function compareRevisions(version) { alert('Comparing revisions'); }
 
         function switchTab(tabName) {
-            // Update buttons
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tabName));
             });
-
-            // Update content
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-
-            if (tabName === 'overview') {
-                document.getElementById('overviewTab').classList.add('active');
-            } else if (tabName === 'documents') {
-                document.getElementById('documentsTab').classList.add('active');
-            } else if (tabName === 'revisions') {
-                document.getElementById('revisionsTab').classList.add('active');
-            }
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(tabName + 'Tab').classList.add('active');
         }
 
-        // Navigation functions
-        function navigateTo(section) {
-            console.log('Navigate to:', section);
-            // TODO: Implement navigation to other sections
-        }
-
-        function openNewProjectForm() {
-            alert('New project form would open here');
-            // TODO: Implement new project form
-        }
-
-        function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                window.location.href = '/logout';
-            }
-        }
+        function openNewProjectForm() { alert('New project form would open here'); }
+        function handleLogout() { if (confirm('Are you sure you want to logout?')) window.location.href = '/auth/logout'; }
     </script>
 </body>
 </html>

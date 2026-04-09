@@ -696,12 +696,7 @@ ADMIN_HTML = r"""
 
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
-                fetch('/auth/logout', {
-                    method: 'POST'
-                })
-                .then(() => {
-                    window.location.href = '/login';
-                });
+                window.location.href = '/auth/logout';
             }
         }
 

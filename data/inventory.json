@@ -104,6 +104,18 @@
       "heat": "HEAT-999",
       "mill": "Steel Corp",
       "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
     }
   ]
 }

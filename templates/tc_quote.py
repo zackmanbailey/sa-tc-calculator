@@ -91,8 +91,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
   </div>
   <div class="spacer"></div>
   <div style="display:flex;gap:16px;align-items:center;font-size:11px;color:#aaa">
-    <span style="cursor:pointer">👤 Admin</span>
-    <span style="cursor:pointer">🚪 Logout</span>
+    <a href="/admin" style="color:#aaa;text-decoration:none;cursor:pointer">👤 Admin</a>
+    <a href="/auth/logout" style="color:#aaa;text-decoration:none;cursor:pointer" onclick="return confirm('Are you sure you want to logout?')">🚪 Logout</a>
   </div>
   <div class="version">v3.0</div>
 </div>
