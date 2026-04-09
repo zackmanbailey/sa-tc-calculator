@@ -5,7 +5,7 @@ TC_QUOTE_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>TitanForge — Construction Quote v3.0</title>
+<title>TitanForge — Titan Carports Estimator</title>
 <style>
 :root {
   --tf-dark:#0F172A; --tf-blue:#1E40AF; --tf-blue-m:#3B82F6;
@@ -86,10 +86,12 @@ input[type=checkbox]{width:auto;margin-right:6px}
   </div>
   <div style="display:flex;gap:20px;align-items:center;margin-left:30px">
     <a href="/" style="color:#aaa;text-decoration:none;font-size:12px;font-weight:600">Dashboard</a>
-    <a href="/sa" style="color:#aaa;text-decoration:none;font-size:12px;font-weight:600">SA Calculator</a>
-    <a href="/tc" style="color:var(--tf-white);text-decoration:none;font-size:12px;font-weight:600;border-bottom:2px solid var(--tf-amber);padding-bottom:2px">TC Quote</a>
+    <a href="/sa" style="color:#aaa;text-decoration:none;font-size:12px;font-weight:600">Structures America Estimator</a>
+    <a href="/tc" style="color:var(--tf-white);text-decoration:none;font-size:12px;font-weight:600;border-bottom:2px solid var(--tf-amber);padding-bottom:2px">Titan Carports Estimator</a>
+    <a href="/customers" style="color:#aaa;text-decoration:none;font-size:12px;font-weight:600">Customers</a>
   </div>
   <div class="spacer"></div>
+  <button onclick="openGlobalSearch()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;margin-right:8px;display:flex;align-items:center;gap:4px;">&#128269; Search <kbd style="background:rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;font-size:9px;">Ctrl+K</kbd></button>
   <div style="display:flex;gap:16px;align-items:center;font-size:11px;color:#aaa">
     <a href="/admin" style="color:#aaa;text-decoration:none;cursor:pointer">👤 Admin</a>
     <a href="/auth/logout" style="color:#aaa;text-decoration:none;cursor:pointer" onclick="return confirm('Are you sure you want to logout?')">🚪 Logout</a>
@@ -965,7 +967,7 @@ function renderIntelligence(q) {
   html += '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Suggested Next Steps</div>';
 
   const suggestions = [];
-  if (saMat <= 0) suggestions.push('Add SA materials cost from the SA Calculator for a complete quote');
+  if (saMat <= 0) suggestions.push('Add SA materials cost from the Structures America Estimator for a complete quote');
   if (sqft <= 0) suggestions.push('Add structure width and length for price/sq ft analysis');
   if (q.markupPct < 10) suggestions.push('Markup seems low — consider increasing for overhead and profit');
   if (q.markupPct > 50) suggestions.push('Markup is high — verify this is competitive for the market');
@@ -1101,6 +1103,23 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+</script>
+
+<!-- Global Search Overlay -->
+<div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:100px;">
+<div style="width:600px;max-width:90vw;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden;">
+<input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:16px;outline:none;border-bottom:1px solid #e2e8f0;" oninput="_doGS(this.value)">
+<div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px;"><div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Type to search...</div></div>
+</div></div>
+<script>
+var _gst=null;
+function openGlobalSearch(){document.getElementById('globalSearchOverlay').style.display='flex';document.getElementById('globalSearchInput').value='';document.getElementById('globalSearchInput').focus();}
+function _closeGS(){document.getElementById('globalSearchOverlay').style.display='none';}
+document.getElementById('globalSearchOverlay').addEventListener('click',function(e){if(e.target.id==='globalSearchOverlay')_closeGS();});
+document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();openGlobalSearch();}if(e.key==='Escape')_closeGS();});
+function _doGS(q){clearTimeout(_gst);if(!q||q.length<2){document.getElementById('globalSearchResults').innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">Type to search...</div>';return;}
+_gst=setTimeout(function(){fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){var c=document.getElementById('globalSearchResults');if(!d.results||!d.results.length){c.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">No results</div>';return;}
+var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'#DBEAFE\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#DBEAFE;">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:13px;color:#0f172a;">'+r.title+'</div><div style="font-size:11px;color:#94a3b8;">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
 </script>
 </body>
 </html>"""

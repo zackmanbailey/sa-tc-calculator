@@ -56,6 +56,9 @@ INVENTORY_PATH = os.path.join(BASE_DIR, "data", "inventory.json")
 USERS_PATH = os.path.join(BASE_DIR, "data", "users.json")
 CERTS_DIR = os.path.join(BASE_DIR, "data", "certs")
 PROJECTS_DIR = os.path.join(BASE_DIR, "data", "projects")
+CUSTOMERS_PATH = os.path.join(BASE_DIR, "data", "customers.json")
+QUOTES_DIR = os.path.join(BASE_DIR, "data", "quotes")
+QC_DIR = os.path.join(BASE_DIR, "data", "qc")
 COOKIE_SECRET = None   # Set at startup from env or auto-generated
 
 # Auth is enabled by default for hosted deployments; disabled for localhost dev.
@@ -117,6 +120,380 @@ def save_users(data):
     """Save users to JSON."""
     with open(USERS_PATH, "w") as f:
         json.dump(data, f, indent=2)
+
+# ─────────────────────────────────────────────
+# CUSTOMER DATABASE FILE MANAGEMENT
+# ─────────────────────────────────────────────
+
+def load_customers():
+    """Load customers from JSON."""
+    if not os.path.isfile(CUSTOMERS_PATH):
+        os.makedirs(os.path.dirname(CUSTOMERS_PATH), exist_ok=True)
+        with open(CUSTOMERS_PATH, "w") as f:
+            json.dump([], f)
+        return []
+    with open(CUSTOMERS_PATH, "r") as f:
+        return json.load(f)
+
+def save_customers(data):
+    """Save customers to JSON."""
+    os.makedirs(os.path.dirname(CUSTOMERS_PATH), exist_ok=True)
+    with open(CUSTOMERS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ─────────────────────────────────────────────
+# QUOTE DATA FILE MANAGEMENT
+# ─────────────────────────────────────────────
+
+def load_quote_data(job_code):
+    """Load quote data for a project."""
+    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+    qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
+    if os.path.isfile(qpath):
+        with open(qpath) as f:
+            return json.load(f)
+    return None
+
+def save_quote_data(job_code, data):
+    """Save quote data for a project."""
+    os.makedirs(QUOTES_DIR, exist_ok=True)
+    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+    qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
+    data["updated_at"] = datetime.datetime.now().isoformat()
+    with open(qpath, "w") as f:
+        json.dump(data, f, indent=2)
+
+DEFAULT_QUOTE_TEMPLATE = {
+    "project_overview": {
+        "company_name": "Titan Carports LLC",
+        "company_address": "",
+        "company_phone": "",
+        "company_email": "",
+        "estimator_name": "",
+        "estimator_phone": "",
+        "estimator_email": "",
+        "customer_name": "",
+        "customer_company": "",
+        "job_address": "",
+        "job_city": "",
+        "job_state": "",
+        "job_zip": "",
+        "project_description": "",
+        "quote_date": "",
+        "quote_number": "",
+        "valid_days": 30,
+    },
+    "pricing": {
+        "base_items": [
+            {"description": "Steel Canopies", "amount": 0},
+            {"description": "Engineering", "amount": 0},
+        ],
+        "options": [],
+        "base_total": 0,
+    },
+    "inclusions": [
+        "Fabrication of steel components per approved engineering drawings",
+        "Delivery to job site",
+        "Standard primer finish on all steel",
+        "Stamped engineering drawings by licensed PE",
+    ],
+    "exclusions_categorized": {
+        "Site Work": [
+            "Grading, compaction, or earthwork",
+            "Excavation or backfill",
+            "Erosion control or SWPPP",
+            "Demolition of existing structures",
+        ],
+        "Electrical": [
+            "Electrical work of any kind",
+            "Wiring, conduit, or panel upgrades",
+            "Lighting or lighting design",
+        ],
+        "Permits & Inspections": [
+            "Building permits and associated fees",
+            "Inspections beyond standard structural",
+            "Special inspections (welding, concrete, soils)",
+        ],
+        "Structural": [
+            "Foundation design (by others)",
+            "Concrete work of any kind",
+            "Masonry or CMU work",
+            "Wood framing or carpentry",
+        ],
+        "MEP": [
+            "Plumbing of any kind",
+            "HVAC systems or ductwork",
+            "Fire protection or sprinkler systems",
+        ],
+        "General": [
+            "Landscaping or irrigation",
+            "Fencing or gates",
+            "Signage",
+            "Painting beyond standard primer",
+            "Sales tax (unless specified)",
+            "Prevailing wage labor",
+            "Any work not specifically included in this proposal",
+        ],
+    },
+    "general_project_overview": {
+        "description": "",
+        "specs": {},
+        "photos": [],
+    },
+    "payment_terms": {
+        "method": "monthly_milestone",
+        "engineering_fee_note": "Engineering fees are due upon contract execution and are non-refundable.",
+        "billing_description": "Progress billings will be submitted monthly based on the percentage of work completed during the billing period. Each invoice will reflect the actual milestones achieved and corresponding percentage of the total contract value.",
+        "milestones": [
+            {"label": "Mobilization & Material Procurement", "percent": 25},
+            {"label": "Steel Fabrication Complete", "percent": 25},
+            {"label": "Steel Erection Complete", "percent": 20},
+            {"label": "Panel Installation Complete", "percent": 15},
+            {"label": "Punch List & Final Completion", "percent": 10},
+            {"label": "Final Acceptance & Close-out", "percent": 5},
+        ],
+        "net_days": 30,
+        "late_fee_percent": 1.5,
+        "retainage_percent": 0,
+    },
+    "signature_block": {
+        "company_signer_name": "",
+        "company_signer_title": "",
+        "customer_signer_name": "",
+        "customer_signer_title": "",
+    },
+    "standard_qualifications": [
+        "All work to be performed during normal business hours (Mon-Fri 7AM-5PM).",
+        "Pricing is based on current material costs and is subject to change if not accepted within the validity period.",
+        "Customer to provide clear and level access to the job site for delivery vehicles and equipment.",
+        "Any changes to the scope of work after contract execution may result in additional charges.",
+        "Titan Carports LLC is not responsible for delays caused by weather, material shortages, or other conditions beyond our control.",
+        "Engineering is based on site-specific wind and snow loads per local building code requirements.",
+        "All structural steel to meet ASTM A500 Grade B/C or ASTM A572 Grade 50 specifications.",
+    ],
+    "conditions_of_contract": [
+        "This proposal is valid for {{valid_days}} days from the date of issue.",
+        "A signed copy of this proposal along with the required deposit constitutes a binding contract.",
+        "All engineering drawings must be approved by the customer before fabrication begins.",
+        "Changes to approved engineering drawings may result in additional charges and schedule delays.",
+        "Customer is responsible for ensuring all site conditions are suitable for installation.",
+        "Titan Carports LLC shall not be liable for damage to underground utilities not properly marked.",
+        "Payment terms are net due upon receipt of invoice unless otherwise specified.",
+        "Late payments are subject to a 1.5% monthly finance charge.",
+        "Customer is responsible for obtaining all necessary permits and approvals.",
+        "Titan Carports LLC warrants all workmanship for a period of one (1) year from date of completion.",
+    ],
+    "terms_of_contract": [
+        "All materials remain property of Titan Carports LLC until paid in full.",
+        "Customer agrees to provide adequate storage area for materials upon delivery.",
+        "Work stoppage due to customer delay may result in additional mobilization charges.",
+        "Titan Carports LLC reserves the right to subcontract portions of the work.",
+        "Neither party shall be liable for delays due to force majeure events.",
+        "Any disputes shall be resolved through binding arbitration in the state of New Mexico.",
+        "This agreement constitutes the entire understanding between the parties.",
+        "Modifications must be in writing and signed by both parties.",
+        "Concrete costs are based on standard mix design. Specialty mixes are additional.",
+        "Drilling costs are based on standard soil conditions. Rock or unusual conditions may incur additional charges.",
+    ],
+}
+
+
+# ─────────────────────────────────────────────
+# AISC QC MODULE — DATA MODELS & UTILITIES
+# ─────────────────────────────────────────────
+
+# AISC 360 Chapter N / AISC 341 (Seismic) inspection types
+AISC_INSPECTION_TYPES = {
+    "bolt_inspection": {
+        "label": "Bolt Installation Inspection",
+        "standard": "AISC 360 Section J3 / RCSC Specification",
+        "checklist": [
+            {"key": "bolt_grade", "label": "Bolt grade verified (A325/A490/F1852/F2280)", "type": "check"},
+            {"key": "surface_condition", "label": "Faying surface condition meets Class A/B requirements", "type": "check"},
+            {"key": "snug_tight", "label": "Snug-tight condition achieved per RCSC Table 8.1", "type": "check"},
+            {"key": "pretension_method", "label": "Pretensioning method verified (Turn-of-Nut/TC/DTI/Calibrated Wrench)", "type": "select",
+             "options": ["Turn-of-Nut", "Twist-off TC", "Direct Tension Indicator", "Calibrated Wrench", "N/A - Snug Tight Only"]},
+            {"key": "lot_number", "label": "Bolt lot number recorded", "type": "text"},
+            {"key": "dtc_verification", "label": "Daily TC bolt verification test performed", "type": "check"},
+            {"key": "hole_type", "label": "Hole type verified (STD/OVS/SSL/LSL)", "type": "select",
+             "options": ["Standard (STD)", "Oversized (OVS)", "Short Slot (SSL)", "Long Slot (LSL)"]},
+            {"key": "washers", "label": "Washers installed per RCSC requirements", "type": "check"},
+            {"key": "rotation_check", "label": "Nut rotation verified within tolerance", "type": "check"},
+        ],
+    },
+    "weld_visual": {
+        "label": "Weld Visual Inspection (VT)",
+        "standard": "AWS D1.1 Table 6.1 / AISC 360 Chapter J2",
+        "checklist": [
+            {"key": "wps_available", "label": "WPS (Welding Procedure Specification) available and followed", "type": "check"},
+            {"key": "welder_qualified", "label": "Welder qualification current and applicable", "type": "check"},
+            {"key": "filler_metal", "label": "Filler metal matches WPS requirements (E70XX, etc.)", "type": "text"},
+            {"key": "preheat", "label": "Preheat temperature met per WPS", "type": "check"},
+            {"key": "interpass_temp", "label": "Interpass temperature within limits", "type": "check"},
+            {"key": "weld_size", "label": "Weld size meets drawing requirements", "type": "check"},
+            {"key": "weld_length", "label": "Weld length meets drawing requirements", "type": "check"},
+            {"key": "profile_acceptable", "label": "Weld profile acceptable per AWS D1.1 Figure 5.4", "type": "check"},
+            {"key": "undercut", "label": "Undercut within acceptable limits (1/32\" max)", "type": "check"},
+            {"key": "porosity", "label": "No visible porosity beyond limits", "type": "check"},
+            {"key": "cracks", "label": "No cracks detected", "type": "check"},
+            {"key": "overlap", "label": "No overlap or cold lap", "type": "check"},
+            {"key": "arc_strikes", "label": "No arc strikes on base metal", "type": "check"},
+            {"key": "spatter", "label": "Spatter cleaned / acceptable", "type": "check"},
+        ],
+    },
+    "dimensional": {
+        "label": "Dimensional / Fit-Up Inspection",
+        "standard": "AISC Code of Standard Practice (COSP) / AISC 303",
+        "checklist": [
+            {"key": "member_length", "label": "Member length within tolerance (AISC 303 Sec 6.4.1)", "type": "check"},
+            {"key": "sweep_camber", "label": "Sweep and camber within tolerance", "type": "check"},
+            {"key": "cross_section", "label": "Cross-section dimensions verified", "type": "check"},
+            {"key": "hole_location", "label": "Hole locations within 1/16\" tolerance", "type": "check"},
+            {"key": "hole_diameter", "label": "Hole diameters per specification", "type": "check"},
+            {"key": "fit_up_gap", "label": "Fit-up gap within WPS limits (root opening)", "type": "check"},
+            {"key": "alignment", "label": "Member alignment and squareness verified", "type": "check"},
+            {"key": "bearing", "label": "Bearing surfaces in full contact", "type": "check"},
+        ],
+    },
+    "surface_prep": {
+        "label": "Surface Preparation & Coating Inspection",
+        "standard": "SSPC / AISC 360 Chapter M3",
+        "checklist": [
+            {"key": "blast_profile", "label": "Surface profile meets SSPC-SP requirements", "type": "check"},
+            {"key": "cleanliness", "label": "Surface cleanliness verified (SSPC-SP6/SP10)", "type": "select",
+             "options": ["SSPC-SP6 (Commercial)", "SSPC-SP10 (Near-White)", "SSPC-SP5 (White Metal)", "N/A"]},
+            {"key": "dft_primer", "label": "Primer DFT (dry film thickness) within spec", "type": "text"},
+            {"key": "dft_topcoat", "label": "Topcoat DFT within spec (if applicable)", "type": "text"},
+            {"key": "coverage", "label": "Full coverage with no holidays", "type": "check"},
+            {"key": "galvanizing", "label": "Hot-dip galvanizing meets ASTM A123 (if applicable)", "type": "check"},
+            {"key": "cure_time", "label": "Adequate cure/recoat time observed", "type": "check"},
+        ],
+    },
+    "nde": {
+        "label": "Non-Destructive Examination (NDE)",
+        "standard": "AWS D1.1 Chapter 6 / AISC 341 (Seismic)",
+        "checklist": [
+            {"key": "nde_method", "label": "NDE method", "type": "select",
+             "options": ["Ultrasonic (UT)", "Magnetic Particle (MT)", "Radiographic (RT)", "Penetrant (PT)", "Phased Array (PAUT)"]},
+            {"key": "technician_certified", "label": "NDE technician certified (ASNT Level II minimum)", "type": "check"},
+            {"key": "procedure_followed", "label": "Written NDE procedure followed", "type": "check"},
+            {"key": "acceptance_criteria", "label": "Acceptance criteria identified (AWS D1.1 Table 6.2)", "type": "check"},
+            {"key": "joint_location", "label": "Joint/weld location documented", "type": "text"},
+            {"key": "indication_found", "label": "Rejectable indications found", "type": "select",
+             "options": ["None — Acceptable", "Minor — Within limits", "Rejectable — See NCR"]},
+            {"key": "report_number", "label": "NDE report number", "type": "text"},
+        ],
+    },
+    "material_receiving": {
+        "label": "Material Receiving Inspection",
+        "standard": "AISC 360 Chapter A3 / ASTM Standards",
+        "checklist": [
+            {"key": "mtrs_received", "label": "Mill Test Reports (MTRs) received and reviewed", "type": "check"},
+            {"key": "heat_number", "label": "Heat number matches MTR", "type": "check"},
+            {"key": "grade_verified", "label": "Material grade verified (A36/A572/A500/A992)", "type": "text"},
+            {"key": "dimensions_checked", "label": "Material dimensions verified against PO", "type": "check"},
+            {"key": "surface_condition", "label": "Surface condition acceptable (no excessive rust/pitting/damage)", "type": "check"},
+            {"key": "quantity_verified", "label": "Quantity matches packing list and PO", "type": "check"},
+            {"key": "marking_legible", "label": "Mill marking legible and matches MTR", "type": "check"},
+            {"key": "stored_properly", "label": "Material stored properly (off ground, protected)", "type": "check"},
+        ],
+    },
+}
+
+# NCR severity levels
+NCR_SEVERITY = ["minor", "major", "critical"]
+NCR_STATUS = ["open", "under_review", "corrective_action", "re_inspect", "closed", "voided"]
+
+
+def load_project_qc(job_code):
+    """Load all QC data for a project."""
+    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+    qc_path = os.path.join(QC_DIR, f"{safe}.json")
+    if os.path.isfile(qc_path):
+        with open(qc_path) as f:
+            return json.load(f)
+    return {"inspections": [], "ncrs": [], "traceability": []}
+
+def save_project_qc(job_code, data):
+    """Save QC data for a project."""
+    os.makedirs(QC_DIR, exist_ok=True)
+    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+    qc_path = os.path.join(QC_DIR, f"{safe}.json")
+    data["updated_at"] = datetime.datetime.now().isoformat()
+    with open(qc_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ─────────────────────────────────────────────
+# MATERIAL TRACEABILITY — HEAT NUMBER TRACKING
+# ─────────────────────────────────────────────
+
+def load_traceability_index():
+    """Load the global traceability index (heat number → coils → projects → members)."""
+    tpath = os.path.join(BASE_DIR, "data", "traceability_index.json")
+    if os.path.isfile(tpath):
+        with open(tpath) as f:
+            return json.load(f)
+    return {"heat_numbers": {}}
+
+def save_traceability_index(data):
+    """Save the global traceability index."""
+    tpath = os.path.join(BASE_DIR, "data", "traceability_index.json")
+    with open(tpath, "w") as f:
+        json.dump(data, f, indent=2)
+
+def register_heat_number(heat_number, coil_tag, material_spec, mill_name="", mtr_path=""):
+    """Register a heat number in the traceability index when a coil is received."""
+    idx = load_traceability_index()
+    if heat_number not in idx["heat_numbers"]:
+        idx["heat_numbers"][heat_number] = {
+            "material_spec": material_spec,
+            "mill_name": mill_name,
+            "mtr_path": mtr_path,
+            "coils": [],
+            "members": [],
+            "registered_at": datetime.datetime.now().isoformat(),
+        }
+    # Add coil if not already tracked
+    coil_tags = [c["coil_tag"] for c in idx["heat_numbers"][heat_number]["coils"]]
+    if coil_tag not in coil_tags:
+        idx["heat_numbers"][heat_number]["coils"].append({
+            "coil_tag": coil_tag,
+            "added_at": datetime.datetime.now().isoformat(),
+        })
+    save_traceability_index(idx)
+    return idx["heat_numbers"][heat_number]
+
+def assign_member_to_heat(heat_number, job_code, member_mark, description=""):
+    """Track that a specific member was fabricated from a specific heat number."""
+    idx = load_traceability_index()
+    if heat_number not in idx["heat_numbers"]:
+        idx["heat_numbers"][heat_number] = {
+            "material_spec": "",
+            "mill_name": "",
+            "coils": [],
+            "members": [],
+            "registered_at": datetime.datetime.now().isoformat(),
+        }
+    idx["heat_numbers"][heat_number]["members"].append({
+        "job_code": job_code,
+        "member_mark": member_mark,
+        "description": description,
+        "assigned_at": datetime.datetime.now().isoformat(),
+    })
+    save_traceability_index(idx)
+
+    # Also save to project QC data
+    qc = load_project_qc(job_code)
+    qc["traceability"].append({
+        "heat_number": heat_number,
+        "member_mark": member_mark,
+        "description": description,
+        "assigned_at": datetime.datetime.now().isoformat(),
+    })
+    save_project_qc(job_code, qc)
+
 
 def _ensure_users_file():
     """Create users.json with default admin account if it doesn't exist."""
@@ -358,14 +735,14 @@ class DashboardHandler(BaseHandler):
 
 
 class SACalcHandler(BaseHandler):
-    """GET /sa — SA Calculator (Structures America)."""
+    """GET /sa — Structures America Estimator."""
     def get(self):
         self.set_header("Content-Type", "text/html")
         self.write(MAIN_HTML)
 
 
 class TCQuoteHandler(BaseHandler):
-    """GET /tc — TC Quote Calculator (Titan Carports)."""
+    """GET /tc — Titan Carports Estimator."""
     def get(self):
         self.set_header("Content-Type", "text/html")
         self.write(TC_HTML)
@@ -1429,7 +1806,7 @@ DEFAULT_DOC_CATEGORIES = [
 # Stage-aware next-steps templates
 STAGE_NEXT_STEPS = {
     "quote": [
-        {"text": "Calculate BOM in SA Calculator", "key": "calc_bom"},
+        {"text": "Calculate BOM in Structures America Estimator", "key": "calc_bom"},
         {"text": "Review pricing and markup", "key": "review_pricing"},
         {"text": "Generate PDF quote", "key": "gen_quote_pdf"},
         {"text": "Send quote to customer", "key": "send_quote"},
@@ -1893,6 +2270,1014 @@ class ProjectListEnhancedHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# CUSTOMER DATABASE HANDLERS
+# ─────────────────────────────────────────────
+
+class CustomerListHandler(BaseHandler):
+    """GET /api/customers — List all customers with optional search."""
+    def get(self):
+        customers = load_customers()
+        q = self.get_query_argument("q", "").strip().lower()
+        tag = self.get_query_argument("tag", "").strip().lower()
+        if q:
+            customers = [c for c in customers
+                         if q in c.get("company","").lower()
+                         or q in c.get("primary_contact",{}).get("name","").lower()
+                         or q in c.get("primary_contact",{}).get("email","").lower()
+                         or any(q in ct.get("name","").lower() for ct in c.get("contacts",[]))]
+        if tag:
+            customers = [c for c in customers if tag in [t.lower() for t in c.get("tags",[])]]
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "customers": customers}))
+
+class CustomerCreateHandler(BaseHandler):
+    """POST /api/customers/create — Create a new customer."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        body = json_decode(self.request.body)
+        customers = load_customers()
+        cid = "CUS-" + datetime.datetime.now().strftime("%Y%m%d") + "-" + secrets.token_hex(3).upper()
+        now = datetime.datetime.now().isoformat()
+        customer = {
+            "id": cid,
+            "company": body.get("company", ""),
+            "primary_contact": body.get("primary_contact", {}),
+            "contacts": body.get("contacts", []),
+            "address": body.get("address", {}),
+            "tags": body.get("tags", []),
+            "notes": body.get("notes", ""),
+            "payment_terms": body.get("payment_terms", "Net 30"),
+            "credit_limit": body.get("credit_limit", ""),
+            "tax_id": body.get("tax_id", ""),
+            "insurance_info": body.get("insurance_info", ""),
+            "credit_terms": body.get("credit_terms", ""),
+            "created_at": now,
+            "updated_at": now,
+        }
+        customers.append(customer)
+        save_customers(customers)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "customer": customer}))
+
+class CustomerUpdateHandler(BaseHandler):
+    """POST /api/customers/update — Update a customer record."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        body = json_decode(self.request.body)
+        cid = body.get("id", "")
+        customers = load_customers()
+        found = False
+        for i, c in enumerate(customers):
+            if c["id"] == cid:
+                for k, v in body.items():
+                    if k != "id":
+                        customers[i][k] = v
+                customers[i]["updated_at"] = datetime.datetime.now().isoformat()
+                found = True
+                break
+        if not found:
+            self.write(json_encode({"ok": False, "error": "Customer not found"}))
+            return
+        save_customers(customers)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "customer": customers[i]}))
+
+class CustomerDeleteHandler(BaseHandler):
+    """POST /api/customers/delete — Delete a customer record."""
+    required_roles = ["admin"]
+    def post(self):
+        body = json_decode(self.request.body)
+        cid = body.get("id", "")
+        customers = load_customers()
+        customers = [c for c in customers if c["id"] != cid]
+        save_customers(customers)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+class CustomerDetailHandler(BaseHandler):
+    """GET /api/customers/detail — Get single customer with project history."""
+    def get(self):
+        cid = self.get_query_argument("id", "")
+        customers = load_customers()
+        customer = next((c for c in customers if c["id"] == cid), None)
+        if not customer:
+            self.write(json_encode({"ok": False, "error": "Not found"}))
+            return
+        # Attach project history
+        projects = []
+        os.makedirs(PROJECTS_DIR, exist_ok=True)
+        cname = customer.get("company", "").lower()
+        for d in sorted(os.listdir(PROJECTS_DIR), reverse=True):
+            mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
+            if os.path.isfile(mpath):
+                try:
+                    with open(mpath) as f:
+                        meta = json.load(f)
+                    pname = meta.get("customer", {}).get("name", "").lower()
+                    if cname and cname in pname:
+                        projects.append({
+                            "job_code": meta.get("job_code", d),
+                            "project_name": meta.get("project_name", ""),
+                            "stage": meta.get("stage", ""),
+                            "created_at": meta.get("created_at", ""),
+                        })
+                except Exception:
+                    pass
+        customer["projects"] = projects
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "customer": customer}))
+
+class CustomerDocUploadHandler(BaseHandler):
+    """POST /api/customers/docs/upload — Upload a document for a customer."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        cid = self.get_argument("customer_id", "")
+        doc_type = self.get_argument("doc_type", "other")  # contract, insurance, tax_id, credit_terms, other
+        if not cid:
+            self.write(json_encode({"ok": False, "error": "customer_id required"}))
+            return
+        safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
+        docs_dir = os.path.join(BASE_DIR, "data", "customer_docs", safe_cid, doc_type)
+        os.makedirs(docs_dir, exist_ok=True)
+        uploaded = []
+        for field_name, files in self.request.files.items():
+            for finfo in files:
+                fname = re.sub(r'[^A-Za-z0-9._-]', '_', finfo["filename"])
+                fpath = os.path.join(docs_dir, fname)
+                with open(fpath, "wb") as f:
+                    f.write(finfo["body"])
+                uploaded.append({"name": fname, "type": doc_type, "size": len(finfo["body"])})
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "uploaded": uploaded}))
+
+class CustomerDocListHandler(BaseHandler):
+    """GET /api/customers/docs — List documents for a customer."""
+    def get(self):
+        cid = self.get_query_argument("customer_id", "")
+        safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
+        base = os.path.join(BASE_DIR, "data", "customer_docs", safe_cid)
+        docs = {}
+        if os.path.isdir(base):
+            for dtype in os.listdir(base):
+                dpath = os.path.join(base, dtype)
+                if os.path.isdir(dpath):
+                    docs[dtype] = []
+                    for f in os.listdir(dpath):
+                        fpath = os.path.join(dpath, f)
+                        if os.path.isfile(fpath):
+                            docs[dtype].append({
+                                "name": f,
+                                "size": os.path.getsize(fpath),
+                                "url": f"/customer-files/{safe_cid}/{dtype}/{f}",
+                            })
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "docs": docs}))
+
+class CustomerDocServeHandler(tornado.web.RequestHandler):
+    """GET /customer-files/{cid}/{type}/{filename} — Serve customer document."""
+    def get(self, cid, dtype, fname):
+        fpath = os.path.join(BASE_DIR, "data", "customer_docs", cid, dtype, fname)
+        if not os.path.isfile(fpath):
+            self.set_status(404)
+            self.write("Not found")
+            return
+        import mimetypes
+        ct = mimetypes.guess_type(fname)[0] or "application/octet-stream"
+        self.set_header("Content-Type", ct)
+        self.set_header("Content-Disposition", f'inline; filename="{fname}"')
+        with open(fpath, "rb") as f:
+            self.write(f.read())
+
+class CustomerPageHandler(BaseHandler):
+    """GET /customers — Customer database page."""
+    def get(self):
+        self.set_header("Content-Type", "text/html")
+        self.write(CUSTOMERS_HTML)
+
+
+# ─────────────────────────────────────────────
+# GLOBAL SEARCH HANDLER
+# ─────────────────────────────────────────────
+
+class GlobalSearchHandler(BaseHandler):
+    """GET /api/search — Search across projects, customers, and inventory."""
+    def get(self):
+        q = self.get_query_argument("q", "").strip().lower()
+        if not q or len(q) < 2:
+            self.write(json_encode({"ok": True, "results": []}))
+            return
+        results = []
+        # Search projects
+        os.makedirs(PROJECTS_DIR, exist_ok=True)
+        for d in os.listdir(PROJECTS_DIR):
+            mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
+            if os.path.isfile(mpath):
+                try:
+                    with open(mpath) as f:
+                        meta = json.load(f)
+                    searchable = " ".join([
+                        meta.get("job_code", ""),
+                        meta.get("project_name", ""),
+                        meta.get("customer", {}).get("name", ""),
+                        meta.get("customer", {}).get("email", ""),
+                        meta.get("location", {}).get("city", ""),
+                        meta.get("location", {}).get("state", ""),
+                        meta.get("notes", ""),
+                    ]).lower()
+                    if q in searchable:
+                        results.append({
+                            "type": "project",
+                            "title": meta.get("project_name", d),
+                            "subtitle": f'{meta.get("job_code","")} — {meta.get("customer",{}).get("name","")}',
+                            "stage": meta.get("stage", ""),
+                            "url": f'/project/{meta.get("job_code", d)}',
+                            "icon": "project",
+                        })
+                except Exception:
+                    pass
+        # Search customers
+        customers = load_customers()
+        for c in customers:
+            searchable = " ".join([
+                c.get("company", ""),
+                c.get("primary_contact", {}).get("name", ""),
+                c.get("primary_contact", {}).get("email", ""),
+                c.get("primary_contact", {}).get("phone", ""),
+                c.get("notes", ""),
+                " ".join(c.get("tags", [])),
+            ]).lower()
+            if q in searchable:
+                results.append({
+                    "type": "customer",
+                    "title": c.get("company", "Unknown"),
+                    "subtitle": c.get("primary_contact", {}).get("name", ""),
+                    "url": f'/customers?id={c.get("id","")}',
+                    "icon": "customer",
+                })
+        # Search inventory
+        try:
+            inv = load_inventory()
+            for coil in inv:
+                searchable = " ".join([
+                    coil.get("coil_tag", ""),
+                    coil.get("gauge", ""),
+                    coil.get("color", ""),
+                    coil.get("width", ""),
+                    coil.get("manufacturer", ""),
+                    coil.get("po_number", ""),
+                ]).lower()
+                if q in searchable:
+                    results.append({
+                        "type": "inventory",
+                        "title": f'{coil.get("gauge","")} ga {coil.get("color","")} — {coil.get("width","")}',
+                        "subtitle": f'Tag: {coil.get("coil_tag","")} | {coil.get("weight_lbs",0)} lbs',
+                        "url": f'/coil/{coil.get("coil_tag","")}',
+                        "icon": "inventory",
+                    })
+        except Exception:
+            pass
+        # Cap results
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "results": results[:50]}))
+
+
+# ─────────────────────────────────────────────
+# QUOTE EDITOR / GENERATOR HANDLERS
+# ─────────────────────────────────────────────
+
+class QuoteDataHandler(BaseHandler):
+    """GET/POST /api/quote/data — Load or save quote data for a project."""
+    def get(self):
+        job_code = self.get_query_argument("job_code", "")
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        data = load_quote_data(job_code)
+        if not data:
+            # Build from template + project metadata
+            import copy
+            data = copy.deepcopy(DEFAULT_QUOTE_TEMPLATE)
+            # Try to populate from project metadata
+            safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+            mpath = os.path.join(PROJECTS_DIR, safe, "metadata.json")
+            if os.path.isfile(mpath):
+                try:
+                    with open(mpath) as f:
+                        meta = json.load(f)
+                    data["project_overview"]["customer_name"] = meta.get("customer", {}).get("name", "")
+                    data["project_overview"]["customer_company"] = meta.get("customer", {}).get("name", "")
+                    data["project_overview"]["job_address"] = meta.get("location", {}).get("street", "")
+                    data["project_overview"]["job_city"] = meta.get("location", {}).get("city", "")
+                    data["project_overview"]["job_state"] = meta.get("location", {}).get("state", "")
+                    data["project_overview"]["job_zip"] = meta.get("location", {}).get("zip", "")
+                    data["project_overview"]["quote_number"] = job_code
+                    data["project_overview"]["project_description"] = meta.get("project_name", "")
+                except Exception:
+                    pass
+            data["project_overview"]["quote_date"] = datetime.datetime.now().strftime("%m/%d/%Y")
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "data": data}))
+
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        data = body.get("data", {})
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        save_quote_data(job_code, data)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+
+class QuotePDFHandler(BaseHandler):
+    """POST /api/quote/pdf — Generate a professional PDF quote."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        data = body.get("data")
+        if not data:
+            data = load_quote_data(job_code)
+        if not data:
+            self.write(json_encode({"ok": False, "error": "No quote data found"}))
+            return
+
+        try:
+            pdf_bytes = generate_titan_quote_pdf(data, job_code)
+            self.set_header("Content-Type", "application/pdf")
+            fname = f"Quote_{job_code}_{datetime.datetime.now().strftime('%Y%m%d')}.pdf"
+            self.set_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QuoteEditorPageHandler(BaseHandler):
+    """GET /quote/{job_code} — Quote editor page."""
+    def get(self, job_code):
+        self.set_header("Content-Type", "text/html")
+        html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", job_code)
+        html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
+        html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
+        self.write(html)
+
+
+# ─────────────────────────────────────────────
+# QUOTE PDF GENERATION (ReportLab)
+# ─────────────────────────────────────────────
+
+def generate_titan_quote_pdf(data, job_code=""):
+    """Generate a professional Titan Carports quote PDF using ReportLab."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor, black, white
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        PageBreak, HRFlowable, KeepTogether
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch,
+                            leftMargin=0.75*inch, rightMargin=0.75*inch)
+
+    styles = getSampleStyleSheet()
+    navy = HexColor("#0F172A")
+    blue = HexColor("#1E40AF")
+    amber = HexColor("#F59E0B")
+    gray = HexColor("#64748B")
+    light_bg = HexColor("#F8FAFC")
+    border_color = HexColor("#E2E8F0")
+
+    # Custom styles
+    title_style = ParagraphStyle('QuoteTitle', parent=styles['Title'],
+        fontSize=22, textColor=navy, spaceAfter=4, fontName='Helvetica-Bold')
+    h1_style = ParagraphStyle('H1', parent=styles['Heading1'],
+        fontSize=14, textColor=navy, spaceBefore=16, spaceAfter=8,
+        fontName='Helvetica-Bold', borderWidth=0, borderPadding=0)
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'],
+        fontSize=12, textColor=blue, spaceBefore=12, spaceAfter=6,
+        fontName='Helvetica-Bold')
+    body_style = ParagraphStyle('Body', parent=styles['Normal'],
+        fontSize=10, leading=14, textColor=HexColor("#334155"),
+        fontName='Helvetica')
+    small_style = ParagraphStyle('Small', parent=styles['Normal'],
+        fontSize=8.5, leading=11, textColor=gray, fontName='Helvetica')
+    bold_body = ParagraphStyle('BoldBody', parent=body_style,
+        fontName='Helvetica-Bold')
+
+    story = []
+    po = data.get("project_overview", {})
+
+    # ── HEADER ──
+    header_data = [
+        [Paragraph('<b>TITAN CARPORTS LLC</b>', ParagraphStyle('HC', parent=title_style, fontSize=18, textColor=white)),
+         Paragraph(f'<b>PROPOSAL</b><br/><font size="9">Quote #: {po.get("quote_number", job_code)}<br/>Date: {po.get("quote_date","")}</font>',
+                   ParagraphStyle('HR', parent=body_style, alignment=TA_RIGHT, textColor=white))],
+    ]
+    header_table = Table(header_data, colWidths=[4*inch, 3*inch])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), navy),
+        ('TEXTCOLOR', (0,0), (-1,-1), white),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 12),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
+        ('LEFTPADDING', (0,0), (0,-1), 16),
+        ('RIGHTPADDING', (-1,0), (-1,-1), 16),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 16))
+
+    # ── Section 1.1: Project Overview ──
+    story.append(Paragraph("1.1 Project Overview", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+
+    info_data = [
+        [Paragraph('<b>Customer:</b>', bold_body), Paragraph(po.get("customer_name",""), body_style),
+         Paragraph('<b>Estimator:</b>', bold_body), Paragraph(po.get("estimator_name",""), body_style)],
+        [Paragraph('<b>Company:</b>', bold_body), Paragraph(po.get("customer_company",""), body_style),
+         Paragraph('<b>Phone:</b>', bold_body), Paragraph(po.get("estimator_phone",""), body_style)],
+        [Paragraph('<b>Job Address:</b>', bold_body), Paragraph(po.get("job_address",""), body_style),
+         Paragraph('<b>Email:</b>', bold_body), Paragraph(po.get("estimator_email",""), body_style)],
+        [Paragraph('<b>City/State/Zip:</b>', bold_body),
+         Paragraph(f'{po.get("job_city","")} {po.get("job_state","")} {po.get("job_zip","")}', body_style),
+         Paragraph('<b>Valid For:</b>', bold_body), Paragraph(f'{po.get("valid_days",30)} days', body_style)],
+    ]
+    info_table = Table(info_data, colWidths=[1.2*inch, 2.3*inch, 1.0*inch, 2.5*inch])
+    info_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('BACKGROUND', (0,0), (-1,-1), light_bg),
+        ('BOX', (0,0), (-1,-1), 0.5, border_color),
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 12))
+
+    # ── Section 1.2: Pricing ──
+    story.append(Paragraph("1.2 Pricing", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+
+    pricing = data.get("pricing", {})
+    # Base pricing table
+    price_rows = [[
+        Paragraph('<b>Description</b>', bold_body),
+        Paragraph('<b>Amount</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT)),
+    ]]
+    base_total = 0
+    for item in pricing.get("base_items", []):
+        amt = item.get("amount", 0)
+        base_total += amt
+        price_rows.append([
+            Paragraph(item.get("description", ""), body_style),
+            Paragraph(f'${amt:,.2f}', ParagraphStyle('R', parent=body_style, alignment=TA_RIGHT)),
+        ])
+    price_rows.append([
+        Paragraph('<b>BASE TOTAL</b>', bold_body),
+        Paragraph(f'<b>${base_total:,.2f}</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT)),
+    ])
+    price_table = Table(price_rows, colWidths=[5*inch, 2*inch])
+    price_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), navy),
+        ('TEXTCOLOR', (0,0), (-1,0), white),
+        ('BACKGROUND', (0,-1), (-1,-1), HexColor("#DBEAFE")),
+        ('GRID', (0,0), (-1,-1), 0.5, border_color),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 8),
+        ('RIGHTPADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(price_table)
+    story.append(Spacer(1, 10))
+
+    # Options table
+    options = pricing.get("options", [])
+    if options:
+        story.append(Paragraph("<b>Options (not included in base price):</b>", bold_body))
+        story.append(Spacer(1, 4))
+        opt_rows = [[Paragraph('<b>Option</b>', bold_body),
+                     Paragraph('<b>Amount</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT))]]
+        for opt in options:
+            opt_rows.append([
+                Paragraph(opt.get("description", ""), body_style),
+                Paragraph(f'${opt.get("amount",0):,.2f}', ParagraphStyle('R', parent=body_style, alignment=TA_RIGHT)),
+            ])
+        opt_table = Table(opt_rows, colWidths=[5*inch, 2*inch])
+        opt_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), HexColor("#475569")),
+            ('TEXTCOLOR', (0,0), (-1,0), white),
+            ('GRID', (0,0), (-1,-1), 0.5, border_color),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+            ('RIGHTPADDING', (0,0), (-1,-1), 8),
+        ]))
+        story.append(opt_table)
+    story.append(Spacer(1, 10))
+
+    # ── Inclusions ──
+    inclusions = data.get("inclusions", [])
+    if inclusions:
+        story.append(Paragraph("<b>Inclusions:</b>", bold_body))
+        for inc in inclusions:
+            story.append(Paragraph(f"&bull; {inc}", body_style))
+        story.append(Spacer(1, 8))
+
+    # ── Exclusions (short list on page 1) ──
+    excl = data.get("exclusions_categorized", {})
+    if excl:
+        short_excl = []
+        for cat, items in excl.items():
+            short_excl.extend(items[:2])
+        if short_excl:
+            story.append(Paragraph("<b>Exclusions (see full list in Section 2.2):</b>", bold_body))
+            for e in short_excl[:8]:
+                story.append(Paragraph(f"&bull; {e}", body_style))
+            if sum(len(v) for v in excl.values()) > 8:
+                story.append(Paragraph("<i>...see Section 2.2 for complete exclusions list</i>", small_style))
+        story.append(Spacer(1, 8))
+
+    story.append(Paragraph(f"<i>This proposal is valid for {po.get('valid_days',30)} days from date of issue. "
+                           f"Pricing subject to material cost changes after expiration.</i>", small_style))
+    story.append(PageBreak())
+
+    # ── Section 1.4: General Project Overview ──
+    gpo = data.get("general_project_overview", {})
+    if gpo.get("description") or gpo.get("specs"):
+        story.append(Paragraph("1.4 General Project Overview", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+        if gpo.get("description"):
+            story.append(Paragraph(gpo["description"], body_style))
+            story.append(Spacer(1, 8))
+        specs = gpo.get("specs", {})
+        if specs:
+            spec_rows = [[Paragraph('<b>Specification</b>', bold_body), Paragraph('<b>Value</b>', bold_body)]]
+            for k, v in specs.items():
+                spec_rows.append([Paragraph(k, body_style), Paragraph(str(v), body_style)])
+            spec_table = Table(spec_rows, colWidths=[3.5*inch, 3.5*inch])
+            spec_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), light_bg),
+                ('GRID', (0,0), (-1,-1), 0.5, border_color),
+                ('TOPPADDING', (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING', (0,0), (-1,-1), 8),
+            ]))
+            story.append(spec_table)
+        story.append(Spacer(1, 12))
+
+    # ── Section 1.6: Payment Terms ──
+    pt = data.get("payment_terms", {})
+    story.append(Paragraph("1.6 Payment Terms", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+
+    if pt.get("engineering_fee_note"):
+        story.append(Paragraph(pt["engineering_fee_note"], body_style))
+        story.append(Spacer(1, 6))
+
+    if pt.get("billing_description"):
+        story.append(Paragraph(pt["billing_description"], body_style))
+        story.append(Spacer(1, 8))
+
+    net_days = pt.get("net_days", 30)
+    late_fee = pt.get("late_fee_percent", 1.5)
+    retainage = pt.get("retainage_percent", 0)
+    story.append(Paragraph(f"<b>Payment Terms:</b> Net {net_days} days from date of invoice. "
+                           f"Late payments subject to {late_fee}% monthly finance charge.", body_style))
+    if retainage:
+        story.append(Paragraph(f"<b>Retainage:</b> {retainage}% retainage held until final completion.", body_style))
+    story.append(Spacer(1, 8))
+
+    milestones = pt.get("milestones", [])
+    if milestones:
+        story.append(Paragraph("<b>Monthly Progress Billing Schedule:</b>", bold_body))
+        story.append(Spacer(1, 4))
+        ms_rows = [[Paragraph('<b>Milestone</b>', bold_body),
+                    Paragraph('<b>% of Contract</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_CENTER)),
+                    Paragraph('<b>Amount</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT)),
+                    Paragraph('<b>Cumulative</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT))]]
+        cumulative = 0
+        for ms in milestones:
+            pct = ms.get("percent", 0)
+            amt = base_total * pct / 100
+            cumulative += amt
+            ms_rows.append([
+                Paragraph(ms.get("label", ""), body_style),
+                Paragraph(f'{pct}%', ParagraphStyle('R', parent=body_style, alignment=TA_CENTER)),
+                Paragraph(f'${amt:,.2f}', ParagraphStyle('R', parent=body_style, alignment=TA_RIGHT)),
+                Paragraph(f'${cumulative:,.2f}', ParagraphStyle('R', parent=body_style, alignment=TA_RIGHT)),
+            ])
+        ms_rows.append([
+            Paragraph('<b>TOTAL</b>', bold_body),
+            Paragraph('<b>100%</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_CENTER)),
+            Paragraph(f'<b>${base_total:,.2f}</b>', ParagraphStyle('R', parent=bold_body, alignment=TA_RIGHT)),
+            Paragraph('', body_style),
+        ])
+        ms_table = Table(ms_rows, colWidths=[3.2*inch, 1.2*inch, 1.3*inch, 1.3*inch])
+        ms_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), navy),
+            ('TEXTCOLOR', (0,0), (-1,0), white),
+            ('BACKGROUND', (0,-1), (-1,-1), HexColor("#DBEAFE")),
+            ('GRID', (0,0), (-1,-1), 0.5, border_color),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING', (0,0), (-1,-1), 8),
+            ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ('ROWBACKGROUNDS', (0,1), (-1,-2), [white, light_bg]),
+        ]))
+        story.append(ms_table)
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("<i>Invoices are submitted monthly based on percentage of milestones completed "
+                           "during the billing period. Payment is due within the net terms specified above.</i>", small_style))
+    story.append(Spacer(1, 20))
+
+    # ── Signature Block ──
+    sig = data.get("signature_block", {})
+    story.append(Paragraph("Acceptance", h2_style))
+    sig_data = [
+        [Paragraph("<b>TITAN CARPORTS LLC</b>", bold_body), Paragraph("", body_style),
+         Paragraph("<b>CUSTOMER</b>", bold_body), Paragraph("", body_style)],
+        [Paragraph("Signature: ____________________", body_style), Paragraph("", body_style),
+         Paragraph("Signature: ____________________", body_style), Paragraph("", body_style)],
+        [Paragraph(f"Name: {sig.get('company_signer_name','')}", body_style), Paragraph("", body_style),
+         Paragraph(f"Name: {sig.get('customer_signer_name','')}", body_style), Paragraph("", body_style)],
+        [Paragraph(f"Title: {sig.get('company_signer_title','')}", body_style), Paragraph("", body_style),
+         Paragraph(f"Title: {sig.get('customer_signer_title','')}", body_style), Paragraph("", body_style)],
+        [Paragraph("Date: ____________________", body_style), Paragraph("", body_style),
+         Paragraph("Date: ____________________", body_style), Paragraph("", body_style)],
+    ]
+    sig_table = Table(sig_data, colWidths=[3*inch, 0.5*inch, 3*inch, 0.5*inch])
+    sig_table.setStyle(TableStyle([
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LINEBELOW', (0,0), (-1,0), 1, navy),
+    ]))
+    story.append(sig_table)
+    story.append(PageBreak())
+
+    # ── Section 2.1: Standard Qualifications ──
+    quals = data.get("standard_qualifications", [])
+    if quals:
+        story.append(Paragraph("2.1 Standard Qualifications", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+        for i, q in enumerate(quals, 1):
+            story.append(Paragraph(f"{i}. {q}", body_style))
+            story.append(Spacer(1, 3))
+        story.append(Spacer(1, 12))
+
+    # ── Section 2.2: Exclusions (full, categorized) ──
+    if excl:
+        story.append(Paragraph("2.2 Exclusions", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+        num = 1
+        for cat_name, items in excl.items():
+            story.append(Paragraph(f"<b>{cat_name}</b>", h2_style))
+            for item in items:
+                story.append(Paragraph(f"{num}. {item}", body_style))
+                num += 1
+            story.append(Spacer(1, 4))
+        story.append(PageBreak())
+
+    # ── Section 3.1: Conditions of Contract ──
+    conds = data.get("conditions_of_contract", [])
+    if conds:
+        story.append(Paragraph("3.1 Conditions of Contract", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+        for i, c in enumerate(conds, 1):
+            text = c.replace("{{valid_days}}", str(po.get("valid_days", 30)))
+            story.append(Paragraph(f"{i}. {text}", body_style))
+            story.append(Spacer(1, 3))
+        story.append(Spacer(1, 12))
+
+    # ── Section 3.2: Terms of Contract ──
+    terms = data.get("terms_of_contract", [])
+    if terms:
+        story.append(Paragraph("3.2 Terms of Contract", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=border_color, spaceAfter=8))
+        for i, t in enumerate(terms, 1):
+            story.append(Paragraph(f"{i}. {t}", body_style))
+            story.append(Spacer(1, 3))
+
+    # ── Footer ──
+    def add_footer(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        canvas_obj.setFont('Helvetica', 8)
+        canvas_obj.setFillColor(HexColor("#94A3B8"))
+        canvas_obj.drawString(0.75*inch, 0.5*inch,
+            f"Titan Carports LLC — Proposal {po.get('quote_number', job_code)}")
+        canvas_obj.drawRightString(7.75*inch, 0.5*inch,
+            f"Page {doc_obj.page}")
+        canvas_obj.restoreState()
+
+    doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
+    return buf.getvalue()
+
+
+# ─────────────────────────────────────────────
+# AISC QC MODULE HANDLERS
+# ─────────────────────────────────────────────
+
+class QCInspectionTypesHandler(BaseHandler):
+    """GET /api/qc/types — Return AISC inspection type definitions."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "types": AISC_INSPECTION_TYPES}))
+
+
+class QCDataHandler(BaseHandler):
+    """GET/POST /api/qc/data — Load or save QC data for a project."""
+    def get(self):
+        job_code = self.get_query_argument("job_code", "")
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        data = load_project_qc(job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "data": data}))
+
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        data = body.get("data", {})
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        save_project_qc(job_code, data)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+
+class QCInspectionCreateHandler(BaseHandler):
+    """POST /api/qc/inspection/create — Create a new inspection record."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        insp_type = body.get("type", "")
+        if not job_code or not insp_type:
+            self.write(json_encode({"ok": False, "error": "job_code and type required"}))
+            return
+        if insp_type not in AISC_INSPECTION_TYPES:
+            self.write(json_encode({"ok": False, "error": f"Unknown inspection type: {insp_type}"}))
+            return
+
+        qc = load_project_qc(job_code)
+        now = datetime.datetime.now()
+        inspection = {
+            "id": "INS-" + now.strftime("%Y%m%d%H%M%S") + "-" + secrets.token_hex(3).upper(),
+            "type": insp_type,
+            "type_label": AISC_INSPECTION_TYPES[insp_type]["label"],
+            "standard": AISC_INSPECTION_TYPES[insp_type]["standard"],
+            "status": "in_progress",  # in_progress, passed, failed, incomplete
+            "inspector": body.get("inspector", self.get_current_user() or ""),
+            "location": body.get("location", ""),
+            "member_marks": body.get("member_marks", []),
+            "items": {},  # checklist item responses
+            "notes": body.get("notes", ""),
+            "photos": [],
+            "created_at": now.isoformat(),
+            "completed_at": None,
+        }
+        qc["inspections"].append(inspection)
+        save_project_qc(job_code, qc)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "inspection": inspection}))
+
+
+class QCInspectionUpdateHandler(BaseHandler):
+    """POST /api/qc/inspection/update — Update an inspection record (checklist items, status, notes)."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        insp_id = body.get("inspection_id", "")
+        qc = load_project_qc(job_code)
+        found = False
+        for i, insp in enumerate(qc["inspections"]):
+            if insp["id"] == insp_id:
+                for k in ["items", "notes", "status", "location", "member_marks", "photos"]:
+                    if k in body:
+                        qc["inspections"][i][k] = body[k]
+                if body.get("status") in ["passed", "failed"]:
+                    qc["inspections"][i]["completed_at"] = datetime.datetime.now().isoformat()
+                found = True
+                break
+        if not found:
+            self.write(json_encode({"ok": False, "error": "Inspection not found"}))
+            return
+        save_project_qc(job_code, qc)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+
+class NCRCreateHandler(BaseHandler):
+    """POST /api/qc/ncr/create — Create a Non-Conformance Report."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+
+        qc = load_project_qc(job_code)
+        now = datetime.datetime.now()
+        ncr_num = len(qc["ncrs"]) + 1
+        ncr = {
+            "id": f"NCR-{job_code}-{ncr_num:03d}",
+            "number": ncr_num,
+            "severity": body.get("severity", "minor"),  # minor, major, critical
+            "status": "open",
+            "title": body.get("title", ""),
+            "description": body.get("description", ""),
+            "member_marks": body.get("member_marks", []),
+            "inspection_id": body.get("inspection_id", ""),
+            "root_cause": "",
+            "corrective_action": "",
+            "preventive_action": "",
+            "disposition": "",  # rework, accept-as-is, reject, repair
+            "reported_by": body.get("reported_by", self.get_current_user() or ""),
+            "assigned_to": body.get("assigned_to", ""),
+            "photos": [],
+            "created_at": now.isoformat(),
+            "closed_at": None,
+            "history": [
+                {"action": "created", "by": self.get_current_user() or "", "at": now.isoformat()}
+            ],
+        }
+        qc["ncrs"].append(ncr)
+        save_project_qc(job_code, qc)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "ncr": ncr}))
+
+
+class NCRUpdateHandler(BaseHandler):
+    """POST /api/qc/ncr/update — Update an NCR (status, corrective action, disposition, etc.)."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        job_code = body.get("job_code", "")
+        ncr_id = body.get("ncr_id", "")
+        qc = load_project_qc(job_code)
+        found = False
+        for i, ncr in enumerate(qc["ncrs"]):
+            if ncr["id"] == ncr_id:
+                for k in ["severity", "status", "title", "description", "root_cause",
+                           "corrective_action", "preventive_action", "disposition",
+                           "assigned_to", "member_marks", "photos"]:
+                    if k in body:
+                        qc["ncrs"][i][k] = body[k]
+                if body.get("status") == "closed":
+                    qc["ncrs"][i]["closed_at"] = datetime.datetime.now().isoformat()
+                qc["ncrs"][i]["history"].append({
+                    "action": f"updated ({', '.join(k for k in body if k not in ['job_code','ncr_id'])})",
+                    "by": self.get_current_user() or "",
+                    "at": datetime.datetime.now().isoformat(),
+                })
+                found = True
+                break
+        if not found:
+            self.write(json_encode({"ok": False, "error": "NCR not found"}))
+            return
+        save_project_qc(job_code, qc)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+
+# ─────────────────────────────────────────────
+# MATERIAL TRACEABILITY HANDLERS
+# ─────────────────────────────────────────────
+
+class TraceabilityIndexHandler(BaseHandler):
+    """GET /api/traceability — Get full traceability index (all heat numbers)."""
+    def get(self):
+        q = self.get_query_argument("q", "").strip().lower()
+        idx = load_traceability_index()
+        if q:
+            filtered = {}
+            for hn, data in idx["heat_numbers"].items():
+                searchable = " ".join([
+                    hn.lower(),
+                    data.get("material_spec", "").lower(),
+                    data.get("mill_name", "").lower(),
+                    " ".join(c.get("coil_tag", "").lower() for c in data.get("coils", [])),
+                ]).lower()
+                if q in searchable:
+                    filtered[hn] = data
+            idx["heat_numbers"] = filtered
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "index": idx}))
+
+
+class TraceabilityRegisterHandler(BaseHandler):
+    """POST /api/traceability/register — Register a heat number with a coil."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        heat_number = body.get("heat_number", "").strip()
+        coil_tag = body.get("coil_tag", "").strip()
+        if not heat_number or not coil_tag:
+            self.write(json_encode({"ok": False, "error": "heat_number and coil_tag required"}))
+            return
+        result = register_heat_number(
+            heat_number, coil_tag,
+            material_spec=body.get("material_spec", ""),
+            mill_name=body.get("mill_name", ""),
+            mtr_path=body.get("mtr_path", ""),
+        )
+        # Also update the coil in inventory with the heat number
+        try:
+            inv = load_inventory()
+            for c in inv:
+                if c.get("coil_tag", "") == coil_tag:
+                    c["heat_number"] = heat_number
+                    c["material_spec"] = body.get("material_spec", c.get("material_spec", ""))
+                    c["mill_name"] = body.get("mill_name", c.get("mill_name", ""))
+                    break
+            save_inventory(inv)
+        except Exception:
+            pass
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "heat": result}))
+
+
+class TraceabilityAssignHandler(BaseHandler):
+    """POST /api/traceability/assign — Assign a member to a heat number."""
+    required_roles = ["admin", "estimator", "shop"]
+    def post(self):
+        body = json_decode(self.request.body)
+        heat_number = body.get("heat_number", "")
+        job_code = body.get("job_code", "")
+        member_mark = body.get("member_mark", "")
+        if not heat_number or not job_code or not member_mark:
+            self.write(json_encode({"ok": False, "error": "heat_number, job_code, and member_mark required"}))
+            return
+        assign_member_to_heat(heat_number, job_code, member_mark,
+                              description=body.get("description", ""))
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True}))
+
+
+class TraceabilityReportHandler(BaseHandler):
+    """GET /api/traceability/report — Generate a traceability report for a project or heat number."""
+    def get(self):
+        job_code = self.get_query_argument("job_code", "")
+        heat_number = self.get_query_argument("heat_number", "")
+        idx = load_traceability_index()
+
+        if heat_number:
+            # Report for a specific heat number
+            data = idx["heat_numbers"].get(heat_number, {})
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "report_type": "heat_number",
+                "heat_number": heat_number,
+                "data": data,
+            }))
+        elif job_code:
+            # Report for a project — find all heat numbers used
+            qc = load_project_qc(job_code)
+            # Also scan the traceability index for members in this project
+            project_heats = {}
+            for hn, data in idx["heat_numbers"].items():
+                for member in data.get("members", []):
+                    if member.get("job_code") == job_code:
+                        if hn not in project_heats:
+                            project_heats[hn] = {
+                                "material_spec": data.get("material_spec", ""),
+                                "mill_name": data.get("mill_name", ""),
+                                "coils": data.get("coils", []),
+                                "members": [],
+                            }
+                        project_heats[hn]["members"].append(member)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "report_type": "project",
+                "job_code": job_code,
+                "heat_numbers": project_heats,
+                "qc_traceability": qc.get("traceability", []),
+            }))
+        else:
+            self.write(json_encode({"ok": False, "error": "Provide job_code or heat_number"}))
+
+
+class QCPageHandler(BaseHandler):
+    """GET /qc/{job_code} — QC Dashboard page for a project."""
+    def get(self, job_code):
+        self.set_header("Content-Type", "text/html")
+        html = QC_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
+        html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
+        html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
+        self.write(html)
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -1963,6 +3348,40 @@ def get_routes():
         # ── Project Page ──────────────────────────────────────
         (r"/project/([^/]+)",            ProjectPageHandler),
 
+        # ── Customer Database ─────────────────────────────────
+        (r"/customers",                      CustomerPageHandler),
+        (r"/api/customers",                  CustomerListHandler),
+        (r"/api/customers/create",           CustomerCreateHandler),
+        (r"/api/customers/update",           CustomerUpdateHandler),
+        (r"/api/customers/delete",           CustomerDeleteHandler),
+        (r"/api/customers/detail",           CustomerDetailHandler),
+        (r"/api/customers/docs/upload",      CustomerDocUploadHandler),
+        (r"/api/customers/docs",             CustomerDocListHandler),
+        (r"/customer-files/([^/]+)/([^/]+)/([^/]+)", CustomerDocServeHandler),
+
+        # ── Global Search ─────────────────────────────────────
+        (r"/api/search",                     GlobalSearchHandler),
+
+        # ── Quote Editor / PDF Generator ──────────────────────
+        (r"/quote/([^/]+)",                  QuoteEditorPageHandler),
+        (r"/api/quote/data",                 QuoteDataHandler),
+        (r"/api/quote/pdf",                  QuotePDFHandler),
+
+        # ── AISC QC Module ─────────────────────────────────────
+        (r"/qc/([^/]+)",                     QCPageHandler),
+        (r"/api/qc/types",                   QCInspectionTypesHandler),
+        (r"/api/qc/data",                    QCDataHandler),
+        (r"/api/qc/inspection/create",       QCInspectionCreateHandler),
+        (r"/api/qc/inspection/update",       QCInspectionUpdateHandler),
+        (r"/api/qc/ncr/create",              NCRCreateHandler),
+        (r"/api/qc/ncr/update",              NCRUpdateHandler),
+
+        # ── Material Traceability ──────────────────────────────
+        (r"/api/traceability",               TraceabilityIndexHandler),
+        (r"/api/traceability/register",      TraceabilityRegisterHandler),
+        (r"/api/traceability/assign",        TraceabilityAssignHandler),
+        (r"/api/traceability/report",        TraceabilityReportHandler),
+
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),
         (r"/tc/export/excel",            TCExportExcelHandler),
@@ -1982,6 +3401,9 @@ from templates.dashboard import DASHBOARD_HTML
 from templates.sa_calc import SA_CALC_HTML
 from templates.tc_quote import TC_QUOTE_HTML, COIL_DETAIL_HTML
 from templates.project_page import PROJECT_PAGE_HTML
+from templates.customers import CUSTOMERS_HTML
+from templates.quote_editor import QUOTE_EDITOR_HTML
+from templates.qc_page import QC_PAGE_HTML
 
 # Aliases used by handlers
 MAIN_HTML = SA_CALC_HTML

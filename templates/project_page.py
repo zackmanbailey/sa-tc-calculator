@@ -584,12 +584,22 @@ PROJECT_PAGE_HTML = r"""
         </a>
         <nav>
             <a href="/">Dashboard</a>
-            <a href="/sa">SA Calculator</a>
-            <a href="/tc">TC Quote</a>
+            <a href="/sa">Structures America Estimator</a>
+            <a href="/tc">Titan Carports Estimator</a>
+            <a href="/customers">Customers</a>
         </nav>
         <div class="tf-user">
+            <button onclick="openGlobalSearch()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 14px;border-radius:var(--tf-radius);cursor:pointer;font-size:var(--tf-text-sm);margin-right:12px;display:flex;align-items:center;gap:6px;">&#128269; Search <kbd style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;font-size:10px;">Ctrl+K</kbd></button>
             <span id="userName">User</span>
             <a href="/auth/logout" onclick="return confirm('Are you sure you want to logout?')">Logout</a>
+        </div>
+    </div>
+
+    <!-- GLOBAL SEARCH OVERLAY -->
+    <div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:300;align-items:flex-start;justify-content:center;padding-top:100px;">
+        <div style="width:600px;max-width:90vw;background:var(--tf-surface);border-radius:var(--tf-radius-xl);box-shadow:var(--tf-shadow-lg);overflow:hidden;">
+            <input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:var(--tf-text-lg);outline:none;border-bottom:1px solid var(--tf-border);" oninput="_doGS(this.value)">
+            <div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px;"><div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:var(--tf-text-sm);">Type to search...</div></div>
         </div>
     </div>
 
@@ -606,8 +616,10 @@ PROJECT_PAGE_HTML = r"""
                 </div>
             </div>
             <div class="header-actions">
-                <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openInSACalc()">Open in SA Calc</button>
-                <button class="tf-btn tf-btn-amber tf-btn-sm" onclick="openInTCQuote()">Open in TC Quote</button>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openInSACalc()">Open in SA Estimator</button>
+                <button class="tf-btn tf-btn-amber tf-btn-sm" onclick="openInTCQuote()">Open in TC Estimator</button>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#059669;" onclick="openQuoteEditor()">&#128196; Quote Editor</button>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#7C3AED;" onclick="openQCDashboard()">&#128203; QC Dashboard</button>
                 <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="duplicateProject()">Duplicate</button>
                 <button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="archiveProject()" id="archiveBtn">Archive</button>
             </div>
@@ -672,7 +684,7 @@ PROJECT_PAGE_HTML = r"""
                     <div class="intel-header">Project Intelligence</div>
                     <div class="intel-body" id="intelBody">
                         <div style="text-align: center; padding: var(--tf-sp-4); color: var(--tf-gray-400); font-size: var(--tf-text-sm);">
-                            Run a calculation in SA Calc or TC Quote to populate intelligence data.
+                            Run a calculation in SA Estimator or TC Estimator to populate intelligence data.
                         </div>
                     </div>
                 </div>
@@ -1250,7 +1262,7 @@ PROJECT_PAGE_HTML = r"""
             }
 
             if (!html) {
-                html = '<div style="text-align:center;padding:var(--tf-sp-4);color:var(--tf-gray-400);font-size:var(--tf-text-sm);">Run a calculation in SA Calc or TC Quote to populate intelligence data.</div>';
+                html = '<div style="text-align:center;padding:var(--tf-sp-4);color:var(--tf-gray-400);font-size:var(--tf-text-sm);">Run a calculation in SA Estimator or TC Estimator to populate intelligence data.</div>';
             } else {
                 // Add suggestions
                 html += '<div class="intel-suggestions"><h4>Suggestions</h4>';
@@ -1298,6 +1310,14 @@ PROJECT_PAGE_HTML = r"""
 
         function openInTCQuote() {
             window.location.href = '/tc?project=' + encodeURIComponent(JOB_CODE);
+        }
+
+        function openQuoteEditor() {
+            window.location.href = '/quote/' + encodeURIComponent(JOB_CODE);
+        }
+
+        function openQCDashboard() {
+            window.location.href = '/qc/' + encodeURIComponent(JOB_CODE);
         }
 
         function duplicateProject() {
@@ -1377,6 +1397,16 @@ PROJECT_PAGE_HTML = r"""
             if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / 1048576).toFixed(1) + ' MB';
         }
+
+        // Global Search
+        var _gst=null;
+        function openGlobalSearch(){document.getElementById('globalSearchOverlay').style.display='flex';document.getElementById('globalSearchInput').value='';document.getElementById('globalSearchInput').focus();}
+        function _closeGS(){document.getElementById('globalSearchOverlay').style.display='none';}
+        document.getElementById('globalSearchOverlay').addEventListener('click',function(e){if(e.target.id==='globalSearchOverlay')_closeGS();});
+        document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();openGlobalSearch();}if(e.key==='Escape')_closeGS();});
+        function _doGS(q){clearTimeout(_gst);if(!q||q.length<2){document.getElementById('globalSearchResults').innerHTML='<div style="padding:20px;text-align:center;color:var(--tf-gray-400);">Type to search...</div>';return;}
+        _gst=setTimeout(function(){fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){var c=document.getElementById('globalSearchResults');if(!d.results||!d.results.length){c.innerHTML='<div style="padding:20px;text-align:center;color:var(--tf-gray-400);">No results</div>';return;}
+        var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'var(--tf-blue-light)\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--tf-blue-light);">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:var(--tf-text-sm);color:var(--tf-gray-900);">'+r.title+'</div><div style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
     </script>
 </body>
 </html>

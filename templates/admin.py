@@ -437,8 +437,8 @@ ADMIN_HTML = r"""
             <div class="nav-logo">TITANFORGE</div>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
-                <a href="/sa">SA Calculator</a>
-                <a href="/tc">TC Quote</a>
+                <a href="/sa">Structures America Estimator</a>
+                <a href="/tc">Titan Carports Estimator</a>
                 <a href="/inventory">Inventory</a>
             </div>
         </div>

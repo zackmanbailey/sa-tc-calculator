@@ -758,11 +758,15 @@ DASHBOARD_HTML = r"""
 
         <nav>
             <a href="/" class="active">Dashboard</a>
-            <a href="/sa">SA Calculator</a>
-            <a href="/tc">TC Quote</a>
+            <a href="/sa">Structures America Estimator</a>
+            <a href="/tc">Titan Carports Estimator</a>
+            <a href="/customers">Customers</a>
         </nav>
 
         <div class="tf-user">
+            <button onclick="openGlobalSearch()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 14px;border-radius:var(--tf-radius);cursor:pointer;font-size:var(--tf-text-sm);margin-right:12px;display:flex;align-items:center;gap:6px;">
+                &#128269; Search <kbd style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;font-size:10px;margin-left:4px;">Ctrl+K</kbd>
+            </button>
             <div class="inventory-alert" id="inventoryAlert" style="display: none;">
                 <span style="font-size: 1.2rem;">&#128276;</span>
                 <span class="alert-badge" id="alertCount">0</span>
@@ -771,6 +775,18 @@ DASHBOARD_HTML = r"""
                 <span id="userName">User</span>
                 <span class="role-badge" id="userRole">USER</span>
                 <button class="logout-btn" onclick="handleLogout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GLOBAL SEARCH OVERLAY -->
+    <div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:300;align-items:flex-start;justify-content:center;padding-top:100px;">
+        <div style="width:600px;max-width:90vw;background:var(--tf-surface);border-radius:var(--tf-radius-xl);box-shadow:var(--tf-shadow-lg);overflow:hidden;">
+            <input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..."
+                   style="width:100%;padding:18px 20px;border:none;font-size:var(--tf-text-lg);outline:none;border-bottom:1px solid var(--tf-border);"
+                   oninput="doGlobalSearch(this.value)">
+            <div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:var(--tf-sp-2);">
+                <div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:var(--tf-text-sm);">Type to search across everything...</div>
             </div>
         </div>
     </div>
@@ -811,50 +827,251 @@ DASHBOARD_HTML = r"""
         <!-- QUICK ACTIONS -->
         <div class="quick-actions">
             <button class="tf-btn tf-btn-primary" onclick="openNewProjectForm()" id="newProjectBtn">+ New Project</button>
-            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/sa'">SA Calculator</button>
-            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/tc'">TC Quote</button>
+            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/sa'">Structures America Estimator</button>
+            <button class="tf-btn tf-btn-outline" onclick="window.location.href='/tc'">Titan Carports Estimator</button>
             <label class="filter-toggle" style="margin-left: auto;">
                 <input type="checkbox" id="showCompletedToggle" onchange="toggleCompleted()">
                 Show completed
             </label>
         </div>
 
-        <!-- INVENTORY ALERTS -->
-        <div class="alerts-section" id="alertsSection">
+        <!-- SECTION TABS: Projects | Inventory -->
+        <div style="display:flex;gap:var(--tf-sp-1);border-bottom:2px solid var(--tf-border);margin-bottom:var(--tf-sp-5);">
+            <button class="toggle-btn active" id="tabProjects" onclick="switchSection('projects')" style="padding:10px 20px;font-size:var(--tf-text-sm);font-weight:600;color:var(--tf-gray-500);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;">Projects</button>
+            <button class="toggle-btn" id="tabInventory" onclick="switchSection('inventory')" style="padding:10px 20px;font-size:var(--tf-text-sm);font-weight:600;color:var(--tf-gray-500);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;">Inventory <span id="invAlertDot" style="display:none;background:var(--tf-danger);color:#fff;border-radius:50%;font-size:10px;padding:1px 6px;margin-left:4px;font-weight:700;">0</span></button>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- PROJECTS SECTION                                -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="sectionProjects">
+
+            <!-- INVENTORY ALERTS (condensed) -->
+            <div class="alerts-section" id="alertsSection">
+                <div class="section-header">
+                    <h2 class="section-title">Inventory Alerts</h2>
+                </div>
+                <div class="alerts-grid" id="alertsGrid"></div>
+            </div>
+
+            <!-- PROJECT PIPELINE -->
             <div class="section-header">
-                <h2 class="section-title">Inventory Alerts</h2>
+                <h2 class="section-title">Project Pipeline</h2>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" id="kanbanToggle" onclick="switchView('kanban')">Board</button>
+                    <button class="toggle-btn" id="tableToggle" onclick="switchView('table')">Table</button>
+                </div>
             </div>
-            <div class="alerts-grid" id="alertsGrid"></div>
+
+            <!-- KANBAN VIEW -->
+            <div id="kanbanView" class="kanban-container"></div>
+
+            <!-- TABLE VIEW -->
+            <div id="tableView" class="table-container" style="display: none;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('jobCode')">Job Code</th>
+                            <th onclick="sortTable('name')">Project</th>
+                            <th onclick="sortTable('customer')">Customer</th>
+                            <th onclick="sortTable('stage')">Stage</th>
+                            <th class="price" onclick="sortTable('price')">Docs</th>
+                            <th onclick="sortTable('updated')">Updated</th>
+                            <th onclick="sortTable('version')">Ver</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
         </div>
 
-        <!-- PROJECT PIPELINE -->
-        <div class="section-header">
-            <h2 class="section-title">Project Pipeline</h2>
-            <div class="view-toggle">
-                <button class="toggle-btn active" id="kanbanToggle" onclick="switchView('kanban')">Board</button>
-                <button class="toggle-btn" id="tableToggle" onclick="switchView('table')">Table</button>
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- INVENTORY SECTION                               -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <div id="sectionInventory" style="display:none;">
+
+            <!-- Inventory Actions Bar -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--tf-sp-5);flex-wrap:wrap;gap:var(--tf-sp-3);">
+                <h2 class="section-title">Steel Coil Inventory</h2>
+                <div style="display:flex;gap:var(--tf-sp-2);">
+                    <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openAddCoilModal()">+ Add Coil</button>
+                    <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="openAddCertModal()">Upload Mill Cert</button>
+                </div>
+            </div>
+
+            <!-- Inventory Stats -->
+            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:var(--tf-sp-5);">
+                <div class="stat-card">
+                    <div class="stat-icon blue">&#128230;</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Total Coils</div>
+                        <div class="stat-value" id="invTotalCoils">&mdash;</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">&#9989;</div>
+                    <div class="stat-info">
+                        <div class="stat-label">In Stock</div>
+                        <div class="stat-value" id="invInStock">&mdash;</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon amber">&#9888;</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Low Stock</div>
+                        <div class="stat-value" id="invLowStock">&mdash;</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:var(--tf-danger-bg);">&#10060;</div>
+                    <div class="stat-info">
+                        <div class="stat-label">Out of Stock</div>
+                        <div class="stat-value" id="invOutStock">&mdash;</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Table -->
+            <div class="table-container">
+                <table class="table" id="invTable">
+                    <thead>
+                        <tr>
+                            <th>Coil ID</th>
+                            <th>Description</th>
+                            <th>Gauge</th>
+                            <th>Width</th>
+                            <th>Color</th>
+                            <th>Stock (lbs)</th>
+                            <th>Min Stock</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invTableBody"></tbody>
+                </table>
             </div>
         </div>
 
-        <!-- KANBAN VIEW -->
-        <div id="kanbanView" class="kanban-container"></div>
+    </div>
 
-        <!-- TABLE VIEW -->
-        <div id="tableView" class="table-container" style="display: none;">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th onclick="sortTable('jobCode')">Job Code</th>
-                        <th onclick="sortTable('name')">Project</th>
-                        <th onclick="sortTable('customer')">Customer</th>
-                        <th onclick="sortTable('stage')">Stage</th>
-                        <th class="price" onclick="sortTable('price')">Sell Price</th>
-                        <th onclick="sortTable('updated')">Updated</th>
-                        <th onclick="sortTable('version')">Ver</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody"></tbody>
-            </table>
+    <!-- ADD COIL MODAL -->
+    <div class="modal" id="addCoilModal">
+        <div class="modal-content" style="max-width:600px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New Coil</h2>
+                <button class="close-btn" onclick="closeAddCoilModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form onsubmit="return submitNewCoil(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Coil ID *</label>
+                            <input type="text" id="newCoilId" placeholder="e.g. c_section_29" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Description *</label>
+                            <input type="text" id="newCoilDesc" placeholder="e.g. 29ga White" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Gauge</label>
+                            <input type="text" id="newCoilGauge" placeholder="e.g. 29">
+                        </div>
+                        <div class="form-group">
+                            <label>Width</label>
+                            <input type="text" id="newCoilWidth" placeholder="e.g. 36 in">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Color</label>
+                            <input type="text" id="newCoilColor" placeholder="e.g. White">
+                        </div>
+                        <div class="form-group">
+                            <label>Stock (lbs) *</label>
+                            <input type="number" id="newCoilStock" placeholder="0" required min="0">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Min Stock (lbs)</label>
+                            <input type="number" id="newCoilMinStock" placeholder="2000" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Cost per lb ($)</label>
+                            <input type="number" id="newCoilCostLb" placeholder="0.50" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="tf-btn tf-btn-outline" onclick="closeAddCoilModal()">Cancel</button>
+                        <button type="submit" class="tf-btn tf-btn-primary">Add Coil</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD CERT MODAL -->
+    <div class="modal" id="addCertModal">
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Upload Mill Certificate</h2>
+                <button class="close-btn" onclick="closeAddCertModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Coil</label>
+                    <select id="certCoilSelect" style="width:100%;padding:10px 12px;font-family:var(--tf-font);font-size:var(--tf-text-base);border:1px solid var(--tf-border);border-radius:var(--tf-radius);outline:none;"></select>
+                </div>
+                <div class="form-group">
+                    <label>Heat Number</label>
+                    <input type="text" id="certHeatNum" placeholder="e.g. H-2026-001" style="width:100%;padding:10px 12px;font-family:var(--tf-font);font-size:var(--tf-text-base);border:1px solid var(--tf-border);border-radius:var(--tf-radius);outline:none;">
+                </div>
+                <div class="form-group">
+                    <label>Certificate File (PDF/Image)</label>
+                    <input type="file" id="certFile" accept=".pdf,.jpg,.png,.gif" style="width:100%;padding:10px;font-size:var(--tf-text-sm);">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="tf-btn tf-btn-outline" onclick="closeAddCertModal()">Cancel</button>
+                    <button type="button" class="tf-btn tf-btn-primary" onclick="submitCert()">Upload Certificate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT STOCK MODAL -->
+    <div class="modal" id="editStockModal">
+        <div class="modal-content" style="max-width:400px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Update Stock</h2>
+                <button class="close-btn" onclick="closeEditStockModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Coil</label>
+                    <input type="text" id="editStockCoilName" readonly style="background:var(--tf-gray-50);font-weight:600;">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Current Stock (lbs)</label>
+                        <input type="number" id="editStockCurrent" readonly style="background:var(--tf-gray-50);">
+                    </div>
+                    <div class="form-group">
+                        <label>New Stock (lbs)</label>
+                        <input type="number" id="editStockNew" min="0" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Min Stock (lbs)</label>
+                    <input type="number" id="editStockMin" min="0">
+                </div>
+                <input type="hidden" id="editStockCoilId">
+                <div class="form-actions">
+                    <button type="button" class="tf-btn tf-btn-outline" onclick="closeEditStockModal()">Cancel</button>
+                    <button type="button" class="tf-btn tf-btn-primary" onclick="submitStockUpdate()">Update</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1009,6 +1226,15 @@ DASHBOARD_HTML = r"""
             });
             document.getElementById('newProjectModal').addEventListener('click', function(e) {
                 if (e.target === this) closeNewProjectModal();
+            });
+            document.getElementById('addCoilModal').addEventListener('click', function(e) {
+                if (e.target === this) closeAddCoilModal();
+            });
+            document.getElementById('addCertModal').addEventListener('click', function(e) {
+                if (e.target === this) closeAddCertModal();
+            });
+            document.getElementById('editStockModal').addEventListener('click', function(e) {
+                if (e.target === this) closeEditStockModal();
             });
         }
 
@@ -1379,6 +1605,306 @@ DASHBOARD_HTML = r"""
         function handleLogout() {
             if (confirm('Are you sure you want to logout?')) window.location.href = '/auth/logout';
         }
+
+        // ══════════════════════════════════════════════
+        // SECTION SWITCHING (Projects / Inventory)
+        // ══════════════════════════════════════════════
+        var currentSection = 'projects';
+
+        function switchSection(section) {
+            currentSection = section;
+            document.getElementById('sectionProjects').style.display = section === 'projects' ? '' : 'none';
+            document.getElementById('sectionInventory').style.display = section === 'inventory' ? '' : 'none';
+
+            document.getElementById('tabProjects').style.color = section === 'projects' ? 'var(--tf-blue)' : 'var(--tf-gray-500)';
+            document.getElementById('tabProjects').style.borderBottomColor = section === 'projects' ? 'var(--tf-blue)' : 'transparent';
+            document.getElementById('tabInventory').style.color = section === 'inventory' ? 'var(--tf-blue)' : 'var(--tf-gray-500)';
+            document.getElementById('tabInventory').style.borderBottomColor = section === 'inventory' ? 'var(--tf-blue)' : 'transparent';
+
+            if (section === 'inventory') loadFullInventory();
+        }
+
+        // ══════════════════════════════════════════════
+        // INVENTORY MANAGEMENT
+        // ══════════════════════════════════════════════
+        var inventoryData = {};
+
+        function loadFullInventory() {
+            fetch('/api/inventory')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    inventoryData = data.coils || {};
+                    renderInventoryTable();
+                    updateInventoryStats();
+                })
+                .catch(function(e) { console.error('Inventory error:', e); });
+        }
+
+        function updateInventoryStats() {
+            var coils = Object.values(inventoryData);
+            var total = coils.length;
+            var outCount = 0, lowCount = 0, okCount = 0;
+
+            coils.forEach(function(c) {
+                var avail = (c.stock_lbs || 0) - (c.committed_lbs || 0);
+                var minStock = c.min_stock_lbs || 2000;
+                if (avail <= 0) outCount++;
+                else if (avail < minStock) lowCount++;
+                else okCount++;
+            });
+
+            document.getElementById('invTotalCoils').textContent = total;
+            document.getElementById('invInStock').textContent = okCount;
+            document.getElementById('invLowStock').textContent = lowCount;
+            document.getElementById('invOutStock').textContent = outCount;
+
+            // Update alert dot on tab
+            var alertTotal = outCount + lowCount;
+            var dot = document.getElementById('invAlertDot');
+            if (alertTotal > 0) {
+                dot.textContent = alertTotal;
+                dot.style.display = 'inline';
+            } else {
+                dot.style.display = 'none';
+            }
+        }
+
+        function renderInventoryTable() {
+            var tbody = document.getElementById('invTableBody');
+            tbody.innerHTML = '';
+            var ids = Object.keys(inventoryData).sort();
+
+            if (ids.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--tf-gray-400);">No coils in inventory. Click "+ Add Coil" to get started.</td></tr>';
+                return;
+            }
+
+            ids.forEach(function(id) {
+                var c = inventoryData[id];
+                var avail = (c.stock_lbs || 0) - (c.committed_lbs || 0);
+                var minStock = c.min_stock_lbs || 2000;
+                var statusClass, statusText;
+
+                if (avail <= 0) {
+                    statusClass = 'tf-badge-danger';
+                    statusText = 'OUT';
+                } else if (avail < minStock) {
+                    statusClass = 'tf-badge-amber';
+                    statusText = 'LOW';
+                } else {
+                    statusClass = 'tf-badge-success';
+                    statusText = 'OK';
+                }
+
+                var row = document.createElement('tr');
+                row.style.cursor = 'pointer';
+                row.onclick = function(e) {
+                    if (e.target.tagName === 'BUTTON') return;
+                    window.location.href = '/coil/' + encodeURIComponent(id);
+                };
+
+                row.innerHTML = '<td><strong>' + esc(id) + '</strong></td>'
+                    + '<td>' + esc(c.description || c.name || '') + '</td>'
+                    + '<td>' + esc(c.gauge || '') + '</td>'
+                    + '<td>' + esc(c.width || '') + '</td>'
+                    + '<td>' + esc(c.color || '') + '</td>'
+                    + '<td style="font-weight:700;">' + Number(c.stock_lbs || 0).toLocaleString() + '</td>'
+                    + '<td>' + Number(minStock).toLocaleString() + '</td>'
+                    + '<td><span class="tf-badge ' + statusClass + '">' + statusText + '</span></td>'
+                    + '<td>'
+                    + '<button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="event.stopPropagation();openEditStock(\'' + esc(id) + '\')">Edit</button>'
+                    + '<button class="tf-btn tf-btn-ghost tf-btn-sm" style="color:var(--tf-danger);" onclick="event.stopPropagation();deleteCoil(\'' + esc(id) + '\')">Delete</button>'
+                    + '</td>';
+
+                tbody.appendChild(row);
+            });
+        }
+
+        // ── Add Coil Modal ────────────────────────────
+        function openAddCoilModal() {
+            document.getElementById('newCoilId').value = '';
+            document.getElementById('newCoilDesc').value = '';
+            document.getElementById('newCoilGauge').value = '';
+            document.getElementById('newCoilWidth').value = '';
+            document.getElementById('newCoilColor').value = '';
+            document.getElementById('newCoilStock').value = '';
+            document.getElementById('newCoilMinStock').value = '2000';
+            document.getElementById('newCoilCostLb').value = '';
+            document.getElementById('addCoilModal').classList.add('show');
+        }
+
+        function closeAddCoilModal() {
+            document.getElementById('addCoilModal').classList.remove('show');
+        }
+
+        function submitNewCoil(e) {
+            e.preventDefault();
+            var coilId = document.getElementById('newCoilId').value.trim();
+            var desc = document.getElementById('newCoilDesc').value.trim();
+            if (!coilId || !desc) return false;
+
+            var payload = {};
+            payload[coilId] = {
+                name: desc,
+                description: desc,
+                gauge: document.getElementById('newCoilGauge').value.trim(),
+                width: document.getElementById('newCoilWidth').value.trim(),
+                color: document.getElementById('newCoilColor').value.trim(),
+                stock_lbs: parseFloat(document.getElementById('newCoilStock').value) || 0,
+                committed_lbs: 0,
+                min_stock_lbs: parseFloat(document.getElementById('newCoilMinStock').value) || 2000,
+                cost_per_lb: parseFloat(document.getElementById('newCoilCostLb').value) || 0,
+                mill_certs: [],
+            };
+
+            fetch('/api/inventory/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coils: payload, merge: true })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok || data.saved) {
+                    closeAddCoilModal();
+                    loadFullInventory();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            })
+            .catch(function(e) { alert('Error: ' + e.message); });
+
+            return false;
+        }
+
+        // ── Edit Stock Modal ──────────────────────────
+        function openEditStock(coilId) {
+            var c = inventoryData[coilId];
+            if (!c) return;
+            document.getElementById('editStockCoilId').value = coilId;
+            document.getElementById('editStockCoilName').value = coilId + ' — ' + (c.description || c.name || '');
+            document.getElementById('editStockCurrent').value = c.stock_lbs || 0;
+            document.getElementById('editStockNew').value = c.stock_lbs || 0;
+            document.getElementById('editStockMin').value = c.min_stock_lbs || 2000;
+            document.getElementById('editStockModal').classList.add('show');
+        }
+
+        function closeEditStockModal() {
+            document.getElementById('editStockModal').classList.remove('show');
+        }
+
+        function submitStockUpdate() {
+            var coilId = document.getElementById('editStockCoilId').value;
+            var newStock = parseFloat(document.getElementById('editStockNew').value) || 0;
+            var minStock = parseFloat(document.getElementById('editStockMin').value) || 0;
+
+            fetch('/api/inventory/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coil_id: coilId, stock_lbs: newStock, min_stock_lbs: minStock })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                closeEditStockModal();
+                loadFullInventory();
+            })
+            .catch(function(e) { alert('Error: ' + e.message); });
+        }
+
+        // ── Delete Coil ───────────────────────────────
+        function deleteCoil(coilId) {
+            if (!confirm('Delete coil "' + coilId + '"? This cannot be undone.')) return;
+            fetch('/api/inventory/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coil_id: coilId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) loadFullInventory();
+                else alert('Error: ' + (data.error || 'Unknown'));
+            })
+            .catch(function(e) { alert('Error: ' + e.message); });
+        }
+
+        // ── Mill Cert Modal ───────────────────────────
+        function openAddCertModal() {
+            var sel = document.getElementById('certCoilSelect');
+            sel.innerHTML = '';
+            Object.keys(inventoryData).sort().forEach(function(id) {
+                var opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = id + ' — ' + (inventoryData[id].description || inventoryData[id].name || '');
+                sel.appendChild(opt);
+            });
+            document.getElementById('certHeatNum').value = '';
+            document.getElementById('certFile').value = '';
+            document.getElementById('addCertModal').classList.add('show');
+        }
+
+        function closeAddCertModal() {
+            document.getElementById('addCertModal').classList.remove('show');
+        }
+
+        function submitCert() {
+            var coilId = document.getElementById('certCoilSelect').value;
+            var heatNum = document.getElementById('certHeatNum').value.trim();
+            var fileInput = document.getElementById('certFile');
+
+            if (!coilId) { alert('Select a coil.'); return; }
+            if (!fileInput.files.length) { alert('Select a certificate file.'); return; }
+
+            var formData = new FormData();
+            formData.append('coil_id', coilId);
+            formData.append('heat_num', heatNum);
+            formData.append('file', fileInput.files[0]);
+
+            fetch('/api/inventory/cert/upload', { method: 'POST', body: formData })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    closeAddCertModal();
+                    loadFullInventory();
+                    alert('Certificate uploaded for ' + coilId);
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            })
+            .catch(function(e) { alert('Upload error: ' + e.message); });
+        }
+    // ── Global Search ──
+    var _gsTimeout = null;
+    function openGlobalSearch() {
+        document.getElementById('globalSearchOverlay').style.display = 'flex';
+        document.getElementById('globalSearchInput').value = '';
+        document.getElementById('globalSearchInput').focus();
+        document.getElementById('globalSearchResults').innerHTML = '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:var(--tf-text-sm);">Type to search across everything...</div>';
+    }
+    function closeGlobalSearch() { document.getElementById('globalSearchOverlay').style.display = 'none'; }
+    document.getElementById('globalSearchOverlay').addEventListener('click', function(e) { if (e.target.id === 'globalSearchOverlay') closeGlobalSearch(); });
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openGlobalSearch(); }
+        if (e.key === 'Escape') closeGlobalSearch();
+    });
+    function doGlobalSearch(q) {
+        clearTimeout(_gsTimeout);
+        if (!q || q.length < 2) { document.getElementById('globalSearchResults').innerHTML = '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);">Type to search...</div>'; return; }
+        _gsTimeout = setTimeout(function() {
+            fetch('/api/search?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var c = document.getElementById('globalSearchResults');
+                if (!d.results || !d.results.length) { c.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);">No results found</div>'; return; }
+                var icons = {project:'&#128204;', customer:'&#128100;', inventory:'&#128230;'};
+                c.innerHTML = d.results.map(function(r) {
+                    return '<a href="' + r.url + '" style="text-decoration:none;color:inherit;">'
+                        + '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--tf-radius);cursor:pointer;" onmouseover="this.style.background=\'var(--tf-blue-light)\'" onmouseout="this.style.background=\'\'">'
+                        + '<div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--tf-blue-light);">' + (icons[r.type]||'&#128196;') + '</div>'
+                        + '<div><div style="font-weight:600;font-size:var(--tf-text-sm);color:var(--tf-gray-900);">' + r.title + '</div>'
+                        + '<div style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);">' + (r.subtitle||'') + '</div></div></div></a>';
+                }).join('');
+            });
+        }, 300);
+    }
     </script>
 </body>
 </html>
