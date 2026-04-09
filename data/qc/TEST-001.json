@@ -1,0 +1,19 @@
+{
+  "inspections": [],
+  "ncrs": [],
+  "traceability": [
+    {
+      "heat_number": "H-123456",
+      "member_mark": "C1",
+      "description": "W12x26 Column",
+      "assigned_at": "2026-04-09T08:45:51.465977"
+    },
+    {
+      "heat_number": "H-123456",
+      "member_mark": "B2",
+      "description": "W16x31 Beam",
+      "assigned_at": "2026-04-09T08:45:51.466118"
+    }
+  ],
+  "updated_at": "2026-04-09T08:45:51.466125"
+}

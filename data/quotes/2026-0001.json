@@ -1,0 +1,158 @@
+{
+  "project_overview": {
+    "company_name": "Titan Carports LLC",
+    "company_address": "",
+    "company_phone": "",
+    "company_email": "",
+    "estimator_name": "",
+    "estimator_phone": "",
+    "estimator_email": "",
+    "customer_name": "Tesuque Tribal Pueblo",
+    "customer_company": "",
+    "job_address": "",
+    "job_city": "",
+    "job_state": "",
+    "job_zip": "",
+    "project_description": "",
+    "quote_date": "",
+    "quote_number": "2026-0001",
+    "valid_days": 30
+  },
+  "pricing": {
+    "base_items": [
+      {
+        "description": "Steel Canopies",
+        "amount": 233086
+      },
+      {
+        "description": "Engineering",
+        "amount": 6500
+      }
+    ],
+    "options": [],
+    "base_total": 239586
+  },
+  "inclusions": [
+    "Fabrication of steel components per approved engineering drawings",
+    "Delivery to job site",
+    "Standard primer finish on all steel",
+    "Stamped engineering drawings by licensed PE"
+  ],
+  "exclusions_categorized": {
+    "Site Work": [
+      "Grading, compaction, or earthwork",
+      "Excavation or backfill",
+      "Erosion control or SWPPP",
+      "Demolition of existing structures"
+    ],
+    "Electrical": [
+      "Electrical work of any kind",
+      "Wiring, conduit, or panel upgrades",
+      "Lighting or lighting design"
+    ],
+    "Permits & Inspections": [
+      "Building permits and associated fees",
+      "Inspections beyond standard structural",
+      "Special inspections (welding, concrete, soils)"
+    ],
+    "Structural": [
+      "Foundation design (by others)",
+      "Concrete work of any kind",
+      "Masonry or CMU work",
+      "Wood framing or carpentry"
+    ],
+    "MEP": [
+      "Plumbing of any kind",
+      "HVAC systems or ductwork",
+      "Fire protection or sprinkler systems"
+    ],
+    "General": [
+      "Landscaping or irrigation",
+      "Fencing or gates",
+      "Signage",
+      "Painting beyond standard primer",
+      "Sales tax (unless specified)",
+      "Prevailing wage labor",
+      "Any work not specifically included in this proposal"
+    ]
+  },
+  "general_project_overview": {
+    "description": "",
+    "specs": {},
+    "photos": []
+  },
+  "payment_terms": {
+    "method": "monthly_milestone",
+    "engineering_fee_note": "Engineering fees are due upon contract execution and are non-refundable.",
+    "billing_description": "Progress billings will be submitted monthly based on the percentage of work completed during the billing period. Each invoice will reflect the actual milestones achieved and corresponding percentage of the total contract value.",
+    "milestones": [
+      {
+        "label": "Mobilization & Material Procurement",
+        "percent": 25
+      },
+      {
+        "label": "Steel Fabrication Complete",
+        "percent": 25
+      },
+      {
+        "label": "Steel Erection Complete",
+        "percent": 20
+      },
+      {
+        "label": "Panel Installation Complete",
+        "percent": 15
+      },
+      {
+        "label": "Punch List & Final Completion",
+        "percent": 10
+      },
+      {
+        "label": "Final Acceptance & Close-out",
+        "percent": 5
+      }
+    ],
+    "net_days": 30,
+    "late_fee_percent": 1.5,
+    "retainage_percent": 0
+  },
+  "signature_block": {
+    "company_signer_name": "",
+    "company_signer_title": "",
+    "customer_signer_name": "",
+    "customer_signer_title": ""
+  },
+  "standard_qualifications": [
+    "All work to be performed during normal business hours (Mon-Fri 7AM-5PM).",
+    "Pricing is based on current material costs and is subject to change if not accepted within the validity period.",
+    "Customer to provide clear and level access to the job site for delivery vehicles and equipment.",
+    "Any changes to the scope of work after contract execution may result in additional charges.",
+    "Titan Carports LLC is not responsible for delays caused by weather, material shortages, or other conditions beyond our control.",
+    "Engineering is based on site-specific wind and snow loads per local building code requirements.",
+    "All structural steel to meet ASTM A500 Grade B/C or ASTM A572 Grade 50 specifications."
+  ],
+  "conditions_of_contract": [
+    "This proposal is valid for {{valid_days}} days from the date of issue.",
+    "A signed copy of this proposal along with the required deposit constitutes a binding contract.",
+    "All engineering drawings must be approved by the customer before fabrication begins.",
+    "Changes to approved engineering drawings may result in additional charges and schedule delays.",
+    "Customer is responsible for ensuring all site conditions are suitable for installation.",
+    "Titan Carports LLC shall not be liable for damage to underground utilities not properly marked.",
+    "Payment terms are net due upon receipt of invoice unless otherwise specified.",
+    "Late payments are subject to a 1.5% monthly finance charge.",
+    "Customer is responsible for obtaining all necessary permits and approvals.",
+    "Titan Carports LLC warrants all workmanship for a period of one (1) year from date of completion."
+  ],
+  "terms_of_contract": [
+    "All materials remain property of Titan Carports LLC until paid in full.",
+    "Customer agrees to provide adequate storage area for materials upon delivery.",
+    "Work stoppage due to customer delay may result in additional mobilization charges.",
+    "Titan Carports LLC reserves the right to subcontract portions of the work.",
+    "Neither party shall be liable for delays due to force majeure events.",
+    "Any disputes shall be resolved through binding arbitration in the state of New Mexico.",
+    "This agreement constitutes the entire understanding between the parties.",
+    "Modifications must be in writing and signed by both parties.",
+    "Concrete costs are based on standard mix design. Specialty mixes are additional.",
+    "Drilling costs are based on standard soil conditions. Rock or unusual conditions may incur additional charges."
+  ],
+  "updated_at": "2026-04-09T08:32:43.258614"
+}

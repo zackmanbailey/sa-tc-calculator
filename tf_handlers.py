@@ -606,6 +606,27 @@ class BaseHandler(tornado.web.RequestHandler):
                 self.write(json_encode({"error": "Insufficient permissions for this action"}))
                 raise tornado.web.Finish()
 
+    def render_with_nav(self, html: str, active_page: str = "",
+                        job_code: str = ""):
+        """Render HTML with the unified sidebar navigation injected.
+
+        Args:
+            html: Raw HTML string from template
+            active_page: Which sidebar item to highlight
+            job_code: If set, shows project sub-nav in sidebar
+        """
+        from templates.shared_nav import inject_nav
+
+        user = self.get_current_user() or "local"
+        role = self.get_user_role() or "admin"
+        users = load_users()
+        display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
+
+        result = inject_nav(html, active_page=active_page, job_code=job_code,
+                            user_name=display, user_role=role)
+        self.set_header("Content-Type", "text/html")
+        self.write(result)
+
 
 # ─────────────────────────────────────────────
 # AUTH HANDLERS
@@ -651,8 +672,7 @@ class AdminPageHandler(BaseHandler):
     required_roles = ["admin"]
 
     def get(self):
-        self.set_header("Content-Type", "text/html")
-        self.write(ADMIN_HTML)
+        self.render_with_nav(ADMIN_HTML, active_page="admin")
 
 
 class UsersListHandler(BaseHandler):
@@ -724,28 +744,24 @@ class UserDeleteHandler(BaseHandler):
 class DashboardHandler(BaseHandler):
     """GET / — Main TitanForge dashboard."""
     def get(self):
-        self.set_header("Content-Type", "text/html")
-        # Inject user role and name into the dashboard template
         user = self.get_current_user() or "local"
-        users = load_users()
-        role = users.get(user, {}).get("role", "viewer") if user != "local" else "admin"
-        display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
+        users_db = load_users()
+        role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
+        display = users_db.get(user, {}).get("display_name", user) if user != "local" else "Admin"
         html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", display)
-        self.write(html)
+        self.render_with_nav(html, active_page="dashboard")
 
 
 class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
-        self.set_header("Content-Type", "text/html")
-        self.write(MAIN_HTML)
+        self.render_with_nav(MAIN_HTML, active_page="sa")
 
 
 class TCQuoteHandler(BaseHandler):
     """GET /tc — Titan Carports Estimator."""
     def get(self):
-        self.set_header("Content-Type", "text/html")
-        self.write(TC_HTML)
+        self.render_with_nav(TC_HTML, active_page="tc")
 
 
 # ─────────────────────────────────────────────
@@ -2132,8 +2148,7 @@ class ProjectPageHandler(BaseHandler):
         html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
         html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
 
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        self.render_with_nav(html, active_page="project", job_code=job_code)
 
 
 class ProjectArchiveDocHandler(BaseHandler):
@@ -2451,8 +2466,7 @@ class CustomerDocServeHandler(tornado.web.RequestHandler):
 class CustomerPageHandler(BaseHandler):
     """GET /customers — Customer database page."""
     def get(self):
-        self.set_header("Content-Type", "text/html")
-        self.write(CUSTOMERS_HTML)
+        self.render_with_nav(CUSTOMERS_HTML, active_page="customers")
 
 
 # ─────────────────────────────────────────────
@@ -2617,11 +2631,10 @@ class QuotePDFHandler(BaseHandler):
 class QuoteEditorPageHandler(BaseHandler):
     """GET /quote/{job_code} — Quote editor page."""
     def get(self, job_code):
-        self.set_header("Content-Type", "text/html")
         html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", job_code)
         html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
         html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
-        self.write(html)
+        self.render_with_nav(html, active_page="quote", job_code=job_code)
 
 
 # ─────────────────────────────────────────────
@@ -3270,11 +3283,10 @@ class TraceabilityReportHandler(BaseHandler):
 class QCPageHandler(BaseHandler):
     """GET /qc/{job_code} — QC Dashboard page for a project."""
     def get(self, job_code):
-        self.set_header("Content-Type", "text/html")
         html = QC_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
         html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
         html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
-        self.write(html)
+        self.render_with_nav(html, active_page="qc", job_code=job_code)
 
 
 # ─────────────────────────────────────────────
@@ -3420,16 +3432,14 @@ class ShopDrawingsPageHandler(BaseHandler):
         display = "User"
         if AUTH_ENABLED:
             user = self.get_current_user()
-            users = load_users()
-            display = users.get(user, {}).get("display_name", user or "User")
+            users_db = load_users()
+            display = users_db.get(user, {}).get("display_name", user or "User")
 
         html = SHOP_DRAWINGS_HTML
         html = html.replace("{{JOB_CODE}}", job_code)
         html = html.replace("{{USER_ROLE}}", role)
         html = html.replace("{{USER_NAME}}", display)
-
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
 class ShopDrawingsConfigHandler(BaseHandler):
@@ -3838,7 +3848,7 @@ class WorkOrderPageHandler(BaseHandler):
     def get(self, job_code):
         from templates.work_orders import WORK_ORDERS_HTML
         html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", job_code)
-        self.write(html)
+        self.render_with_nav(html, active_page="workorders", job_code=job_code)
 
 
 class WorkOrderCreateHandler(BaseHandler):
@@ -4270,10 +4280,7 @@ class ShopFloorPageHandler(BaseHandler):
 
     def get(self):
         from templates.shop_floor import SHOP_FLOOR_HTML
-        user = self.get_current_user() or "local"
-        role = self.get_user_role() or "admin"
-        html = SHOP_FLOOR_HTML.replace("{{USER_NAME}}", user).replace("{{USER_ROLE}}", role)
-        self.write(html)
+        self.render_with_nav(SHOP_FLOOR_HTML, active_page="shopfloor")
 
 
 class ShopFloorDataHandler(BaseHandler):
@@ -4413,7 +4420,7 @@ class WorkStationPageHandler(BaseHandler):
         html = (WORK_STATION_HTML
                 .replace("{{JOB_CODE}}", job_code)
                 .replace("{{USER_NAME}}", user))
-        self.write(html)
+        self.render_with_nav(html, active_page="workstation", job_code=job_code)
 
 
 class WorkStationDataHandler(BaseHandler):

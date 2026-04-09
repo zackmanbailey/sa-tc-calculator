@@ -1,0 +1,13 @@
+{
+  "job_code": "E2E-FULL",
+  "n_frames": 5,
+  "frame_type": "beam",
+  "building_width_ft": 40,
+  "building_length_ft": 80,
+  "roof_pitch_deg": 2.0,
+  "raft_purlin_type": "z",
+  "purlin_spacing_ft": 5.0,
+  "raft_show_purlin_facing": true,
+  "raft_reinforced": true,
+  "raft_rebar_size": "#9"
+}

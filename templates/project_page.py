@@ -87,48 +87,179 @@ PROJECT_PAGE_HTML = r"""
             flex-wrap: wrap;
         }
 
-        /* Completion Bar */
-        .completion-section {
+        /* Pipeline Journey */
+        .pipeline-journey {
             background: var(--tf-surface);
             border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-4) var(--tf-sp-5);
+            padding: var(--tf-sp-5) var(--tf-sp-6);
             margin-bottom: var(--tf-sp-6);
-            display: flex;
-            align-items: center;
-            gap: var(--tf-sp-4);
         }
 
-        .completion-label {
+        .pipeline-journey-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--tf-sp-4);
+        }
+
+        .pipeline-journey-header span {
             font-size: var(--tf-text-sm);
             font-weight: 600;
             color: var(--tf-gray-700);
-            white-space: nowrap;
         }
 
-        .completion-bar-track {
-            flex: 1;
-            height: 10px;
-            background: var(--tf-gray-200);
-            border-radius: 999px;
-            overflow: hidden;
-        }
-
-        .completion-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--tf-blue) 0%, var(--tf-success) 100%);
-            border-radius: 999px;
-            transition: width 500ms var(--tf-ease);
-        }
-
-        .completion-pct {
+        .pipeline-pct {
             font-size: var(--tf-text-lg);
             font-weight: 700;
             color: var(--tf-gray-900);
-            white-space: nowrap;
-            min-width: 48px;
-            text-align: right;
         }
+
+        .pipeline-dots {
+            display: flex;
+            align-items: flex-start;
+            gap: 0;
+            margin-bottom: var(--tf-sp-3);
+        }
+
+        .pj-step {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .pj-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid var(--tf-gray-300);
+            background: var(--tf-surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: all 300ms var(--tf-ease);
+            position: relative;
+            z-index: 2;
+        }
+
+        .pj-dot.done {
+            background: var(--tf-success);
+            border-color: var(--tf-success);
+            color: #fff;
+        }
+
+        .pj-dot.active {
+            background: var(--tf-blue);
+            border-color: var(--tf-blue);
+            color: #fff;
+            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.15);
+            animation: pjPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pjPulse {
+            0%, 100% { box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.15); }
+            50% { box-shadow: 0 0 0 8px rgba(30, 64, 175, 0.08); }
+        }
+
+        .pj-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--tf-gray-400);
+            margin-top: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            text-align: center;
+        }
+
+        .pj-label.active-label { color: var(--tf-blue); font-weight: 700; }
+        .pj-label.done-label   { color: var(--tf-success); }
+
+        .pj-connector {
+            height: 3px;
+            flex: 1;
+            background: var(--tf-gray-200);
+            position: relative;
+            top: 12px;
+            z-index: 0;
+            margin: 0 -2px;
+        }
+
+        .pj-connector.done { background: var(--tf-success); }
+        .pj-connector.active { background: linear-gradient(90deg, var(--tf-success), var(--tf-blue)); }
+
+        .pj-bar-track {
+            width: 100%;
+            height: 8px;
+            background: var(--tf-gray-100);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .pj-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, var(--tf-blue) 0%, var(--tf-success) 100%);
+            transition: width 600ms var(--tf-ease);
+        }
+
+        /* Toolbox Grid */
+        .toolbox {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--tf-sp-3);
+            margin-bottom: var(--tf-sp-6);
+        }
+
+        .tool-card {
+            background: var(--tf-surface);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius-lg);
+            padding: var(--tf-sp-4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--tf-sp-2);
+            cursor: pointer;
+            transition: all 200ms var(--tf-ease);
+            text-align: center;
+            text-decoration: none;
+        }
+
+        .tool-card:hover {
+            box-shadow: var(--tf-shadow-md);
+            transform: translateY(-2px);
+            border-color: var(--tf-blue);
+        }
+
+        .tool-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--tf-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .tool-icon.ti-blue   { background: var(--tf-blue-light); }
+        .tool-icon.ti-amber  { background: var(--tf-amber-light); }
+        .tool-icon.ti-green  { background: var(--tf-success-bg); }
+        .tool-icon.ti-purple { background: #EDE9FE; }
+        .tool-icon.ti-teal   { background: #CCFBF1; }
+
+        .tool-label {
+            font-size: var(--tf-text-xs);
+            font-weight: 700;
+            color: var(--tf-gray-800);
+        }
+
+        /* Completion Bar (kept for backwards compat) */
+        .completion-section { display: none; }
+        .completion-pct { display: none; }
 
         /* Two Column Layout */
         .main-grid {
@@ -616,24 +747,55 @@ PROJECT_PAGE_HTML = r"""
                     <span class="created-info" id="createdInfo"></span>
                 </div>
             </div>
-            <div class="header-actions">
-                <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openInSACalc()">Open in SA Estimator</button>
-                <button class="tf-btn tf-btn-amber tf-btn-sm" onclick="openInTCQuote()">Open in TC Estimator</button>
-                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#059669;" onclick="openQuoteEditor()">&#128196; Quote Editor</button>
-                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#7C3AED;" onclick="openQCDashboard()">&#128203; QC Dashboard</button>
-                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#1E40AF;" onclick="openShopDrawings()">&#9998; Shop Drawings</button>
-                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#0F766E;" onclick="openWorkOrders()">&#128203; Work Orders</button>
+            <div class="header-actions" style="display:flex;gap:var(--tf-sp-2);flex-wrap:wrap;">
                 <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="duplicateProject()">Duplicate</button>
                 <button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="archiveProject()" id="archiveBtn">Archive</button>
             </div>
         </div>
 
-        <!-- COMPLETION BAR -->
-        <div class="completion-section">
-            <span class="completion-label">Stage Progress</span>
-            <div class="completion-bar-track">
-                <div class="completion-bar-fill" id="completionFill" style="width: 0%"></div>
+        <!-- PIPELINE JOURNEY -->
+        <div class="pipeline-journey">
+            <div class="pipeline-journey-header">
+                <span>Project Pipeline</span>
+                <span class="pipeline-pct" id="pipelinePct">0%</span>
             </div>
+            <div class="pipeline-dots" id="pipelineDots"></div>
+            <div class="pj-bar-track">
+                <div class="pj-bar-fill" id="pjBarFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- TOOLBOX -->
+        <div class="toolbox">
+            <div class="tool-card" onclick="openInSACalc()">
+                <div class="tool-icon ti-blue">&#128208;</div>
+                <div class="tool-label">SA Estimator</div>
+            </div>
+            <div class="tool-card" onclick="openInTCQuote()">
+                <div class="tool-icon ti-amber">&#128221;</div>
+                <div class="tool-label">TC Estimator</div>
+            </div>
+            <div class="tool-card" onclick="openQuoteEditor()">
+                <div class="tool-icon ti-green">&#128196;</div>
+                <div class="tool-label">Quote Editor</div>
+            </div>
+            <div class="tool-card" onclick="openShopDrawings()">
+                <div class="tool-icon ti-blue">&#9998;</div>
+                <div class="tool-label">Shop Drawings</div>
+            </div>
+            <div class="tool-card" onclick="openWorkOrders()">
+                <div class="tool-icon ti-teal">&#128203;</div>
+                <div class="tool-label">Work Orders</div>
+            </div>
+            <div class="tool-card" onclick="openQCDashboard()">
+                <div class="tool-icon ti-purple">&#128203;</div>
+                <div class="tool-label">QC Dashboard</div>
+            </div>
+        </div>
+
+        <!-- COMPLETION BAR (hidden, kept for JS compat) -->
+        <div class="completion-section">
+            <div class="completion-bar-fill" id="completionFill" style="width: 0%"></div>
             <span class="completion-pct" id="completionPct">0%</span>
         </div>
 
@@ -724,6 +886,9 @@ PROJECT_PAGE_HTML = r"""
             initProjectPage();
         });
 
+        var PJ_STAGES = ['quote', 'contract', 'engineering', 'shop_drawings', 'fabrication', 'shipping', 'install'];
+        var PJ_LABELS = { 'quote': 'Quote', 'contract': 'Contract', 'engineering': 'Engineering', 'shop_drawings': 'Shop Drawings', 'fabrication': 'Fabrication', 'shipping': 'Shipping', 'install': 'Install', 'complete': 'Complete' };
+
         function initProjectPage() {
             // Set user name
             if (USER_NAME && USER_NAME !== '{{USER_NAME}}') {
@@ -741,6 +906,9 @@ PROJECT_PAGE_HTML = r"""
 
             // Stage select
             populateStageSelect();
+
+            // Pipeline journey
+            renderPipelineJourney();
 
             // Info cards
             renderCustomerCard();
@@ -767,6 +935,54 @@ PROJECT_PAGE_HTML = r"""
                     }
                 });
             }
+        }
+
+        function renderPipelineJourney() {
+            var stage = METADATA.stage || 'quote';
+            var currentIdx = PJ_STAGES.indexOf(stage);
+            var isComplete = stage === 'complete';
+            if (currentIdx < 0) currentIdx = 0;
+
+            var pct = isComplete ? 100 : Math.round((currentIdx / PJ_STAGES.length) * 100);
+            document.getElementById('pipelinePct').textContent = pct + '%';
+            document.getElementById('pjBarFill').style.width = pct + '%';
+
+            var container = document.getElementById('pipelineDots');
+            container.innerHTML = '';
+
+            PJ_STAGES.forEach(function(s, i) {
+                var dot = document.createElement('div');
+                dot.className = 'pj-step';
+
+                var circle = document.createElement('div');
+                circle.className = 'pj-dot';
+
+                var label = document.createElement('div');
+                label.className = 'pj-label';
+                label.textContent = PJ_LABELS[s] || s;
+
+                if (isComplete || i < currentIdx) {
+                    circle.classList.add('done');
+                    circle.innerHTML = '&#10003;';
+                    label.classList.add('done-label');
+                } else if (i === currentIdx) {
+                    circle.classList.add('active');
+                    circle.innerHTML = '&#9679;';
+                    label.classList.add('active-label');
+                }
+
+                dot.appendChild(circle);
+                dot.appendChild(label);
+                container.appendChild(dot);
+
+                if (i < PJ_STAGES.length - 1) {
+                    var conn = document.createElement('div');
+                    conn.className = 'pj-connector';
+                    if (isComplete || i < currentIdx - 1) conn.classList.add('done');
+                    else if (i === currentIdx - 1) conn.classList.add('active');
+                    container.appendChild(conn);
+                }
+            });
         }
 
         function populateStageSelect() {
@@ -1186,6 +1402,7 @@ PROJECT_PAGE_HTML = r"""
             .then(function(data) {
                 if (data.ok) {
                     METADATA.stage = newStage;
+                    renderPipelineJourney();
                     loadNextSteps();
                     renderProjectStats();
                 }
