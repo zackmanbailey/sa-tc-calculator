@@ -43,6 +43,9 @@ def generate_all_shop_drawings(
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    # Ensure all numeric fields are proper types (safety net for JSON data)
+    cfg.ensure_numeric()
+
     files = []
     errors = []
     total_bytes = 0

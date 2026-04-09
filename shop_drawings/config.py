@@ -810,6 +810,34 @@ class ShopDrawingConfig:
     # Solar toggle (future)
     is_solar: bool = False
 
+    def ensure_numeric(self):
+        """Force all numeric fields to their correct types.
+        Call this as a safety net before any calculations."""
+        import dataclasses as _dc
+        for f in _dc.fields(self):
+            val = getattr(self, f.name)
+            if val is None:
+                continue
+            if f.type == "float" or f.type is float:
+                if not isinstance(val, (int, float)):
+                    try:
+                        setattr(self, f.name, float(val))
+                    except (ValueError, TypeError):
+                        pass
+            elif f.type == "int" or f.type is int:
+                if not isinstance(val, int) or isinstance(val, bool):
+                    try:
+                        setattr(self, f.name, int(float(val)))
+                    except (ValueError, TypeError):
+                        pass
+            elif "List[float]" in str(f.type):
+                if isinstance(val, list):
+                    setattr(self, f.name, [
+                        float(x) if not isinstance(x, (int, float)) else float(x)
+                        for x in val
+                    ])
+        return self
+
     def to_dict(self) -> dict:
         """Serialize to JSON-safe dictionary."""
         d = {}
@@ -822,11 +850,57 @@ class ShopDrawingConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ShopDrawingConfig":
-        """Deserialize from dictionary."""
+        """Deserialize from dictionary with automatic type coercion.
+        Handles JSON data where numbers may arrive as strings from web forms."""
+        import dataclasses as _dc
+
         cfg = cls()
+
+        # Build a map of field name -> expected type from the dataclass
+        type_map = {}
+        for f in _dc.fields(cfg):
+            type_map[f.name] = f.type
+
         for k, v in data.items():
-            if hasattr(cfg, k):
+            if not hasattr(cfg, k):
+                continue
+            if v is None:
                 setattr(cfg, k, v)
+                continue
+
+            expected = type_map.get(k)
+
+            # Coerce to float
+            if expected == "float" or expected is float:
+                try:
+                    v = float(v)
+                except (ValueError, TypeError):
+                    pass
+
+            # Coerce to int
+            elif expected == "int" or expected is int:
+                try:
+                    v = int(float(v))  # float() first handles "4.0" -> 4
+                except (ValueError, TypeError):
+                    pass
+
+            # Coerce to bool
+            elif expected == "bool" or expected is bool:
+                if isinstance(v, str):
+                    v = v.lower() in ("true", "1", "yes")
+
+            # Coerce List[float] (bay_sizes)
+            elif "List[float]" in str(expected):
+                if isinstance(v, list):
+                    coerced = []
+                    for item in v:
+                        try:
+                            coerced.append(float(item))
+                        except (ValueError, TypeError):
+                            coerced.append(item)
+                    v = coerced
+
+            setattr(cfg, k, v)
         return cfg
 
     @classmethod

@@ -774,12 +774,18 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     nav = build_nav(active_page, job_code, user_name, user_role)
 
     # Prepend CSS to hide old nav elements across all templates
+    # Also ensure --tf-navy is defined (some pages only define --tf-dark)
     hide_old = """
+:root { --tf-navy: #0F172A; --tf-navy-light: #1E293B; }
 .tf-topbar { display: none !important; }
 .topbar { display: none !important; }
 .navbar { display: none !important; }
 .ws-topbar { display: none !important; }
+#topbar { display: none !important; }
+#tabs { display: none !important; }
 #globalSearchOverlay { display: none !important; }
+/* Fix layout height when old topbar/tabs are hidden */
+#main { height: calc(100vh - 48px) !important; margin-top: 0 !important; }
 """
     nav['css'] = hide_old + nav['css']
 
