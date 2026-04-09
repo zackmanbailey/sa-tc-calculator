@@ -1,0 +1,14 @@
+{
+  "admin": {
+    "password": "$2b$12$fYLH54O.jy/bFdC51wuJfOcYByHyBDdr43UT4YghnhUPbAeeRWsLy",
+    "display_name": "Admin",
+    "role": "admin",
+    "created": "2026-04-07T13:46:01.610235"
+  },
+  "brad": {
+    "password": "$2b$12$rK5xE00paVDmITrneL258ee7lz5LTTwwKhGfNLY9/AEJy2fkZ1fs2",
+    "display_name": "Brad Spence",
+    "role": "user",
+    "created": "2026-04-07T13:46:01.792616"
+  }
+}

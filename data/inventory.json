@@ -92,5 +92,18 @@
       "orders": []
     }
   },
-  "mill_certs": []
+  "mill_certs": [
+    {
+      "coil_id": "c_section_23",
+      "heat": "TEST-HEAT-001",
+      "mill": "Test Mill",
+      "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
+    }
+  ]
 }
