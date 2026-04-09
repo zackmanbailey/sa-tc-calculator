@@ -256,10 +256,13 @@ def _draw_strap_sketch(c, cx: float, cy: float, scale: float = 2.0):
 
 def _calc_endcap_items(cfg: ShopDrawingConfig) -> List[Dict]:
     """Calculate endcap U-channels for the building."""
+    # Force all config values to correct numeric types
+    cfg.ensure_numeric()
+
     ec = PURLIN_DEFAULTS["endcap"]
     # Building length determines endcap length
     # Endcap spans all purlin lines = building_width
-    endcap_length_in = cfg.building_width_ft * 12
+    endcap_length_in = float(cfg.building_width_ft) * 12
 
     # Check if needs splitting
     max_in = ec["max_length_in"]  # 364" = 30'4"

@@ -3686,8 +3686,10 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             cfg_dict["job_code"] = job_code
             _save_shop_config(job_code, cfg_dict)
 
-            # Build ShopDrawingConfig
+            # Build ShopDrawingConfig (from_dict handles string→number coercion)
             cfg = ShopDrawingConfig.from_dict(cfg_dict)
+            # Belt-and-suspenders: force all numeric fields to correct types
+            cfg.ensure_numeric()
 
             # Determine revision
             revisions = _load_revisions(job_code)

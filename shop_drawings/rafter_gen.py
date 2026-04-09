@@ -53,7 +53,10 @@ def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
     """
     Calculate all rafter dimensions and properties.
     """
-    slope_deg = cfg.roof_pitch_deg
+    # Force all config values to correct numeric types
+    cfg.ensure_numeric()
+
+    slope_deg = float(cfg.roof_pitch_deg)
     use_z = cfg.raft_purlin_type == "z"
 
     # Rafter cut length:

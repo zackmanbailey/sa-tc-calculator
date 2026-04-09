@@ -810,32 +810,61 @@ class ShopDrawingConfig:
     # Solar toggle (future)
     is_solar: bool = False
 
+    # Explicit field type maps — hardcoded to avoid any Python version issues
+    # with dataclass type introspection
+    _FLOAT_FIELDS = {
+        'building_width_ft', 'building_length_ft', 'clear_height_ft',
+        'roof_pitch_deg', 'overhang_ft', 'embedment_ft', 'footing_depth_ft',
+        'column_buffer_ft', 'col_cap_plate_width_in', 'col_cap_plate_length_in',
+        'col_gusset_leg_in', 'raft_roofing_overhang_ft', 'raft_p1_width_in',
+        'raft_p1_length_in', 'raft_p2_width_in', 'raft_p2_length_in',
+        'purlin_spacing_ft', 'purlin_overhang_ft', 'purlin_splice_overlap_in',
+        'purlin_splice_location_ft', 'purlin_splice_piece_length_in',
+        'purlin_end_extension_in', 'wall_girt_spacing_ft',
+        'wall_panel_ground_clearance_in', 'roofing_overlap_in',
+    }
+    _INT_FIELDS = {'n_frames', 'col_connection_bolts'}
+    _BOOL_FIELDS = {
+        'col_reinforced', 'raft_reinforced', 'raft_show_purlin_facing',
+        'has_back_wall', 'has_side_walls', 'wall_girt_endcaps',
+        'roofing_split_at_center', 'is_solar',
+    }
+    _LIST_FLOAT_FIELDS = {'bay_sizes'}
+
     def ensure_numeric(self):
         """Force all numeric fields to their correct types.
-        Call this as a safety net before any calculations."""
-        import dataclasses as _dc
-        for f in _dc.fields(self):
-            val = getattr(self, f.name)
-            if val is None:
-                continue
-            if f.type == "float" or f.type is float:
-                if not isinstance(val, (int, float)):
-                    try:
-                        setattr(self, f.name, float(val))
-                    except (ValueError, TypeError):
-                        pass
-            elif f.type == "int" or f.type is int:
-                if not isinstance(val, int) or isinstance(val, bool):
-                    try:
-                        setattr(self, f.name, int(float(val)))
-                    except (ValueError, TypeError):
-                        pass
-            elif "List[float]" in str(f.type):
-                if isinstance(val, list):
-                    setattr(self, f.name, [
-                        float(x) if not isinstance(x, (int, float)) else float(x)
-                        for x in val
-                    ])
+        Call this as a safety net before any calculations.
+        Uses hardcoded field lists (not type introspection) for reliability."""
+        for name in self._FLOAT_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and not isinstance(val, (int, float)):
+                try:
+                    setattr(self, name, float(val))
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(val, int) and not isinstance(val, bool):
+                setattr(self, name, float(val))
+
+        for name in self._INT_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and (not isinstance(val, int) or isinstance(val, bool)):
+                try:
+                    setattr(self, name, int(float(val)))
+                except (ValueError, TypeError):
+                    pass
+
+        for name in self._BOOL_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and isinstance(val, str):
+                setattr(self, name, val.lower() in ('true', '1', 'yes'))
+
+        for name in self._LIST_FLOAT_FIELDS:
+            val = getattr(self, name, None)
+            if isinstance(val, list):
+                setattr(self, name, [
+                    float(x) if not isinstance(x, float) else x
+                    for x in val
+                ])
         return self
 
     def to_dict(self) -> dict:
@@ -851,15 +880,9 @@ class ShopDrawingConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "ShopDrawingConfig":
         """Deserialize from dictionary with automatic type coercion.
-        Handles JSON data where numbers may arrive as strings from web forms."""
-        import dataclasses as _dc
-
+        Handles JSON data where numbers may arrive as strings from web forms.
+        Uses hardcoded field type maps for reliability across Python versions."""
         cfg = cls()
-
-        # Build a map of field name -> expected type from the dataclass
-        type_map = {}
-        for f in _dc.fields(cfg):
-            type_map[f.name] = f.type
 
         for k, v in data.items():
             if not hasattr(cfg, k):
@@ -868,29 +891,24 @@ class ShopDrawingConfig:
                 setattr(cfg, k, v)
                 continue
 
-            expected = type_map.get(k)
-
-            # Coerce to float
-            if expected == "float" or expected is float:
+            # Coerce based on hardcoded field type maps
+            if k in cls._FLOAT_FIELDS:
                 try:
                     v = float(v)
                 except (ValueError, TypeError):
                     pass
 
-            # Coerce to int
-            elif expected == "int" or expected is int:
+            elif k in cls._INT_FIELDS:
                 try:
-                    v = int(float(v))  # float() first handles "4.0" -> 4
+                    v = int(float(v))
                 except (ValueError, TypeError):
                     pass
 
-            # Coerce to bool
-            elif expected == "bool" or expected is bool:
+            elif k in cls._BOOL_FIELDS:
                 if isinstance(v, str):
                     v = v.lower() in ("true", "1", "yes")
 
-            # Coerce List[float] (bay_sizes)
-            elif "List[float]" in str(expected):
+            elif k in cls._LIST_FLOAT_FIELDS:
                 if isinstance(v, list):
                     coerced = []
                     for item in v:

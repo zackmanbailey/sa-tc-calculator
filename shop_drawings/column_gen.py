@@ -218,7 +218,10 @@ def _calc_column_data(cfg: ShopDrawingConfig, col_index: int = 0) -> Dict:
     Calculate all column dimensions and properties for drawing.
     Returns dict with all values needed to render.
     """
-    slope_deg = cfg.roof_pitch_deg
+    # Force all config values to correct numeric types
+    cfg.ensure_numeric()
+
+    slope_deg = float(cfg.roof_pitch_deg)
     tan_slope = math.tan(math.radians(slope_deg))
 
     # Column height formula: clear_height + distance*tan(slope) + embedment + buffer
