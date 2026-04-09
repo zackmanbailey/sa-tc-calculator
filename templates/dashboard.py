@@ -761,6 +761,7 @@ DASHBOARD_HTML = r"""
             <a href="/sa">Structures America Estimator</a>
             <a href="/tc">Titan Carports Estimator</a>
             <a href="/customers">Customers</a>
+            <a href="/shop-floor">Shop Floor</a>
         </nav>
 
         <div class="tf-user">
@@ -1176,8 +1177,10 @@ DASHBOARD_HTML = r"""
             </div>
             <div class="modal-body">
                 <div class="info-grid" id="overviewInfo"></div>
-                <div style="margin-top: var(--tf-sp-5); display: flex; gap: var(--tf-sp-3);">
+                <div style="margin-top: var(--tf-sp-4); display: flex; gap: var(--tf-sp-2); flex-wrap: wrap;">
                     <button class="tf-btn tf-btn-primary" id="openFullPageBtn" onclick="">Open Full Project</button>
+                    <button class="tf-btn tf-btn-outline" id="openShopDrawingsBtn" style="border-color:#1E40AF;color:#1E40AF;">Shop Drawings</button>
+                    <button class="tf-btn tf-btn-outline" id="openWorkOrdersBtn" style="border-color:#0F766E;color:#0F766E;">Work Orders</button>
                     <button class="tf-btn tf-btn-outline" onclick="closeProjectModal()">Close</button>
                 </div>
             </div>
@@ -1494,9 +1497,16 @@ DASHBOARD_HTML = r"""
                 info.appendChild(div);
             });
 
-            // "Open Full Project" button
+            // Navigation buttons
+            var jc = encodeURIComponent(project.job_code);
             document.getElementById('openFullPageBtn').onclick = function() {
-                window.location.href = '/project/' + encodeURIComponent(project.job_code);
+                window.location.href = '/project/' + jc;
+            };
+            document.getElementById('openShopDrawingsBtn').onclick = function() {
+                window.location.href = '/shop-drawings/' + jc;
+            };
+            document.getElementById('openWorkOrdersBtn').onclick = function() {
+                window.location.href = '/work-orders/' + jc;
             };
 
             document.getElementById('projectModal').classList.add('show');

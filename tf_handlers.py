@@ -3278,6 +3278,1322 @@ class QCPageHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# SHOP DRAWING SYSTEM
+# ─────────────────────────────────────────────
+
+SHOP_DRAWINGS_DIR = os.path.join(BASE_DIR, "data", "shop_drawings")
+
+try:
+    from shop_drawings.config import ShopDrawingConfig
+    from shop_drawings.master import generate_all_shop_drawings
+    from shop_drawings.work_orders import (
+        WorkOrder, WorkOrderItem, STATUS_QUEUED, STATUS_APPROVED,
+        STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
+        STATUS_ON_HOLD, STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
+        create_work_order, save_work_order, load_work_order,
+        list_work_orders, list_all_work_orders, load_all_active_items,
+        find_work_order_by_item,
+        qr_scan_start, qr_scan_finish,
+    )
+    from shop_drawings.wo_stickers import (
+        generate_wo_sticker_pdf, generate_wo_sticker_zpl,
+        generate_wo_sticker_csv,
+    )
+    HAS_SHOP_DRAWINGS = True
+except Exception:
+    HAS_SHOP_DRAWINGS = False
+
+
+def _shop_drawing_project_dir(job_code):
+    """Get or create the shop drawing directory for a project."""
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+    d = os.path.join(SHOP_DRAWINGS_DIR, safe)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _load_shop_config(job_code):
+    """Load saved ShopDrawingConfig for a project, or return None."""
+    d = _shop_drawing_project_dir(job_code)
+    cfg_path = os.path.join(d, "config.json")
+    if os.path.isfile(cfg_path):
+        with open(cfg_path) as f:
+            return json.load(f)
+    return None
+
+
+def _save_shop_config(job_code, cfg_dict):
+    """Save ShopDrawingConfig dict for a project."""
+    d = _shop_drawing_project_dir(job_code)
+    cfg_path = os.path.join(d, "config.json")
+    with open(cfg_path, "w") as f:
+        json.dump(cfg_dict, f, indent=2, default=str)
+
+
+def _load_generation_log(job_code):
+    """Load the most recent generation log, if any."""
+    d = _shop_drawing_project_dir(job_code)
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+    log_path = os.path.join(d, "pdfs", f"{job_code}_generation_log.json")
+    if os.path.isfile(log_path):
+        with open(log_path) as f:
+            return json.load(f)
+    # Fallback: scan for any generation_log.json
+    pdfs_dir = os.path.join(d, "pdfs")
+    if os.path.isdir(pdfs_dir):
+        for fname in os.listdir(pdfs_dir):
+            if fname.endswith("_generation_log.json"):
+                with open(os.path.join(pdfs_dir, fname)) as f:
+                    return json.load(f)
+    return None
+
+
+def _load_revisions(job_code):
+    """Load revision history for a project."""
+    d = _shop_drawing_project_dir(job_code)
+    rev_path = os.path.join(d, "revisions.json")
+    if os.path.isfile(rev_path):
+        with open(rev_path) as f:
+            return json.load(f)
+    return []
+
+
+def _save_revision(job_code, rev_entry):
+    """Append a revision entry."""
+    d = _shop_drawing_project_dir(job_code)
+    rev_path = os.path.join(d, "revisions.json")
+    revisions = _load_revisions(job_code)
+    revisions.insert(0, rev_entry)
+    with open(rev_path, "w") as f:
+        json.dump(revisions, f, indent=2, default=str)
+    return revisions
+
+
+def _derive_bom_config(job_code):
+    """Try to load BOM data for a project and derive ShopDrawingConfig from it."""
+    if not HAS_SHOP_DRAWINGS:
+        return {}
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+    proj_dir = os.path.join(PROJECTS_DIR, safe)
+
+    # Look for the latest saved version with BOM data
+    versions_dir = os.path.join(proj_dir, "versions")
+    if not os.path.isdir(versions_dir):
+        return {}
+
+    # Find most recent version file
+    version_files = sorted(
+        [f for f in os.listdir(versions_dir) if f.endswith(".json")],
+        reverse=True
+    )
+
+    for vf in version_files:
+        try:
+            with open(os.path.join(versions_dir, vf)) as f:
+                data = json.load(f)
+            bom_result = data.get("bom_result") or data.get("results", {})
+            if bom_result and "geometry" in bom_result:
+                # Load project metadata for project_info
+                meta_path = os.path.join(proj_dir, "metadata.json")
+                project_info = {}
+                if os.path.isfile(meta_path):
+                    with open(meta_path) as mf:
+                        meta = json.load(mf)
+                    project_info = {
+                        "job_code": job_code,
+                        "project_name": meta.get("project_name", ""),
+                        "customer_name": meta.get("customer_name", ""),
+                        "location": meta.get("location", ""),
+                    }
+                cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
+                return cfg.to_dict()
+        except Exception:
+            continue
+
+    return {}
+
+
+class ShopDrawingsPageHandler(BaseHandler):
+    """GET /shop-drawings/{job_code} — Shop Drawing Dashboard page."""
+    def get(self, job_code):
+        role = self.get_user_role() or "viewer"
+        display = "User"
+        if AUTH_ENABLED:
+            user = self.get_current_user()
+            users = load_users()
+            display = users.get(user, {}).get("display_name", user or "User")
+
+        html = SHOP_DRAWINGS_HTML
+        html = html.replace("{{JOB_CODE}}", job_code)
+        html = html.replace("{{USER_ROLE}}", role)
+        html = html.replace("{{USER_NAME}}", display)
+
+        self.set_header("Content-Type", "text/html")
+        self.write(html)
+
+
+class ShopDrawingsConfigHandler(BaseHandler):
+    """
+    GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
+    POST /api/shop-drawings/config               — Save config
+    """
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            # Load saved config, or derive from BOM
+            saved_config = _load_shop_config(job_code)
+            bom_config = _derive_bom_config(job_code)
+
+            if saved_config is None and bom_config:
+                saved_config = dict(bom_config)
+                _save_shop_config(job_code, saved_config)
+            elif saved_config is None:
+                # No BOM data either — return defaults
+                if HAS_SHOP_DRAWINGS:
+                    cfg = ShopDrawingConfig()
+                    cfg.job_code = job_code
+                    saved_config = cfg.to_dict()
+                else:
+                    saved_config = {"job_code": job_code}
+
+            # Load generation log and file list
+            gen_log = _load_generation_log(job_code)
+            drawings = []
+            if gen_log and "files" in gen_log:
+                drawings = gen_log["files"]
+
+            revisions = _load_revisions(job_code)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "config": saved_config,
+                "bom_config": bom_config,
+                "drawings": drawings,
+                "revisions": revisions,
+                "generation_log": gen_log,
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e),
+                                    "trace": traceback.format_exc()}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            cfg_dict = body.get("config", {})
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            cfg_dict["job_code"] = job_code
+            _save_shop_config(job_code, cfg_dict)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShopDrawingsSyncBOMHandler(BaseHandler):
+    """POST /api/shop-drawings/sync-bom — Re-derive config from BOM and save.
+
+    Body options:
+      {"job_code": "...", "mode": "full"}            — Overwrite entire config with BOM values
+      {"job_code": "...", "mode": "partial",
+       "accept_fields": ["building_width_ft", ...]}  — Accept only specific BOM fields, keep rest
+    """
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            mode = body.get("mode", "full")
+            accept_fields = body.get("accept_fields", [])
+
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            bom_config = _derive_bom_config(job_code)
+            if not bom_config:
+                self.write(json_encode({"ok": False, "error": "No BOM data found"}))
+                return
+
+            if mode == "partial" and accept_fields:
+                # Merge only accepted fields from BOM into current config
+                current = _load_shop_config(job_code) or {}
+                for field in accept_fields:
+                    if field in bom_config:
+                        current[field] = bom_config[field]
+                _save_shop_config(job_code, current)
+                final_config = current
+            else:
+                # Full overwrite
+                _save_shop_config(job_code, bom_config)
+                final_config = bom_config
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "bom_config": bom_config,
+                "config": final_config,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# Human-readable labels for config fields (used in conflict resolution UI)
+_FIELD_LABELS = {
+    "building_width_ft": "Building Width (ft)",
+    "building_length_ft": "Building Length (ft)",
+    "clear_height_ft": "Clear Height (ft)",
+    "roof_pitch_deg": "Roof Pitch (deg)",
+    "n_frames": "Number of Frames",
+    "frame_type": "Frame Type",
+    "bay_sizes": "Bay Sizes",
+    "overhang_ft": "Overhang (ft)",
+    "embedment_ft": "Embedment (ft)",
+    "footing_depth_ft": "Footing Depth (ft)",
+    "column_buffer_ft": "Column Buffer (ft)",
+    "col_material_grade": "Column Material Grade",
+    "col_reinforced": "Column Reinforced",
+    "col_rebar_size": "Column Rebar Size",
+    "raft_reinforced": "Rafter Reinforced",
+    "raft_rebar_size": "Rafter Rebar Size",
+    "raft_roofing_overhang_ft": "Roofing Overhang (ft)",
+    "raft_purlin_type": "Purlin Type",
+    "purlin_type": "Purlin Type",
+    "purlin_gauge": "Purlin Gauge",
+    "purlin_spacing_ft": "Purlin Spacing (ft)",
+    "purlin_overhang_ft": "Purlin Overhang (ft)",
+    "has_back_wall": "Back Wall",
+    "has_side_walls": "Side Walls",
+}
+
+
+class ShopDrawingsDiffHandler(BaseHandler):
+    """POST /api/shop-drawings/diff — Compare current config vs fresh BOM-derived config.
+
+    Returns per-field diffs with labels, current values, and BOM values.
+    Used by the conflict resolution popup.
+    """
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            current = _load_shop_config(job_code) or {}
+            bom_config = _derive_bom_config(job_code)
+
+            if not bom_config:
+                self.write(json_encode({
+                    "ok": True,
+                    "has_changes": False,
+                    "diffs": [],
+                    "message": "No BOM data available for comparison",
+                }))
+                return
+
+            # Compare only BOM-derived fields (not user-only fields like drawn_by)
+            bom_comparable_fields = [
+                "building_width_ft", "building_length_ft", "clear_height_ft",
+                "roof_pitch_deg", "n_frames", "frame_type", "overhang_ft",
+                "embedment_ft", "footing_depth_ft", "column_buffer_ft",
+                "purlin_spacing_ft", "has_back_wall", "has_side_walls",
+                "col_reinforced", "raft_reinforced",
+            ]
+
+            diffs = []
+            for field in bom_comparable_fields:
+                bom_val = bom_config.get(field)
+                cur_val = current.get(field)
+
+                if bom_val is None:
+                    continue
+
+                # Normalize for comparison
+                if isinstance(bom_val, float) and isinstance(cur_val, (int, float)):
+                    changed = abs(float(bom_val) - float(cur_val)) > 0.001
+                elif isinstance(bom_val, bool) or isinstance(cur_val, bool):
+                    changed = bool(bom_val) != bool(cur_val)
+                else:
+                    changed = str(bom_val) != str(cur_val)
+
+                if changed:
+                    diffs.append({
+                        "field": field,
+                        "label": _FIELD_LABELS.get(field, field),
+                        "current_value": cur_val,
+                        "bom_value": bom_val,
+                    })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "has_changes": len(diffs) > 0,
+                "diffs": diffs,
+                "total_changes": len(diffs),
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e),
+                                    "trace": traceback.format_exc()}))
+
+
+class ShopDrawingsGenerateHandler(BaseHandler):
+    """POST /api/shop-drawings/generate — Generate all shop drawings for a project."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            if not HAS_SHOP_DRAWINGS:
+                self.write(json_encode({
+                    "ok": False,
+                    "error": "Shop drawing module not available"
+                }))
+                return
+
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            cfg_dict = body.get("config", {})
+
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            cfg_dict["job_code"] = job_code
+            _save_shop_config(job_code, cfg_dict)
+
+            # Build ShopDrawingConfig
+            cfg = ShopDrawingConfig.from_dict(cfg_dict)
+
+            # Determine revision
+            revisions = _load_revisions(job_code)
+            if not revisions:
+                revision = "-"
+            else:
+                last_rev = revisions[0].get("revision", "-")
+                if last_rev == "-":
+                    revision = "A"
+                elif len(last_rev) == 1 and last_rev.isalpha():
+                    revision = chr(ord(last_rev) + 1) if last_rev < "Z" else "Z+"
+                else:
+                    revision = last_rev + "+"
+
+            # Generate
+            d = _shop_drawing_project_dir(job_code)
+            output_dir = os.path.join(d, "pdfs")
+            os.makedirs(output_dir, exist_ok=True)
+
+            result = generate_all_shop_drawings(
+                cfg, output_dir, revision=revision,
+                include_stickers=True, include_manifest=True
+            )
+
+            # Save revision entry
+            rev_entry = {
+                "revision": revision,
+                "generated_at": result["summary"]["timestamp"],
+                "total_files": result["summary"]["total_files"],
+                "total_bytes": result["summary"]["total_bytes"],
+                "errors": result["summary"]["errors"],
+            }
+            _save_revision(job_code, rev_entry)
+
+            # Return file list (without full paths)
+            files = []
+            for f in result["files"]:
+                files.append({
+                    "filename": f["filename"],
+                    "type": f["type"],
+                    "description": f["description"],
+                    "size_bytes": f["size_bytes"],
+                })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "files": files,
+                "summary": {
+                    "total_files": result["summary"]["total_files"],
+                    "total_bytes": result["summary"]["total_bytes"],
+                    "total_kb": result["summary"]["total_kb"],
+                    "timestamp": result["summary"]["timestamp"],
+                    "revision": revision,
+                },
+                "revision_entry": rev_entry,
+                "errors": result["errors"],
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({
+                "ok": False,
+                "error": str(e),
+                "trace": traceback.format_exc()
+            }))
+
+
+class ShopDrawingsFileHandler(BaseHandler):
+    """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a single PDF."""
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            filename = self.get_query_argument("filename", "").strip()
+            download = self.get_query_argument("download", "0") == "1"
+
+            if not job_code or not filename:
+                self.set_status(400)
+                self.write("Missing job_code or filename")
+                return
+
+            # Sanitize filename to prevent path traversal
+            filename = os.path.basename(filename)
+            d = _shop_drawing_project_dir(job_code)
+            fpath = os.path.join(d, "pdfs", filename)
+
+            if not os.path.isfile(fpath):
+                self.set_status(404)
+                self.write("File not found")
+                return
+
+            self.set_header("Content-Type", "application/pdf")
+            if download:
+                self.set_header("Content-Disposition",
+                                f'attachment; filename="{filename}"')
+            else:
+                self.set_header("Content-Disposition",
+                                f'inline; filename="{filename}"')
+
+            with open(fpath, "rb") as f:
+                self.write(f.read())
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class ShopDrawingsZipHandler(BaseHandler):
+    """GET /api/shop-drawings/zip?job_code=XXX — Download all PDFs as a ZIP."""
+    def get(self):
+        import zipfile
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            if not job_code:
+                self.set_status(400)
+                self.write("Missing job_code")
+                return
+
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+
+            if not os.path.isdir(pdfs_dir):
+                self.set_status(404)
+                self.write("No drawings found")
+                return
+
+            pdf_files = [f for f in os.listdir(pdfs_dir) if f.endswith(".pdf")]
+            if not pdf_files:
+                self.set_status(404)
+                self.write("No PDF files found")
+                return
+
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname in sorted(pdf_files):
+                    fpath = os.path.join(pdfs_dir, fname)
+                    zf.write(fpath, fname)
+
+            zip_bytes = buf.getvalue()
+            zip_name = f"{job_code}_ShopDrawings.zip"
+
+            self.set_header("Content-Type", "application/zip")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{zip_name}"')
+            self.write(zip_bytes)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+# ─────────────────────────────────────────────
+# WORK ORDER HANDLERS
+# ─────────────────────────────────────────────
+
+class WorkOrderPageHandler(BaseHandler):
+    """GET /work-orders/{job_code} — Work order tracking page."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self, job_code):
+        from templates.work_orders import WORK_ORDERS_HTML
+        html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", job_code)
+        self.write(html)
+
+
+class WorkOrderCreateHandler(BaseHandler):
+    """POST /api/work-orders/create — Create a new work order from shop drawings."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            if not HAS_SHOP_DRAWINGS:
+                self.write(json_encode({"ok": False, "error": "Shop drawing module not available"}))
+                return
+
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            # Get latest revision from generation history
+            revisions = _load_revisions(job_code)
+            revision = revisions[0].get("revision", "-") if revisions else "-"
+
+            # Get current config for component counts
+            cfg_dict = _load_shop_config(job_code) or _derive_bom_config(job_code)
+            if not cfg_dict:
+                self.write(json_encode({"ok": False, "error": "No config found — generate shop drawings first"}))
+                return
+
+            # Get drawing files list
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+            drawing_files = []
+            if os.path.isdir(pdfs_dir):
+                drawing_files = [{"filename": f} for f in os.listdir(pdfs_dir) if f.endswith(".pdf")]
+
+            created_by = body.get("created_by", self.get_current_user() or "system")
+
+            wo = create_work_order(
+                job_code=job_code,
+                revision=revision,
+                created_by=created_by,
+                drawing_files=drawing_files,
+                config_dict=cfg_dict,
+            )
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "work_order": wo.to_dict(),
+                "summary": wo.summary(),
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class WorkOrderListHandler(BaseHandler):
+    """GET /api/work-orders/list?job_code=XXX — List all work orders for a project."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            summaries = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_orders": summaries}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderDetailHandler(BaseHandler):
+    """GET /api/work-orders/detail?job_code=XXX&wo_id=YYY — Get full work order with items."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            wo_id = self.get_query_argument("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderApproveHandler(BaseHandler):
+    """POST /api/work-orders/approve — Approve a work order for fabrication."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            if wo.status != STATUS_QUEUED:
+                self.write(json_encode({"ok": False, "error": f"Cannot approve — status is '{STATUS_LABELS.get(wo.status, wo.status)}'"}))
+                return
+
+            wo.status = STATUS_APPROVED
+            wo.approved_at = datetime.datetime.now().isoformat()
+            wo.approved_by = body.get("approved_by", self.get_current_user() or "system")
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderStickersPrintedHandler(BaseHandler):
+    """POST /api/work-orders/stickers-printed — Mark stickers as printed."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            if wo.status != STATUS_APPROVED:
+                self.write(json_encode({"ok": False, "error": f"Cannot mark printed — status is '{STATUS_LABELS.get(wo.status, wo.status)}'"}))
+                return
+
+            wo.status = STATUS_STICKERS_PRINTED
+            wo.stickers_printed_at = datetime.datetime.now().isoformat()
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderHoldHandler(BaseHandler):
+    """POST /api/work-orders/hold — Put a work order on hold or resume it."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            action = body.get("action", "hold")  # "hold" or "resume"
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            if action == "hold":
+                if wo.status == STATUS_ON_HOLD:
+                    self.write(json_encode({"ok": False, "error": "Already on hold"}))
+                    return
+                if wo.status == STATUS_COMPLETE:
+                    self.write(json_encode({"ok": False, "error": "Cannot hold a completed WO"}))
+                    return
+                wo.notes = f"[ON HOLD] Previous status: {wo.status}. " + wo.notes
+                wo.status = STATUS_ON_HOLD
+            elif action == "resume":
+                if wo.status != STATUS_ON_HOLD:
+                    self.write(json_encode({"ok": False, "error": "Not currently on hold"}))
+                    return
+                # Resume to queued (admin can re-approve)
+                wo.status = STATUS_QUEUED
+            else:
+                self.write(json_encode({"ok": False, "error": f"Unknown action: {action}"}))
+                return
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderQRScanHandler(BaseHandler):
+    """POST /api/work-orders/qr-scan — Process a QR code scan (start or finish)."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            action = body.get("action", "").strip()  # "start" or "finish"
+            scanned_by = body.get("scanned_by", self.get_current_user() or "shop")
+
+            if not job_code or not item_id or not action:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or action"}))
+                return
+
+            if action == "start":
+                result = qr_scan_start(SHOP_DRAWINGS_DIR, job_code, item_id, scanned_by)
+            elif action == "finish":
+                result = qr_scan_finish(SHOP_DRAWINGS_DIR, job_code, item_id, scanned_by)
+            else:
+                self.write(json_encode({"ok": False, "error": f"Unknown action: {action}. Use 'start' or 'finish'."}))
+                return
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class WorkOrderItemNotesHandler(BaseHandler):
+    """POST /api/work-orders/item-notes — Add notes to a work order item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            notes = body.get("notes", "").strip()
+
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+
+            item.notes = notes
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "item": item.to_dict()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderStickerPDFHandler(BaseHandler):
+    """GET /api/work-orders/stickers/pdf?job_code=X&wo_id=Y — Generate sticker PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            wo_id = self.get_query_argument("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.set_status(400)
+                self.write("Missing job_code or wo_id")
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write("Work order not found")
+                return
+
+            # Get base URL from request
+            app_base_url = f"{self.request.protocol}://{self.request.host}"
+
+            pdf_bytes = generate_wo_sticker_pdf(
+                wo.to_dict(),
+                app_base_url=app_base_url,
+            )
+
+            filename = f"{wo_id}_stickers.pdf"
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'inline; filename="{filename}"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(str(e))
+
+
+class WorkOrderStickerZPLHandler(BaseHandler):
+    """GET /api/work-orders/stickers/zpl?job_code=X&wo_id=Y — Generate ZPL for Zebra printers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            wo_id = self.get_query_argument("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.set_status(400)
+                self.write("Missing job_code or wo_id")
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write("Work order not found")
+                return
+
+            app_base_url = f"{self.request.protocol}://{self.request.host}"
+
+            zpl_str = generate_wo_sticker_zpl(
+                wo.to_dict(),
+                app_base_url=app_base_url,
+            )
+
+            filename = f"{wo_id}_stickers.zpl"
+            self.set_header("Content-Type", "text/plain")
+            self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.write(zpl_str)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class WorkOrderStickerCSVHandler(BaseHandler):
+    """GET /api/work-orders/stickers/csv?job_code=X&wo_id=Y — Export sticker data as CSV."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            wo_id = self.get_query_argument("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.set_status(400)
+                self.write("Missing job_code or wo_id")
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write("Work order not found")
+                return
+
+            app_base_url = f"{self.request.protocol}://{self.request.host}"
+
+            csv_bytes = generate_wo_sticker_csv(
+                wo.to_dict(),
+                app_base_url=app_base_url,
+            )
+
+            filename = f"{wo_id}_stickers.csv"
+            self.set_header("Content-Type", "text/csv")
+            self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.write(csv_bytes)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class WorkOrderSingleStickerHandler(BaseHandler):
+    """GET /api/work-orders/stickers/single?job_code=X&item_id=Y — Single item sticker PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            item_id = self.get_query_argument("item_id", "").strip()
+            if not job_code or not item_id:
+                self.set_status(400)
+                self.write("Missing job_code or item_id")
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.set_status(404)
+                self.write("Item not found")
+                return
+
+            app_base_url = f"{self.request.protocol}://{self.request.host}"
+
+            pdf_bytes = generate_wo_sticker_pdf(
+                wo.to_dict(),
+                items=[item.to_dict()],
+                app_base_url=app_base_url,
+            )
+
+            filename = f"{item.ship_mark}_sticker.pdf"
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'inline; filename="{filename}"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+# ─────────────────────────────────────────────
+# SHOP FLOOR DASHBOARD HANDLERS
+# ─────────────────────────────────────────────
+
+class ShopFloorPageHandler(BaseHandler):
+    """GET /shop-floor — Shop floor fabrication dashboard."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        from templates.shop_floor import SHOP_FLOOR_HTML
+        user = self.get_current_user() or "local"
+        role = self.get_user_role() or "admin"
+        html = SHOP_FLOOR_HTML.replace("{{USER_NAME}}", user).replace("{{USER_ROLE}}", role)
+        self.write(html)
+
+
+class ShopFloorDataHandler(BaseHandler):
+    """GET /api/shop-floor/data — Aggregated shop floor metrics."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.config import MACHINES
+
+            # All work orders across all projects
+            all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+            all_items = load_all_active_items(SHOP_DRAWINGS_DIR)
+
+            # ── Work order summaries by status ──
+            status_counts = {}
+            for wo in all_wos:
+                s = wo.get("status", "queued")
+                status_counts[s] = status_counts.get(s, 0) + 1
+
+            # ── Active work orders (not complete) ──
+            active_wos = [wo for wo in all_wos if wo.get("status") != "complete"]
+
+            # ── Item metrics ──
+            total_items = len(all_items)
+            completed_items = [i for i in all_items if i.get("status") == "complete"]
+            in_progress_items = [i for i in all_items if i.get("status") == "in_progress"]
+            queued_items = [i for i in all_items if i.get("status") not in ("complete", "in_progress")]
+
+            # ── Machine utilization ──
+            machines = {}
+            for m_id, m_info in MACHINES.items():
+                machines[m_id] = {
+                    "name": m_info["name"],
+                    "location": m_info.get("location", ""),
+                    "in_progress": 0,
+                    "queued": 0,
+                    "completed": 0,
+                    "total_fab_minutes": 0.0,
+                    "active_items": [],
+                }
+
+            for item in all_items:
+                m = item.get("machine", "")
+                if m not in machines:
+                    continue
+                if item.get("status") == "in_progress":
+                    machines[m]["in_progress"] += 1
+                    machines[m]["active_items"].append({
+                        "item_id": item.get("item_id", ""),
+                        "ship_mark": item.get("ship_mark", ""),
+                        "job_code": item.get("job_code", ""),
+                        "description": item.get("description", ""),
+                        "started_at": item.get("started_at", ""),
+                        "started_by": item.get("started_by", ""),
+                    })
+                elif item.get("status") == "complete":
+                    machines[m]["completed"] += 1
+                    machines[m]["total_fab_minutes"] += item.get("duration_minutes", 0)
+                else:
+                    machines[m]["queued"] += 1
+
+            # ── Throughput (completed items with duration) ──
+            total_fab_minutes = sum(i.get("duration_minutes", 0) for i in completed_items)
+            avg_fab_minutes = (total_fab_minutes / len(completed_items)) if completed_items else 0
+
+            # ── Today's activity ──
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            today_completed = [i for i in completed_items
+                               if i.get("finished_at", "").startswith(today)]
+            today_started = [i for i in all_items
+                             if i.get("started_at", "").startswith(today)]
+
+            # ── Recent activity feed (last 20 events) ──
+            events = []
+            for item in all_items:
+                if item.get("started_at"):
+                    events.append({
+                        "type": "started",
+                        "time": item["started_at"],
+                        "ship_mark": item.get("ship_mark", ""),
+                        "job_code": item.get("job_code", ""),
+                        "machine": item.get("machine", ""),
+                        "by": item.get("started_by", ""),
+                    })
+                if item.get("finished_at"):
+                    events.append({
+                        "type": "finished",
+                        "time": item["finished_at"],
+                        "ship_mark": item.get("ship_mark", ""),
+                        "job_code": item.get("job_code", ""),
+                        "machine": item.get("machine", ""),
+                        "by": item.get("finished_by", ""),
+                        "duration": item.get("duration_minutes", 0),
+                    })
+
+            events.sort(key=lambda x: x.get("time", ""), reverse=True)
+            events = events[:20]
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "summary": {
+                    "total_work_orders": len(all_wos),
+                    "active_work_orders": len(active_wos),
+                    "status_counts": status_counts,
+                    "total_items": total_items,
+                    "completed_items": len(completed_items),
+                    "in_progress_items": len(in_progress_items),
+                    "queued_items": len(queued_items),
+                    "total_fab_minutes": round(total_fab_minutes, 1),
+                    "avg_fab_minutes": round(avg_fab_minutes, 1),
+                    "today_completed": len(today_completed),
+                    "today_started": len(today_started),
+                },
+                "machines": machines,
+                "active_wos": active_wos[:20],
+                "events": events,
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+# ─────────────────────────────────────────────
+# WORK STATION HANDLERS (tablet/phone interface)
+# ─────────────────────────────────────────────
+
+class WorkStationPageHandler(BaseHandler):
+    """GET /work-station/{job_code} — Digital work station for shop floor workers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self, job_code):
+        from templates.work_station import WORK_STATION_HTML
+        user = self.get_current_user() or "local"
+        html = (WORK_STATION_HTML
+                .replace("{{JOB_CODE}}", job_code)
+                .replace("{{USER_NAME}}", user))
+        self.write(html)
+
+
+class WorkStationDataHandler(BaseHandler):
+    """GET /api/work-station/data — Items + machine info for a job's work station."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.config import MACHINES
+
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+            if not wos:
+                self.write(json_encode({
+                    "ok": True, "items": [], "machines": {},
+                    "work_orders": [],
+                }))
+                return
+
+            # Flatten all items from all WOs for this job
+            all_items = []
+            wo_summaries = []
+            for wo_summary in wos:
+                wo = load_work_order(SHOP_DRAWINGS_DIR, job_code,
+                                     wo_summary["work_order_id"])
+                if wo is None:
+                    continue
+                wo_summaries.append(wo.summary())
+                for item in wo.items:
+                    d = item.to_dict()
+                    d["work_order_id"] = wo.work_order_id
+                    all_items.append(d)
+
+            # Build machine summary
+            machines = {}
+            for m_id, m_info in MACHINES.items():
+                machines[m_id] = {
+                    "name": m_info["name"],
+                    "location": m_info.get("location", ""),
+                    "item_count": 0,
+                    "in_progress": 0,
+                    "completed": 0,
+                    "queued": 0,
+                }
+
+            for item in all_items:
+                m = item.get("machine", "")
+                if m in machines:
+                    machines[m]["item_count"] += 1
+                    if item.get("status") == "in_progress":
+                        machines[m]["in_progress"] += 1
+                    elif item.get("status") == "complete":
+                        machines[m]["completed"] += 1
+                    else:
+                        machines[m]["queued"] += 1
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "items": all_items,
+                "machines": machines,
+                "work_orders": wo_summaries,
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e),
+                                    "trace": traceback.format_exc()}))
+
+
+class WorkStationStepsHandler(BaseHandler):
+    """GET /api/work-station/steps — Fab steps for a specific item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.fab_steps import get_steps_for_item
+
+            job_code = self.get_argument("job_code", "")
+            item_id = self.get_argument("item_id", "")
+
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing params"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+
+            item_dict = item.to_dict()
+            steps = get_steps_for_item(item_dict, SHOP_DRAWINGS_DIR, job_code)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "item": item_dict,
+                "steps": steps,
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e),
+                                    "trace": traceback.format_exc()}))
+
+
+class WorkStationStepOverrideHandler(BaseHandler):
+    """POST /api/work-station/steps/override — Save custom fab steps for a component type."""
+    required_roles = ["admin"]
+
+    def post(self):
+        try:
+            from shop_drawings.fab_steps import save_step_override
+
+            data = json.loads(self.request.body)
+            template_key = data.get("template_key", "")
+            steps = data.get("steps", [])
+            job_code = data.get("job_code", "")  # Optional: job-specific override
+
+            if not template_key or not steps:
+                self.write(json_encode({"ok": False, "error": "Missing template_key or steps"}))
+                return
+
+            filepath = save_step_override(SHOP_DRAWINGS_DIR, template_key,
+                                          steps, job_code=job_code)
+            self.write(json_encode({"ok": True, "saved": filepath}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderPacketPDFHandler(BaseHandler):
+    """GET /api/work-orders/packet/pdf — Generate printable work order packet PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.wo_packets import generate_wo_packet_pdf
+            from shop_drawings.fab_steps import get_steps_for_item
+
+            job_code = self.get_argument("job_code", "")
+            wo_id = self.get_argument("wo_id", "")
+            base_url = self.get_argument("base_url", "http://localhost:8080")
+
+            if not job_code or not wo_id:
+                self.set_status(400)
+                self.write("Missing job_code or wo_id")
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write("Work order not found")
+                return
+
+            # Build steps for each item
+            steps_by_item = {}
+            for item in wo.items:
+                item_dict = item.to_dict()
+                steps_by_item[item.item_id] = get_steps_for_item(
+                    item_dict, SHOP_DRAWINGS_DIR, job_code)
+
+            pdf_bytes = generate_wo_packet_pdf(wo.to_dict(), steps_by_item,
+                                               base_url=base_url)
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                            f'inline; filename="WO_Packet_{wo_id}.pdf"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(f"Error: {e}\n{traceback.format_exc()}")
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -3348,6 +4664,41 @@ def get_routes():
         # ── Project Page ──────────────────────────────────────
         (r"/project/([^/]+)",            ProjectPageHandler),
 
+        # ── Shop Drawings ─────────────────────────────────────
+        (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
+        (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
+        (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
+        (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),
+        (r"/api/shop-drawings/generate",         ShopDrawingsGenerateHandler),
+        (r"/api/shop-drawings/file",             ShopDrawingsFileHandler),
+        (r"/api/shop-drawings/zip",              ShopDrawingsZipHandler),
+
+        # ── Work Orders ──────────────────────────────────────
+        (r"/work-orders/([^/]+)",                WorkOrderPageHandler),
+        (r"/api/work-orders/create",             WorkOrderCreateHandler),
+        (r"/api/work-orders/list",               WorkOrderListHandler),
+        (r"/api/work-orders/detail",             WorkOrderDetailHandler),
+        (r"/api/work-orders/approve",            WorkOrderApproveHandler),
+        (r"/api/work-orders/stickers-printed",   WorkOrderStickersPrintedHandler),
+        (r"/api/work-orders/hold",               WorkOrderHoldHandler),
+        (r"/api/work-orders/qr-scan",            WorkOrderQRScanHandler),
+        (r"/api/work-orders/item-notes",         WorkOrderItemNotesHandler),
+        (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),
+        (r"/api/work-orders/stickers/zpl",       WorkOrderStickerZPLHandler),
+        (r"/api/work-orders/stickers/csv",       WorkOrderStickerCSVHandler),
+        (r"/api/work-orders/stickers/single",    WorkOrderSingleStickerHandler),
+
+        # ── Shop Floor Dashboard ─────────────────────────────
+        (r"/shop-floor",                         ShopFloorPageHandler),
+        (r"/api/shop-floor/data",                ShopFloorDataHandler),
+
+        # ── Work Station (tablet/phone) ───────────────────────
+        (r"/work-station/([^/]+)",               WorkStationPageHandler),
+        (r"/api/work-station/data",              WorkStationDataHandler),
+        (r"/api/work-station/steps",             WorkStationStepsHandler),
+        (r"/api/work-station/steps/override",    WorkStationStepOverrideHandler),
+        (r"/api/work-orders/packet/pdf",         WorkOrderPacketPDFHandler),
+
         # ── Customer Database ─────────────────────────────────
         (r"/customers",                      CustomerPageHandler),
         (r"/api/customers",                  CustomerListHandler),
@@ -3404,6 +4755,10 @@ from templates.project_page import PROJECT_PAGE_HTML
 from templates.customers import CUSTOMERS_HTML
 from templates.quote_editor import QUOTE_EDITOR_HTML
 from templates.qc_page import QC_PAGE_HTML
+from templates.shop_drawings import SHOP_DRAWINGS_HTML
+from templates.work_orders import WORK_ORDERS_HTML
+from templates.shop_floor import SHOP_FLOOR_HTML
+from templates.work_station import WORK_STATION_HTML
 
 # Aliases used by handlers
 MAIN_HTML = SA_CALC_HTML

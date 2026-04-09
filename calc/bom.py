@@ -21,7 +21,7 @@ from typing import List, Optional, Dict, Any
 from calc.defaults import (
     COILS, PURCHASED_ITEMS, REBAR, SCREWS, TRIM,
     WASTE_FACTORS, DEFAULTS, PITCH_OPTIONS, ROOF_SLOPES,
-    LABOR, WELDING_CONSUMABLES,
+    LABOR, WELDING_CONSUMABLES, BOLT_ASSEMBLIES, ENDCAP_U_CHANNELS,
     get_purlin_spacing, get_rebar_size
 )
 
@@ -650,6 +650,71 @@ class BOMCalculator:
             notes=f"{n_struct_cols} cols x 4 per col | {gusset_size_str}",
         ))
 
+        # ── Bolt Assemblies (column-to-rafter connections) ─────────────
+        bolt = BOLT_ASSEMBLIES["connection_bolt"]
+        # Each column has 1 connection point (top); bolt_qty per connection = 4
+        n_connections = n_struct_cols
+        bolts_per_conn = bolt["qty_per_connection"]
+        n_bolts = n_connections * bolts_per_conn
+        bolt_boxes = math.ceil(n_bolts / bolt["box_qty"])
+        bolt_cost_v = bolt_boxes * bolt["price_per_box"]
+        items.append(BOMLineItem(
+            category="Connection Hardware",
+            item_id="bolt_assemblies",
+            description=(f"3/4\" A325 Bolt Assembly (bolt+nut+washers) "
+                         f"({n_bolts} pcs / {bolt_boxes} boxes of {bolt['box_qty']})"),
+            qty=bolt_boxes, unit="BOX",
+            unit_cost=bolt["price_per_box"],
+            total_cost=round(bolt_cost_v, 2),
+            notes=(f"{n_connections} column connections × {bolts_per_conn} bolts/connection "
+                   f"= {n_bolts} assemblies | "
+                   f"Each: 3/4\"×4-1/2\" A325 + nut + flat washer + lock washer"),
+            piece_count=n_bolts,
+        ))
+
+        # ── Endcap U-Channels (purlin endcaps at building ends) ──────
+        endcap = ENDCAP_U_CHANNELS
+        # Building length determines endcap length; 2 endcaps per building
+        endcap_length_in = bldg.length_ft * 12.0
+        endcap_max_in = endcap["max_single_piece_in"]  # 30'4" = 364"
+        if endcap_length_in <= endcap_max_in:
+            n_endcap_pieces = 2  # 1 piece per end
+            endcap_piece_len_in = endcap_length_in
+            endcap_split_note = "Single piece per end"
+        else:
+            # Must split — land on purlin center
+            pieces_per_end = math.ceil(endcap_length_in / endcap_max_in)
+            n_endcap_pieces = pieces_per_end * 2  # both ends
+            endcap_piece_len_in = endcap_length_in / pieces_per_end
+            endcap_split_note = (f"Split: {pieces_per_end} pieces per end "
+                                 f"({endcap_piece_len_in/12:.1f}' each, must land on purlin)")
+
+        endcap_total_lft = (n_endcap_pieces * endcap_piece_len_in) / 12.0
+        # Uses z_purlin_20 coil
+        endcap_coil = COILS[endcap["coil_id"]]
+        endcap_ppb = coil_price(endcap["coil_id"], cp)
+        endcap_raw = endcap_total_lft * (1 + wf2)
+        endcap_wt = endcap_raw * endcap_coil["lbs_per_lft"]
+        endcap_cost_v = endcap_wt * endcap_ppb
+        items.append(BOMLineItem(
+            category="Structural Steel - Coil 2",
+            item_id="endcap_u_channels",
+            description=(f"20.125\" 12GA — Endcap U-Channel 12\"×4\" "
+                         f"({n_endcap_pieces} pcs, {endcap_piece_len_in/12:.1f}' ea)"),
+            qty=round(endcap_raw, 2), unit="LFT (coil)",
+            unit_weight_lbs=endcap_coil["lbs_per_lft"],
+            total_weight_lbs=round(endcap_wt, 1),
+            unit_cost=endcap_ppb,
+            total_cost=round(endcap_cost_v, 2),
+            waste_factor=wf2,
+            notes=(f"2 building ends × {endcap['qty_per_building_end']} per end | "
+                   f"{endcap_split_note} | "
+                   f"No lip, roll formed on C1 from Z-purlin coil | "
+                   f"Ships nested alternating (U-up/N-down)"),
+            piece_count=n_endcap_pieces,
+            piece_length_in=round(endcap_piece_len_in, 1),
+        ))
+
         # ── Rebar ────────────────────────────────────────────────────────
         stick_ft = REBAR["stick_length_ft"]
         rebar_ppb = REBAR["price_per_lb"]
@@ -863,6 +928,76 @@ class BOMCalculator:
             piece_count=tek_struct,
         ))
 
+        # ── TEK Screws — Endcap-to-Purlin ────────────────────────────────
+        # 4 tek screws per purlin line × 2 endcaps (both building ends)
+        tek_end_spec = SCREWS["tek_endcap"]
+        n_endcap_tek = n_purlin_lines * tek_end_spec["per_purlin"] * 2  # both ends
+        tek_end_box_qty = tek_end_spec["box_qty"]
+        tek_end_ppb = tek_end_spec["price_per_box"]
+        tek_end_boxes = math.ceil(n_endcap_tek / tek_end_box_qty)
+        tek_end_cost = tek_end_boxes * tek_end_ppb
+        items.append(BOMLineItem(
+            category="Fasteners", item_id="tek_endcap",
+            description=(f"#10 TEK — Endcap-to-Purlin "
+                         f"({n_endcap_tek:,} pcs / {tek_end_boxes} box(es) of {tek_end_box_qty:,})"),
+            qty=tek_end_boxes, unit="BOX",
+            unit_cost=tek_end_ppb,
+            total_cost=round(tek_end_cost, 2),
+            notes=(f"{n_purlin_lines} purlin lines × {tek_end_spec['per_purlin']} screws/purlin "
+                   f"× 2 endcaps (both building ends) = {n_endcap_tek} pcs | "
+                   f"2 top + 2 bottom per connection"),
+            piece_count=n_endcap_tek,
+        ))
+
+        # ── TEK Screws — Purlin Splices ───────────────────────────────────
+        # Splices occur where purlins span across bays; n_splices depends on bay layout
+        # For Z-purlins with overhang: each purlin group has (n_bays - 1) splice points
+        # For C-purlins: each line has (n_bays - 1) splice points if spanning
+        # In typical Z-purlin setup: splice near mid-bay, 1 per bay boundary per line
+        tek_spl_spec = SCREWS["tek_splice"]
+        n_splice_points = n_purlin_lines * max(0, n_bays - 1)  # splice at each interior rafter
+        n_splice_tek = n_splice_points * tek_spl_spec["per_splice"]
+        tek_spl_box_qty = tek_spl_spec["box_qty"]
+        tek_spl_ppb = tek_spl_spec["price_per_box"]
+        tek_spl_boxes = max(0, math.ceil(n_splice_tek / tek_spl_box_qty)) if n_splice_tek > 0 else 0
+        tek_spl_cost = tek_spl_boxes * tek_spl_ppb
+        if n_splice_tek > 0:
+            items.append(BOMLineItem(
+                category="Fasteners", item_id="tek_splice",
+                description=(f"#10 TEK — Purlin Splice "
+                             f"({n_splice_tek:,} pcs / {tek_spl_boxes} box(es) of {tek_spl_box_qty:,})"),
+                qty=tek_spl_boxes, unit="BOX",
+                unit_cost=tek_spl_ppb,
+                total_cost=round(tek_spl_cost, 2),
+                notes=(f"{n_purlin_lines} lines × {max(0, n_bays - 1)} splice points "
+                       f"× {tek_spl_spec['per_splice']} screws/splice = {n_splice_tek} pcs | "
+                       f"8 screws through 6\" overlap at each splice"),
+                piece_count=n_splice_tek,
+            ))
+
+        # ── TEK Screws — Sag Rod-to-Purlin ────────────────────────────────
+        # Sag rods cross every purlin line; 2 screws per crossing
+        tek_sag_spec = SCREWS["tek_sag_rod"]
+        n_sag_rods_total = n_rafters * 2  # 2 sag rods per rafter
+        n_sag_purlin_crossings = n_sag_rods_total * n_purlin_lines
+        n_sag_tek = n_sag_purlin_crossings * tek_sag_spec["per_purlin"]
+        tek_sag_box_qty = tek_sag_spec["box_qty"]
+        tek_sag_ppb = tek_sag_spec["price_per_box"]
+        tek_sag_boxes = math.ceil(n_sag_tek / tek_sag_box_qty)
+        tek_sag_cost = tek_sag_boxes * tek_sag_ppb
+        items.append(BOMLineItem(
+            category="Fasteners", item_id="tek_sag_rod",
+            description=(f"#10 TEK — Sag Rod-to-Purlin "
+                         f"({n_sag_tek:,} pcs / {tek_sag_boxes} box(es) of {tek_sag_box_qty:,})"),
+            qty=tek_sag_boxes, unit="BOX",
+            unit_cost=tek_sag_ppb,
+            total_cost=round(tek_sag_cost, 2),
+            notes=(f"{n_sag_rods_total} sag rods × {n_purlin_lines} purlin lines "
+                   f"× {tek_sag_spec['per_purlin']} screws/crossing = {n_sag_tek} pcs | "
+                   f"Underside attachment, no pre-punch"),
+            piece_count=n_sag_tek,
+        ))
+
         # ── Trim (if enabled) ─────────────────────────────────────────────
         if bldg.include_trim:
             n_trim = calc_trim_sticks(bldg.length_ft, bldg.width_ft,
@@ -968,6 +1103,74 @@ class BOMCalculator:
         result.geometry["labor"] = labor_days_detail
         result.geometry["wall_panel_ht"] = round(wall_panel_ht, 3)
         result.geometry["peak_ht"] = round(peak_ht, 2)
+
+        # ── Coil Inventory Tracking ──────────────────────────────────────
+        # Summarize coil consumption per type for inventory deduction & reorder alerts
+        coil_usage = {}
+        for item in items:
+            if item.unit == "LFT (coil)":
+                cid = item.item_id
+                # Map item_id to coil type
+                coil_key = None
+                if "c_section" in cid or "splice_plate" in cid:
+                    coil_key = "c_section_23"
+                elif "z_purlin" in cid or "wall_girt" in cid or "endcap_u" in cid:
+                    coil_key = "z_purlin_20"
+                elif "sag_rod" in cid:
+                    coil_key = "angle_4_16ga"
+                elif "spartan_rib" in cid or "wall_panel" in cid:
+                    coil_key = "spartan_rib_48"
+                elif "interior_plate" in cid:
+                    coil_key = "plate_6_10ga"
+                elif "exterior_plate" in cid:
+                    coil_key = "plate_9_10ga"
+                elif "strap" in cid:
+                    coil_key = "strap_15_10ga"
+
+                if coil_key:
+                    if coil_key not in coil_usage:
+                        coil_info = COILS[coil_key]
+                        coil_usage[coil_key] = {
+                            "coil_name": coil_info["name"],
+                            "total_lft": 0.0,
+                            "total_lbs": 0.0,
+                            "roll_weight_lbs": coil_info.get("roll_weight_lbs", 3000),
+                            "rolls_needed": 0,
+                        }
+                    coil_usage[coil_key]["total_lft"] += item.qty
+                    coil_usage[coil_key]["total_lbs"] += item.total_weight_lbs
+
+        # Calculate rolls needed per coil type
+        for key, usage in coil_usage.items():
+            roll_wt = usage["roll_weight_lbs"]
+            usage["rolls_needed"] = math.ceil(usage["total_lbs"] / roll_wt) if roll_wt > 0 else 0
+            usage["total_lft"] = round(usage["total_lft"], 2)
+            usage["total_lbs"] = round(usage["total_lbs"], 1)
+
+        # Also track purchased items usage
+        purchased_usage = {
+            "cap_plates": n_cap,
+            "gusset_triangles": n_gussets,
+            "bolt_assemblies": n_bolts,
+        }
+
+        # Rebar usage by size
+        rebar_usage = {}
+        for item in items:
+            if item.category == "Rebar":
+                # Extract size from item_id (e.g., "rebar_col_9" → "#9")
+                parts = item.item_id.split("_")
+                if len(parts) >= 3:
+                    size_key = f"#{parts[-1]}"
+                    if size_key not in rebar_usage:
+                        rebar_usage[size_key] = {"sticks": 0, "lbs": 0.0}
+                    rebar_usage[size_key]["sticks"] += item.qty
+                    rebar_usage[size_key]["lbs"] += item.total_weight_lbs
+
+        result.geometry["coil_usage"] = coil_usage
+        result.geometry["purchased_usage"] = purchased_usage
+        result.geometry["rebar_usage"] = rebar_usage
+
         return result
 
     def calculate_project(self, buildings: List[BuildingConfig]) -> ProjectBOM:

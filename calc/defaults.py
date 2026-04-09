@@ -82,6 +82,7 @@ COILS = {
         "coating": "G90",
         "lbs_per_lft": 2.83,
         "price_per_lb": 0.82,
+        "roll_weight_lbs": 3000,
         "use": "10\"x6\" interior purlin-to-rafter plates",
         "plate_length_in": 10,
         "plate_length_ft": 10 / 12,
@@ -95,6 +96,7 @@ COILS = {
         "coating": "G90",
         "lbs_per_lft": 4.24,
         "price_per_lb": 0.82,
+        "roll_weight_lbs": 3000,
         "use": "24\"x9\" exterior purlin-to-rafter plates",
         "plate_length_in": 24,
         "plate_length_ft": 24 / 12,
@@ -108,6 +110,7 @@ COILS = {
         "coating": "G90",
         "lbs_per_lft": 0.706,
         "price_per_lb": 0.82,
+        "roll_weight_lbs": 3000,
         "use": "Hurricane straps & bottom flange braces (1.5\"x28\")",
         "default_length_in": 28,
     },
@@ -243,6 +246,33 @@ SCREWS = {
         "price_per_box": 19.55,     # $ per 4,000-count box
         "price_per_screw": 19.55 / 4000,    # ≈ $0.0048875 each
     },
+    "tek_endcap": {
+        "id": "tek_endcap",
+        "name": "#10 TEK — Endcap-to-Purlin",
+        "description": "Endcap U-channel to purlin connections — 4 per purlin (2 top + 2 bottom)",
+        "per_purlin": 4,
+        "box_qty": 4000,
+        "price_per_box": 19.55,
+        "price_per_screw": 19.55 / 4000,
+    },
+    "tek_splice": {
+        "id": "tek_splice",
+        "name": "#10 TEK — Purlin Splice",
+        "description": "Purlin splice overlap connections — 8 per splice",
+        "per_splice": 8,
+        "box_qty": 4000,
+        "price_per_box": 19.55,
+        "price_per_screw": 19.55 / 4000,
+    },
+    "tek_sag_rod": {
+        "id": "tek_sag_rod",
+        "name": "#10 TEK — Sag Rod-to-Purlin",
+        "description": "Sag rod to purlin connections — 2 per purlin crossing",
+        "per_purlin": 2,
+        "box_qty": 4000,
+        "price_per_box": 19.55,
+        "price_per_screw": 19.55 / 4000,
+    },
     "stitch": {
         "id": "stitch",
         "name": "1/4\"-14 x 7/8\" Stitch Screw",
@@ -250,6 +280,42 @@ SCREWS = {
         "per_trim_stick": 5,
         "price_per_screw": 0.05,    # placeholder — update when known
     },
+}
+
+# ─────────────────────────────────────────────
+# BOLT ASSEMBLIES (Column-to-Rafter connections)
+# ─────────────────────────────────────────────
+BOLT_ASSEMBLIES = {
+    "connection_bolt": {
+        "id": "connection_bolt",
+        "name": "3/4\" A325 Bolt Assembly",
+        "description": "3/4\" x 4-1/2\" A325 bolt w/ nut + 2 washers (connection bolt)",
+        "bolt_dia": "3/4\"",
+        "bolt_length": "4-1/2\"",
+        "grade": "A325",
+        "components": ["bolt", "nut", "flat_washer", "lock_washer"],
+        "qty_per_connection": 4,      # 4 bolts per column-to-rafter connection
+        "price_per_assembly": 3.75,   # bolt + nut + 2 washers
+        "box_qty": 50,
+        "price_per_box": 187.50,      # 50 × $3.75
+    },
+}
+
+# ─────────────────────────────────────────────
+# ENDCAP U-CHANNELS (purlin endcaps at building ends)
+# ─────────────────────────────────────────────
+ENDCAP_U_CHANNELS = {
+    "profile": "12\"x4\" U-Channel (no lip)",
+    "inside_dim_in": 12,
+    "leg_height_in": 4,
+    "gauge": "12GA",
+    "material": "G90",
+    "lbs_per_lft": 7.43,             # Same as Z-purlin coil
+    "coil_id": "z_purlin_20",        # Roll formed from same 20.125\" coil on C1 machine
+    "max_single_piece_in": 364,      # 30'4\" max before needing splice
+    "qty_per_building_end": 1,       # 1 continuous piece (or spliced) per end
+    "tek_screws_per_purlin": 4,      # 4 tek screws per purlin connection (2 top + 2 bottom)
+    "shipping": "nested_alternating",
 }
 
 # ─────────────────────────────────────────────

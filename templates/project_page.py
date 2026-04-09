@@ -587,6 +587,7 @@ PROJECT_PAGE_HTML = r"""
             <a href="/sa">Structures America Estimator</a>
             <a href="/tc">Titan Carports Estimator</a>
             <a href="/customers">Customers</a>
+            <a href="/shop-floor">Shop Floor</a>
         </nav>
         <div class="tf-user">
             <button onclick="openGlobalSearch()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:6px 14px;border-radius:var(--tf-radius);cursor:pointer;font-size:var(--tf-text-sm);margin-right:12px;display:flex;align-items:center;gap:6px;">&#128269; Search <kbd style="background:rgba(255,255,255,0.15);padding:1px 6px;border-radius:4px;font-size:10px;">Ctrl+K</kbd></button>
@@ -620,6 +621,8 @@ PROJECT_PAGE_HTML = r"""
                 <button class="tf-btn tf-btn-amber tf-btn-sm" onclick="openInTCQuote()">Open in TC Estimator</button>
                 <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#059669;" onclick="openQuoteEditor()">&#128196; Quote Editor</button>
                 <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#7C3AED;" onclick="openQCDashboard()">&#128203; QC Dashboard</button>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#1E40AF;" onclick="openShopDrawings()">&#9998; Shop Drawings</button>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" style="background:#0F766E;" onclick="openWorkOrders()">&#128203; Work Orders</button>
                 <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="duplicateProject()">Duplicate</button>
                 <button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="archiveProject()" id="archiveBtn">Archive</button>
             </div>
@@ -1318,6 +1321,14 @@ PROJECT_PAGE_HTML = r"""
 
         function openQCDashboard() {
             window.location.href = '/qc/' + encodeURIComponent(JOB_CODE);
+        }
+
+        function openShopDrawings() {
+            window.location.href = '/shop-drawings/' + encodeURIComponent(JOB_CODE);
+        }
+
+        function openWorkOrders() {
+            window.location.href = '/work-orders/' + encodeURIComponent(JOB_CODE);
         }
 
         function duplicateProject() {
