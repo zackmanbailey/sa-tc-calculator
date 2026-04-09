@@ -1411,6 +1411,488 @@ class TCExportExcelHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# PROJECT CREATE & FULL PROJECT PAGE HANDLERS
+# ─────────────────────────────────────────────
+
+# Default document categories for new projects
+DEFAULT_DOC_CATEGORIES = [
+    {"key": "quotes",        "label": "Quotes",        "icon": "doc_quote"},
+    {"key": "contracts",     "label": "Contracts",      "icon": "doc_contract"},
+    {"key": "engineering",   "label": "Engineering",    "icon": "doc_engineering"},
+    {"key": "calcs",         "label": "Calcs",          "icon": "doc_calcs"},
+    {"key": "shop_drawings", "label": "Shop Drawings",  "icon": "doc_shop"},
+    {"key": "mill_certs",    "label": "Mill Certs",     "icon": "doc_certs"},
+    {"key": "photos",        "label": "Photos",         "icon": "doc_photos"},
+    {"key": "other",         "label": "Other",          "icon": "doc_other"},
+]
+
+# Stage-aware next-steps templates
+STAGE_NEXT_STEPS = {
+    "quote": [
+        {"text": "Calculate BOM in SA Calculator", "key": "calc_bom"},
+        {"text": "Review pricing and markup", "key": "review_pricing"},
+        {"text": "Generate PDF quote", "key": "gen_quote_pdf"},
+        {"text": "Send quote to customer", "key": "send_quote"},
+    ],
+    "contract": [
+        {"text": "Upload signed contract", "key": "upload_contract"},
+        {"text": "Submit for engineering", "key": "submit_eng"},
+        {"text": "Order long-lead materials", "key": "order_materials"},
+        {"text": "Verify deposit received", "key": "verify_deposit"},
+    ],
+    "engineering": [
+        {"text": "Upload engineering drawings", "key": "upload_eng"},
+        {"text": "Review calcs and connections", "key": "review_calcs"},
+        {"text": "Check material availability", "key": "check_materials"},
+        {"text": "Approve engineering for shop drawings", "key": "approve_eng"},
+    ],
+    "shop_drawings": [
+        {"text": "Create shop drawings", "key": "create_shop_dwg"},
+        {"text": "Upload shop drawings for review", "key": "upload_shop_dwg"},
+        {"text": "Get customer/engineer approval", "key": "get_approval"},
+        {"text": "Release to fabrication", "key": "release_fab"},
+    ],
+    "fabrication": [
+        {"text": "Generate shop labels", "key": "gen_labels"},
+        {"text": "Print cut lists", "key": "print_cuts"},
+        {"text": "Verify inventory for job", "key": "verify_inv"},
+        {"text": "Complete fabrication QC check", "key": "fab_qc"},
+    ],
+    "shipping": [
+        {"text": "Create load list (erection sequence)", "key": "load_list"},
+        {"text": "Schedule delivery", "key": "schedule_delivery"},
+        {"text": "Confirm delivery address", "key": "confirm_address"},
+        {"text": "Ship and update tracking", "key": "ship_update"},
+    ],
+    "install": [
+        {"text": "Confirm crew scheduled", "key": "confirm_crew"},
+        {"text": "Verify all materials on site", "key": "verify_onsite"},
+        {"text": "Complete installation", "key": "complete_install"},
+        {"text": "Upload completion photos", "key": "upload_photos"},
+    ],
+    "complete": [
+        {"text": "Upload final inspection report", "key": "final_inspect"},
+        {"text": "Send final invoice", "key": "final_invoice"},
+        {"text": "Collect final payment", "key": "final_payment"},
+        {"text": "Archive project", "key": "archive"},
+    ],
+}
+
+
+class ProjectNextCodeHandler(BaseHandler):
+    """GET /api/project/next-code — Generate next available job code."""
+    def get(self):
+        year = datetime.datetime.now().year
+        os.makedirs(PROJECTS_DIR, exist_ok=True)
+        existing = os.listdir(PROJECTS_DIR)
+        max_num = 0
+        prefix = f"{year}-"
+        for d in existing:
+            if d.startswith(prefix):
+                try:
+                    num = int(d.split("-", 1)[1])
+                    max_num = max(max_num, num)
+                except (ValueError, IndexError):
+                    pass
+        next_code = f"{year}-{max_num + 1:04d}"
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "job_code": next_code}))
+
+
+class ProjectCreateHandler(BaseHandler):
+    """POST /api/project/create — Create a new project with metadata."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Job code is required"}))
+                return
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+
+            # Check if project already exists
+            if os.path.isdir(proj_dir) and os.path.isfile(os.path.join(proj_dir, "metadata.json")):
+                self.write(json_encode({"ok": False, "error": f"Project {job_code} already exists"}))
+                return
+
+            os.makedirs(proj_dir, exist_ok=True)
+
+            # Create document category folders
+            docs_dir = os.path.join(proj_dir, "docs")
+            categories = body.get("doc_categories", DEFAULT_DOC_CATEGORIES)
+            for cat in categories:
+                os.makedirs(os.path.join(docs_dir, cat["key"]), exist_ok=True)
+
+            # Build metadata
+            now = datetime.datetime.now().isoformat()
+            stage = body.get("stage", "quote")
+            if stage not in PROJECT_STAGES:
+                stage = "quote"
+
+            metadata = {
+                "job_code": job_code,
+                "project_name": body.get("project_name", "").strip(),
+                "customer": {
+                    "name":  body.get("customer_name", "").strip(),
+                    "phone": body.get("customer_phone", "").strip(),
+                    "email": body.get("customer_email", "").strip(),
+                },
+                "location": {
+                    "street":  body.get("location_street", "").strip(),
+                    "city":    body.get("location_city", "").strip(),
+                    "state":   body.get("location_state", "").strip(),
+                    "zip":     body.get("location_zip", "").strip(),
+                },
+                "stage": stage,
+                "notes": body.get("notes", "").strip(),
+                "doc_categories": categories,
+                "checklist": {},
+                "created_at": now,
+                "created_by": self.get_current_user() or "unknown",
+                "updated_at": now,
+                "archived": False,
+            }
+
+            # Save metadata
+            with open(os.path.join(proj_dir, "metadata.json"), "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            # Save initial status
+            status_data = {
+                "job_code": job_code,
+                "stage": stage,
+                "updated_at": now,
+                "updated_by": self.get_current_user() or "unknown",
+            }
+            with open(os.path.join(proj_dir, "status.json"), "w") as f:
+                json.dump(status_data, f, indent=2)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "job_code": job_code, "metadata": metadata}))
+
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectMetadataHandler(BaseHandler):
+    """GET/POST /api/project/metadata — Get or update project metadata."""
+    def get(self):
+        job_code = self.get_query_argument("job_code", "").strip()
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "No job_code"}))
+            return
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+        if not os.path.isfile(meta_path):
+            self.write(json_encode({"ok": False, "error": "Project not found"}))
+            return
+        with open(meta_path) as f:
+            metadata = json.load(f)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "metadata": metadata}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "No job_code"}))
+                return
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+            if not os.path.isfile(meta_path):
+                self.write(json_encode({"ok": False, "error": "Project not found"}))
+                return
+
+            with open(meta_path) as f:
+                metadata = json.load(f)
+
+            # Update allowed fields
+            updates = body.get("updates", {})
+            for key in ["project_name", "notes", "stage", "doc_categories", "archived"]:
+                if key in updates:
+                    metadata[key] = updates[key]
+            if "customer" in updates:
+                metadata["customer"].update(updates["customer"])
+            if "location" in updates:
+                metadata["location"].update(updates["location"])
+            if "checklist" in updates:
+                metadata["checklist"].update(updates["checklist"])
+
+            metadata["updated_at"] = datetime.datetime.now().isoformat()
+
+            with open(meta_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "metadata": metadata}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectChecklistHandler(BaseHandler):
+    """POST /api/project/checklist — Update checklist items for a project."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_key = body.get("item_key", "").strip()
+            checked = body.get("checked", False)
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+            if not os.path.isfile(meta_path):
+                self.write(json_encode({"ok": False, "error": "Project not found"}))
+                return
+
+            with open(meta_path) as f:
+                metadata = json.load(f)
+
+            checklist = metadata.get("checklist", {})
+            if checked:
+                checklist[item_key] = {
+                    "completed_at": datetime.datetime.now().isoformat(),
+                    "completed_by": self.get_current_user() or "unknown",
+                }
+            else:
+                checklist.pop(item_key, None)
+
+            metadata["checklist"] = checklist
+            metadata["updated_at"] = datetime.datetime.now().isoformat()
+
+            with open(meta_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            # Calculate completion percentage
+            stage = metadata.get("stage", "quote")
+            steps = STAGE_NEXT_STEPS.get(stage, [])
+            total = len(steps)
+            done = sum(1 for s in steps if s["key"] in checklist)
+            pct = int((done / total) * 100) if total > 0 else 0
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "checklist": checklist, "completion_pct": pct}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectNextStepsHandler(BaseHandler):
+    """GET /api/project/next-steps — Get stage-aware next steps for a project."""
+    def get(self):
+        job_code = self.get_query_argument("job_code", "").strip()
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+
+        stage = "quote"
+        checklist = {}
+        if os.path.isfile(meta_path):
+            with open(meta_path) as f:
+                meta = json.load(f)
+            stage = meta.get("stage", "quote")
+            checklist = meta.get("checklist", {})
+
+        steps = STAGE_NEXT_STEPS.get(stage, STAGE_NEXT_STEPS["quote"])
+        result = []
+        for s in steps:
+            result.append({
+                "text": s["text"],
+                "key": s["key"],
+                "completed": s["key"] in checklist,
+                "completed_at": checklist.get(s["key"], {}).get("completed_at"),
+                "completed_by": checklist.get(s["key"], {}).get("completed_by"),
+            })
+
+        total = len(steps)
+        done = sum(1 for r in result if r["completed"])
+        pct = int((done / total) * 100) if total > 0 else 0
+
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True, "stage": stage, "steps": result,
+            "completion_pct": pct, "done": done, "total": total,
+        }))
+
+
+class ProjectPageHandler(BaseHandler):
+    """GET /project/{job_code} — Full project page."""
+    def get(self, job_code):
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+
+        if not os.path.isfile(meta_path):
+            self.set_status(404)
+            self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
+            return
+
+        with open(meta_path) as f:
+            metadata = json.load(f)
+
+        role = self.get_user_role() or "viewer"
+        display = "User"
+        if AUTH_ENABLED:
+            user = self.get_current_user()
+            users = load_users()
+            display = users.get(user, {}).get("display_name", user or "User")
+
+        html = PROJECT_PAGE_HTML
+        html = html.replace("{{JOB_CODE}}", job_code)
+        html = html.replace("{{METADATA_JSON}}", json.dumps(metadata))
+        html = html.replace("{{USER_ROLE}}", role)
+        html = html.replace("{{USER_NAME}}", display)
+        html = html.replace("{{STAGES_JSON}}", json.dumps(PROJECT_STAGES))
+        html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
+        html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
+
+        self.set_header("Content-Type", "text/html")
+        self.write(html)
+
+
+class ProjectArchiveDocHandler(BaseHandler):
+    """POST /api/project/docs/archive — Archive a document (move to archive subfolder)."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            category = body.get("category", "").lower()
+            filename = body.get("filename", "").strip()
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            src = os.path.join(PROJECTS_DIR, safe_name, "docs", category, filename)
+            archive_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", category, "_archive")
+            os.makedirs(archive_dir, exist_ok=True)
+
+            if not os.path.isfile(src):
+                self.write(json_encode({"ok": False, "error": "File not found"}))
+                return
+
+            # Add timestamp to archived filename to prevent overwrites
+            ts = int(time.time())
+            base, ext = os.path.splitext(filename)
+            archived_name = f"{base}_archived_{ts}{ext}"
+            dst = os.path.join(archive_dir, archived_name)
+
+            os.rename(src, dst)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "archived_as": archived_name}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+
+
+class ProjectArchivedDocsHandler(BaseHandler):
+    """POST /api/project/docs/archived — List archived documents for a category."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            category = body.get("category", "").lower()
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            archive_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", category, "_archive")
+
+            files = []
+            if os.path.isdir(archive_dir):
+                for fname in sorted(os.listdir(archive_dir), reverse=True):
+                    fpath = os.path.join(archive_dir, fname)
+                    if os.path.isfile(fpath):
+                        stat = os.stat(fpath)
+                        files.append({
+                            "filename": fname,
+                            "category": category,
+                            "size": stat.st_size,
+                            "url": f"/project-files/{safe_name}/{category}/_archive/{fname}",
+                            "archived_at": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "files": files}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# ENHANCED PROJECT LIST (includes metadata)
+# ─────────────────────────────────────────────
+
+class ProjectListEnhancedHandler(BaseHandler):
+    """GET /api/projects/full — List all projects with full metadata."""
+    def get(self):
+        os.makedirs(PROJECTS_DIR, exist_ok=True)
+        show_archived = self.get_query_argument("archived", "false").lower() == "true"
+        result = []
+
+        for d in sorted(os.listdir(PROJECTS_DIR), reverse=True):
+            dpath = os.path.join(PROJECTS_DIR, d)
+            if not os.path.isdir(dpath):
+                continue
+
+            meta_path = os.path.join(dpath, "metadata.json")
+            if os.path.isfile(meta_path):
+                try:
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                    if meta.get("archived", False) and not show_archived:
+                        continue
+                    # Count documents
+                    docs_dir = os.path.join(dpath, "docs")
+                    doc_count = 0
+                    if os.path.isdir(docs_dir):
+                        for cat in os.listdir(docs_dir):
+                            cat_path = os.path.join(docs_dir, cat)
+                            if os.path.isdir(cat_path):
+                                doc_count += len([f for f in os.listdir(cat_path)
+                                                  if os.path.isfile(os.path.join(cat_path, f))
+                                                  and not f.startswith(".")])
+                    # Count versions
+                    n_versions = len(glob.glob(os.path.join(dpath, "v*.json")))
+                    meta["doc_count"] = doc_count
+                    meta["n_versions"] = n_versions
+                    result.append(meta)
+                except Exception:
+                    pass
+            else:
+                # Legacy project (no metadata.json) — build minimal entry
+                cpath = os.path.join(dpath, "current.json")
+                if os.path.isfile(cpath):
+                    try:
+                        with open(cpath) as f:
+                            data = json.load(f)
+                        result.append({
+                            "job_code": data.get("job_code", d),
+                            "project_name": data.get("project", {}).get("name", ""),
+                            "customer": {"name": data.get("project", {}).get("customer_name", "")},
+                            "stage": "quote",
+                            "created_at": data.get("saved_at", ""),
+                            "updated_at": data.get("saved_at", ""),
+                            "archived": False,
+                            "n_versions": len(glob.glob(os.path.join(dpath, "v*.json"))),
+                            "doc_count": 0,
+                        })
+                    except Exception:
+                        pass
+
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "projects": result}))
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -1463,10 +1945,23 @@ def get_routes():
         (r"/api/project/docs/upload",    ProjectDocUploadHandler),
         (r"/api/project/docs",           ProjectDocListHandler),
         (r"/api/project/docs/delete",    ProjectDocDeleteHandler),
+        (r"/api/project/docs/archive",   ProjectArchiveDocHandler),
+        (r"/api/project/docs/archived",  ProjectArchivedDocsHandler),
         (r"/project-files/([^/]+)/([^/]+)/([^/]+)", ProjectDocServeHandler),
 
         # ── API - Project Status (NEW) ────────────────────────
         (r"/api/project/status",         ProjectStatusHandler),
+
+        # ── API - Enhanced Project System ─────────────────────
+        (r"/api/project/next-code",      ProjectNextCodeHandler),
+        (r"/api/project/create",         ProjectCreateHandler),
+        (r"/api/project/metadata",       ProjectMetadataHandler),
+        (r"/api/project/checklist",      ProjectChecklistHandler),
+        (r"/api/project/next-steps",     ProjectNextStepsHandler),
+        (r"/api/projects/full",          ProjectListEnhancedHandler),
+
+        # ── Project Page ──────────────────────────────────────
+        (r"/project/([^/]+)",            ProjectPageHandler),
 
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),
@@ -1486,6 +1981,7 @@ from templates.admin import ADMIN_HTML
 from templates.dashboard import DASHBOARD_HTML
 from templates.sa_calc import SA_CALC_HTML
 from templates.tc_quote import TC_QUOTE_HTML, COIL_DETAIL_HTML
+from templates.project_page import PROJECT_PAGE_HTML
 
 # Aliases used by handlers
 MAIN_HTML = SA_CALC_HTML

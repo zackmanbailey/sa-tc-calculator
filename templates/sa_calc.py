@@ -369,7 +369,48 @@ window.onload = function() {
   loadRecentProjects();
   // Check inventory alerts on page load (runs in background)
   checkInventoryAlerts();
+  // Auto-load project from URL param ?project=JOB_CODE
+  const urlParams = new URLSearchParams(window.location.search);
+  const projectCode = urlParams.get('project');
+  if (projectCode) {
+    autoLoadFromProject(projectCode);
+  }
 };
+
+async function autoLoadFromProject(jobCode) {
+  try {
+    // First try to load existing calc data
+    const loadResp = await fetch('/api/project/load', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ job_code: jobCode }),
+    });
+    const loadResult = await loadResp.json();
+    if (loadResult.ok && loadResult.data) {
+      // Full project data exists, load it
+      loadProject(jobCode);
+      return;
+    }
+  } catch(e) { /* no saved calc data yet */ }
+
+  // No calc data, but try to load metadata to auto-fill customer info
+  try {
+    const metaResp = await fetch('/api/project/metadata?job_code=' + encodeURIComponent(jobCode));
+    const metaResult = await metaResp.json();
+    if (metaResult.ok && metaResult.metadata) {
+      const m = metaResult.metadata;
+      document.getElementById('proj_jobcode').value = m.job_code || jobCode;
+      if (m.project_name) document.getElementById('proj_name').value = m.project_name;
+      if (m.customer && m.customer.name) document.getElementById('proj_customer').value = m.customer.name;
+      if (m.location) {
+        if (m.location.street) document.getElementById('proj_address').value = m.location.street;
+        if (m.location.city) document.getElementById('proj_city').value = m.location.city;
+        if (m.location.state) document.getElementById('proj_state').value = m.location.state;
+        if (m.location.zip) document.getElementById('proj_zip').value = m.location.zip;
+      }
+    }
+  } catch(e) { /* silent */ }
+}
 
 async function checkInventoryAlerts() {
   try {

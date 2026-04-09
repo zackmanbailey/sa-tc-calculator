@@ -418,6 +418,84 @@ DASHBOARD_HTML = r"""
 
         .modal-body { padding: var(--tf-sp-6); }
 
+        /* New Project Form */
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--tf-sp-4);
+        }
+
+        .form-group {
+            margin-bottom: var(--tf-sp-4);
+        }
+
+        .form-group label {
+            display: block;
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+            color: var(--tf-gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: var(--tf-sp-1);
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            font-family: var(--tf-font);
+            font-size: var(--tf-text-base);
+            color: var(--tf-gray-800);
+            background: #fff;
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            outline: none;
+            transition: all var(--tf-duration) var(--tf-ease);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--tf-blue-mid);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+
+        .form-section-title {
+            font-size: var(--tf-text-sm);
+            font-weight: 700;
+            color: var(--tf-gray-700);
+            margin-top: var(--tf-sp-4);
+            margin-bottom: var(--tf-sp-3);
+            padding-bottom: var(--tf-sp-2);
+            border-bottom: 1px solid var(--tf-border);
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--tf-sp-3);
+            margin-top: var(--tf-sp-6);
+            padding-top: var(--tf-sp-4);
+            border-top: 1px solid var(--tf-border);
+        }
+
+        /* Filter toggle */
+        .filter-toggle {
+            display: flex;
+            align-items: center;
+            gap: var(--tf-sp-2);
+            font-size: var(--tf-text-sm);
+            color: var(--tf-gray-500);
+            cursor: pointer;
+        }
+
+        .filter-toggle input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--tf-blue);
+        }
+
         /* Modal Tabs */
         .tab-buttons {
             display: flex;
@@ -732,9 +810,13 @@ DASHBOARD_HTML = r"""
 
         <!-- QUICK ACTIONS -->
         <div class="quick-actions">
-            <button class="tf-btn tf-btn-primary" onclick="openNewProjectForm()">+ New Project</button>
+            <button class="tf-btn tf-btn-primary" onclick="openNewProjectForm()" id="newProjectBtn">+ New Project</button>
             <button class="tf-btn tf-btn-outline" onclick="window.location.href='/sa'">SA Calculator</button>
             <button class="tf-btn tf-btn-outline" onclick="window.location.href='/tc'">TC Quote</button>
+            <label class="filter-toggle" style="margin-left: auto;">
+                <input type="checkbox" id="showCompletedToggle" onchange="toggleCompleted()">
+                Show completed
+            </label>
         </div>
 
         <!-- INVENTORY ALERTS -->
@@ -776,7 +858,96 @@ DASHBOARD_HTML = r"""
         </div>
     </div>
 
-    <!-- PROJECT DETAIL MODAL -->
+    <!-- NEW PROJECT MODAL -->
+    <div class="modal" id="newProjectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">New Project</h2>
+                    <div class="modal-badge-group">
+                        <span class="modal-badge" style="background: var(--tf-blue);" id="newJobCodeBadge">Loading...</span>
+                    </div>
+                </div>
+                <button class="close-btn" onclick="closeNewProjectModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="newProjectForm" onsubmit="return submitNewProject(event)">
+                    <!-- Project Info -->
+                    <div class="form-group">
+                        <label>Job Code (auto-generated)</label>
+                        <input type="text" id="npJobCode" readonly style="background: var(--tf-gray-50); font-weight: 700; color: var(--tf-blue);">
+                    </div>
+                    <div class="form-group">
+                        <label>Project Name *</label>
+                        <input type="text" id="npProjectName" placeholder="e.g. Smith Residence Carport" required>
+                    </div>
+
+                    <div class="form-section-title">Customer Information</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Customer Name</label>
+                            <input type="text" id="npCustomerName" placeholder="Full name">
+                        </div>
+                        <div class="form-group">
+                            <label>Phone</label>
+                            <input type="tel" id="npCustomerPhone" placeholder="(555) 555-5555">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="npCustomerEmail" placeholder="customer@email.com">
+                    </div>
+
+                    <div class="form-section-title">Project Location</div>
+                    <div class="form-group">
+                        <label>Street Address</label>
+                        <input type="text" id="npStreet" placeholder="123 Main St">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>City</label>
+                            <input type="text" id="npCity" placeholder="City">
+                        </div>
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--tf-sp-2);">
+                            <div>
+                                <label>State</label>
+                                <input type="text" id="npState" placeholder="TX" maxlength="2" style="text-transform: uppercase;">
+                            </div>
+                            <div>
+                                <label>Zip</label>
+                                <input type="text" id="npZip" placeholder="75001" maxlength="10">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section-title">Project Details</div>
+                    <div class="form-group">
+                        <label>Starting Stage</label>
+                        <select id="npStage">
+                            <option value="quote" selected>Quote</option>
+                            <option value="contract">Contract</option>
+                            <option value="engineering">Engineering</option>
+                            <option value="shop_drawings">Shop Drawings</option>
+                            <option value="fabrication">Fabrication</option>
+                            <option value="shipping">Shipping</option>
+                            <option value="install">Install</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <textarea id="npNotes" rows="3" placeholder="Any initial notes about this project..."></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="tf-btn tf-btn-outline" onclick="closeNewProjectModal()">Cancel</button>
+                        <button type="submit" class="tf-btn tf-btn-primary" id="npSubmitBtn">Create Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- QUICK PEEK MODAL (for viewing project details from dashboard) -->
     <div class="modal" id="projectModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -786,46 +957,11 @@ DASHBOARD_HTML = r"""
                 </div>
                 <button class="close-btn" onclick="closeProjectModal()">&times;</button>
             </div>
-
             <div class="modal-body">
-                <div class="tab-buttons">
-                    <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
-                    <button class="tab-btn" onclick="switchTab('documents')">Documents</button>
-                    <button class="tab-btn" onclick="switchTab('revisions')">Revisions</button>
-                </div>
-
-                <!-- OVERVIEW TAB -->
-                <div id="overviewTab" class="tab-content active">
-                    <div class="info-grid" id="overviewInfo"></div>
-                </div>
-
-                <!-- DOCUMENTS TAB -->
-                <div id="documentsTab" class="tab-content">
-                    <div class="document-categories" id="docCategories"></div>
-                    <div class="upload-zone" id="uploadZone" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" onclick="document.getElementById('fileInput').click()">
-                        <p class="upload-text">
-                            <span class="upload-highlight">Click to upload</span> or drag and drop<br>
-                            <span style="font-size: 0.8rem; color: var(--tf-gray-400);">PDF, DOCX, XLSX, Images</span>
-                        </p>
-                    </div>
-                    <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)" multiple accept=".pdf,.docx,.xlsx,.jpg,.png,.gif">
-                    <div class="file-list" id="fileList"></div>
-                </div>
-
-                <!-- REVISIONS TAB -->
-                <div id="revisionsTab" class="tab-content">
-                    <table class="revisions-table">
-                        <thead>
-                            <tr>
-                                <th>Version</th>
-                                <th>Date</th>
-                                <th>Author</th>
-                                <th>Notes</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="revisionsBody"></tbody>
-                    </table>
+                <div class="info-grid" id="overviewInfo"></div>
+                <div style="margin-top: var(--tf-sp-5); display: flex; gap: var(--tf-sp-3);">
+                    <button class="tf-btn tf-btn-primary" id="openFullPageBtn" onclick="">Open Full Project</button>
+                    <button class="tf-btn tf-btn-outline" onclick="closeProjectModal()">Close</button>
                 </div>
             </div>
         </div>
@@ -833,12 +969,14 @@ DASHBOARD_HTML = r"""
 
     <script>
         // ── Global State ──────────────────────────────────
-        let allProjects = [];
-        let currentView = 'kanban';
-        let currentProject = null;
-        let currentSortColumn = null;
-        let currentSortDirection = 'asc';
-        let inventoryAlerts = [];
+        var allProjects = [];
+        var filteredProjects = [];
+        var currentView = 'kanban';
+        var currentProject = null;
+        var currentSortColumn = null;
+        var currentSortDirection = 'asc';
+        var inventoryAlerts = [];
+        var showCompleted = false;
 
         document.addEventListener('DOMContentLoaded', function() {
             initializePage();
@@ -848,15 +986,20 @@ DASHBOARD_HTML = r"""
             if (USER_NAME && USER_NAME !== '{{USER_NAME}}') {
                 document.getElementById('userName').textContent = USER_NAME;
             }
-            const roleText = USER_ROLE && USER_ROLE !== '{{USER_ROLE}}' ? USER_ROLE : 'User';
+            var roleText = USER_ROLE && USER_ROLE !== '{{USER_ROLE}}' ? USER_ROLE : 'User';
             document.getElementById('userRole').textContent = roleText.toUpperCase();
+
+            // Only admin + estimator can create projects
+            if (USER_ROLE !== 'admin' && USER_ROLE !== 'estimator') {
+                document.getElementById('newProjectBtn').style.display = 'none';
+            }
 
             loadProjects();
             loadInventoryAlerts();
             setupEventListeners();
 
             if (USER_ROLE === 'shop') {
-                document.querySelectorAll('.price').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('.price').forEach(function(el) { el.classList.add('hidden'); });
             }
         }
 
@@ -864,58 +1007,82 @@ DASHBOARD_HTML = r"""
             document.getElementById('projectModal').addEventListener('click', function(e) {
                 if (e.target === this) closeProjectModal();
             });
+            document.getElementById('newProjectModal').addEventListener('click', function(e) {
+                if (e.target === this) closeNewProjectModal();
+            });
         }
 
+        // ── Load Projects (Enhanced API) ──────────────────
         function loadProjects() {
-            fetch('/api/projects')
-                .then(response => response.json())
-                .then(data => {
-                    allProjects = data.projects || [];
-                    updateStats();
-                    renderProjects();
+            fetch('/api/projects/full')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    allProjects = (data.projects || []).map(normalizeProject);
+                    applyFilters();
                 })
-                .catch(error => {
-                    console.error('Error loading projects:', error);
-                    allProjects = generateMockProjects();
-                    updateStats();
-                    renderProjects();
+                .catch(function(err) {
+                    console.error('Error loading projects:', err);
+                    // Fallback to old API
+                    fetch('/api/projects')
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            allProjects = (data.projects || []).map(normalizeProject);
+                            applyFilters();
+                        })
+                        .catch(function() {
+                            allProjects = [];
+                            applyFilters();
+                        });
                 });
+        }
+
+        function normalizeProject(p) {
+            // Handle both old format (from /api/projects) and new format (from /api/projects/full)
+            return {
+                job_code: p.job_code || p.jobCode || '',
+                project_name: p.project_name || p.name || '',
+                customer_name: (p.customer && p.customer.name) ? p.customer.name : (p.customer || ''),
+                customer: p.customer || {},
+                location: p.location || {},
+                stage: (p.stage || 'quote').replace(/_/g, '-'),
+                created_at: p.created_at || p.saved_at || '',
+                updated_at: p.updated_at || p.saved_at || '',
+                archived: p.archived || false,
+                n_versions: p.n_versions || 0,
+                doc_count: p.doc_count || 0,
+                notes: p.notes || '',
+            };
+        }
+
+        function applyFilters() {
+            filteredProjects = allProjects.filter(function(p) {
+                if (!showCompleted && p.stage === 'complete') return false;
+                if (p.archived) return false;
+                return true;
+            });
+            updateStats();
+            renderProjects();
+        }
+
+        function toggleCompleted() {
+            showCompleted = document.getElementById('showCompletedToggle').checked;
+            applyFilters();
         }
 
         function loadInventoryAlerts() {
             fetch('/api/inventory')
-                .then(response => response.json())
-                .then(data => {
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
                     inventoryAlerts = data.alerts || [];
                     renderInventoryAlerts();
                 })
-                .catch(error => {
-                    console.error('Error loading inventory:', error);
-                });
-        }
-
-        function generateMockProjects() {
-            const stages = ['quote', 'contract', 'engineering', 'shop-drawings', 'fabrication', 'shipping', 'install', 'complete'];
-            const mockProjects = [];
-            for (let i = 1; i <= 12; i++) {
-                mockProjects.push({
-                    id: i,
-                    jobCode: 'TF-2026-' + String(i).padStart(4, '0'),
-                    name: 'Commercial Steel Structure ' + i,
-                    customer: 'Customer ' + i,
-                    stage: stages[Math.floor(Math.random() * stages.length)],
-                    sellPrice: Math.floor(Math.random() * 100000) + 50000,
-                    lastUpdated: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-                    version: '1.' + Math.floor(Math.random() * 5)
-                });
-            }
-            return mockProjects;
+                .catch(function() {});
         }
 
         function updateStats() {
-            const activeCount = allProjects.filter(p => p.stage !== 'complete').length;
-            const fabricatingCount = allProjects.filter(p => p.stage === 'fabrication').length;
-            const readyCount = allProjects.filter(p => p.stage === 'shipping').length;
+            var activeCount = allProjects.filter(function(p) { return p.stage !== 'complete' && !p.archived; }).length;
+            var fabricatingCount = allProjects.filter(function(p) { return p.stage === 'fabrication'; }).length;
+            var readyCount = allProjects.filter(function(p) { return p.stage === 'shipping'; }).length;
             document.getElementById('activeProjects').textContent = activeCount;
             document.getElementById('inFabrication').textContent = fabricatingCount;
             document.getElementById('readyToShip').textContent = readyCount;
@@ -926,26 +1093,28 @@ DASHBOARD_HTML = r"""
             else renderTable();
         }
 
+        // ── Kanban View ───────────────────────────────────
         function renderKanban() {
-            const stages = ['quote', 'contract', 'engineering', 'shop-drawings', 'fabrication', 'shipping', 'install', 'complete'];
-            const kanbanContainer = document.getElementById('kanbanView');
+            var stages = ['quote', 'contract', 'engineering', 'shop-drawings', 'fabrication', 'shipping', 'install'];
+            if (showCompleted) stages.push('complete');
+
+            var kanbanContainer = document.getElementById('kanbanView');
             kanbanContainer.innerHTML = '';
 
-            stages.forEach(stage => {
-                const projects = allProjects.filter(p => p.stage === stage);
-                const columnHeader = stage.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            stages.forEach(function(stage) {
+                var projects = filteredProjects.filter(function(p) { return p.stage === stage; });
+                var columnHeader = stage.split('-').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 
-                const column = document.createElement('div');
+                var column = document.createElement('div');
                 column.className = 'kanban-column';
 
-                const header = document.createElement('div');
+                var header = document.createElement('div');
                 header.className = 'column-header';
                 header.textContent = columnHeader + ' (' + projects.length + ')';
                 column.appendChild(header);
 
-                projects.forEach(project => {
-                    const card = createProjectCard(project);
-                    column.appendChild(card);
+                projects.forEach(function(project) {
+                    column.appendChild(createProjectCard(project));
                 });
 
                 kanbanContainer.appendChild(column);
@@ -953,54 +1122,55 @@ DASHBOARD_HTML = r"""
         }
 
         function createProjectCard(project) {
-            const card = document.createElement('div');
+            var card = document.createElement('div');
             card.className = 'project-card ' + project.stage;
-            card.onclick = () => openProjectModal(project);
+            card.onclick = function() { openProjectModal(project); };
 
-            const jobCode = document.createElement('div');
+            var jobCode = document.createElement('div');
             jobCode.className = 'card-job-code';
-            jobCode.textContent = project.jobCode;
+            jobCode.textContent = project.job_code;
 
-            const name = document.createElement('div');
+            var name = document.createElement('div');
             name.className = 'card-project-name';
-            name.textContent = project.name;
+            name.textContent = project.project_name || 'Untitled';
 
-            const customer = document.createElement('div');
+            var customer = document.createElement('div');
             customer.className = 'card-customer';
-            customer.textContent = project.customer;
+            customer.textContent = project.customer_name || '';
 
             card.appendChild(jobCode);
             card.appendChild(name);
             card.appendChild(customer);
 
-            if (USER_ROLE !== 'shop') {
-                const price = document.createElement('div');
-                price.className = 'card-price';
-                price.textContent = '$' + project.sellPrice.toLocaleString();
-                card.appendChild(price);
-            }
+            // Doc count + version info
+            var meta = document.createElement('div');
+            meta.style.cssText = 'display:flex;justify-content:space-between;margin-top:var(--tf-sp-2);font-size:var(--tf-text-xs);color:var(--tf-gray-400);';
+            meta.innerHTML = '<span>' + (project.doc_count || 0) + ' docs</span><span>v' + (project.n_versions || 1) + '</span>';
+            card.appendChild(meta);
 
             return card;
         }
 
+        // ── Table View ────────────────────────────────────
         function renderTable() {
-            const tableBody = document.getElementById('tableBody');
+            var tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
 
-            allProjects.forEach(project => {
-                const row = document.createElement('tr');
-                row.onclick = () => openProjectModal(project);
+            filteredProjects.forEach(function(project) {
+                var row = document.createElement('tr');
+                row.onclick = function() { openProjectModal(project); };
 
-                const stageLabel = project.stage.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                const stageBadgeClass = 'stage-' + project.stage.replace('_', '-');
+                var stageLabel = project.stage.split('-').map(function(w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+                var stageBadgeClass = 'stage-' + project.stage;
+                var updated = project.updated_at ? new Date(project.updated_at).toLocaleDateString() : '';
 
-                row.innerHTML = '<td><strong>' + project.jobCode + '</strong></td>'
-                    + '<td>' + project.name + '</td>'
-                    + '<td>' + project.customer + '</td>'
+                row.innerHTML = '<td><strong>' + esc(project.job_code) + '</strong></td>'
+                    + '<td>' + esc(project.project_name) + '</td>'
+                    + '<td>' + esc(project.customer_name) + '</td>'
                     + '<td><span class="stage-badge ' + stageBadgeClass + '">' + stageLabel + '</span></td>'
-                    + '<td class="price">$' + project.sellPrice.toLocaleString() + '</td>'
-                    + '<td>' + new Date(project.lastUpdated).toLocaleDateString() + '</td>'
-                    + '<td>' + project.version + '</td>';
+                    + '<td class="price">' + (project.doc_count || 0) + ' docs</td>'
+                    + '<td>' + updated + '</td>'
+                    + '<td>v' + (project.n_versions || 1) + '</td>';
 
                 tableBody.appendChild(row);
             });
@@ -1011,34 +1181,21 @@ DASHBOARD_HTML = r"""
                 document.getElementById('alertsSection').classList.remove('show');
                 return;
             }
-
             document.getElementById('alertsSection').classList.add('show');
-            const alertsGrid = document.getElementById('alertsGrid');
+            var alertsGrid = document.getElementById('alertsGrid');
             alertsGrid.innerHTML = '';
 
-            inventoryAlerts.forEach(alert => {
-                const alertCard = document.createElement('div');
-                alertCard.className = 'alert-card ' + (alert.severity === 'danger' ? 'danger' : 'warning');
-                alertCard.onclick = () => window.location.href = '/sa';
-
-                const title = document.createElement('div');
-                title.className = 'alert-title';
-                title.textContent = alert.itemName;
-
-                const message = document.createElement('div');
-                message.className = 'alert-message';
-                message.textContent = alert.message;
-
-                alertCard.appendChild(title);
-                alertCard.appendChild(message);
+            inventoryAlerts.forEach(function(a) {
+                var alertCard = document.createElement('div');
+                alertCard.className = 'alert-card ' + (a.severity === 'danger' ? 'danger' : 'warning');
+                alertCard.onclick = function() { window.location.href = '/sa'; };
+                alertCard.innerHTML = '<div class="alert-title">' + esc(a.itemName || a.item_name || '') + '</div>'
+                    + '<div class="alert-message">' + esc(a.message || '') + '</div>';
                 alertsGrid.appendChild(alertCard);
             });
 
-            const alertCount = inventoryAlerts.length;
-            if (alertCount > 0) {
-                document.getElementById('inventoryAlert').style.display = 'block';
-                document.getElementById('alertCount').textContent = alertCount;
-            }
+            document.getElementById('inventoryAlert').style.display = 'block';
+            document.getElementById('alertCount').textContent = inventoryAlerts.length;
         }
 
         function switchView(view) {
@@ -1057,39 +1214,65 @@ DASHBOARD_HTML = r"""
                 currentSortDirection = 'asc';
                 currentSortColumn = column;
             }
-
-            allProjects.sort((a, b) => {
-                let aVal = a[column];
-                let bVal = b[column];
-                if (column === 'price') { aVal = a.sellPrice; bVal = b.sellPrice; }
-                if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase(); }
-                const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-                return currentSortDirection === 'asc' ? comparison : -comparison;
+            filteredProjects.sort(function(a, b) {
+                var aVal, bVal;
+                if (column === 'jobCode') { aVal = a.job_code; bVal = b.job_code; }
+                else if (column === 'name') { aVal = a.project_name; bVal = b.project_name; }
+                else if (column === 'customer') { aVal = a.customer_name; bVal = b.customer_name; }
+                else if (column === 'stage') { aVal = a.stage; bVal = b.stage; }
+                else if (column === 'updated') { aVal = a.updated_at; bVal = b.updated_at; }
+                else { aVal = a[column]; bVal = b[column]; }
+                if (typeof aVal === 'string') { aVal = (aVal || '').toLowerCase(); bVal = (bVal || '').toLowerCase(); }
+                var cmp = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+                return currentSortDirection === 'asc' ? cmp : -cmp;
             });
-
             renderTable();
         }
 
+        // ── Quick Peek Modal ──────────────────────────────
         function openProjectModal(project) {
             currentProject = project;
-            document.getElementById('modalTitle').textContent = project.jobCode + ' — ' + project.name;
-            const badgeGroup = document.getElementById('modalBadgeGroup');
-            badgeGroup.innerHTML = '';
+            document.getElementById('modalTitle').textContent = project.job_code + ' — ' + (project.project_name || 'Untitled');
 
-            const stageBadge = document.createElement('span');
+            var badgeGroup = document.getElementById('modalBadgeGroup');
+            badgeGroup.innerHTML = '';
+            var stageBadge = document.createElement('span');
             stageBadge.className = 'modal-badge';
             stageBadge.style.backgroundColor = '#1E40AF';
-            stageBadge.textContent = project.stage.toUpperCase().replace('-', ' ');
-
-            const versionBadge = document.createElement('span');
-            versionBadge.className = 'modal-badge';
-            versionBadge.style.backgroundColor = '#F59E0B';
-            versionBadge.textContent = 'v' + project.version;
-
+            stageBadge.textContent = project.stage.toUpperCase().replace(/-/g, ' ');
             badgeGroup.appendChild(stageBadge);
-            badgeGroup.appendChild(versionBadge);
 
-            loadProjectDetails(project.id);
+            if (project.n_versions > 0) {
+                var vBadge = document.createElement('span');
+                vBadge.className = 'modal-badge';
+                vBadge.style.backgroundColor = '#F59E0B';
+                vBadge.textContent = 'v' + project.n_versions;
+                badgeGroup.appendChild(vBadge);
+            }
+
+            // Overview info
+            var info = document.getElementById('overviewInfo');
+            info.innerHTML = '';
+            var items = [
+                { label: 'Job Code', value: project.job_code },
+                { label: 'Project Name', value: project.project_name },
+                { label: 'Customer', value: project.customer_name },
+                { label: 'Stage', value: project.stage.replace(/-/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }) },
+                { label: 'Documents', value: (project.doc_count || 0) + ' files' },
+                { label: 'Updated', value: project.updated_at ? new Date(project.updated_at).toLocaleDateString() : '-' },
+            ];
+            items.forEach(function(item) {
+                var div = document.createElement('div');
+                div.className = 'info-item';
+                div.innerHTML = '<div class="info-label">' + item.label + '</div><div class="info-value">' + esc(item.value || '-') + '</div>';
+                info.appendChild(div);
+            });
+
+            // "Open Full Project" button
+            document.getElementById('openFullPageBtn').onclick = function() {
+                window.location.href = '/project/' + encodeURIComponent(project.job_code);
+            };
+
             document.getElementById('projectModal').classList.add('show');
         }
 
@@ -1098,181 +1281,104 @@ DASHBOARD_HTML = r"""
             currentProject = null;
         }
 
-        function loadProjectDetails(projectId) {
-            fetch('/api/project/load', {
+        // ── New Project Modal ─────────────────────────────
+        function openNewProjectForm() {
+            // Fetch next available job code
+            fetch('/api/project/next-code')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var code = data.job_code || '';
+                    document.getElementById('npJobCode').value = code;
+                    document.getElementById('newJobCodeBadge').textContent = code;
+                })
+                .catch(function() {
+                    document.getElementById('npJobCode').value = 'ERROR';
+                    document.getElementById('newJobCodeBadge').textContent = 'ERROR';
+                });
+
+            // Reset form
+            document.getElementById('npProjectName').value = '';
+            document.getElementById('npCustomerName').value = '';
+            document.getElementById('npCustomerPhone').value = '';
+            document.getElementById('npCustomerEmail').value = '';
+            document.getElementById('npStreet').value = '';
+            document.getElementById('npCity').value = '';
+            document.getElementById('npState').value = '';
+            document.getElementById('npZip').value = '';
+            document.getElementById('npStage').value = 'quote';
+            document.getElementById('npNotes').value = '';
+            document.getElementById('npSubmitBtn').disabled = false;
+            document.getElementById('npSubmitBtn').textContent = 'Create Project';
+
+            document.getElementById('newProjectModal').classList.add('show');
+            setTimeout(function() { document.getElementById('npProjectName').focus(); }, 200);
+        }
+
+        function closeNewProjectModal() {
+            document.getElementById('newProjectModal').classList.remove('show');
+        }
+
+        function submitNewProject(e) {
+            e.preventDefault();
+
+            var jobCode = document.getElementById('npJobCode').value.trim();
+            var projectName = document.getElementById('npProjectName').value.trim();
+            if (!projectName) { alert('Please enter a project name.'); return false; }
+
+            var submitBtn = document.getElementById('npSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating...';
+
+            var payload = {
+                job_code: jobCode,
+                project_name: projectName,
+                customer_name: document.getElementById('npCustomerName').value.trim(),
+                customer_phone: document.getElementById('npCustomerPhone').value.trim(),
+                customer_email: document.getElementById('npCustomerEmail').value.trim(),
+                location_street: document.getElementById('npStreet').value.trim(),
+                location_city: document.getElementById('npCity').value.trim(),
+                location_state: document.getElementById('npState').value.trim().toUpperCase(),
+                location_zip: document.getElementById('npZip').value.trim(),
+                stage: document.getElementById('npStage').value,
+                notes: document.getElementById('npNotes').value.trim(),
+            };
+
+            fetch('/api/project/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: projectId })
+                body: JSON.stringify(payload)
             })
-                .then(response => response.json())
-                .then(data => {
-                    renderProjectOverview(data.project);
-                    loadProjectDocuments(projectId);
-                    loadProjectRevisions(projectId);
-                })
-                .catch(error => {
-                    console.error('Error loading project:', error);
-                    renderProjectOverview(currentProject);
-                });
-        }
-
-        function renderProjectOverview(project) {
-            const overviewInfo = document.getElementById('overviewInfo');
-            overviewInfo.innerHTML = '';
-
-            const infoItems = [
-                { label: 'Job Code', value: project.jobCode },
-                { label: 'Project Name', value: project.name },
-                { label: 'Customer', value: project.customer },
-                { label: 'Stage', value: project.stage },
-                { label: 'Sell Price', value: '$' + project.sellPrice.toLocaleString(), hidden: USER_ROLE === 'shop' },
-                { label: 'Last Updated', value: new Date(project.lastUpdated).toLocaleDateString() },
-                { label: 'Version', value: 'v' + project.version }
-            ];
-
-            infoItems.forEach(item => {
-                if (item.hidden) return;
-                const infoItem = document.createElement('div');
-                infoItem.className = 'info-item';
-                const label = document.createElement('div');
-                label.className = 'info-label';
-                label.textContent = item.label;
-                const value = document.createElement('div');
-                value.className = 'info-value';
-                value.textContent = item.value;
-                infoItem.appendChild(label);
-                infoItem.appendChild(value);
-                overviewInfo.appendChild(infoItem);
-            });
-        }
-
-        function loadProjectDocuments(projectId) {
-            const categories = ['Quotes', 'Contracts', 'Engineering', 'Shop Drawings', 'Other'];
-            const docCategories = document.getElementById('docCategories');
-            docCategories.innerHTML = '';
-
-            categories.forEach((cat, idx) => {
-                const btn = document.createElement('button');
-                btn.className = 'doc-category-btn' + (idx === 0 ? ' active' : '');
-                btn.textContent = cat;
-                btn.onclick = () => switchDocCategory(cat);
-                docCategories.appendChild(btn);
-            });
-
-            const mockFiles = [
-                { name: 'Quote_v1.pdf', type: 'pdf', category: 'Quotes' },
-                { name: 'Contract_signed.docx', type: 'docx', category: 'Contracts' },
-                { name: 'BOM.xlsx', type: 'xlsx', category: 'Engineering' },
-                { name: 'Drawing_01.pdf', type: 'pdf', category: 'Shop Drawings' }
-            ];
-            renderDocuments(mockFiles);
-        }
-
-        function switchDocCategory(category) {
-            document.querySelectorAll('.doc-category-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.textContent === category);
-            });
-        }
-
-        function renderDocuments(files) {
-            const fileList = document.getElementById('fileList');
-            fileList.innerHTML = '';
-
-            files.forEach(file => {
-                const fileCard = document.createElement('div');
-                fileCard.className = 'file-card';
-
-                const iconMap = { pdf: '&#128196;', docx: '&#128216;', xlsx: '&#128202;', jpg: '&#128444;', png: '&#128444;', gif: '&#128444;' };
-                const icon = document.createElement('div');
-                icon.className = 'file-icon';
-                icon.innerHTML = iconMap[file.type] || '&#128193;';
-
-                const name = document.createElement('div');
-                name.className = 'file-name';
-                name.textContent = file.name;
-
-                fileCard.appendChild(icon);
-                fileCard.appendChild(name);
-
-                if (USER_ROLE !== 'viewer') {
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'file-delete';
-                    deleteBtn.innerHTML = '&#128465;';
-                    deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(file.name); };
-                    fileCard.appendChild(deleteBtn);
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    closeNewProjectModal();
+                    // Navigate to the new project page
+                    window.location.href = '/project/' + encodeURIComponent(data.job_code);
+                } else {
+                    alert('Error creating project: ' + (data.error || 'Unknown error'));
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Project';
                 }
-
-                fileList.appendChild(fileCard);
+            })
+            .catch(function(err) {
+                alert('Error: ' + err.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Project';
             });
+
+            return false;
         }
 
-        function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); document.getElementById('uploadZone').classList.add('dragover'); }
-        function handleDragLeave(e) { e.preventDefault(); e.stopPropagation(); document.getElementById('uploadZone').classList.remove('dragover'); }
-        function handleDrop(e) {
-            e.preventDefault(); e.stopPropagation();
-            document.getElementById('uploadZone').classList.remove('dragover');
-            uploadFiles(e.dataTransfer.files);
-        }
-        function handleFileSelect(e) { uploadFiles(e.target.files); }
-
-        function uploadFiles(files) {
-            if (USER_ROLE === 'viewer') { alert('You do not have permission to upload files.'); return; }
-            const formData = new FormData();
-            for (let file of files) formData.append('files', file);
-            fetch('/api/project/docs/upload', { method: 'POST', body: formData })
-                .then(r => r.json())
-                .then(data => { console.log('Files uploaded:', data); loadProjectDocuments(currentProject.id); })
-                .catch(e => { console.error('Upload error:', e); alert('Failed to upload files.'); });
+        // ── Helpers ───────────────────────────────────────
+        function esc(s) {
+            var d = document.createElement('div');
+            d.textContent = s || '';
+            return d.innerHTML;
         }
 
-        function deleteFile(fileName) {
-            if (USER_ROLE === 'viewer') return;
-            if (confirm('Delete this file?')) {
-                fetch('/api/project/docs/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileName: fileName }) })
-                    .then(r => r.json()).then(data => { console.log('File deleted:', data); loadProjectDocuments(currentProject.id); })
-                    .catch(e => console.error('Delete error:', e));
-            }
+        function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) window.location.href = '/auth/logout';
         }
-
-        function loadProjectRevisions(projectId) {
-            fetch('/api/project/revisions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: projectId }) })
-                .then(r => r.json()).then(data => { renderRevisions(data.revisions || []); })
-                .catch(e => { console.error('Error loading revisions:', e); renderRevisions([]); });
-        }
-
-        function renderRevisions(revisions) {
-            const revisionsBody = document.getElementById('revisionsBody');
-            revisionsBody.innerHTML = '';
-            if (revisions.length === 0) {
-                revisionsBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--tf-gray-400);">No revisions found</td></tr>';
-                return;
-            }
-            revisions.forEach((rev, idx) => {
-                const row = document.createElement('tr');
-                row.innerHTML = '<td><strong>v' + rev.version + '</strong></td>'
-                    + '<td>' + new Date(rev.date).toLocaleDateString() + '</td>'
-                    + '<td>' + rev.author + '</td>'
-                    + '<td>' + (rev.notes || '—') + '</td>'
-                    + '<td><button class="revision-action-btn" onclick="loadRevision(\'' + rev.version + '\')">Load</button>'
-                    + (idx > 0 ? '<button class="revision-action-btn" onclick="compareRevisions(\'' + rev.version + '\')">Compare</button>' : '')
-                    + '</td>';
-                revisionsBody.appendChild(row);
-            });
-        }
-
-        function loadRevision(version) { alert('Loading revision ' + version); }
-        function compareRevisions(version) { alert('Comparing revisions'); }
-
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tabName));
-            });
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(tabName + 'Tab').classList.add('active');
-        }
-
-        function openNewProjectForm() { alert('New project form would open here'); }
-        function handleLogout() { if (confirm('Are you sure you want to logout?')) window.location.href = '/auth/logout'; }
     </script>
 </body>
 </html>

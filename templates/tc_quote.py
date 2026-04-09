@@ -579,6 +579,14 @@ input[type=checkbox]{width:auto;margin-right:6px}
           <table class="summary-table" id="summary-table"></table>
         </div>
       </div>
+
+      <!-- PROJECT INTELLIGENCE PANEL -->
+      <div class="card" id="intelPanel" style="margin-top:16px;">
+        <div class="card-hdr" style="background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 100%);color:#fff;"><span>📊</span>Project Intelligence</div>
+        <div class="card-body" id="intelBody">
+          <div style="text-align:center;color:#94A3B8;font-size:13px;padding:12px;">Run a quote calculation to see project intelligence.</div>
+        </div>
+      </div>
     </div>
 
   </div><!-- /content -->
@@ -624,6 +632,37 @@ function prefillFromURL() {
   if (p.has('sa_quote')) document.getElementById('sa_quote_num').value = p.get('sa_quote');
   if (p.has('width')) document.getElementById('sa_width').value = p.get('width');
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
+
+  // Auto-load project metadata from ?project=JOB_CODE
+  if (p.has('project')) {
+    autoLoadProjectMetadata(p.get('project'));
+  }
+}
+
+async function autoLoadProjectMetadata(jobCode) {
+  try {
+    const resp = await fetch('/api/project/metadata?job_code=' + encodeURIComponent(jobCode));
+    const result = await resp.json();
+    if (result.ok && result.metadata) {
+      const m = result.metadata;
+      const projCodeEl = document.getElementById('proj_code');
+      if (projCodeEl && !projCodeEl.value) projCodeEl.value = m.job_code || jobCode;
+      const projNameEl = document.getElementById('proj_name');
+      if (projNameEl && !projNameEl.value) projNameEl.value = m.project_name || '';
+      if (m.customer) {
+        const custEl = document.getElementById('proj_customer');
+        if (custEl && !custEl.value) custEl.value = m.customer.name || '';
+      }
+      if (m.location) {
+        const addrEl = document.getElementById('proj_address');
+        if (addrEl && !addrEl.value) addrEl.value = m.location.street || '';
+        const cityEl = document.getElementById('proj_city');
+        if (cityEl && !cityEl.value) cityEl.value = m.location.city || '';
+        const stateEl = document.getElementById('proj_state');
+        if (stateEl && !stateEl.value) stateEl.value = m.location.state || '';
+      }
+    }
+  } catch(e) { /* silent */ }
 }
 
 // ─────────────────────────────────────────────
@@ -868,6 +907,79 @@ function renderSummary() {
     <tr class="markup-row"><td>Markup (${q.markupPct}%)</td><td style="text-align:right">${fmt(q.markupAmt)}</td></tr>
     <tr class="total-row"><td>TOTAL SELL PRICE</td><td style="text-align:right">${fmt(q.total)}</td></tr>`;
   tbl.innerHTML = rows;
+
+  // Render Intelligence Panel
+  renderIntelligence(q);
+}
+
+function renderIntelligence(q) {
+  const body = document.getElementById('intelBody');
+  if (!body) return;
+  if (q.total <= 0) {
+    body.innerHTML = '<div style="text-align:center;color:#94A3B8;font-size:13px;padding:12px;">Run a quote calculation to see project intelligence.</div>';
+    return;
+  }
+
+  const w = numVal('sa_width') || 0;
+  const l = numVal('sa_length') || 0;
+  const sqft = w * l;
+  const pricePerSqft = sqft > 0 ? (q.total / sqft) : 0;
+
+  // Estimate steel weight from SA materials cost (~$0.50/lb typical)
+  const saMat = numVal('sa_materials_cost') || 0;
+  const estWeight = saMat > 0 ? Math.round(saMat / 0.50) : 0;
+
+  // Gather checked options/sections
+  const activeSections = q.sections.filter(s => s.cost > 0).map(s => s.label);
+
+  let html = '<table style="width:100%;font-size:13px;border-collapse:collapse;">';
+
+  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;">Sell Price</td>';
+  html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;color:#059669;">' + fmt(q.total) + '</td></tr>';
+
+  if (pricePerSqft > 0) {
+    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Price / Sq Ft</td>';
+    html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">$' + pricePerSqft.toFixed(2) + '</td></tr>';
+  }
+
+  if (sqft > 0) {
+    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Square Footage</td>';
+    html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + sqft.toLocaleString() + ' sq ft</td></tr>';
+  }
+
+  if (estWeight > 0) {
+    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Est. Steel Weight</td>';
+    html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + estWeight.toLocaleString() + ' lbs</td></tr>';
+  }
+
+  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Cost Categories Used</td>';
+  html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + activeSections.length + '</td></tr>';
+
+  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Markup</td>';
+  html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + q.markupPct + '%</td></tr>';
+
+  html += '</table>';
+
+  // Suggestions
+  html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #E2E8F0;">';
+  html += '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Suggested Next Steps</div>';
+
+  const suggestions = [];
+  if (saMat <= 0) suggestions.push('Add SA materials cost from the SA Calculator for a complete quote');
+  if (sqft <= 0) suggestions.push('Add structure width and length for price/sq ft analysis');
+  if (q.markupPct < 10) suggestions.push('Markup seems low — consider increasing for overhead and profit');
+  if (q.markupPct > 50) suggestions.push('Markup is high — verify this is competitive for the market');
+  const crewDays = numVal('lab_days') || 0;
+  if (crewDays > 5) suggestions.push('Long install duration — consider travel cost optimization');
+  if (activeSections.length < 3) suggestions.push('Several cost categories have $0 — review before sending quote');
+  if (suggestions.length === 0) suggestions.push('Quote looks complete — generate PDF and send to customer');
+
+  suggestions.forEach(s => {
+    html += '<div style="display:flex;gap:8px;padding:4px 0;font-size:13px;color:#475569;"><span style="color:#F59E0B;font-weight:700;flex-shrink:0;">&#9658;</span><span>' + s + '</span></div>';
+  });
+
+  html += '</div>';
+  body.innerHTML = html;
 }
 
 // ─────────────────────────────────────────────
