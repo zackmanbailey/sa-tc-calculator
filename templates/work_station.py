@@ -557,6 +557,8 @@ body {
     .ws-topbar h1 { font-size: 1rem; }
 }
 </style>
+<!-- html5-qrcode CDN for camera scanning -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
@@ -598,15 +600,44 @@ body {
         <!-- QR Scan View -->
         <div id="scanView" style="display:none;">
             <div style="text-align:center;padding:20px;">
-                <div style="font-size:3rem;margin-bottom:10px;">&#128247;</div>
-                <h3 style="margin:0 0 8px;">Scan Item QR Code</h3>
-                <p style="color:var(--tf-gray);font-size:0.9rem;margin-bottom:16px;">
-                    Scan the sticker on the item to start or finish fabrication
-                </p>
-                <input type="text" id="scanInput" placeholder="Scan or type item ID..."
-                    style="width:100%;max-width:400px;padding:16px;font-size:1.1rem;
-                    border:2px solid var(--tf-border);border-radius:10px;text-align:center;"
-                    autofocus>
+                <!-- Camera viewfinder -->
+                <div id="qrReaderBox" style="width:100%;max-width:400px;margin:0 auto 12px;
+                    border-radius:12px;overflow:hidden;background:#000;min-height:200px;display:none;">
+                    <div id="qr-reader" style="width:100%;"></div>
+                </div>
+
+                <!-- Camera controls -->
+                <div id="camControls" style="margin-bottom:16px;">
+                    <button id="btnStartCam" onclick="startCameraScanner()"
+                        style="padding:14px 28px;font-size:1.1rem;font-weight:600;
+                        background:var(--tf-gold,#F6AE2D);color:#0F172A;border:none;
+                        border-radius:10px;cursor:pointer;">
+                        &#128247; Open Camera
+                    </button>
+                    <button id="btnStopCam" onclick="stopCameraScanner()"
+                        style="padding:10px 20px;font-size:0.95rem;background:#DC2626;color:#fff;
+                        border:none;border-radius:8px;cursor:pointer;display:none;margin-left:8px;">
+                        &#9632; Stop
+                    </button>
+                    <button id="btnFlipCam" onclick="flipCamera()"
+                        style="padding:10px 20px;font-size:0.95rem;background:var(--tf-border,#334155);
+                        color:#F1F5F9;border:none;border-radius:8px;cursor:pointer;display:none;margin-left:8px;">
+                        &#128260; Flip
+                    </button>
+                </div>
+
+                <div id="camStatus" style="color:var(--tf-gray);font-size:0.85rem;margin-bottom:12px;"></div>
+
+                <!-- Fallback text input for hardware scanners -->
+                <details style="margin-top:12px;max-width:400px;margin-left:auto;margin-right:auto;">
+                    <summary style="color:var(--tf-gray);font-size:0.85rem;cursor:pointer;
+                        padding:8px;">Or type / use barcode gun</summary>
+                    <input type="text" id="scanInput" placeholder="Type item ID and press Enter..."
+                        style="width:100%;padding:14px;font-size:1rem;margin-top:8px;
+                        border:2px solid var(--tf-border);border-radius:10px;text-align:center;
+                        background:var(--tf-card,#1E293B);color:#F1F5F9;">
+                </details>
+
                 <div id="scanResult" style="margin-top:16px;"></div>
             </div>
         </div>
@@ -1048,6 +1079,9 @@ function switchTab(tab) {
     document.getElementById('stepView').className = 'step-view';
     document.getElementById('actionBar').style.display = 'none';
 
+    // Stop camera when leaving QR tab
+    if (tab !== 'scan' && qrScanning) { stopCameraScanner(); }
+
     if (tab === 'machine') {
         document.getElementById('tabMachine').classList.add('active');
         document.getElementById('machineView').style.display = 'block';
@@ -1061,16 +1095,129 @@ function switchTab(tab) {
     }
 }
 
-// ── QR Scan ──
+// ── QR Scan (Camera + Text Input) ──
+let qrScanner = null;
+let qrCameras = [];
+let qrCurrentCamIdx = 0;
+let qrScanning = false;
+let qrLastScanned = '';
+let qrCooldown = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     const scanInput = document.getElementById('scanInput');
-    scanInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            processWorkStationScan(scanInput.value.trim());
-            scanInput.value = '';
-        }
-    });
+    if (scanInput) {
+        scanInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                processWorkStationScan(scanInput.value.trim());
+                scanInput.value = '';
+            }
+        });
+    }
 });
+
+async function startCameraScanner() {
+    const statusEl = document.getElementById('camStatus');
+    const readerBox = document.getElementById('qrReaderBox');
+    const btnStart = document.getElementById('btnStartCam');
+    const btnStop = document.getElementById('btnStopCam');
+    const btnFlip = document.getElementById('btnFlipCam');
+
+    try {
+        btnStart.disabled = true;
+        btnStart.innerHTML = '&#8987; Opening camera...';
+        statusEl.textContent = 'Requesting camera access...';
+
+        if (!qrScanner) {
+            qrScanner = new Html5Qrcode('qr-reader');
+        }
+
+        qrCameras = await Html5Qrcode.getCameras();
+        if (!qrCameras || qrCameras.length === 0) {
+            throw new Error('No cameras found on this device.');
+        }
+
+        // Prefer back/rear camera
+        qrCurrentCamIdx = qrCameras.findIndex(c => /back|rear|environment/i.test(c.label));
+        if (qrCurrentCamIdx < 0) qrCurrentCamIdx = 0;
+
+        readerBox.style.display = 'block';
+
+        await qrScanner.start(
+            qrCameras[qrCurrentCamIdx].id,
+            {
+                fps: 10,
+                qrbox: function(vw, vh) {
+                    var s = Math.min(vw, vh) * 0.75;
+                    return { width: Math.floor(s), height: Math.floor(s) };
+                },
+                aspectRatio: 1.0
+            },
+            onQrScanSuccess,
+            function() {} // ignore scan misses
+        );
+
+        qrScanning = true;
+        btnStart.style.display = 'none';
+        btnStop.style.display = 'inline-block';
+        btnFlip.style.display = qrCameras.length > 1 ? 'inline-block' : 'none';
+        statusEl.textContent = 'Camera active — point at a QR sticker';
+        statusEl.style.color = '#22C55E';
+
+    } catch(e) {
+        btnStart.disabled = false;
+        btnStart.innerHTML = '&#128247; Open Camera';
+        statusEl.textContent = 'Camera error: ' + (e.message || e);
+        statusEl.style.color = '#DC2626';
+        readerBox.style.display = 'none';
+        console.error('QR camera error:', e);
+    }
+}
+
+async function stopCameraScanner() {
+    try {
+        if (qrScanner && qrScanning) {
+            await qrScanner.stop();
+        }
+    } catch(e) { console.warn('Stop error:', e); }
+    qrScanning = false;
+    document.getElementById('qrReaderBox').style.display = 'none';
+    document.getElementById('btnStartCam').style.display = 'inline-block';
+    document.getElementById('btnStartCam').disabled = false;
+    document.getElementById('btnStartCam').innerHTML = '&#128247; Open Camera';
+    document.getElementById('btnStopCam').style.display = 'none';
+    document.getElementById('btnFlipCam').style.display = 'none';
+    document.getElementById('camStatus').textContent = '';
+}
+
+async function flipCamera() {
+    if (qrCameras.length <= 1) return;
+    qrCurrentCamIdx = (qrCurrentCamIdx + 1) % qrCameras.length;
+    try {
+        if (qrScanner && qrScanning) await qrScanner.stop();
+        await qrScanner.start(
+            qrCameras[qrCurrentCamIdx].id,
+            { fps: 10, qrbox: function(vw,vh){ var s=Math.min(vw,vh)*0.75; return {width:Math.floor(s),height:Math.floor(s)}; }, aspectRatio:1.0 },
+            onQrScanSuccess, function(){}
+        );
+        document.getElementById('camStatus').textContent = 'Camera: ' + (qrCameras[qrCurrentCamIdx].label || 'Camera ' + (qrCurrentCamIdx+1));
+    } catch(e) {
+        console.error('Flip error:', e);
+        document.getElementById('camStatus').textContent = 'Flip failed: ' + e.message;
+    }
+}
+
+function onQrScanSuccess(decodedText) {
+    // Cooldown to prevent rapid duplicate scans
+    if (decodedText === qrLastScanned && qrCooldown) return;
+    qrLastScanned = decodedText;
+    clearTimeout(qrCooldown);
+    qrCooldown = setTimeout(() => { qrLastScanned = ''; qrCooldown = null; }, 3000);
+
+    // Vibrate for feedback if supported
+    if (navigator.vibrate) navigator.vibrate(200);
+
+    processWorkStationScan(decodedText);
+}
 
 async function processWorkStationScan(rawInput) {
     const resultDiv = document.getElementById('scanResult');
@@ -1083,12 +1230,14 @@ async function processWorkStationScan(rawInput) {
 
     const item = allItems.find(i => i.item_id === itemId);
     if (item) {
-        resultDiv.innerHTML = '<div style="color:var(--tf-green);font-weight:600;">Found: ' +
-            escHtml(item.ship_mark) + ' — ' + escHtml(item.description) + '</div>';
+        resultDiv.innerHTML = '<div style="color:var(--tf-green,#22C55E);font-weight:600;font-size:1.1rem;">' +
+            '&#9989; Found: ' + escHtml(item.ship_mark) + ' — ' + escHtml(item.description) + '</div>';
+        // Stop camera before navigating to item
+        if (qrScanning) await stopCameraScanner();
         setTimeout(() => openItem(itemId), 500);
     } else {
-        resultDiv.innerHTML = '<div style="color:#DC2626;font-weight:600;">Item not found: ' +
-            escHtml(itemId) + '</div>';
+        resultDiv.innerHTML = '<div style="color:#DC2626;font-weight:600;">' +
+            '&#10060; Item not found: ' + escHtml(itemId) + '</div>';
     }
 }
 
