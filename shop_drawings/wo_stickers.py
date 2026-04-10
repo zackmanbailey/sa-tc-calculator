@@ -53,35 +53,21 @@ W = 4.0 * inch   # Sticker width
 H = 6.0 * inch   # Sticker height
 M = 0.18 * inch   # Margin
 
-TF_NAVY = HexColor('#0F172A')
-TF_BLUE = HexColor('#1E40AF')
-TF_GOLD = HexColor('#C89A2E')
-TF_GREEN = HexColor('#10B981')
-TF_AMBER = HexColor('#F59E0B')
-GRAY_LT = HexColor('#F5F5F5')
-GRAY_MID = HexColor('#606060')
-GRAY_DK = HexColor('#333333')
+# ── Thermal-transfer safe: black on white only ──
+TF_NAVY = black
+TF_BLUE = black
+TF_GOLD = black
+TF_GREEN = black
+TF_AMBER = black
+GRAY_LT = white
+GRAY_MID = black
+GRAY_DK = black
 WHITE = white
 
-COMPONENT_COLORS = {
-    "column": HexColor('#DBEAFE'),
-    "rafter": HexColor('#E0E7FF'),
-    "purlin": HexColor('#D1FAE5'),
-    "sag_rod": HexColor('#FEF3C7'),
-    "strap": HexColor('#FCE7F3'),
-    "endcap": HexColor('#F3E8FF'),
-    "roofing": HexColor('#CCFBF1'),
-}
-
-COMPONENT_TEXT_COLORS = {
-    "column": HexColor('#1E40AF'),
-    "rafter": HexColor('#4338CA'),
-    "purlin": HexColor('#065F46'),
-    "sag_rod": HexColor('#92400E'),
-    "strap": HexColor('#9D174D'),
-    "endcap": HexColor('#6B21A8'),
-    "roofing": HexColor('#0F766E'),
-}
+# All component badges: black text, white fill (outlined)
+COMPONENT_COLORS = {k: white for k in
+    ("column", "rafter", "purlin", "sag_rod", "strap", "endcap", "roofing")}
+COMPONENT_TEXT_COLORS = {k: black for k in COMPONENT_COLORS}
 
 
 # ─────────────────────────────────────────────
@@ -132,12 +118,13 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
 
     c.setPageSize((W, H))
 
-    # ── Navy header bar ──
+    # ── Header bar (black outline, white fill) ──
     hdr_h = 0.58 * inch
-    c.setFillColor(TF_NAVY)
-    c.rect(0, H - hdr_h, W, hdr_h, fill=1, stroke=0)
+    c.setStrokeColor(black)
+    c.setLineWidth(1)
+    c.rect(0, H - hdr_h, W, hdr_h, fill=0, stroke=1)
 
-    c.setFillColor(WHITE)
+    c.setFillColor(black)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(M, H - hdr_h + 0.24 * inch, "TITANFORGE")
     c.setFont("Helvetica", 7)
@@ -148,9 +135,9 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     c.setFont("Helvetica", 6)
     c.drawRightString(W - M, H - hdr_h + 0.08 * inch, f"Rev {revision}")
 
-    # ── Gold accent line ──
-    c.setStrokeColor(TF_GOLD)
-    c.setLineWidth(2)
+    # ── Accent line ──
+    c.setStrokeColor(black)
+    c.setLineWidth(1.5)
     c.line(0, H - hdr_h - 2, W, H - hdr_h - 2)
 
     # ── Ship mark + component type (large) ──
@@ -181,16 +168,15 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     c.setFont("Helvetica-Bold", 28)
     c.drawString(text_x, y - 0.38 * inch, mark)
 
-    # Component type badge
-    badge_bg = COMPONENT_COLORS.get(comp_type, GRAY_LT)
-    badge_fg = COMPONENT_TEXT_COLORS.get(comp_type, GRAY_DK)
+    # Component type badge (outlined, no fill)
     badge_text = comp_type.upper().replace("_", " ")
     badge_w = max(len(badge_text) * 5.5 + 12, 50)
     badge_x = text_x
     badge_y = y - 0.52 * inch
-    c.setFillColor(badge_bg)
-    c.roundRect(badge_x, badge_y, badge_w, 14, 3, fill=1, stroke=0)
-    c.setFillColor(badge_fg)
+    c.setStrokeColor(black)
+    c.setLineWidth(0.75)
+    c.roundRect(badge_x, badge_y, badge_w, 14, 3, fill=0, stroke=1)
+    c.setFillColor(black)
     c.setFont("Helvetica-Bold", 7)
     c.drawString(badge_x + 6, badge_y + 3, badge_text)
 
@@ -214,8 +200,12 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     c.line(M, div_y, W - M, div_y)
 
     # ── Info grid (3 columns) ──
-    grid_y = div_y - 0.12 * inch
-    col_w = (W - 2 * M) / 3
+    grid_top = div_y - 0.10 * inch
+    box_h = 0.50 * inch
+    gap = 0.06 * inch  # gap between boxes
+    num_cols = 3
+    usable_w = W - 2 * M - (num_cols - 1) * gap
+    box_w = usable_w / num_cols
 
     grid_data = [
         ("JOB CODE", job_code),
@@ -224,21 +214,29 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     ]
 
     for i, (label, val) in enumerate(grid_data):
-        bx = M + i * col_w
-        fill = HexColor('#E8EEF8') if i % 2 == 0 else HexColor('#F0F0F0')
-        c.setFillColor(fill)
-        c.rect(bx, grid_y - 0.32 * inch, col_w - 0.04 * inch, 0.48 * inch,
-               fill=1, stroke=0)
+        bx = M + i * (box_w + gap)
+        by = grid_top - box_h
+        cx = bx + box_w / 2  # true center of box
+
+        c.setStrokeColor(black)
+        c.setLineWidth(0.5)
+        c.rect(bx, by, box_w, box_h, fill=0, stroke=1)
+
+        # Label in upper third
         c.setFont("Helvetica-Bold", 6.5)
-        c.setFillColor(TF_NAVY)
-        c.drawCentredString(bx + col_w / 2 - 0.02 * inch,
-                            grid_y + 0.07 * inch, label)
-        c.setFont("Helvetica-Bold", 10)
         c.setFillColor(black)
-        # Truncate if needed
-        display_val = val[:12] if len(val) > 12 else val
-        c.drawCentredString(bx + col_w / 2 - 0.02 * inch,
-                            grid_y - 0.18 * inch, display_val)
+        c.drawCentredString(cx, by + box_h - 14, label)
+
+        # Divider line under label
+        c.setLineWidth(0.3)
+        c.line(bx + 3, by + box_h - 17, bx + box_w - 3, by + box_h - 17)
+
+        # Value centered in lower two-thirds
+        c.setFont("Helvetica-Bold", 11)
+        display_val = val[:10] if len(val) > 10 else val
+        c.drawCentredString(cx, by + (box_h - 17) / 2 - 4, display_val)
+
+    grid_y = grid_top - box_h  # for positioning below
 
     # ── Work order info ──
     info_y = grid_y - 0.52 * inch
@@ -271,20 +269,22 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     c.setLineWidth(0.5)
 
     c.setFont("Helvetica-Bold", 7)
-    c.setFillColor(TF_GREEN)
+    c.setFillColor(black)
     c.drawString(M, info_y, "START:")
-    c.setStrokeColor(HexColor('#CCCCCC'))
+    c.setStrokeColor(black)
+    c.setLineWidth(0.5)
     c.line(M + 0.42 * inch, info_y - 1, W / 2 - 0.1 * inch, info_y - 1)
 
-    c.setFillColor(TF_BLUE)
+    c.setFillColor(black)
     c.drawString(W / 2 + 0.05 * inch, info_y, "FINISH:")
     c.line(W / 2 + 0.50 * inch, info_y - 1, W - M, info_y - 1)
 
-    # ── Footer bar ──
+    # ── Footer bar (outlined) ──
     foot_h = 0.22 * inch
-    c.setFillColor(TF_NAVY)
-    c.rect(0, 0, W, foot_h, fill=1, stroke=0)
-    c.setFillColor(WHITE)
+    c.setStrokeColor(black)
+    c.setLineWidth(0.75)
+    c.rect(0, 0, W, foot_h, fill=0, stroke=1)
+    c.setFillColor(black)
     c.setFont("Helvetica", 5.5)
     c.drawCentredString(W / 2, 0.07 * inch,
                         "Structures America | 14369 FM 1314, Conroe TX 77302 | TitanForge")

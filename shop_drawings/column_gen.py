@@ -285,6 +285,7 @@ def _calc_column_data(cfg: ShopDrawingConfig, col_index: int = 0) -> Dict:
         "rebar_size": cfg.col_rebar_size,
         "rebar_reinforced": cfg.col_reinforced,
         "rebar_length_in": rebar_length_in,
+        "rebar_length_ft": rebar_length_ft,
         "rebar_qty": 4,  # Always 4 per column
         "stitch_weld": COLUMN_DEFAULTS["stitch_weld"],
         "connection_bolts": cfg.col_connection_bolts,
@@ -304,512 +305,615 @@ def _calc_column_data(cfg: ShopDrawingConfig, col_index: int = 0) -> Dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _draw_front_view(c, data: Dict, ox: float, oy: float,
-                     view_w: float, view_h: float):
+                     view_w: float, view_h: float, cfg=None):
     """
-    Draw front elevation of column.
-    ox, oy = origin (bottom-left of view area)
-    view_w, view_h = available space
+    Draw front elevation of column HORIZONTALLY (pixel-perfect precision).
+    Left = bottom of column (footing end), Right = top with cap plate.
+    Shows:
+    - Full column length with HEAVY rebar lines extending 15-20% past left end
+    - Column body rectangle (thick outline)
+    - Cap plate at right end (thin vertical, angled at roof pitch)
+    - Gussets p4 (above) and p5 (below) as triangles
+    - Stitch weld marks (X pattern) at 3" OC ends, 36" OC body
+    - Section B-B cut line (dashed red, vertical near left end)
+    - Complete dimension set (above: CEE length, below: total/split/rebar)
+    - Weld callout (3/16 TYP)
+    - Column count header
     """
     total_in = data["total_length_in"]
 
-    # Scale: fit column in view with margins
-    col_margin = 25  # pts margin inside view
+    # Scale to fit view with margins for rebar extension
+    col_margin = 20
     avail_h = view_h - 2 * col_margin
     avail_w = view_w - 2 * col_margin
-    scale = min(avail_h / total_in, avail_w / 40)  # 40" gives room for 14" beam + dims
+    scale = min(avail_w / (total_in + 60), avail_h / 35)
 
-    # Column drawing dimensions
-    col_w = data["box_width"] * scale
-    col_h = total_in * scale
+    # Column dimensions (horizontal layout)
+    col_w = total_in * scale
+    col_h = data["box_width"] * scale  # 14" becomes 30-40 pts
 
-    # Center column in view
-    cx = ox + view_w / 2
-    col_left = cx - col_w / 2
-    col_right = cx + col_w / 2
-    col_bottom = oy + col_margin
-    col_top = col_bottom + col_h
+    # Position column centered vertically
+    col_left = ox + col_margin + 40
+    col_right = col_left + col_w
+    cy = oy + (view_h / 2)
+    col_bottom = cy - col_h / 2
+    col_top = cy + col_h / 2
 
-    # ── Column body outline ──
+    # ── REBAR: 4 solid lines extending past left end ──
+    rebar_extend_pct = 0.175  # 15-20% extension
+    rebar_extend = total_in * scale * rebar_extend_pct
+    rebar_past_left = col_left - rebar_extend
+
+    c.setStrokeColor(CLR_REBAR)
+    c.setLineWidth(THICK)  # Make rebar VISIBLE
+    c.setLineCap(1)  # Round line caps
+
+    # 4 rebar positions: 2 near top, 2 near bottom
+    rebar_inset = 2.5 * scale
+    rebar_y_positions = [
+        col_bottom + rebar_inset,
+        col_bottom + col_h * 0.33,
+        col_bottom + col_h * 0.67,
+        col_top - rebar_inset,
+    ]
+    for ry in rebar_y_positions:
+        c.line(rebar_past_left, ry, col_right, ry)  # Extend through entire column
+
+    # ── COLUMN BODY: thick rectangle outline ──
     c.setStrokeColor(CLR_OBJECT)
     c.setLineWidth(THICK)
     c.rect(col_left, col_bottom, col_w, col_h)
 
-    # ── Cap plate at top ──
-    cap_w = data["cap_plate_length_in"] * scale  # 26" plate wider than column
-    cap_h = 4 * scale  # Exaggerated thickness for visibility
-    cap_left = cx - cap_w / 2
-    c.setFillColor(HexColor("#E8E8E8"))
-    c.rect(cap_left, col_top - 1, cap_w, cap_h, fill=1)
-    c.setFillColor(black)
+    # ── CAP PLATE: thin vertical line at right, rotated at pitch angle ──
+    cap_angle = data["cap_angle_deg"]
+    cap_thick = 0.75 * scale * 8  # 3/4" thick, rendered as wider for visibility
+    cap_plate_len = data["cap_plate_length_in"] * scale
 
-    # Cap plate label
-    c.setFont("Helvetica", 5)
-    c.setFillColor(CLR_DIM)
-    c.drawCentredString(cx, col_top + cap_h + 3,
-                        f'PL {data["cap_plate_thickness"]} x '
-                        f'{data["cap_plate_width_in"]:.0f}" x '
-                        f'{data["cap_plate_length_in"]:.0f}" A572 Gr 50')
-
-    # ── Bolt holes (4 dots on cap plate) ──
-    c.setFillColor(CLR_OBJECT)
-    bolt_spacing_x = 8 * scale  # approximate bolt pattern
-    bolt_spacing_y = 2 * scale
-    bolt_cy = col_top + cap_h / 2
-    for bx in [-bolt_spacing_x/2, bolt_spacing_x/2]:
-        c.circle(cx + bx, bolt_cy, 1.5, fill=1)
-
-    # ── Gusset triangles (2 per side visible in front view) ──
-    gusset_h = data["gusset_leg_in"] * scale
+    c.saveState()
+    c.translate(col_right, cy)
+    c.rotate(-cap_angle)
     c.setStrokeColor(CLR_OBJECT)
-    c.setLineWidth(MEDIUM)
-
-    # Left gussets (uphill side — longer hypotenuse)
-    gx1 = col_left
-    gy1 = col_top
-    c.line(gx1, gy1, gx1 - gusset_h * 0.7, gy1)
-    c.line(gx1, gy1, gx1, gy1 - gusset_h)
-    c.line(gx1 - gusset_h * 0.7, gy1, gx1, gy1 - gusset_h)
-
-    # Right gussets (downhill side — shorter hypotenuse)
-    gx2 = col_right
-    c.line(gx2, gy1, gx2 + gusset_h * 0.7, gy1)
-    c.line(gx2, gy1, gx2, gy1 - gusset_h)
-    c.line(gx2 + gusset_h * 0.7, gy1, gx2, gy1 - gusset_h)
-
-    # Gusset labels
+    c.setLineWidth(THICK)
+    c.setFillColor(HexColor("#E8E8E8"))
+    c.rect(-cap_thick/2, -col_h/2 - 5, cap_thick, col_h + 10, fill=1)
     c.setFont("Helvetica", 4.5)
     c.setFillColor(CLR_DIM)
-    draw_leader(c, gx1 - gusset_h * 0.35, gy1 - gusset_h * 0.3,
-                gx1 - gusset_h - 8, gy1 - gusset_h * 0.3,
-                f'PL {data["gusset_thickness"]} GUSSET (TYP)', align="right")
-
-    # ── Stitch weld pattern ──
-    sw = data["stitch_weld"]
-    weld_spacing = 36 * scale  # 36" OC pattern spacing
-    n_welds = max(2, int(col_h / weld_spacing))
-    c.setStrokeColor(CLR_WELD)
-    c.setLineWidth(THIN)
-    for i in range(1, n_welds):
-        wy = col_bottom + i * (col_h / n_welds)
-        # Small weld marks on both sides
-        for wx in [col_left, col_right]:
-            c.line(wx - 3, wy - 2, wx, wy + 2)
-            c.line(wx, wy + 2, wx + 3, wy - 2)
-
-    # Stitch weld callout
-    sw_y = col_bottom + col_h * 0.6
-    draw_leader(c, col_right + 2, sw_y,
-                col_right + col_margin + 15, sw_y + 10,
-                f'STITCH WELD {sw["size"]} {sw["pattern"]} WPS-"B"',
-                font_size=5)
-
-    # End weld callout
-    ew_y = col_bottom + 12 * scale
-    draw_leader(c, col_right + 2, ew_y,
-                col_right + col_margin + 15, ew_y - 8,
-                f'{sw["end_weld"]} WPS-"B"',
-                font_size=4.5)
-
-    # ── Rebar ──
-    rebar_len_scaled = data["rebar_length_in"] * scale
-    rebar_start = col_bottom  # Starts at bottom (embedded in footing)
-    rebar_end = min(rebar_start + rebar_len_scaled, col_top)
-
-    c.setStrokeColor(CLR_REBAR)
-    c.setLineWidth(MEDIUM)
-    c.setLineCap(1)  # Round cap
-    c.setDash([4, 3])
-
-    rebar_inset = 3 * scale if data["rebar_reinforced"] else -3 * scale
-    for rx in [col_left + rebar_inset, col_right - rebar_inset]:
-        c.line(rx, rebar_start, rx, rebar_end)
-    c.setDash([])
-
-    # Rebar callout
-    rb_label = (f'{data["rebar_size"]} A706 REBAR x 4 EA '
-                f'({_fmt_ft_in(data["rebar_length_in"])} LONG)')
-    if data["rebar_reinforced"]:
-        rb_label += " — INSIDE"
-    else:
-        rb_label += " — OUTSIDE w/ 6\" WELD"
-
-    draw_leader(c, col_left + rebar_inset, rebar_end - 10,
-                col_left - col_margin - 20, rebar_end + 5,
-                rb_label, font_size=4.5, align="right")
-
-    # Rebar WPS callout
-    draw_weld_symbol(c, col_left + rebar_inset + 8, rebar_end - 3, "D")
-
-    # ── Column body material callout ──
-    mat_y = col_bottom + col_h * 0.45
-    c.setFillColor(CLR_DIM)
-    c.setFont("Helvetica-Bold", 5.5)
-    c.saveState()
-    c.translate(cx, mat_y)
-    c.rotate(90)
-    c.drawCentredString(0, 3, f'CEE {data["cee_size"]} {data["material_grade"]}')
+    c.drawCentredString(0, -col_h/2 - 12,
+                        f'PL {data["cap_plate_thickness"]} x {data["cap_plate_width_in"]:.0f}"')
+    c.drawCentredString(0, -col_h/2 - 18, f'@ {cap_angle:.0f}°')
     c.restoreState()
 
-    # ── DO NOT PAINT zones at ends ──
-    nopaint_h = 6 * scale  # 6" at each end
-    c.setStrokeColor(CLR_NOPAINT)
-    c.setLineWidth(THIN)
-    c.setDash([2, 2])
-    # Bottom
-    c.rect(col_left + 1, col_bottom, col_w - 2, nopaint_h)
-    # Top
-    c.rect(col_left + 1, col_top - nopaint_h, col_w - 2, nopaint_h)
+    # ── GUSSETS: p4 (above) and p5 (below) as right triangles ──
+    gusset_leg = data["gusset_leg_in"] * scale
+
+    # p4 (uphill, above cap plate)
+    gx = col_right + 1
+    gy_top = col_top
+    gy_bottom = col_top - gusset_leg * 0.75
+    p = c.beginPath()
+    p.moveTo(gx, gy_top)
+    p.lineTo(gx + gusset_leg * 0.6, gy_top)
+    p.lineTo(gx, gy_bottom)
+    p.close()
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(MEDIUM)
+    c.setFillColor(HexColor("#D8D8D8"))
+    c.drawPath(p, fill=1, stroke=1)
+
+    # p5 (downhill, below cap plate)
+    gy_bottom = col_bottom
+    gy_top = col_bottom + gusset_leg * 0.6
+    p = c.beginPath()
+    p.moveTo(gx, gy_bottom)
+    p.lineTo(gx + gusset_leg * 0.5, gy_bottom)
+    p.lineTo(gx, gy_top)
+    p.close()
+    c.setFillColor(HexColor("#D8D8D8"))
+    c.drawPath(p, fill=1, stroke=1)
+
+    # ── SECTION B-B CUT LINE: dashed red vertical near left end ──
+    cut_x = col_left + (data["embedment_in"] * 0.15) * scale  # 10-15% from left
+    c.setStrokeColor(CLR_SECTION_CUT)
+    c.setLineWidth(MEDIUM)
+    c.setDash([8, 3, 2, 3])  # Specific dash pattern
+    c.line(cut_x, col_bottom, cut_x, col_top)
     c.setDash([])
 
-    # "DO NOT PAINT" label
-    c.setFont("Helvetica", 3.5)
-    c.setFillColor(CLR_NOPAINT)
-    c.drawCentredString(cx, col_bottom + nopaint_h + 2, "DO NOT PAINT")
-    c.drawCentredString(cx, col_top - nopaint_h - 5, "DO NOT PAINT")
+    # Section marker circle at bottom of cut line
+    draw_section_marker(c, cut_x, col_bottom - 8, "B", size=8)
 
-    # ── Embedment line ──
-    embed_y = col_bottom + data["embedment_in"] * scale
-    c.setStrokeColor(CLR_DIM)
-    c.setLineWidth(THIN)
-    c.setDash([6, 3])
-    c.line(col_left - 10, embed_y, col_right + 10, embed_y)
-    c.setDash([])
-    c.setFont("Helvetica", 4.5)
+    # ── PIECE MARK LABELS with leaders ──
+    c.setFont("Helvetica", 5)
     c.setFillColor(CLR_DIM)
-    c.drawString(col_right + 12, embed_y - 2, "GRADE LINE")
 
-    # ── Section cut markers ──
-    # A-A at mid-height
-    aa_y = col_bottom + col_h * 0.4
-    c.setStrokeColor(CLR_SECTION_CUT)
-    c.setLineWidth(MEDIUM)
-    c.setDash([8, 3, 2, 3])
-    c.line(col_left - 15, aa_y, col_right + 15, aa_y)
-    c.setDash([])
-    draw_section_marker(c, col_left - 20, aa_y, "A")
-    draw_section_marker(c, col_right + 20, aa_y, "A")
+    # p3 on cap plate
+    draw_leader(c, col_right + 2, cy, col_right + 35, cy + 10, "p3", font_size=5.5)
 
-    # B-B at cap plate
-    bb_y = col_top + 1
-    c.setStrokeColor(CLR_SECTION_CUT)
-    c.setLineWidth(MEDIUM)
-    c.setDash([8, 3, 2, 3])
-    c.line(col_left - 15, bb_y, col_right + 15, bb_y)
-    c.setDash([])
-    draw_section_marker(c, col_left - 20, bb_y, "B")
-    draw_section_marker(c, col_right + 20, bb_y, "B")
+    # p4 on uphill gusset
+    draw_leader(c, gx + gusset_leg * 0.3, col_top - gusset_leg * 0.4,
+                gx + 50, col_top, "p4", font_size=5.5)
+
+    # p5 on downhill gusset
+    draw_leader(c, gx + gusset_leg * 0.2, col_bottom + gusset_leg * 0.3,
+                gx + 40, col_bottom - 10, "p5", font_size=5.5)
+
+    # ── STITCH WELD MARKS: X pattern on top and bottom edges ──
+    end_length = 12 * scale
+    c.setStrokeColor(CLR_WELD)
+    c.setLineWidth(THIN)
+
+    # End pattern (3" OC, first 12" of each end)
+    end_spacing = 3 * scale
+    x = col_left
+    while x < col_left + end_length:
+        for yy in [col_top, col_bottom]:
+            c.line(x - 1.5, yy + 1, x + 1.5, yy - 1)
+            c.line(x - 1.5, yy - 1, x + 1.5, yy + 1)
+        x += end_spacing
+
+    # Body pattern (36" OC, middle section)
+    body_spacing = 36 * scale
+    x = col_left + end_length + body_spacing
+    while x < col_right - end_length:
+        for yy in [col_top, col_bottom]:
+            c.line(x - 2, yy + 1, x + 2, yy - 1)
+            c.line(x - 2, yy - 1, x + 2, yy + 1)
+        x += body_spacing
+
+    # Right end pattern (3" OC)
+    x = col_right - end_length
+    while x < col_right:
+        for yy in [col_top, col_bottom]:
+            c.line(x - 1.5, yy + 1, x + 1.5, yy - 1)
+            c.line(x - 1.5, yy - 1, x + 1.5, yy + 1)
+        x += end_spacing
+
+    # ── REBAR WELD CALLOUTS: 3/16 TYP at 4 corners ──
+    c.setFont("Helvetica-Bold", 4.5)
+    c.setFillColor(CLR_WELD)
+    c.drawString(col_left - 5, col_top + 3, "3/16 TYP")
+    c.drawString(col_left - 5, col_bottom - 3, "3/16 TYP")
+    c.drawString(col_right - 15, col_top + 3, "3/16 TYP")
+    c.drawString(col_right - 15, col_bottom - 3, "3/16 TYP")
 
     # ── DIMENSIONS ──
+    # Above column: CEE length with size notation
+    cee_label = f'{_fmt_ft_in(data["total_length_in"])} (C{data["cee_size"]})'
+    draw_dimension_h(c, col_left, col_right, col_top, 18, cee_label, font_size=5.5)
 
-    # Total length (left side)
-    draw_dimension_v(c, col_left, col_bottom, col_top, -35,
-                     f'TOTAL: {_fmt_ft_in(data["total_length_in"])}',
-                     font_size=6)
+    # Below column row 1: Total length
+    draw_dimension_h(c, col_left, col_right, col_bottom - 20, -18,
+                    f'{_fmt_ft_in(data["total_length_in"])}', font_size=5.5)
 
-    # Breakdown dimensions (far left, stacked)
-    # Embedment
-    embed_top = col_bottom + data["embedment_in"] * scale
-    draw_dimension_v(c, col_left, col_bottom, embed_top, -55,
-                     f'{_fmt_ft_in(data["embedment_in"])} EMBED',
-                     font_size=5)
+    # Below column row 2: Split (embedment | above-grade)
+    embed_x = col_left + data["embedment_in"] * scale
+    draw_dimension_h(c, col_left, embed_x, col_bottom - 40, -12,
+                    f'{_fmt_ft_in(data["embedment_in"])}', font_size=5)
+    draw_dimension_h(c, embed_x, col_right, col_bottom - 40, -12,
+                    f'{_fmt_ft_in(data["total_length_in"] - data["embedment_in"])}', font_size=5)
 
-    # Clear height
-    clear_top = embed_top + data["clear_height_in"] * scale
-    draw_dimension_v(c, col_left, embed_top, clear_top, -55,
-                     f'{_fmt_ft_in(data["clear_height_in"])} CLR',
-                     font_size=5)
+    # Rebar length dimension (below split row)
+    if data["rebar_length_in"] > 0:
+        rebar_end_x = col_left + data["rebar_length_in"] * scale
+        rb_label = f'{data["rebar_size"]} Rebar {_fmt_ft_in(data["rebar_length_in"])}'
+        draw_dimension_h(c, rebar_past_left, rebar_end_x, col_bottom - 60, -12,
+                        rb_label, font_size=5)
 
-    # Angle addition + buffer
-    ang_buf = data["angle_add_in"] + data["buffer_in"]
-    draw_dimension_v(c, col_left, clear_top, col_top, -55,
-                     f'{_fmt_ft_in(ang_buf)} ANG+BUF',
-                     font_size=5)
+    # Cap plate width dimension (1'-2" at right end)
+    cap_plate_width = data["cap_plate_length_in"]
+    draw_dimension_h(c, col_right, col_right + (cap_plate_width * scale * 0.3),
+                    col_bottom - 80, -12,
+                    f'{_fmt_ft_in(cap_plate_width)}', font_size=5)
 
-    # Width dimension (top)
-    draw_dimension_h(c, col_left, col_right, col_top + cap_h + 8, 12,
-                     f'{data["box_width"]:.0f}"', font_size=6)
+    # ── COLUMN COUNT and VIEW LABEL ──
+    if cfg:
+        col_count = cfg.n_frames if cfg.frame_type == "tee" else cfg.n_frames * 2
+    else:
+        col_count = 1
 
-    # ── View label ──
     c.setFont("Helvetica-Bold", 7)
     c.setFillColor(black)
-    c.drawCentredString(cx, oy + 5, "FRONT VIEW")
+    c.drawCentredString(col_left + col_w/2, oy + view_h - 8,
+                       f'{col_count} - Columns - {data["mark"]}')
 
-    # ── Cold Galv note ──
-    c.setFont("Helvetica", 4.5)
-    c.setFillColor(CLR_WELD)
-    cg_y = col_bottom + col_h * 0.25
-    draw_leader(c, col_left + col_w * 0.5, cg_y,
-                col_right + col_margin + 15, cg_y - 15,
-                "COLD GALV ALL PLAIN STEEL & WELDS", font_size=4.5)
-
-    # Cap plate end weld
-    draw_weld_symbol(c, cx - 10, col_top + 2, "F")
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(col_left + col_w/2, oy + 3, "FRONT VIEW")
 
 
 def _draw_side_view(c, data: Dict, ox: float, oy: float,
                     view_w: float, view_h: float):
     """
-    Side elevation (90° rotation) showing box depth.
+    Side View: Cap plate assembly shown from the FRONT face.
+    Displays TWO overlapping rectangles:
+    1. Front face: 2'-2" tall (26") x 14" wide with 4 bolt holes
+    2. Side face: 1'-2" wide showing depth view
+    Complete with bolt hole pattern, gussets p4 and p5, and all dimensions.
     """
     total_in = data["total_length_in"]
 
     col_margin = 20
     avail_h = view_h - 2 * col_margin
-    scale = min(avail_h / total_in, (view_w - 2 * col_margin) / 30)
+    avail_w = view_w - 2 * col_margin
+    scale = min(avail_w / (total_in * 0.8), avail_h / 40)
 
-    col_w = data["box_depth"] * scale  # 8" depth shown
-    col_h = total_in * scale
+    cap_w = data["cap_plate_width_in"] * scale  # 14"
+    cap_h = data["cap_plate_length_in"] * scale  # 26" = 2'-2"
 
-    cx = ox + view_w / 2
-    col_left = cx - col_w / 2
-    col_right = cx + col_w / 2
-    col_bottom = oy + col_margin
-    col_top = col_bottom + col_h
+    # Horizontal center, slightly below vertical center
+    cx = ox + avail_w / 2
+    cy = oy + avail_h / 2 + 10
 
-    # Column body
+    # ── FRONT FACE: main rectangle 14" wide x 26" tall ──
+    front_left = cx - cap_w / 2
+    front_right = cx + cap_w / 2
+    front_bottom = cy - cap_h / 2
+    front_top = cy + cap_h / 2
+
     c.setStrokeColor(CLR_OBJECT)
     c.setLineWidth(THICK)
-    c.rect(col_left, col_bottom, col_w, col_h)
-
-    # Center stitch line (hidden — shows inner seam)
-    c.setStrokeColor(CLR_HIDDEN)
-    c.setLineWidth(THIN)
-    c.setDash([3, 2])
-    c.line(cx, col_bottom + 5, cx, col_top - 5)
-    c.setDash([])
-
-    # Cap plate (side view — thin rectangle)
-    cap_h = 4 * scale
-    cap_w_side = data["cap_plate_width_in"] * scale
-    c.setStrokeColor(CLR_OBJECT)
     c.setFillColor(HexColor("#E8E8E8"))
-    c.setLineWidth(MEDIUM)
-    cap_left = cx - cap_w_side / 2
-    c.rect(cap_left, col_top - 1, cap_w_side, cap_h, fill=1)
-    c.setFillColor(black)
+    c.rect(front_left, front_bottom, cap_w, cap_h, fill=1)
 
-    # Gussets (side view — appear as rectangles)
-    gusset_h = data["gusset_leg_in"] * scale
+    # ── 4 BOLT HOLES (13/16" diameter, 1-1/2" edge distance) ──
+    edge_dist = 1.5 * scale
+    bolt_dia = 0.9375 * scale
+    bolt_r = bolt_dia / 2
+
+    bolt_y_top = front_top - edge_dist
+    bolt_y_bottom = front_bottom + edge_dist
+    bolt_x_left = front_left + edge_dist
+    bolt_x_right = front_right - edge_dist
+
     c.setStrokeColor(CLR_OBJECT)
     c.setLineWidth(MEDIUM)
-    gw = 2 * scale  # gusset plate thickness
-    # Left gusset
-    c.rect(col_left - gw, col_top - gusset_h, gw, gusset_h)
-    # Right gusset
-    c.rect(col_right, col_top - gusset_h, gw, gusset_h)
+    c.setFillColor(white)
+    for bx in [bolt_x_left, bolt_x_right]:
+        for by in [bolt_y_bottom, bolt_y_top]:
+            c.circle(bx, by, bolt_r, fill=1, stroke=1)
 
-    # Depth dimension
-    draw_dimension_h(c, col_left, col_right, col_top + cap_h + 5, 10,
-                     f'{data["box_depth"]:.0f}"', font_size=5.5)
+    # ── GUSSETS p4 (left) and p5 (right) ──
+    gusset_leg = data["gusset_leg_in"] * scale
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(MEDIUM)
+    c.setFillColor(HexColor("#D8D8D8"))
 
-    # Total length (right side)
-    draw_dimension_v(c, col_right, col_bottom, col_top, 20,
-                     _fmt_ft_in(data["total_length_in"]), font_size=5.5)
+    # p4: left gusset extending upper-left from top-left corner
+    p4_base_x = front_left
+    p4_base_y = front_top
+    p4_tip_x = front_left - gusset_leg
+    p4_tip_y = front_top + gusset_leg
+    p = c.beginPath()
+    p.moveTo(p4_base_x, p4_base_y)
+    p.lineTo(p4_tip_x, p4_tip_y)
+    p.lineTo(p4_base_x, p4_base_y - gusset_leg)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1)
 
-    # Embedment line
-    embed_y = col_bottom + data["embedment_in"] * scale
-    c.setStrokeColor(CLR_DIM)
-    c.setLineWidth(THIN)
-    c.setDash([6, 3])
-    c.line(col_left - 8, embed_y, col_right + 8, embed_y)
-    c.setDash([])
+    # p5: right gusset extending upper-right from top-right corner
+    p5_base_x = front_right
+    p5_base_y = front_top
+    p5_tip_x = front_right + gusset_leg
+    p5_tip_y = front_top + gusset_leg
+    p = c.beginPath()
+    p.moveTo(p5_base_x, p5_base_y)
+    p.lineTo(p5_tip_x, p5_tip_y)
+    p.lineTo(p5_base_x, p5_base_y - gusset_leg)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1)
 
-    # Rebar (hidden lines in side view)
-    rebar_len_scaled = data["rebar_length_in"] * scale
-    rebar_end = min(col_bottom + rebar_len_scaled, col_top)
-    c.setStrokeColor(CLR_REBAR)
-    c.setLineWidth(THIN)
-    c.setDash([3, 2])
-    inset = 2.5 * scale
-    for rx in [col_left + inset, col_right - inset]:
-        c.line(rx, col_bottom, rx, rebar_end)
-    c.setDash([])
+    # ── DIMENSIONS on front face ──
+    # Vertical: 1-1/2" + 1'-11" (bolt spacing) + 1-1/2" = 2'-2"
+    draw_dimension_v(c, front_left - 15, front_bottom, front_bottom + edge_dist,
+                    -10, '1-1/2"', font_size=4.5)
+    draw_dimension_v(c, front_left - 15, front_bottom + edge_dist, front_top - edge_dist,
+                    -10, '1\'-11"', font_size=5)
+    draw_dimension_v(c, front_left - 15, front_top - edge_dist, front_top,
+                    -10, '1-1/2"', font_size=4.5)
 
-    # View label
-    c.setFont("Helvetica-Bold", 7)
+    # Horizontal: edge distances and bolt spacing
+    draw_dimension_h(c, front_left, front_left + edge_dist, front_bottom - 12, -8,
+                    '1-1/2"', font_size=4.5)
+    draw_dimension_h(c, front_left + edge_dist, front_right - edge_dist, front_bottom - 12, -8,
+                    '11"', font_size=5)
+    draw_dimension_h(c, front_right - edge_dist, front_right, front_bottom - 12, -8,
+                    '1-1/2"', font_size=4.5)
+
+    # Overall width (14")
+    draw_dimension_h(c, front_left, front_right, front_top + 12, 8,
+                    f'{data["cap_plate_width_in"]:.0f}"', font_size=5.5)
+
+    # Overall height (2'-2")
+    draw_dimension_v(c, front_right + 15, front_bottom, front_top, 10,
+                    f'{_fmt_ft_in(data["cap_plate_length_in"])}', font_size=5.5)
+
+    # ── SIDE FACE: smaller rectangle to the right showing 1'-2" width ──
+    side_w = data["cap_plate_length_in"] * scale * 0.4  # 1'-2" scaled down
+    side_h = data["box_depth"] * scale * 0.5  # 8" scaled down
+    side_left = front_right + 20
+    side_bottom = cy - side_h / 2
+    side_top = cy + side_h / 2
+
+    c.setFillColor(HexColor("#E8E8E8"))
+    c.rect(side_left, side_bottom, side_w, side_h, fill=1)
+
+    # ── Piece marks with leaders ──
+    c.setFont("Helvetica", 5)
+    c.setFillColor(CLR_DIM)
+
+    # p3 on front face (center)
+    draw_leader(c, cx, cy, cx + 40, cy - 15, "p3", font_size=5.5)
+
+    # p4 on left gusset
+    draw_leader(c, p4_tip_x, p4_tip_y, p4_tip_x - 20, p4_tip_y + 10, "p4", font_size=5.5)
+
+    # p5 on right gusset
+    draw_leader(c, p5_tip_x, p5_tip_y, p5_tip_x + 20, p5_tip_y + 10, "p5", font_size=5.5)
+
+    # ── 5° angle label ──
+    c.setFont("Helvetica", 5)
+    c.setFillColor(CLR_DIM)
+    c.drawString(cx - 10, front_bottom - 25, "5°")
+
+    # ── VIEW LABEL ──
+    c.setFont("Helvetica-Bold", 8)
     c.setFillColor(black)
-    c.drawCentredString(cx, oy + 5, "SIDE VIEW")
+    c.drawCentredString(cx, oy + 3, "SIDE VIEW")
 
 
 def _draw_section_aa(c, data: Dict, ox: float, oy: float,
                      view_w: float, view_h: float):
     """
-    Section A-A: Cross section through column body.
-    Shows two C-sections welded into box beam with rebar in corners.
+    Section A-A: End view of cap plate assembly (pixel-perfect).
+    Shows:
+    - Cap plate standing VERTICALLY (14" wide x 26" tall = 2'-2")
+    - Column box beam profile inside (14" x 8", dashed hidden line)
+    - Gussets p4 (left) and p5 (right) as RIGHT TRIANGLES extending upward
+    - 4 bolt holes with 1-1/2" edge distances
+    - All dimensions including gusset legs (6"), hypotenuses, and angles (85°, 95°)
     """
-    # Cross section dimensions
+    cap_w = data["cap_plate_width_in"]   # 14"
+    cap_h = data["cap_plate_length_in"]  # 26" = 2'-2"
+    gusset_leg = data["gusset_leg_in"]   # 6"
+    uphill_hyp = data["uphill_hyp_in"]
+    downhill_hyp = data["downhill_hyp_in"]
+    edge_dist = 1.5
+
+    margin = 10
+    avail_w = view_w - 2 * margin
+    avail_h = view_h - 2 * margin
+    scale = min(avail_w / (cap_w + 2 * gusset_leg), avail_h / cap_h) * 0.55
+
+    sw = cap_w * scale
+    sh = cap_h * scale
+
+    cx = ox + (view_w - sw) / 2
+    cy = oy + (view_h - sh) / 2 + margin
+
+    plate_left = cx
+    plate_right = cx + sw
+    plate_bottom = cy
+    plate_top = cy + sh
+
+    # ── CAP PLATE: standing vertically ──
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(THICK)
+    c.setFillColor(HexColor("#E8E8E8"))
+    c.rect(plate_left, plate_bottom, sw, sh, fill=1)
+
+    # ── COLUMN BOX outline (dashed, centered inside plate) ──
+    col_w = data["box_width"] * scale
+    col_h = data["box_depth"] * scale
+    col_left = cx + (sw - col_w) / 2
+    col_bottom = cy + (sh - col_h) / 2
+    c.setStrokeColor(CLR_HIDDEN)
+    c.setLineWidth(THIN)
+    c.setDash([3, 2])
+    c.rect(col_left, col_bottom, col_w, col_h)
+    c.setDash([])
+
+    # ── BOLT HOLES: 4 circles with 1-1/2" edge distance ──
+    edge_scaled = edge_dist * scale
+    bolt_r = max(0.9375 * scale / 2, 2.0)
+
+    bolt_y_bottom = plate_bottom + edge_scaled
+    bolt_y_top = plate_top - edge_scaled
+    bolt_x_left = plate_left + edge_scaled
+    bolt_x_right = plate_right - edge_scaled
+
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(MEDIUM)
+    c.setFillColor(white)
+    for bx in [bolt_x_left, bolt_x_right]:
+        for by in [bolt_y_bottom, bolt_y_top]:
+            c.circle(bx, by, bolt_r, fill=1, stroke=1)
+
+    # ── GUSSETS: RIGHT TRIANGLES extending UPWARD from plate top ──
+    # p4: upper-left (85° angle), p5: upper-right (95° angle)
+    g_leg = gusset_leg * scale
+
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(MEDIUM)
+    c.setFillColor(HexColor("#D8D8D8"))
+
+    # p4 (LEFT gusset): vertical leg down left edge (6"), horizontal leg left (6")
+    p4_base_x = plate_left
+    p4_base_y_top = plate_top
+    p4_base_y_down = plate_top - g_leg
+    p4_tip_x = plate_left - g_leg
+    p4_tip_y = plate_top
+
+    p = c.beginPath()
+    p.moveTo(p4_base_x, p4_base_y_top)
+    p.lineTo(p4_tip_x, p4_tip_y)
+    p.lineTo(p4_base_x, p4_base_y_down)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1)
+
+    # p5 (RIGHT gusset): vertical leg down right edge (6"), horizontal leg right (6")
+    p5_base_x = plate_right
+    p5_base_y_top = plate_top
+    p5_base_y_down = plate_top - g_leg
+    p5_tip_x = plate_right + g_leg
+    p5_tip_y = plate_top
+
+    p = c.beginPath()
+    p.moveTo(p5_base_x, p5_base_y_top)
+    p.lineTo(p5_tip_x, p5_tip_y)
+    p.lineTo(p5_base_x, p5_base_y_down)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1)
+
+    # ── PIECE MARK LABELS ──
+    c.setFont("Helvetica", 5)
+    c.setFillColor(CLR_DIM)
+
+    draw_leader(c, (plate_left + plate_right) / 2, cy + sh / 2,
+                (plate_left + plate_right) / 2 + 35, cy + sh / 2 - 20, "p3", font_size=5.5)
+    draw_leader(c, p4_tip_x, p4_tip_y, p4_tip_x - 25, p4_tip_y + 12, "p4", font_size=5.5)
+    draw_leader(c, p5_tip_x, p5_tip_y, p5_tip_x + 25, p5_tip_y + 12, "p5", font_size=5.5)
+
+    # ── DIMENSIONS ──
+    # Vertical: plate height (2'-2")
+    draw_dimension_v(c, plate_left - 18, plate_bottom, plate_top, -18,
+                    f'{_fmt_ft_in(cap_h)}', font_size=5.5)
+
+    # Horizontal: plate width (14")
+    draw_dimension_h(c, plate_left, plate_right, plate_top + 12, 10,
+                    f'{cap_w:.0f}"', font_size=5.5)
+
+    # Vertical bolt row spacing (1'-11")
+    draw_dimension_v(c, plate_right + 15, bolt_y_bottom, bolt_y_top, 12,
+                    f'1\'-11"', font_size=5)
+
+    # Bolt hole diameter callout
+    c.setFont("Helvetica", 4.5)
+    c.setFillColor(CLR_DIM)
+    c.drawCentredString(bolt_x_left - 8, bolt_y_bottom - 10, '13/16"')
+
+    # Gusset leg dimensions (6")
+    draw_dimension_h(c, p4_tip_x, p4_base_x, p4_tip_y + 8, 8, '6"', font_size=4.5)
+    draw_dimension_v(c, p4_tip_x - 8, p4_base_y_down, p4_base_y_top, -8, '6"', font_size=4.5)
+
+    draw_dimension_h(c, p5_base_x, p5_tip_x, p5_tip_y + 8, 8, '6"', font_size=4.5)
+    draw_dimension_v(c, p5_tip_x + 8, p5_base_y_down, p5_base_y_top, 8, '6"', font_size=4.5)
+
+    # Hypotenuse lengths
+    c.setFont("Helvetica", 4.5)
+    c.drawCentredString((p4_tip_x + p4_base_x) / 2 - 8, (p4_tip_y + p4_base_y_down) / 2,
+                       f'{uphill_hyp:.1f}"')
+    c.drawCentredString((p5_tip_x + p5_base_x) / 2 + 8, (p5_tip_y + p5_base_y_down) / 2,
+                       f'{downhill_hyp:.1f}"')
+
+    # Angle labels (85° and 95°)
+    c.setFont("Helvetica", 4.5)
+    c.drawString(p4_base_x - 20, p4_base_y_down + 5, "85°")
+    c.drawString(p5_base_x + 5, p5_base_y_down + 5, "95°")
+
+    # Column depth label
+    c.setFont("Helvetica", 4.5)
+    c.drawString(col_left + col_w / 2 - 4, col_bottom - 8, '8"')
+
+    # ── VIEW LABEL and ANGLE ──
+    c.setFont("Helvetica-Bold", 7)
+    c.setFillColor(black)
+    c.drawString(ox + 5, oy + 5, "A-A")
+    c.setFont("Helvetica", 5)
+    c.drawString(ox + 5, oy - 5, "5°")
+
+
+def _draw_section_bb(c, data: Dict, ox: float, oy: float,
+                     view_w: float, view_h: float):
+    """
+    Section B-B: Cross-section through column body.
+    Shows box beam (14" x 8") formed by two CEE sections,
+    with 4 rebar dots at corners (TYP) and material callout.
+    """
     box_w = data["box_width"]   # 14"
     box_d = data["box_depth"]   # 8"
 
-    margin = 15
+    margin = 10
     avail = min(view_w, view_h) - 2 * margin
-    scale = avail / max(box_w, box_d) * 0.6
+    scale = avail / max(box_w, box_d) * 0.7
 
     sw = box_w * scale
     sd = box_d * scale
     cx = ox + view_w / 2
     cy = oy + view_h / 2 + 5
 
-    # Outer rectangle (box beam outline)
+    # ── BOX OUTLINE (14" x 8") ──
     c.setStrokeColor(CLR_OBJECT)
     c.setLineWidth(THICK)
-    c.rect(cx - sw / 2, cy - sd / 2, sw, sd)
+    c.rect(cx - sw/2, cy - sd/2, sw, sd)
 
-    # Inner void (the hollow interior)
-    wall_t = 0.135 * scale * 12  # 10GA ≈ 0.135", scaled
-    inner_w = sw - 2 * wall_t * 3  # Exaggerate for visibility
-    inner_d = sd - 2 * wall_t * 3
-    c.setStrokeColor(CLR_HIDDEN)
-    c.setLineWidth(THIN)
-    c.rect(cx - inner_w / 2, cy - inner_d / 2, inner_w, inner_d)
-
-    # Center seam line (where two CEEs meet)
-    c.setStrokeColor(CLR_OBJECT)
-    c.setLineWidth(MEDIUM)
-    c.line(cx, cy - sd / 2, cx, cy + sd / 2)
-
-    # Stitch weld marks on seam
-    draw_weld_symbol(c, cx, cy + sd / 2 + 2, "B", size=3)
-
-    # Rebar dots (4 corners)
-    rebar_r = 2.5  # visual radius
-    c.setFillColor(CLR_REBAR)
-    inset = 5 if data["rebar_reinforced"] else -5
-    corners = [
-        (cx - sw / 2 + inset + rebar_r, cy - sd / 2 + inset + rebar_r),
-        (cx + sw / 2 - inset - rebar_r, cy - sd / 2 + inset + rebar_r),
-        (cx - sw / 2 + inset + rebar_r, cy + sd / 2 - inset - rebar_r),
-        (cx + sw / 2 - inset - rebar_r, cy + sd / 2 - inset - rebar_r),
-    ]
-    for rx, ry in corners:
-        c.circle(rx, ry, rebar_r, fill=1, stroke=1)
-
-    # Rebar label
-    c.setFont("Helvetica", 4.5)
-    c.setFillColor(CLR_REBAR)
-    pos_label = "INSIDE" if data["rebar_reinforced"] else "OUTSIDE"
-    c.drawCentredString(cx, cy - sd / 2 - 10,
-                        f'{data["rebar_size"]} REBAR ({pos_label}) TYP 4 PL')
-
-    # Dimension labels
-    draw_dimension_h(c, cx - sw / 2, cx + sw / 2,
-                     cy + sd / 2, 10,
-                     f'{box_w:.0f}"', font_size=5.5)
-    draw_dimension_v(c, cx + sw / 2, cy - sd / 2, cy + sd / 2, 10,
-                     f'{box_d:.0f}"', font_size=5.5)
-
-    # Material callout
-    c.setFont("Helvetica", 4.5)
-    c.setFillColor(CLR_DIM)
-    c.drawCentredString(cx, cy + sd / 2 + 22,
-                        f'2x CEE {data["cee_size"]} WELDED BOX')
-
-    # View label
-    c.setFont("Helvetica-Bold", 7)
-    c.setFillColor(black)
-    c.drawCentredString(cx, oy + 5, "SECTION A-A")
-
-
-def _draw_section_bb(c, data: Dict, ox: float, oy: float,
-                     view_w: float, view_h: float):
-    """
-    Section B-B: Cross section at cap plate level.
-    Shows cap plate, bolt hole pattern, gusset positions.
-    """
-    cap_w = data["cap_plate_length_in"]  # 26"
-    cap_d = data["cap_plate_width_in"]   # 14"
-
-    margin = 15
-    avail = min(view_w, view_h) - 2 * margin
-    scale = avail / max(cap_w, cap_d) * 0.5
-
-    sw = cap_w * scale
-    sd = cap_d * scale
-    cx = ox + view_w / 2
-    cy = oy + view_h / 2 + 5
-
-    # Cap plate (filled rectangle)
-    c.setStrokeColor(CLR_OBJECT)
-    c.setLineWidth(THICK)
-    c.setFillColor(HexColor("#E0E0E0"))
-    c.rect(cx - sw / 2, cy - sd / 2, sw, sd, fill=1)
-
-    # Column outline on plate (hidden)
-    col_sw = data["box_width"] * scale
-    col_sd = data["box_depth"] * scale
+    # ── CENTER SEAM LINE (dashed, represents weld seam) ──
     c.setStrokeColor(CLR_HIDDEN)
     c.setLineWidth(THIN)
     c.setDash([3, 2])
-    c.rect(cx - col_sw / 2, cy - col_sd / 2, col_sw, col_sd)
+    c.line(cx - sw/2, cy, cx + sw/2, cy)
     c.setDash([])
 
-    # Bolt holes (4)
-    c.setStrokeColor(CLR_OBJECT)
-    c.setFillColor(white)
-    c.setLineWidth(MEDIUM)
-    bolt_sp_x = 9 * scale
-    bolt_sp_y = 4 * scale
-    bolt_r = 2.5
-    for bx in [-bolt_sp_x / 2, bolt_sp_x / 2]:
-        for by in [-bolt_sp_y / 2, bolt_sp_y / 2]:
-            c.circle(cx + bx, cy + by, bolt_r, fill=1, stroke=1)
+    # ── REBAR DOTS: 4 filled circles at corners (TYP) ──
+    if data["rebar_reinforced"]:
+        rebar_r = 2.5
+        c.setFillColor(CLR_REBAR)
+        c.setLineWidth(THIN)
+        c.setStrokeColor(CLR_REBAR)
 
-    # Bolt hole callout
+        inset = 4 * scale
+        corners = [
+            (cx - sw/2 + inset, cy - sd/2 + inset),
+            (cx + sw/2 - inset, cy - sd/2 + inset),
+            (cx - sw/2 + inset, cy + sd/2 - inset),
+            (cx + sw/2 - inset, cy + sd/2 - inset),
+        ]
+        for rx, ry in corners:
+            c.circle(rx, ry, rebar_r, fill=1, stroke=1)
+
+    # ── REBAR LABEL ──
+    c.setFont("Helvetica", 4.5)
+    c.setFillColor(CLR_REBAR)
+    c.drawCentredString(cx, cy - sd/2 - 12, f'{data["rebar_size"]} REBAR TYP')
+
+    # ── PIECE MARK: rb2 ──
+    c.setFont("Helvetica", 5)
+    c.setFillColor(CLR_DIM)
+    draw_leader(c, cx - 5, cy, cx - 30, cy - 18, "rb2", font_size=5.5)
+
+    # ── DIMENSIONS ──
+    draw_dimension_h(c, cx - sw/2, cx + sw/2, cy + sd/2 + 10, 10,
+                    f'{box_w:.0f}"', font_size=5.5)
+    draw_dimension_v(c, cx + sw/2 + 10, cy - sd/2, cy + sd/2, 12,
+                    f'{box_d:.0f}"', font_size=5.5)
+
+    # ── MATERIAL CALLOUT ──
     c.setFont("Helvetica", 4.5)
     c.setFillColor(CLR_DIM)
-    c.drawCentredString(cx, cy - sd / 2 - 8,
-                        f'4x {data["bolt_hole_dia"]} HOLES')
+    c.drawCentredString(cx, cy + sd/2 + 18,
+                       f'2x CEE {data["cee_size"]} WELDED BOX')
 
-    # Gusset outlines (triangles at corners)
-    g_size = data["gusset_leg_in"] * scale
-    c.setStrokeColor(CLR_OBJECT)
-    c.setLineWidth(MEDIUM)
-    c.setFillColor(HexColor("#D0D0D0"))
-    # Show gusset footprint as small triangles at 4 corners of column
-    for gx_sign, gy_sign in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
-        gx = cx + gx_sign * col_sw / 2
-        gy = cy + gy_sign * col_sd / 2
-        p = c.beginPath()
-        p.moveTo(gx, gy)
-        p.lineTo(gx + gx_sign * g_size * 0.4, gy)
-        p.lineTo(gx, gy + gy_sign * g_size * 0.4)
-        p.close()
-        c.drawPath(p, fill=1)
-
-    # Dimensions
-    draw_dimension_h(c, cx - sw / 2, cx + sw / 2,
-                     cy + sd / 2, 10,
-                     f'{cap_w:.0f}"', font_size=5.5)
-    draw_dimension_v(c, cx + sw / 2, cy - sd / 2, cy + sd / 2, 10,
-                     f'{cap_d:.0f}"', font_size=5.5)
-
-    # Material
-    c.setFont("Helvetica", 4.5)
-    c.setFillColor(CLR_DIM)
-    c.drawCentredString(cx, cy + sd / 2 + 20,
-                        f'PL {data["cap_plate_thickness"]} x {cap_d:.0f}" x {cap_w:.0f}" A572')
-
-    # View label
+    # ── VIEW LABEL ──
     c.setFont("Helvetica-Bold", 7)
     c.setFillColor(black)
-    c.drawCentredString(cx, oy + 5, "SECTION B-B")
+    c.drawCentredString(cx, oy + 3, "SECTION B-B")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BOM TABLE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _draw_bom_table(c, data: Dict, ox: float, oy: float, w: float, h: float):
-    """Mini BOM table listing column parts."""
+def _draw_bom_table(c, cfg: ShopDrawingConfig, data: Dict, ox: float, oy: float, w: float, h: float):
+    """
+    Bill of Materials table with headers and data rows for all components.
+    Displays ship mark, piece mark, quantity, description, dimensions, grade, remarks, weight.
+    """
     c.setStrokeColor(CLR_OBJECT)
     c.setLineWidth(THIN)
 
-    # Headers
-    headers = ["MARK", "QTY", "DESCRIPTION", "SIZE", "MATERIAL"]
-    col_widths = [w * 0.09, w * 0.07, w * 0.34, w * 0.24, w * 0.26]
+    headers = ["Ship", "Piece", "QTY", "Description", "FT", "IN", "GR.", "Remarks", "WT."]
+    col_widths = [w*0.10, w*0.09, w*0.06, w*0.32, w*0.06, w*0.06, w*0.08, w*0.12, w*0.11]
 
-    row_h = 9
-    n_rows = 6  # Header + 5 data rows
+    row_h = 7
+    n_rows = 8
     table_h = n_rows * row_h
 
     # Table outline
@@ -817,17 +921,17 @@ def _draw_bom_table(c, data: Dict, ox: float, oy: float, w: float, h: float):
 
     # Header row
     hy = oy + h - row_h
-    c.setFillColor(HexColor("#2A2A4A"))
+    c.setFillColor(HexColor("#333333"))
     c.rect(ox, hy, w, row_h, fill=1)
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 5)
 
     x_pos = ox
     for i, hdr in enumerate(headers):
-        c.drawCentredString(x_pos + col_widths[i] / 2, hy + 3, hdr)
+        c.drawCentredString(x_pos + col_widths[i] / 2, hy + 1.5, hdr)
         x_pos += col_widths[i]
 
-    # Draw column lines
+    # Column separators
     x_pos = ox
     for cw in col_widths[:-1]:
         x_pos += cw
@@ -835,45 +939,57 @@ def _draw_bom_table(c, data: Dict, ox: float, oy: float, w: float, h: float):
         c.setLineWidth(HAIR)
         c.line(x_pos, oy + h - table_h, x_pos, oy + h)
 
-    # Data rows
+    col_count = cfg.n_frames if cfg.frame_type == "tee" else cfg.n_frames * 2
+    cee_total_wt = data["weight_lbs"] * col_count
+
     rows = [
-        [data["mark"], "2", "CEE Section (Box Beam)",
-         f'{data["cee_size"]}',
-         data["material_grade"]],
-        [data["mark"], "1", "Cap Plate",
-         f'{data["cap_plate_thickness"]} x {data["cap_plate_width_in"]:.0f}" x {data["cap_plate_length_in"]:.0f}"',
-         "A572 Gr 50"],
-        [data["mark"], "4", "Triangle Gusset",
-         f'{data["gusset_thickness"]} x {data["gusset_leg_in"]:.0f}"x{data["gusset_leg_in"]:.0f}"',
-         "A572 Gr 50"],
-        [data["mark"], "4", "Rebar",
-         f'{data["rebar_size"]} x {_fmt_ft_in(data["rebar_length_in"])}',
-         "A706"],
-        [data["mark"], f'{data["connection_bolts"]}', "Connection Bolts",
-         f'{data["bolt_hole_dia"]} DIA',
-         "A325"],
+        ["C1", "", str(col_count), "Columns", "", "", "", "", ""],
+        ["C1", "", str(col_count * 2), f'CEE {data["cee_size"]}',
+         f'{data["total_length_ft"]:.0f}', f'{int(data["total_length_in"] % 12)}',
+         "80", f'G90', f'{cee_total_wt:.0f}'],
+        ["", "p3", str(col_count),
+         f'PL {data["cap_plate_thickness"]} x {data["cap_plate_width_in"]:.0f}" x {data["cap_plate_length_in"]:.0f}"',
+         f'{int(data["cap_plate_length_in"]//12)}', f'{int(data["cap_plate_length_in"]%12)}',
+         "", "A572", f'{col_count*10:.0f}'],
+        ["", "p4", str(col_count * 2),
+         f'PL {data["gusset_thickness"]} x {data["gusset_leg_in"]:.0f}" x {data["uphill_hyp_in"]:.1f}"',
+         "0", f'{int(data["gusset_leg_in"])}', "", "A572", f'{col_count*2*5:.0f}'],
+        ["", "p5", str(col_count * 2),
+         f'PL {data["gusset_thickness"]} x {data["gusset_leg_in"]:.0f}" x {data["downhill_hyp_in"]:.0f}"',
+         "0", f'{int(data["gusset_leg_in"])}', "", "A572", f'{col_count*2*4:.0f}'],
+        ["", "rb2", str(4*col_count),
+         f'{data["rebar_size"]} Rebar',
+         f'{data["rebar_length_ft"]:.0f}', f'{int(data["rebar_length_in"] % 12)}',
+         "60", "A706", f'{4*col_count*3:.0f}'],
     ]
 
-    c.setFillColor(black)
-    c.setFont("Helvetica", 4.5)
     for r_idx, row in enumerate(rows):
         ry = hy - (r_idx + 1) * row_h
-        # Alternate row bg
-        if r_idx % 2 == 1:
-            c.setFillColor(HexColor("#F5F5F5"))
+
+        if r_idx == 0:
+            c.setFillColor(HexColor("#E0E0E0"))
             c.rect(ox, ry, w, row_h, fill=1)
             c.setFillColor(black)
-        # Row separator
-        c.setStrokeColor(CLR_GRID)
+            c.setFont("Helvetica-Bold", 5)
+        else:
+            c.setFillColor(black)
+            c.setFont("Helvetica", 4.5)
+
+        c.setStrokeColor(CLR_OBJECT)
         c.setLineWidth(HAIR)
         c.line(ox, ry, ox + w, ry)
-        # Cell text
+
         x_pos = ox
         for i, cell in enumerate(row):
-            c.drawCentredString(x_pos + col_widths[i] / 2, ry + 3, str(cell))
+            if cell == "":
+                x_pos += col_widths[i]
+                continue
+            if i in [0, 3]:
+                c.drawString(x_pos + 2, ry + 1.5, str(cell))
+            else:
+                c.drawCentredString(x_pos + col_widths[i] / 2, ry + 1.5, str(cell))
             x_pos += col_widths[i]
 
-    # "BILL OF MATERIALS" label
     c.setFont("Helvetica-Bold", 5.5)
     c.setFillColor(black)
     c.drawCentredString(ox + w / 2, oy + h - table_h - 8, "BILL OF MATERIALS")
@@ -887,10 +1003,11 @@ def _draw_title_block(c, cfg: ShopDrawingConfig, data: Dict,
                       sheet_num: int = 1, total_sheets: int = 1,
                       revision: str = "-"):
     """
-    Title block in bottom-right corner.
+    Vertical title block strip along the right edge (Taos Sheriff style).
+    Runs full height of page, ~1" wide. Text is rotated 90° to read sideways.
     """
-    tb_w = 3.2 * inch
-    tb_h = 1.3 * inch
+    tb_w = 1.0 * inch
+    tb_h = PAGE_H - 2 * MARGIN
     tb_x = PAGE_W - MARGIN - tb_w
     tb_y = MARGIN
 
@@ -898,53 +1015,146 @@ def _draw_title_block(c, cfg: ShopDrawingConfig, data: Dict,
     c.setFillColor(CLR_TITLE_BG)
     c.rect(tb_x, tb_y, tb_w, tb_h, fill=1)
 
-    # Borders
+    # Outer border
     c.setStrokeColor(white)
     c.setLineWidth(MEDIUM)
     c.rect(tb_x, tb_y, tb_w, tb_h)
 
-    # Fabricator info (top section)
     fab = TITLE_BLOCK["fabricator"]
-    c.setFillColor(CLR_TITLE_TEXT)
-    c.setFont("Helvetica-Bold", 7)
-    y = tb_y + tb_h - 10
-    c.drawCentredString(tb_x + tb_w / 2, y, fab["name"])
-    c.setFont("Helvetica", 5)
-    y -= 8
-    c.drawCentredString(tb_x + tb_w / 2, y, fab["address"])
-    y -= 7
-    c.drawCentredString(tb_x + tb_w / 2, y, fab["city_state_zip"])
-    y -= 7
-    c.drawCentredString(tb_x + tb_w / 2, y,
-                        f'{fab["phone"]}  |  {fab["website"]}')
+    mid_x = tb_x + tb_w / 2
 
-    # Divider
-    y -= 5
-    c.setStrokeColor(HexColor("#444466"))
-    c.line(tb_x + 5, y, tb_x + tb_w - 5, y)
+    # ── Rotated text (read from bottom to top) ──
+    c.saveState()
+    c.translate(mid_x, tb_y + tb_h / 2)
+    c.rotate(90)
+
+    # Now we draw text along the rotated axis
+    # x = position along the strip height, y = left/right within strip
+    strip_len = tb_h
+    half = strip_len / 2
+
+    # Company info (top of strip = rightmost when rotated)
+    c.setFillColor(CLR_TITLE_TEXT)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(half - 15, 4, fab["name"])
+    c.setFont("Helvetica", 5)
+    c.drawCentredString(half - 15, -4, f'{fab["address"]}')
+    c.drawCentredString(half - 15, -10, f'{fab["city_state_zip"]}')
+    c.setFont("Helvetica", 4.5)
+    c.drawCentredString(half - 15, -17, f'Phone: {fab["phone"]}')
+    c.drawCentredString(half - 15, -23, f'{fab["website"]}')
 
     # Project info
-    y -= 9
-    c.setFont("Helvetica-Bold", 5.5)
-    c.drawString(tb_x + 5, y, f'PROJECT: {cfg.project_name}')
-    y -= 8
     c.setFont("Helvetica", 5)
-    c.drawString(tb_x + 5, y, f'JOB: {cfg.job_code}')
-    c.drawString(tb_x + tb_w / 2, y, f'CUSTOMER: {cfg.customer_name}')
-    y -= 8
-    c.drawString(tb_x + 5, y,
-                 f'DATE: {datetime.date.today().strftime("%m/%d/%Y")}')
-    c.drawString(tb_x + tb_w / 2, y, f'REV: {revision}')
-    y -= 8
-    c.drawString(tb_x + 5, y, f'DRAWN: {cfg.drawn_by or "AUTO"}')
-    c.drawString(tb_x + tb_w / 2, y,
-                 f'SHEET {sheet_num} OF {total_sheets}')
+    c.drawString(half - 80, 12, f'PROJECT: {cfg.project_name}')
+    c.drawString(half - 80, 4, f'Customer: {cfg.customer_name}')
 
-    # Drawing title
+    # Drawing title (prominent, centered)
+    c.setFont("Helvetica-Bold", 12)
+    c.setFillColor(HexColor("#FFCC00"))
+    c.drawCentredString(0, -2, f'{cfg.job_code}')
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(0, -14, f'A1 Column')
+
+    # Bottom section (left of strip when rotated)
+    c.setFillColor(CLR_TITLE_TEXT)
+    c.setFont("Helvetica", 4.5)
+    c.drawString(-half + 10, 12, f'Drafting Service: Structures America')
+    c.drawString(-half + 10, 5, f'Drawn: {cfg.drawn_by or "AUTO"}')
+    c.drawString(-half + 10, -2, f'Date: {datetime.date.today().strftime("%m/%d/%Y")}')
+    c.setFont("Helvetica", 4)
+    c.drawString(-half + 10, -9, f'Rev. No {revision}')
+    c.drawString(-half + 10, -16, f'DWG. NO A1 Column')
+
+    c.restoreState()
+
+
+def _draw_project_notes(c, cfg, ox, oy, w, h, revision="-"):
+    """
+    Project-specific notes, revision table, and design authority disclaimer.
+    Positioned in the bottom bar.
+    """
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(THIN)
+    c.rect(ox, oy, w, h)
+
+    y = oy + h - 9
+    c.setFont("Helvetica-Bold", 5)
+    c.setFillColor(black)
+    c.drawString(ox + 3, y, "Project Specific Notes (UNO): G90")
+
+    c.setFont("Helvetica", 4.5)
+    y -= 7
+    c.drawString(ox + 3, y, "Material: A36 UNO")
+    y -= 6
+    c.drawString(ox + 3, y, "Paint: Cold Galv All Plain")
+    y -= 6
+    c.drawString(ox + 3, y, "Steel and Welds")
+    y -= 6
+    c.drawString(ox + 3, y, "Do Not Paint at the")
+    y -= 6
+    c.drawString(ox + 3, y, "location Indicated")
+
+    # Revision table
     y -= 10
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(tb_x + tb_w / 2, y,
-                        f'COLUMN {data["mark"]}')
+    c.setFont("Helvetica-Bold", 4.5)
+    c.drawString(ox + 3, y, "Date       REV  Revision Description")
+    y -= 6
+    c.setFont("Helvetica", 4)
+    c.drawString(ox + 3, y, f'{datetime.date.today().strftime("%m-%d-%y")}   {revision}    For Fabrication')
+    y -= 6
+    c.drawString(ox + 3, y, "                    For Approval")
+
+    # Design/Review Authority
+    y -= 10
+    c.setFont("Helvetica-Bold", 4)
+    c.drawString(ox + 3, y, "Design/Review Authority:")
+    y -= 5
+    c.setFont("Helvetica", 3.5)
+    disclaimer = [
+        "Please Review this Drawing Carefully.",
+        "We assume NO responsibility for the",
+        "accuracy of the information in the",
+        "contract documents. This drawing",
+        "represents our best interpretation.",
+    ]
+    for line in disclaimer:
+        c.drawString(ox + 3, y, line)
+        y -= 5
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STITCH WELD DETAIL CALLOUT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _draw_stitch_weld_detail(c, ox: float, oy: float, w: float, h: float):
+    """
+    Stitch weld detail callout graphic showing the weld pattern.
+    5/16" size, 3-36 body pattern, 3-3 end pattern @ 6" O.C.
+    """
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(THIN)
+    c.rect(ox, oy, w, h)
+
+    c.setFont("Helvetica-Bold", 5)
+    c.setFillColor(CLR_DIM)
+    c.drawString(ox + 3, oy + h - 8, "STITCH WELD DETAIL:")
+
+    c.setFont("Helvetica", 4)
+    c.setFillColor(black)
+    y = oy + h - 14
+    c.drawString(ox + 5, y, "5/16 size weld")
+    y -= 6
+    c.drawString(ox + 5, y, "3-36 body pattern")
+    y -= 6
+    c.drawString(ox + 5, y, "3-3 @ 6 OC first 12\" ends")
+
+
+def _draw_weld_callout_graphic(c, ox: float, oy: float, w: float, h: float):
+    """
+    Graphic representation of the stitch weld pattern with arrows.
+    """
+    pass  # Simplified version inline in generate_column_drawing
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1038,13 +1248,21 @@ def generate_column_drawing(
     revision: str = "-",
 ) -> bytes:
     """
-    Generate a complete column shop drawing PDF.
+    Generate a complete column shop drawing PDF with pixel-perfect layout.
+
+    Page (11" x 8.5" landscape):
+    - RIGHT STRIP (1" wide): vertical title block
+    - CONTENT AREA: 4 views in structured zones
+      - TOP ROW: Section A-A (left 35%), BOM table (right 45%)
+      - MIDDLE ROW: Front View (full width, dominant 38% height)
+      - BOTTOM ROW: Section B-B (left 22%), stitch weld detail (center), Side View (right 50%)
+      - BOTTOM BAR (1.5" height): General Notes | Abbreviations | Project Notes
 
     Args:
-        cfg: ShopDrawingConfig with all project/building data
-        col_index: Column index (0-based) for mark numbering
-        output_path: If given, save PDF to this path
-        revision: Revision letter for title block
+        cfg: ShopDrawingConfig with project data
+        col_index: Column index (0-based)
+        output_path: Optional file path to save PDF
+        revision: Revision letter/number
 
     Returns:
         PDF bytes
@@ -1055,85 +1273,99 @@ def generate_column_drawing(
 
     data = _calc_column_data(cfg, col_index)
 
-    # ── Draw border ──
+    # ── PAGE BORDER ──
     _draw_border(c)
 
-    # ── Layout zones ──
-    # Main drawing area is divided into a 2x2 grid for the 4 views
-    # Top row: Front View (wide) + Section A-A
-    # Bottom half: Side View + Section B-B
-    # Bottom bar: Notes + BOM + Title Block
-
+    # ── LAYOUT ZONES ──
     draw_area_w = PAGE_W - 2 * MARGIN
     draw_area_h = PAGE_H - 2 * MARGIN
 
-    # Bottom bar height for notes/title
+    title_strip_w = 1.0 * inch
+    content_w = draw_area_w - title_strip_w
+
     bar_h = 1.5 * inch
     views_h = draw_area_h - bar_h
 
-    # Split views: Front (60%) | Right column (40%)
-    front_w = draw_area_w * 0.55
-    right_w = draw_area_w * 0.45
+    # Top region: Section A-A (left) + BOM (right)
+    sec_a_w = content_w * 0.28
+    sec_a_h = views_h * 0.32
+    sec_a_ox = MARGIN
+    sec_a_oy = MARGIN + bar_h + views_h - sec_a_h
 
-    # Split right column: top (Section A-A) | bottom (Section B-B)
-    right_top_h = views_h * 0.5
-    right_bot_h = views_h * 0.5
+    bom_w = content_w * 0.42
+    bom_h = views_h * 0.22
+    bom_ox = MARGIN + content_w - bom_w
+    bom_oy = MARGIN + bar_h + views_h - bom_h
 
-    # Front view and side view share the left column
-    # Front view takes 70% of left, Side view 30%
-    front_actual_w = front_w * 0.65
-    side_w = front_w * 0.35
-
-    # Origins
+    # Middle: Front View (dominant, full width)
+    front_w = content_w
+    front_h = views_h * 0.38
     front_ox = MARGIN
-    front_oy = MARGIN + bar_h
-    side_ox = MARGIN + front_actual_w
-    side_oy = front_oy
-    sec_aa_ox = MARGIN + front_w
-    sec_aa_oy = front_oy + right_bot_h
-    sec_bb_ox = MARGIN + front_w
-    sec_bb_oy = front_oy
+    front_oy = MARGIN + bar_h + views_h * 0.30
 
-    # ── Draw 4 views ──
-    _draw_front_view(c, data, front_ox, front_oy, front_actual_w, views_h)
-    _draw_side_view(c, data, side_ox, side_oy, side_w, views_h)
-    _draw_section_aa(c, data, sec_aa_ox, sec_aa_oy, right_w, right_top_h)
-    _draw_section_bb(c, data, sec_bb_ox, sec_bb_oy, right_w, right_bot_h)
+    # Bottom region: Section B-B (left) + stitch weld detail (center) + Side View (right)
+    sec_b_w = content_w * 0.22
+    sec_b_h = views_h * 0.30
+    sec_b_ox = MARGIN
+    sec_b_oy = MARGIN + bar_h
 
-    # ── View area separators (light grid) ──
-    c.setStrokeColor(CLR_GRID)
-    c.setLineWidth(HAIR)
-    c.setDash([4, 4])
-    # Vertical divider between left and right
-    c.line(MARGIN + front_w, front_oy, MARGIN + front_w, front_oy + views_h)
-    # Horizontal divider in right column
-    c.line(MARGIN + front_w, front_oy + right_bot_h,
-           MARGIN + draw_area_w, front_oy + right_bot_h)
-    # Divider between front and side
-    c.line(side_ox, front_oy, side_ox, front_oy + views_h)
-    c.setDash([])
+    side_w = content_w * 0.50
+    side_h = views_h * 0.30
+    side_ox = MARGIN + content_w - side_w
+    side_oy = MARGIN + bar_h
 
-    # ── Bottom bar ──
-    # Notes (left)
-    notes_w = draw_area_w * 0.3
-    _draw_standard_notes(c, MARGIN, MARGIN, notes_w, bar_h)
+    # Stitch weld detail (between B-B and Side View)
+    weld_ox = sec_b_ox + sec_b_w + 5
+    weld_oy = sec_b_oy + 2
+    weld_box_w = (side_ox - weld_ox) - 10
+    weld_box_h = sec_b_h * 0.6
 
-    # Abbreviations (center-left)
-    abbr_w = draw_area_w * 0.15
-    _draw_abbreviations(c, MARGIN + notes_w, MARGIN, abbr_w, bar_h)
+    # ── DRAW ALL VIEWS ──
+    _draw_front_view(c, data, front_ox, front_oy, front_w, front_h, cfg)
+    _draw_side_view(c, data, side_ox, side_oy, side_w, side_h)
+    _draw_section_aa(c, data, sec_a_ox, sec_a_oy, sec_a_w, sec_a_h)
+    _draw_section_bb(c, data, sec_b_ox, sec_b_oy, sec_b_w, sec_b_h)
 
-    # BOM table (center)
-    bom_w = draw_area_w * 0.25
-    bom_ox = MARGIN + notes_w + abbr_w
-    _draw_bom_table(c, data, bom_ox, MARGIN, bom_w, bar_h)
+    # ── BOM TABLE ──
+    _draw_bom_table(c, cfg, data, bom_ox, bom_oy, bom_w, bom_h)
 
-    # Title block (right)
+    # ── STITCH WELD DETAIL ──
+    if weld_box_w > 50:
+        c.setStrokeColor(CLR_OBJECT)
+        c.setLineWidth(THIN)
+        c.rect(weld_ox, weld_oy, weld_box_w, weld_box_h)
+
+        c.setFont("Helvetica-Bold", 5)
+        c.setFillColor(CLR_DIM)
+        c.drawString(weld_ox + 3, weld_oy + weld_box_h - 8, "STITCH WELD DETAIL:")
+
+        c.setFont("Helvetica", 4)
+        c.setFillColor(black)
+        wy = weld_oy + weld_box_h - 16
+        c.drawString(weld_ox + 5, wy, "5/16 weld  3-36 OC body")
+        wy -= 7
+        c.drawString(weld_ox + 5, wy, "3-3 @ 6 OC first 12\" ends")
+        wy -= 7
+        c.drawString(weld_ox + 5, wy, "All per WPS-\"B\"")
+
+    # ── TITLE BLOCK (right vertical strip) ──
     _draw_title_block(c, cfg, data, revision=revision)
 
-    # ── Weight callout (bottom of front view, above notes bar) ──
-    c.setFont("Helvetica-Bold", 6)
+    # ── BOTTOM BAR: Notes sections ──
+    notes_w = content_w * 0.35
+    _draw_standard_notes(c, MARGIN, MARGIN, notes_w, bar_h)
+
+    abbr_w = content_w * 0.30
+    _draw_abbreviations(c, MARGIN + notes_w, MARGIN, abbr_w, bar_h)
+
+    pn_ox = MARGIN + notes_w + abbr_w
+    pn_w = content_w - notes_w - abbr_w
+    _draw_project_notes(c, cfg, pn_ox, MARGIN, pn_w, bar_h, revision)
+
+    # ── WEIGHT CALLOUT ──
+    c.setFont("Helvetica-Bold", 5)
     c.setFillColor(CLR_DIM)
-    c.drawString(MARGIN + 5, MARGIN + bar_h + 5,
+    c.drawString(sec_b_ox + 5, sec_b_oy + sec_b_h + 3,
                  f'APPROX WEIGHT: {data["weight_lbs"]:.0f} LBS')
 
     c.save()
