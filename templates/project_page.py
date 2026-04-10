@@ -750,7 +750,38 @@ PROJECT_PAGE_HTML = r"""
             <div class="header-actions" style="display:flex;gap:var(--tf-sp-2);flex-wrap:wrap;">
                 <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="duplicateProject()">Duplicate</button>
                 <button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="archiveProject()" id="archiveBtn">Archive</button>
+                <button class="tf-btn tf-btn-sm" id="deleteProjectBtn"
+                  style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;display:none"
+                  onclick="showDeleteConfirm()">Delete</button>
             </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);
+          align-items:center;justify-content:center">
+          <div style="background:#1E293B;border:2px solid #991B1B;border-radius:16px;padding:32px;max-width:440px;
+            width:90%;text-align:center">
+            <div style="font-size:40px;margin-bottom:12px">&#9888;</div>
+            <h3 style="color:#FCA5A5;font-size:18px;margin-bottom:8px">Delete This Project?</h3>
+            <p style="color:#94A3B8;font-size:14px;line-height:1.6;margin-bottom:16px">
+              This will permanently delete <strong style="color:#F1F5F9" id="deleteJobLabel"></strong> including
+              all shop drawings, work orders, documents, and QC records. This cannot be undone.
+            </p>
+            <p style="color:#94A3B8;font-size:13px;margin-bottom:20px">
+              Type the job code to confirm:
+            </p>
+            <input type="text" id="deleteConfirmInput" placeholder="Enter job code..."
+              style="width:100%;padding:10px 14px;background:#0F172A;border:1px solid #334155;border-radius:8px;
+              color:#F1F5F9;font-size:15px;text-align:center;margin-bottom:16px;font-family:monospace"
+              oninput="checkDeleteInput()">
+            <div style="display:flex;gap:12px;justify-content:center">
+              <button onclick="hideDeleteConfirm()" style="padding:10px 24px;background:#334155;color:#CBD5E1;
+                border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+              <button id="deleteConfirmBtn" onclick="confirmDeleteProject()" disabled
+                style="padding:10px 24px;background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;
+                border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;opacity:0.5">Delete Forever</button>
+            </div>
+          </div>
+        </div>
         </div>
 
         <!-- PIPELINE JOURNEY -->
@@ -934,6 +965,12 @@ PROJECT_PAGE_HTML = r"""
                         btn.style.display = 'none';
                     }
                 });
+            }
+
+            // Show delete button for admins only
+            if (USER_ROLE === 'admin') {
+                var delBtn = document.getElementById('deleteProjectBtn');
+                if (delBtn) delBtn.style.display = 'inline-flex';
             }
         }
 
@@ -1600,6 +1637,55 @@ PROJECT_PAGE_HTML = r"""
                     alert('Project archived');
                     window.location.href = '/';
                 }
+            });
+        }
+
+        // ── Delete Project ────────────────────────────────
+        function showDeleteConfirm() {
+            document.getElementById('deleteJobLabel').textContent = JOB_CODE;
+            document.getElementById('deleteConfirmInput').value = '';
+            document.getElementById('deleteConfirmBtn').disabled = true;
+            document.getElementById('deleteConfirmBtn').style.opacity = '0.5';
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function hideDeleteConfirm() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        function checkDeleteInput() {
+            var val = document.getElementById('deleteConfirmInput').value.trim();
+            var btn = document.getElementById('deleteConfirmBtn');
+            if (val === JOB_CODE) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            }
+        }
+
+        function confirmDeleteProject() {
+            document.getElementById('deleteConfirmBtn').textContent = 'Deleting...';
+            document.getElementById('deleteConfirmBtn').disabled = true;
+
+            fetch('/api/project/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_code: JOB_CODE, confirm: true })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    window.location.href = '/?deleted=' + encodeURIComponent(JOB_CODE);
+                } else {
+                    alert('Delete failed: ' + (data.error || 'Unknown error'));
+                    hideDeleteConfirm();
+                }
+            })
+            .catch(function(err) {
+                alert('Error: ' + err.message);
+                hideDeleteConfirm();
             });
         }
 

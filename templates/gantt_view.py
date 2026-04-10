@@ -9,7 +9,6 @@ Includes machine utilization heat map and capacity indicators.
 """
 
 from templates.shared_styles import DESIGN_SYSTEM_CSS
-from templates.shared_nav import NAV_CSS, NAV_HTML, NAV_JS
 
 GANTT_VIEW_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -19,7 +18,6 @@ GANTT_VIEW_HTML = """<!DOCTYPE html>
 <title>TitanForge — Production Schedule</title>
 <style>
 """ + DESIGN_SYSTEM_CSS + """
-""" + NAV_CSS + """
 
 /* ── Gantt View Container ─────────────────────────────── */
 body {
@@ -584,7 +582,6 @@ body {
 </head>
 <body>
 
-""" + NAV_HTML + """
 
 <div class="gantt-container">
     <!-- Header with Controls -->
@@ -625,7 +622,6 @@ body {
 <div class="gantt-tooltip" id="tooltip"></div>
 
 <script>
-""" + NAV_JS + """
 
 // ─────────────────────────────────────────────
 // GANTT VIEW INITIALIZATION

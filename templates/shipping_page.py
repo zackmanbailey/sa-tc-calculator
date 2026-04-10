@@ -494,7 +494,7 @@ SHIPPING_PAGE_HTML = """
                 padding: 0;
             }
 
-            {{NAV_HTML}} {
+            .tf-sidebar, .tf-contextbar {
                 display: none !important;
             }
 
@@ -578,7 +578,6 @@ SHIPPING_PAGE_HTML = """
     </style>
 </head>
 <body>
-    {{NAV_HTML}}
 
     <div class="container">
         <!-- Page Header -->
@@ -965,26 +964,52 @@ SHIPPING_PAGE_HTML = """
         // PACKING LIST TAB
         // ================================================================
 
+        var allWOItems = []; // Store all items for packing list generation
+
         function loadPackingItemsList() {
-            apiCall(`/api/shipping/work-order/${JOB_CODE}`)
+            apiCall(`/api/work-orders/list?job_code=${JOB_CODE}`)
                 .then(data => {
-                    const items = data.items || [];
-                    const completedItems = items.filter(i => i.status === 'complete');
+                    const wos = data.work_orders || [];
+                    if (wos.length === 0) {
+                        document.getElementById('packing-items-list').innerHTML =
+                            '<p style="color: var(--tf-text-muted);">No work orders found for this job.</p>';
+                        return;
+                    }
+                    // Load detail for each WO to get items
+                    const promises = wos.map(wo =>
+                        apiCall(`/api/work-orders/detail?job_code=${JOB_CODE}&wo_id=${wo.work_order_id}`)
+                            .catch(() => ({ ok: false }))
+                    );
+                    return Promise.all(promises);
+                })
+                .then(results => {
+                    if (!results) return;
+                    allWOItems = [];
+                    results.forEach(r => {
+                        if (r && r.ok && r.work_order && r.work_order.items) {
+                            r.work_order.items.forEach(item => allWOItems.push(item));
+                        }
+                    });
+                    const completedItems = allWOItems.filter(i => i.status === 'complete');
 
                     const html = completedItems.map(item => `
                         <div class="checkbox-item">
-                            <input type="checkbox" id="item-${item.item_id}" value="${item.item_id}">
+                            <input type="checkbox" id="item-${item.item_id}" value="${item.item_id}" checked>
                             <label for="item-${item.item_id}">
-                                <strong>${item.ship_mark}</strong> — ${item.description}
+                                <strong>${item.ship_mark || item.item_id}</strong> — ${item.description || item.component_type || ''}
                                 <span style="color: var(--tf-text-muted); font-size: var(--tf-text-sm);">
-                                    (Qty: ${item.quantity})
+                                    (Qty: ${item.quantity || 1})
                                 </span>
                             </label>
                         </div>
                     `).join('');
 
                     document.getElementById('packing-items-list').innerHTML = html ||
-                        '<p style="color: var(--tf-text-muted);">No completed items.</p>';
+                        '<p style="color: var(--tf-text-muted);">No completed items ready for shipping.</p>';
+                })
+                .catch(() => {
+                    document.getElementById('packing-items-list').innerHTML =
+                        '<p style="color: var(--tf-text-muted);">No work orders found for this job.</p>';
                 });
         }
 
@@ -1002,7 +1027,15 @@ SHIPPING_PAGE_HTML = """
             const trailerNumber = document.getElementById('pack-trailer-number').value;
             const driverName = document.getElementById('pack-driver-name').value;
 
+            // Build work_order dict from loaded items
+            const selectedWOItems = allWOItems.filter(i => selectedItems.includes(i.item_id));
             const payload = {
+                job_code: JOB_CODE,
+                work_order: {
+                    work_order_id: 'shipping',
+                    job_code: JOB_CODE,
+                    items: selectedWOItems,
+                },
                 items_filter: selectedItems,
                 ship_date: shipDate,
                 truck_info: {
@@ -1012,15 +1045,16 @@ SHIPPING_PAGE_HTML = """
                 },
             };
 
-            apiCall(`/api/shipping/packing-list/${JOB_CODE}`, 'POST', payload)
-                .then(packing_list => {
-                    alert('Packing list generated: ' + packing_list.packing_list_id);
+            apiCall(`/api/shipping/packing-list`, 'POST', payload)
+                .then(resp => {
+                    var pl = resp.data || resp;
+                    alert('Packing list generated: ' + (pl.packing_list_id || 'OK'));
                     loadPackingListHistory();
                 });
         }
 
         function loadPackingListHistory() {
-            apiCall(`/api/shipping/packing-list/${JOB_CODE}`)
+            apiCall(`/api/shipping/packing-list?job_code=${JOB_CODE}`)
                 .then(data => {
                     const docs = data.docs || [];
                     if (docs.length === 0) {
@@ -1071,8 +1105,10 @@ SHIPPING_PAGE_HTML = """
             };
 
             const payload = {
+                job_code: JOB_CODE,
+                work_order: { work_order_id: 'shipping', job_code: JOB_CODE, items: allWOItems.filter(i => i.status === 'complete') },
                 carrier_info: {
-                    carrier_name: carrierName,
+                    name: carrierName,
                     driver: driverName,
                     truck_number: truckNumber,
                     trailer_number: trailerNumber,
@@ -1080,15 +1116,16 @@ SHIPPING_PAGE_HTML = """
                 consignee: consignee,
             };
 
-            apiCall(`/api/shipping/bill-of-lading/${JOB_CODE}`, 'POST', payload)
-                .then(bol => {
-                    alert('Bill of Lading generated: ' + bol.bol_number);
+            apiCall(`/api/shipping/bol`, 'POST', payload)
+                .then(resp => {
+                    var bol = resp.data || resp;
+                    alert('Bill of Lading generated: ' + (bol.bol_number || bol.bol_id || 'OK'));
                     loadBOLHistory();
                 });
         }
 
         function loadBOLHistory() {
-            apiCall(`/api/shipping/bill-of-lading/${JOB_CODE}`)
+            apiCall(`/api/shipping/bol?job_code=${JOB_CODE}`)
                 .then(data => {
                     const docs = data.docs || [];
                     if (docs.length === 0) {
@@ -1122,7 +1159,7 @@ SHIPPING_PAGE_HTML = """
         // ================================================================
 
         function generateManifest() {
-            apiCall(`/api/shipping/manifest/${JOB_CODE}`, 'POST', {})
+            apiCall(`/api/shipping/manifest`, 'POST', {job_code: JOB_CODE})
                 .then(manifest => {
                     displayManifest(manifest);
                 });
@@ -1255,15 +1292,16 @@ SHIPPING_PAGE_HTML = """
                 notes: notes,
             };
 
-            apiCall(`/api/shipping/purchase-order/${JOB_CODE}`, 'POST', payload)
-                .then(po => {
-                    alert('Purchase Order generated: ' + po.po_number);
+            apiCall(`/api/shipping/purchase-order`, 'POST', Object.assign(payload, {job_code: JOB_CODE}))
+                .then(resp => {
+                    var po = resp.data || resp;
+                    alert('Purchase Order generated: ' + (po.po_number || 'OK'));
                     loadPOHistory();
                 });
         }
 
         function loadPOHistory() {
-            apiCall(`/api/shipping/purchase-order/${JOB_CODE}`)
+            apiCall(`/api/shipping/purchase-order?job_code=${JOB_CODE}`)
                 .then(data => {
                     const docs = data.docs || [];
                     if (docs.length === 0) {
@@ -1297,7 +1335,7 @@ SHIPPING_PAGE_HTML = """
         // ================================================================
 
         function refreshReorderAlerts() {
-            apiCall(`/api/shipping/reorder-alerts/${JOB_CODE}`)
+            apiCall(`/api/shipping/reorder-alerts`)
                 .then(data => {
                     displayReorderAlerts(data.alerts || []);
                 });
@@ -1359,11 +1397,13 @@ SHIPPING_PAGE_HTML = """
                 return;
             }
 
-            apiCall(`/api/shipping/po-from-reorder/${JOB_CODE}`, 'POST', {
+            apiCall(`/api/shipping/purchase-order`, 'POST', {
+                job_code: JOB_CODE,
                 coil_ids: selectedCoils,
             })
-                .then(po => {
-                    alert('Purchase Order generated from reorder alerts: ' + po.po_number);
+                .then(resp => {
+                    var po = resp.data || resp;
+                    alert('Purchase Order generated from reorder alerts: ' + (po.po_number || 'OK'));
                     loadPOHistory();
                 });
         }
