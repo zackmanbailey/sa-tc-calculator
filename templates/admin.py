@@ -631,7 +631,7 @@ ADMIN_HTML = r"""
             addUserBtn.disabled = true;
             addUserBtn.textContent = 'Adding...';
 
-            fetch('/auth/users', {
+            fetch('/auth/users/add', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
