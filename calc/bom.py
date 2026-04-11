@@ -59,7 +59,9 @@ class BuildingConfig:
     purlin_spacing_override: Optional[float] = None   # None = auto-calc
     embedment_ft: float = 4.333     # 4'-4" default
     column_buffer_ft: float = 0.5   # 6" buffer
-    reinforced: bool = True         # True: rebar = depth+8'; False: depth-embedment
+    reinforced: bool = True         # True: rebar = depth+ag'; False: depth-embedment
+    above_grade_ft: float = 8.0     # above-grade rebar extension (reinforced)
+    cut_allowance_in: float = 6.0   # bandsaw vise cut allowance in inches
     rebar_col_size: Optional[str] = None   # None = auto; "#5" through "#11"
     rebar_beam_size: Optional[str] = None
     # Column placement mode
@@ -241,13 +243,35 @@ def calc_rafter_slope_length(width_ft: float, slope_deg: float) -> float:
 def calc_column_height(clear_height_ft, width_ft, col_type, slope_deg,
                         embedment_ft, buffer_ft) -> float:
     """
-    Physical cut length: clear_height + angle_addition + embedment + buffer
+    Physical column length: clear_height + angle_addition + embedment + buffer
     TEE: column at center (width/2 from eave)
     2-post: columns at 1/3 span from each eave
     """
     tan_s = math.tan(math.radians(slope_deg))
     dist = width_ft / 2.0 if col_type == "tee" else width_ft / 3.0
     return clear_height_ft + dist * tan_s + embedment_ft + buffer_ft
+
+
+def calc_column_sides(total_length_ft, col_width_in, slope_deg):
+    """
+    Calculate long side and short side of column for angled cap cut.
+    The pitch creates a slope across the column width.
+    Returns (long_side_ft, short_side_ft).
+    """
+    tan_s = math.tan(math.radians(slope_deg))
+    half_col_ft = (col_width_in / 2.0) / 12.0
+    angle_diff_ft = half_col_ft * tan_s
+    long_side_ft = total_length_ft + angle_diff_ft
+    short_side_ft = total_length_ft - angle_diff_ft
+    return long_side_ft, short_side_ft
+
+
+def calc_column_cut_length(long_side_ft, cut_allowance_in):
+    """
+    Cut length = long side + cut allowance (for bandsaw vise).
+    Returns cut length in feet.
+    """
+    return long_side_ft + (cut_allowance_in / 12.0)
 
 
 def calc_purlin_lines(width_ft: float, spacing_ft: float) -> int:
@@ -321,12 +345,21 @@ class BOMCalculator:
         n_rafters = n_frames
         rafter_slope_ft = calc_rafter_slope_length(bldg.width_ft, slope_deg)
 
-        # Column height
+        # Column height (center measurement)
         col_ht_ft = calc_column_height(
             bldg.clear_height_ft, bldg.width_ft, bldg.type,
             slope_deg, bldg.embedment_ft, bldg.column_buffer_ft)
         col_ht_in = col_ht_ft * 12.0
         angle_add_in = (bldg.width_ft / (2 if bldg.type == "tee" else 3)) * tan_slope * 12
+
+        # Long/short side lengths (angled cap cut)
+        col_long_ft, col_short_ft = calc_column_sides(col_ht_ft, 14.0, slope_deg)
+        col_long_in = col_long_ft * 12.0
+        col_short_in = col_short_ft * 12.0
+
+        # Cut length = long side + cut allowance (for bandsaw vise)
+        col_cut_ft = calc_column_cut_length(col_long_ft, bldg.cut_allowance_in)
+        col_cut_in = col_cut_ft * 12.0
 
         # Purlin spacing
         if bldg.purlin_spacing_override:
@@ -381,6 +414,14 @@ class BOMCalculator:
             "rafter_slope_ft": round(rafter_slope_ft, 2),
             "col_ht_ft": round(col_ht_ft, 2),
             "col_ht_in": round(col_ht_in, 1),
+            "col_long_ft": round(col_long_ft, 2),
+            "col_long_in": round(col_long_in, 1),
+            "col_short_ft": round(col_short_ft, 2),
+            "col_short_in": round(col_short_in, 1),
+            "col_cut_ft": round(col_cut_ft, 2),
+            "col_cut_in": round(col_cut_in, 1),
+            "cut_allowance_in": bldg.cut_allowance_in,
+            "above_grade_ft": bldg.above_grade_ft,
             "angle_add_in": round(angle_add_in, 2),
             "slope_deg": round(slope_deg, 2),
             "purlin_spacing_ft": purlin_spacing,
@@ -404,9 +445,10 @@ class BOMCalculator:
 
         wf = WASTE_FACTORS["10GA"]
         # ── COIL 1: Columns ──────────────────────────────────────────────
+        # Use cut length (long side + cut allowance) for material calculation
         coil = COILS["c_section_23"]
         ppb = coil_price("c_section_23", cp)
-        col_net = n_struct_cols * col_ht_ft * 2
+        col_net = n_struct_cols * col_cut_ft * 2
         col_raw = col_net * (1 + wf)
         col_wt = col_raw * coil["lbs_per_lft"]
         col_cost_v = col_wt * ppb
@@ -414,18 +456,18 @@ class BOMCalculator:
             category="Structural Steel - Coil 1",
             item_id="c_section_columns",
             description=(f"23\" 10GA C-Section — Columns "
-                         f"({n_struct_cols} pcs, {col_ht_ft:.2f}' ea)"),
+                         f"({n_struct_cols} pcs, cut {col_cut_in:.1f}\" ea)"),
             qty=round(col_raw, 2), unit="LFT (coil)",
             unit_weight_lbs=coil["lbs_per_lft"],
             total_weight_lbs=round(col_wt, 1),
             unit_cost=ppb, total_cost=round(col_cost_v, 2),
             waste_factor=wf,
-            notes=(f"{n_struct_cols} cols x {col_ht_ft:.2f}' "
-                   f"({bldg.clear_height_ft}'clr + {angle_add_in:.2f}\"ang + "
-                   f"{bldg.embedment_ft*12:.0f}\"emb + {bldg.column_buffer_ft*12:.0f}\"buf)"
-                   f" x 2 C-sections"),
+            notes=(f"{n_struct_cols} cols — long: {col_long_in:.1f}\", "
+                   f"short: {col_short_in:.1f}\", "
+                   f"cut: {col_cut_in:.1f}\" (+{bldg.cut_allowance_in}\" allow) "
+                   f"x 2 C-sections"),
             piece_count=n_struct_cols,
-            piece_length_in=round(col_ht_in, 1),
+            piece_length_in=round(col_cut_in, 1),
         ))
 
         # ── COIL 1: Rafters ──────────────────────────────────────────────
@@ -722,7 +764,7 @@ class BOMCalculator:
 
         if rebar_col_key and rebar_col_key in REBAR["sizes"]:
             rb = REBAR["sizes"][rebar_col_key]
-            col_rebar_len = (footing_depth + 8.0 if bldg.reinforced
+            col_rebar_len = (footing_depth + bldg.above_grade_ft if bldg.reinforced
                              else footing_depth - bldg.embedment_ft)
             sticks_per_col = math.ceil(col_rebar_len / stick_ft)
             # 4 sticks per column — one per corner of the C-section box (reinforced or not)

@@ -194,9 +194,13 @@ COLUMN_DEFAULTS = {
         # Non-reinforced: rebar outside corners with 6\" weld
         # Columns ALWAYS have rebar (reinforced or not)
         "length_source": "bom_formula",
-        # Reinforced: footing_depth + 8'
+        # Reinforced: footing_depth + above_grade
         # Non-reinforced: footing_depth - embedment
+        "above_grade_ft": 8.0,  # Rebar above-grade extension (reinforced)
     },
+
+    # Cut allowance — bandsaw vise tolerance added to long side
+    "cut_allowance_in": 6.0,
     "rebar_editable": True,
 
     # Drawing views — FIXED (always all 4)

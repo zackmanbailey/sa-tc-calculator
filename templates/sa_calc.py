@@ -486,6 +486,8 @@ function addBuilding() {
     embedment_ft: 4.333,
     column_buffer_ft: 0.5,
     reinforced: true,
+    above_grade_ft: 8.0,
+    cut_allowance_in: 6.0,
     rebar_col_size: 'auto',
     rebar_beam_size: 'auto',
     straps_per_rafter: 4,
@@ -818,11 +820,25 @@ function buildingFormHTML(b) {
             </select>
           </div>
         </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
+          <div class="form-group">
+            <label>Above Grade (ft)</label>
+            <input type="number" value="${b.above_grade_ft||8.0}" min="0" max="20" step="0.5"
+              onchange="updateBldg('${b.id}','above_grade_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Rebar extension above grade (reinforced)</div>
+          </div>
+          <div class="form-group">
+            <label>Cut Allowance (in)</label>
+            <input type="number" value="${b.cut_allowance_in||6.0}" min="0" max="12" step="0.5"
+              onchange="updateBldg('${b.id}','cut_allowance_in',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Bandsaw vise allowance</div>
+          </div>
+        </div>
         <div style="margin-top:8px">
           <label class="check-label">
             <input type="checkbox" ${(b.reinforced!==false)?'checked':''}
               onchange="updateBldg('${b.id}','reinforced',this.checked)"/>
-            Reinforce Columns (rebar = depth + 8') — default
+            Reinforce Columns (rebar = depth + above grade)
           </label>
           <div style="font-size:10px;color:#888;margin-top:2px;margin-left:20px">
             Unchecked = standard (rebar = depth − embedment)
@@ -1146,7 +1162,7 @@ function renderBOM(data) {
           ${geo.n_frames || '—'} frames · ${geo.n_bays || '—'} bays · bay=${geo.bay_size_ft || '—'}' &nbsp;|&nbsp;
           ${geo.n_struct_cols || '—'} cols · ${geo.n_rafters || '—'} rafters &nbsp;|&nbsp;
           Purlin: ${geo.purlin_spacing_ft || '—'}' OC × ${geo.n_purlin_lines || '—'} lines${purlinAuto} &nbsp;|&nbsp;
-          Col Ht: ${geo.col_ht_ft || '—'}' · Pitch: ${geo.slope_deg || '—'}°
+          Col: long ${geo.col_long_in || geo.col_ht_in || '—'}" / short ${geo.col_short_in || '—'}" / cut ${geo.col_cut_in || '—'}" · Pitch: ${geo.slope_deg || '—'}°
         </span>
       </div>
       <div class="card-body" style="padding:0">

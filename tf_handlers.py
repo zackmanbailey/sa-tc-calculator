@@ -4063,6 +4063,23 @@ class ShopDrawingsPageHandler(BaseHandler):
         self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
+class ColumnDrawingPageHandler(BaseHandler):
+    """GET /column-drawing/{job_code} — Interactive Column Shop Drawing page."""
+    def get(self, job_code):
+        role = self.get_user_role() or "viewer"
+        display = "User"
+        if AUTH_ENABLED:
+            user = self.get_current_user()
+            users_db = load_users()
+            display = users_db.get(user, {}).get("display_name", user or "User")
+
+        html = COLUMN_DRAWING_HTML
+        html = html.replace("{{JOB_CODE}}", job_code)
+        html = html.replace("{{USER_ROLE}}", role)
+        html = html.replace("{{USER_NAME}}", display)
+        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+
+
 class ShopDrawingsConfigHandler(BaseHandler):
     """
     GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
@@ -4380,7 +4397,7 @@ class ShopDrawingsGenerateHandler(BaseHandler):
 
 
 class ShopDrawingsFileHandler(BaseHandler):
-    """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a single PDF."""
+    """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a PDF or HTML drawing."""
     def get(self):
         try:
             job_code = self.get_query_argument("job_code", "").strip()
@@ -4402,7 +4419,15 @@ class ShopDrawingsFileHandler(BaseHandler):
                 self.write("File not found")
                 return
 
-            self.set_header("Content-Type", "application/pdf")
+            # Determine content type based on file extension
+            if filename.lower().endswith(".html"):
+                content_type = "text/html"
+            elif filename.lower().endswith(".pdf"):
+                content_type = "application/pdf"
+            else:
+                content_type = "application/octet-stream"
+
+            self.set_header("Content-Type", content_type)
             if download:
                 self.set_header("Content-Disposition",
                                 f'attachment; filename="{filename}"')
@@ -5796,6 +5821,7 @@ def get_routes():
 
         # ── Shop Drawings ─────────────────────────────────────
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
+        (r"/column-drawing/([^/]+)",             ColumnDrawingPageHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
         (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),
@@ -5943,6 +5969,7 @@ from templates.customers import CUSTOMERS_HTML
 from templates.quote_editor import QUOTE_EDITOR_HTML
 from templates.qc_page import QC_PAGE_HTML
 from templates.shop_drawings import SHOP_DRAWINGS_HTML
+from templates.column_drawing import COLUMN_DRAWING_HTML
 from templates.work_orders import WORK_ORDERS_HTML
 from templates.shop_floor import SHOP_FLOOR_HTML
 from templates.work_station import WORK_STATION_HTML
