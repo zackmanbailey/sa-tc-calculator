@@ -4024,22 +4024,47 @@ def _derive_bom_config(job_code):
         try:
             with open(os.path.join(versions_dir, vf)) as f:
                 data = json.load(f)
-            bom_result = data.get("bom_result") or data.get("results", {})
-            if bom_result and "geometry" in bom_result:
-                # Load project metadata for project_info
-                meta_path = os.path.join(proj_dir, "metadata.json")
-                project_info = {}
-                if os.path.isfile(meta_path):
-                    with open(meta_path) as mf:
-                        meta = json.load(mf)
-                    project_info = {
-                        "job_code": job_code,
-                        "project_name": meta.get("project_name", ""),
-                        "customer_name": meta.get("customer_name", ""),
-                        "location": meta.get("location", ""),
-                    }
-                cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
-                return cfg.to_dict()
+            # SA Calculator saves as "bom_data", older versions may use "bom_result" or "results"
+            bom_result = data.get("bom_data") or data.get("bom_result") or data.get("results", {})
+            if not bom_result:
+                continue
+
+            # Geometry may be at top level OR nested inside buildings[0]
+            geo = bom_result.get("geometry")
+            buildings_list = bom_result.get("buildings", [])
+            if not geo and buildings_list:
+                # Pull geometry from first building
+                geo = buildings_list[0].get("geometry", {})
+
+            if not geo:
+                continue
+
+            # Build a flat bom_result with geometry at top level for from_bom_data()
+            flat_bom = dict(bom_result)
+            flat_bom["geometry"] = geo
+
+            # Also pull building-level fields (reinforced, rebar) into geometry
+            if buildings_list:
+                b0 = buildings_list[0]
+                if "reinforced" in b0 and "col_reinforced" not in geo:
+                    geo["col_reinforced"] = b0.get("reinforced", True)
+                if "rebar_col_size" in b0 and "rebar_col" not in geo:
+                    geo["rebar_col"] = b0.get("rebar_col_size", "#9")
+
+            # Load project metadata for project_info
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            project_info = {}
+            if os.path.isfile(meta_path):
+                with open(meta_path) as mf:
+                    meta = json.load(mf)
+                project_info = {
+                    "job_code": job_code,
+                    "project_name": meta.get("project_name", ""),
+                    "customer_name": meta.get("customer_name", ""),
+                    "location": meta.get("location", ""),
+                }
+            cfg = ShopDrawingConfig.from_bom_data(flat_bom, project_info)
+            return cfg.to_dict()
         except Exception:
             continue
 
@@ -4259,7 +4284,8 @@ class ShopDrawingsDiffHandler(BaseHandler):
                 "roof_pitch_deg", "n_frames", "frame_type", "overhang_ft",
                 "embedment_ft", "footing_depth_ft", "column_buffer_ft",
                 "purlin_spacing_ft", "has_back_wall", "has_side_walls",
-                "col_reinforced", "raft_reinforced",
+                "col_reinforced", "col_rebar_size", "raft_reinforced",
+                "above_grade_ft", "cut_allowance_in",
             ]
 
             diffs = []
