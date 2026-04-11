@@ -4105,6 +4105,144 @@ class ColumnDrawingPageHandler(BaseHandler):
         self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
+class ProjectSyncFromDrawingHandler(BaseHandler):
+    """POST /api/project/sync-from-drawing — Push column drawing changes back to project.
+
+    When a user edits inputs in the interactive column shop drawing,
+    this endpoint updates the project's saved buildings array so the
+    SA Calculator reflects those changes on next load.
+
+    Mapping: drawing config field → buildings array field
+        roof_pitch_deg  → pitch_key (converted to nearest standard pitch)
+        clear_height_ft → clear_height_ft
+        building_width_ft → width_ft
+        footing_depth_ft → (project-level footing_depth_ft)
+        col_rebar_size  → rebar_col_size
+        above_grade_ft  → above_grade_ft
+        cut_allowance_in → cut_allowance_in
+        col_reinforced  → reinforced
+    """
+
+    # Map pitch degrees back to the SA Calculator's pitch_key format
+    _PITCH_DEG_TO_KEY = {
+        0.0: "flat",
+        1.19: "1/4:12", 1.2: "1/4:12",
+        2.39: "1/2:12", 2.4: "1/2:12",
+        3.58: "3/4:12", 3.6: "3/4:12",
+        4.76: "1:12", 4.8: "1:12",
+        5.0: "5deg",
+        7.5: "7.5deg",
+        9.46: "2:12", 9.5: "2:12",
+        10.0: "10deg",
+        14.04: "3:12", 14.0: "3:12",
+        15.0: "15deg",
+    }
+
+    def _deg_to_pitch_key(self, deg):
+        """Find the closest matching pitch_key for a given degree value."""
+        if deg in self._PITCH_DEG_TO_KEY:
+            return self._PITCH_DEG_TO_KEY[deg]
+        # Find nearest
+        closest_deg = min(self._PITCH_DEG_TO_KEY.keys(), key=lambda d: abs(d - deg))
+        if abs(closest_deg - deg) < 0.5:
+            return self._PITCH_DEG_TO_KEY[closest_deg]
+        # If no close match, use degree format
+        return f"{deg}deg"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            drawing_config = body.get("drawing_config", {})
+            if not job_code or not drawing_config:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or drawing_config"}))
+                return
+
+            safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe)
+
+            # Load current.json (the latest saved project state)
+            current_path = os.path.join(proj_dir, "current.json")
+            if not os.path.isfile(current_path):
+                self.write(json_encode({"ok": False, "error": "No saved project found"}))
+                return
+
+            with open(current_path) as f:
+                project_data = json.load(f)
+
+            buildings = project_data.get("buildings", [])
+            if not buildings:
+                self.write(json_encode({"ok": False, "error": "No buildings in project"}))
+                return
+
+            # Update first building with drawing config values
+            b = buildings[0]
+            changed_fields = []
+
+            # Pitch: convert degrees back to pitch_key
+            if "roof_pitch_deg" in drawing_config:
+                new_key = self._deg_to_pitch_key(float(drawing_config["roof_pitch_deg"]))
+                if b.get("pitch_key") != new_key:
+                    b["pitch_key"] = new_key
+                    changed_fields.append("pitch_key")
+
+            # Direct float mappings: drawing config name → building field name
+            float_mappings = {
+                "clear_height_ft": "clear_height_ft",
+                "building_width_ft": "width_ft",
+                "above_grade_ft": "above_grade_ft",
+                "cut_allowance_in": "cut_allowance_in",
+            }
+            for cfg_key, bldg_key in float_mappings.items():
+                if cfg_key in drawing_config:
+                    new_val = float(drawing_config[cfg_key])
+                    if b.get(bldg_key) != new_val:
+                        b[bldg_key] = new_val
+                        changed_fields.append(bldg_key)
+
+            # Rebar size
+            if "col_rebar_size" in drawing_config:
+                new_rebar = drawing_config["col_rebar_size"]
+                if b.get("rebar_col_size") != new_rebar:
+                    b["rebar_col_size"] = new_rebar
+                    changed_fields.append("rebar_col_size")
+
+            # Reinforced toggle
+            if "col_reinforced" in drawing_config:
+                new_reinforced = bool(drawing_config["col_reinforced"])
+                if b.get("reinforced") != new_reinforced:
+                    b["reinforced"] = new_reinforced
+                    changed_fields.append("reinforced")
+
+            # Footing depth is project-level
+            if "footing_depth_ft" in drawing_config:
+                new_footing = float(drawing_config["footing_depth_ft"])
+                proj = project_data.get("project", {})
+                if proj.get("footing_depth_ft") != new_footing:
+                    proj["footing_depth_ft"] = new_footing
+                    project_data["project"] = proj
+                    changed_fields.append("footing_depth_ft")
+
+            if changed_fields:
+                project_data["buildings"] = buildings
+                project_data["_drawing_sync"] = {
+                    "synced_at": datetime.datetime.now().isoformat(),
+                    "changed_fields": changed_fields,
+                    "source": "column_drawing",
+                }
+                with open(current_path, "w") as f:
+                    json.dump(project_data, f, indent=2)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "changed_fields": changed_fields,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class ShopDrawingsConfigHandler(BaseHandler):
     """
     GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
@@ -5818,6 +5956,7 @@ def get_routes():
         # ── API - Projects (versioned system) ───────────────────
         (r"/api/project/save",           ProjectSaveHandler),
         (r"/api/project/load",           ProjectLoadHandler),
+        (r"/api/project/sync-from-drawing", ProjectSyncFromDrawingHandler),
         (r"/api/project/revisions",      ProjectRevisionsHandler),
         (r"/api/project/compare",        ProjectCompareHandler),
         (r"/api/projects",               ProjectListHandler),

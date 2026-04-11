@@ -1531,6 +1531,7 @@ function toggleReinforced() {
     b.classList.remove('active'); a.classList.add('active');
   }
   draw();
+  scheduleConfigSync(); // sync reinforced toggle back to project
 }
 
 ['inPitch','inClearHt','inWidth','inFooting','inRebar','inAboveGrade','inCutAllowance'].forEach(id => {
@@ -1538,13 +1539,73 @@ function toggleReinforced() {
     pushUndoDebounced(); // snapshot before change
     if (id === 'inPitch') document.getElementById('vPitch').textContent = document.getElementById('inPitch').value + '°';
     draw();
+    scheduleConfigSync(); // sync changes back to project
   });
 });
 
 ['setProjectName','setCustomer','setJobNumber','setDrawnBy','setColumnMark'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => { pushUndoDebounced(); draw(); });
+  if (el) el.addEventListener('input', () => { pushUndoDebounced(); draw(); scheduleConfigSync(); });
 });
+
+// ════════════════════════
+// BIDIRECTIONAL SYNC — Save drawing input changes back to project
+// ════════════════════════
+let _syncTimer = null;
+let _lastSyncPayload = '';
+
+function scheduleConfigSync() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncConfigToProject, 1500); // debounce 1.5s
+}
+
+function collectDrawingConfig() {
+  return {
+    roof_pitch_deg: parseFloat(document.getElementById('inPitch').value) || 1.2,
+    clear_height_ft: parseFloat(document.getElementById('inClearHt').value) || 14,
+    building_width_ft: parseFloat(document.getElementById('inWidth').value) || 40,
+    footing_depth_ft: parseFloat(document.getElementById('inFooting').value) || 0,
+    col_rebar_size: document.getElementById('inRebar').value || '#9',
+    above_grade_ft: parseFloat(document.getElementById('inAboveGrade').value) || 8,
+    cut_allowance_in: parseFloat(document.getElementById('inCutAllowance').value) || 6,
+    col_reinforced: document.querySelector('.toggle-btn.active')?.textContent?.trim() === 'Reinforced',
+    project_name: document.getElementById('setProjectName')?.value || '',
+    customer_name: document.getElementById('setCustomer')?.value || '',
+    drawn_by: document.getElementById('setDrawnBy')?.value || '',
+  };
+}
+
+async function syncConfigToProject() {
+  const jobCode = window.location.pathname.match(/\/column-drawing\/([^\/]+)/)?.[1];
+  if (!jobCode) return;
+
+  const cfg = collectDrawingConfig();
+  const payload = JSON.stringify(cfg);
+
+  // Skip if nothing actually changed
+  if (payload === _lastSyncPayload) return;
+  _lastSyncPayload = payload;
+
+  try {
+    // 1. Save to shop drawing config
+    await fetch('/api/shop-drawings/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ job_code: jobCode, config: cfg }),
+    });
+
+    // 2. Push changes back to project buildings array (reverse sync)
+    await fetch('/api/project/sync-from-drawing', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ job_code: jobCode, drawing_config: cfg }),
+    });
+
+    console.log('[Sync] Drawing config saved for', jobCode);
+  } catch(e) {
+    console.warn('[Sync] Failed to save config:', e);
+  }
+}
 
 // ════════════════════════
 // DRAWING STATE — Approval, Revision, Annotations
