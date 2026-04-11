@@ -1337,6 +1337,22 @@ SHOP_DRAWINGS_HTML = r"""
 
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
+                let actionButtons = `
+                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
+                            View PDF
+                        </button>
+                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
+                            Download
+                        </button>`;
+
+                // Add Interactive Preview button for column drawings
+                if (d.type === 'column') {
+                    actionButtons += `
+                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="openInteractivePreview()" style="flex-grow:1;">
+                            Interactive Preview
+                        </button>`;
+                }
+
                 card.innerHTML = `
                     <div class="dc-preview">
                         <div class="dc-icon">${typeInfo.icon}</div>
@@ -1350,12 +1366,7 @@ SHOP_DRAWINGS_HTML = r"""
                         </div>
                     </div>
                     <div class="dc-actions">
-                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
-                            View PDF
-                        </button>
-                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
-                            Download
-                        </button>
+                        ${actionButtons}
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1383,6 +1394,10 @@ SHOP_DRAWINGS_HTML = r"""
 
         window.downloadAllZip = function() {
             window.location.href = '/api/shop-drawings/zip?job_code=' + JOB_CODE;
+        };
+
+        window.openInteractivePreview = function() {
+            window.location.href = '/column-drawing/' + JOB_CODE;
         };
 
         // ── Revision History ──

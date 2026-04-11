@@ -31,20 +31,6 @@ from shop_drawings.config import WPS_CODES
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PDF = os.path.join(TEMPLATE_DIR, "templates", "skyline_c1_template.pdf")
 
-# Pitch-variant templates
-PITCH_TEMPLATES = {
-    1.2: os.path.join(TEMPLATE_DIR, "templates", "skyline_c1_template.pdf"),
-    5:   os.path.join(TEMPLATE_DIR, "templates", "skyline_c1_template_5deg.pdf"),
-    10:  os.path.join(TEMPLATE_DIR, "templates", "skyline_c1_template_10deg.pdf"),
-    15:  os.path.join(TEMPLATE_DIR, "templates", "skyline_c1_template_15deg.pdf"),
-}
-
-def _select_template(pitch_deg):
-    """Select the closest pitch template for the given roof pitch."""
-    available = sorted(PITCH_TEMPLATES.keys())
-    closest = min(available, key=lambda p: abs(p - pitch_deg))
-    return PITCH_TEMPLATES[closest]
-
 # Raw page dimensions (before rotation)
 RAW_W = 792.0
 RAW_H = 1224.0
@@ -129,6 +115,12 @@ REGIONS = {
 
     # ── "rb7" and "TYP" text below B-B (just the label area) ──
     "pm_rb_bb_typ": (85, 610, 148, 638),
+
+    # ── Front view cap plate area (covers existing flat lines, gussets, and dimensions) ──
+    "cap_plate_front": (230, 340, 520, 470),
+
+    # ── Section B-B cap plate area ──
+    "cap_plate_section_bb": (145, 175, 225, 260),
 }
 
 
@@ -321,6 +313,157 @@ class TemplateOverlay:
         self.c.setFillColor(color)
         self.c.drawCentredString(0, 0, text_str)
         self.c.restoreState()
+
+    def circle_at(self, pdfp_x, pdfp_top, radius, fill_color=None,
+                  stroke_color=black, stroke_width=0.5):
+        """Draw a circle at pdfplumber coordinates (pdfp_x, pdfp_top) as center."""
+        raw_x, raw_y = _pdfp_to_raw(pdfp_x, pdfp_top)
+        # In raw canvas space, radius is the same in both directions
+        # (pdfplumber coords scale uniformly to raw coords)
+        self.c.saveState()
+        if fill_color:
+            self.c.setFillColor(fill_color)
+        self.c.setStrokeColor(stroke_color)
+        self.c.setLineWidth(stroke_width)
+        if fill_color:
+            self.c.circle(raw_x, raw_y, radius, fill=1, stroke=1)
+        else:
+            self.c.circle(raw_x, raw_y, radius, fill=0, stroke=1)
+        self.c.restoreState()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAP PLATE DRAWING FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _draw_cap_plate_front_view(ov, pitch_deg, cap_width_in=26.0, cap_height_in=14.0):
+    """Draw cap plate geometry in the front view.
+
+    Draws the cap plate rectangle rotated by pitch angle, bolt holes, and annotations.
+    The cap plate tilts so left side (high side) is higher and right side (low side) is lower.
+
+    Args:
+        ov: TemplateOverlay instance
+        pitch_deg: Roof pitch in degrees
+        cap_width_in: Cap plate width in inches (default 26")
+        cap_height_in: Cap plate height in inches (default 14")
+    """
+    # Whitebox the front view cap plate region first
+    ov.whitebox("cap_plate_front")
+
+    # Front view cap plate center (approximate display coords)
+    # Based on template: cap plate sits at top of column around x=330-445 (center ~387), y~370
+    cap_center_x = 375  # pdfplumber x
+    cap_center_y = 380  # pdfplumber y (top coordinate)
+
+    # Convert pitch to radians for trig calculations
+    pitch_rad = math.radians(pitch_deg)
+    pitch_tan = math.tan(pitch_rad)
+
+    # Half dimensions
+    half_w = cap_width_in / 2.0
+    half_h = cap_height_in / 2.0
+
+    # Tilt amount: one end rises, one end drops by this amount
+    tilt_offset = half_w * pitch_tan
+    # Convert inches to display pixels (roughly 3.5 pixels per inch for this view)
+    tilt_px = tilt_offset * 3.5
+
+    # Cap plate corners in display coords (rotated by pitch angle)
+    # Left edge at top (high side): rises by tilt_px
+    # Right edge at top (low side): drops by tilt_px
+    # (This is the tilted effect for a single-slope roof)
+    cap_tl_x = cap_center_x - half_w * 3.5
+    cap_tl_y = cap_center_y - tilt_px
+    cap_tr_x = cap_center_x + half_w * 3.5
+    cap_tr_y = cap_center_y + tilt_px
+    cap_bl_x = cap_center_x - half_w * 3.5
+    cap_bl_y = cap_center_y - tilt_px + half_h * 3.5
+    cap_br_x = cap_center_x + half_w * 3.5
+    cap_br_y = cap_center_y + tilt_px + half_h * 3.5
+
+    # Draw cap plate rectangle (4 lines for the outline)
+    ov.line_at(cap_tl_x, cap_tl_y, cap_tr_x, cap_tr_y, width=1.0, color=black)  # top
+    ov.line_at(cap_tr_x, cap_tr_y, cap_br_x, cap_br_y, width=1.0, color=black)  # right
+    ov.line_at(cap_br_x, cap_br_y, cap_bl_x, cap_bl_y, width=1.0, color=black)  # bottom
+    ov.line_at(cap_bl_x, cap_bl_y, cap_tl_x, cap_tl_y, width=1.0, color=black)  # left
+
+    # Draw 4 bolt holes (15/16" diameter = 0.46875", render at ~1.6 px radius in display)
+    bolt_radius = 0.46875 * 3.5  # display pixels
+    # Bolt hole positions relative to cap plate center (in inches)
+    bolt_offsets = [
+        (-1.5, -1.5),   # TL
+        (-1.5, +1.5),   # BL
+        (+1.5, -1.5),   # TR
+        (+1.5, +1.5),   # BR
+    ]
+    for bolt_dx, bolt_dy in bolt_offsets:
+        # Convert to display coords with rotation applied
+        # For small angles, approximate the rotated position
+        bolt_x_px = bolt_dx * 3.5
+        bolt_y_px = bolt_dy * 3.5
+        # Apply a small rotation correction if needed (for now, simple placement)
+        bolt_x = cap_center_x + bolt_x_px
+        bolt_y = cap_center_y + bolt_y_px
+        ov.circle_at(bolt_x, bolt_y, bolt_radius, stroke_color=black, stroke_width=0.5)
+
+    # Add pitch angle annotation (small text below or beside the cap plate)
+    if pitch_deg > 1.5:  # Only annotate if significantly tilted
+        ov.text_at(cap_center_x + 80, cap_center_y + 30,
+                   f"{pitch_deg}°", font="Helvetica", size=6, bold=True)
+
+
+def _draw_cap_plate_section_bb(ov, pitch_deg, cap_width_in=26.0, cap_height_in=14.0):
+    """Draw cap plate cross-section in Section B-B view.
+
+    Shows the pitched cap plate as seen from the side.
+
+    Args:
+        ov: TemplateOverlay instance
+        pitch_deg: Roof pitch in degrees
+        cap_width_in: Cap plate width in inches
+        cap_height_in: Cap plate height in inches
+    """
+    # Whitebox the Section B-B cap plate region
+    ov.whitebox("cap_plate_section_bb")
+
+    # Section B-B center (approximate display coords)
+    sec_center_x = 185  # pdfplumber x
+    sec_center_y = 217  # pdfplumber y (top coordinate)
+
+    # In the B-B section view, we see the pitched cap plate tilted
+    pitch_rad = math.radians(pitch_deg)
+    pitch_tan = math.tan(pitch_rad)
+
+    half_w = cap_width_in / 2.0
+    half_h = cap_height_in / 2.0
+    tilt_offset = half_w * pitch_tan
+    tilt_px = tilt_offset * 2.5  # scaled for section view
+
+    # Draw cap plate as a parallelogram (tilted rectangle)
+    # Left edge at top (high side)
+    sec_tl_x = sec_center_x - half_h * 2.5
+    sec_tl_y = sec_center_y - tilt_px
+    # Right edge at top (low side)
+    sec_tr_x = sec_center_x + half_h * 2.5
+    sec_tr_y = sec_center_y + tilt_px
+    # Bottom left (high side, lower)
+    sec_bl_x = sec_center_x - half_h * 2.5
+    sec_bl_y = sec_center_y - tilt_px + 8  # height of cap plate in display
+    # Bottom right (low side, lower)
+    sec_br_x = sec_center_x + half_h * 2.5
+    sec_br_y = sec_center_y + tilt_px + 8
+
+    # Draw cap plate outline
+    ov.line_at(sec_tl_x, sec_tl_y, sec_tr_x, sec_tr_y, width=1.0, color=black)  # top
+    ov.line_at(sec_tr_x, sec_tr_y, sec_br_x, sec_br_y, width=1.0, color=black)  # right
+    ov.line_at(sec_br_x, sec_br_y, sec_bl_x, sec_bl_y, width=1.0, color=black)  # bottom
+    ov.line_at(sec_bl_x, sec_bl_y, sec_tl_x, sec_tl_y, width=1.0, color=black)  # left
+
+    # Optionally add pitch angle annotation
+    if pitch_deg > 1.5:
+        ov.text_at(sec_center_x + 25, sec_center_y + 15,
+                   f"{pitch_deg}°", font="Helvetica", size=5, bold=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -656,12 +799,15 @@ def generate_column_from_template(
     template_path: str = None,
     output_path: str = None,
 ) -> bytes:
-    """Generate column shop drawing by overlaying on the Skyline template."""
+    """Generate column shop drawing by overlaying on the Skyline template.
+
+    Always uses the base template (1.2°) and draws cap plate geometry dynamically
+    for any pitch angle.
+    """
 
     if template_path is None:
-        # Auto-select template based on roof pitch
-        pitch = getattr(cfg, 'roof_pitch', 1.2)
-        template_path = _select_template(pitch)
+        # Always use the base template; cap plate is drawn dynamically
+        template_path = TEMPLATE_PDF
 
     reader = PdfReader(template_path)
     template_page = reader.pages[0]
@@ -745,7 +891,16 @@ def generate_column_from_template(
     ov.text("pm_rb_sideview", pm_rebar, size=8)
 
     # ──────────────────────────────────────────────
-    # STEP 3: Draw entire bottom-right section from scratch
+    # STEP 3: Draw cap plate geometry dynamically for any pitch angle
+    # ──────────────────────────────────────────────
+    pitch_deg = getattr(cfg, 'roof_pitch', 1.2)
+    cap_plate_width = data.get('cap_plate_width_in', 26.0)
+    cap_plate_height = data.get('cap_plate_height_in', 14.0)
+    _draw_cap_plate_front_view(ov, pitch_deg, cap_plate_width, cap_plate_height)
+    _draw_cap_plate_section_bb(ov, pitch_deg, cap_plate_width, cap_plate_height)
+
+    # ──────────────────────────────────────────────
+    # STEP 4: Draw entire bottom-right section from scratch
     #   (BOM, notes, AND title block — all unified)
     #   (BOM table, notes, dates, design authority)
     # ──────────────────────────────────────────────
