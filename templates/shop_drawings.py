@@ -1337,19 +1337,25 @@ SHOP_DRAWINGS_HTML = r"""
 
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
-                let actionButtons = `
+                const isHtml = d.filename && d.filename.endsWith('.html');
+                let actionButtons = '';
+
+                if (isHtml && d.type === 'column') {
+                    // Interactive HTML column drawing — open as interactive preview
+                    actionButtons = `
+                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})" style="flex-grow:1;">
+                            &#9998; Open Interactive Drawing
+                        </button>
+                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
+                            Download
+                        </button>`;
+                } else {
+                    actionButtons = `
                         <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
                             View PDF
                         </button>
                         <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
                             Download
-                        </button>`;
-
-                // Add Interactive Preview button for column drawings
-                if (d.type === 'column') {
-                    actionButtons += `
-                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="openInteractivePreview()" style="flex-grow:1;">
-                            Interactive Preview
                         </button>`;
                 }
 

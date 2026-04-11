@@ -2508,41 +2508,68 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// Map TitanForge config fields to drawing input elements
+// Map TitanForge ShopDrawingConfig fields to drawing input elements
 function applyConfigToDrawing(config) {
-  const fieldMap = {
-    'pitch': 'inPitch',
-    'clear_height': 'inClearHt',
-    'clearHt': 'inClearHt',
-    'width': 'inWidth',
-    'footing': 'inFooting',
-    'rebar_size': 'inRebar',
-    'rebar': 'inRebar',
-    'above_grade': 'inAboveGrade',
-    'above_grade_depth': 'inAboveGrade',
-    'cut_allowance': 'inCutAllowance',
-    'cut_allow': 'inCutAllowance'
-  };
+  // Map config field names → [inputId, optional transform]
+  const mappings = [
+    ['roof_pitch_deg', 'inPitch'],
+    ['clear_height_ft', 'inClearHt'],
+    ['building_width_ft', 'inWidth'],
+    ['footing_depth_ft', 'inFooting'],
+    ['col_rebar_size', 'inRebar'],
+    // fallback aliases from older/derived configs
+    ['pitch', 'inPitch'],
+    ['clearHt', 'inClearHt'],
+    ['width', 'inWidth'],
+    ['footing', 'inFooting'],
+    ['rebar_size', 'inRebar'],
+    ['rebar', 'inRebar'],
+    ['above_grade', 'inAboveGrade'],
+    ['above_grade_depth', 'inAboveGrade'],
+    ['cut_allowance', 'inCutAllowance'],
+    ['cut_allow', 'inCutAllowance'],
+  ];
 
-  // Apply numeric and select values
-  for (const [cfgKey, inputId] of Object.entries(fieldMap)) {
+  for (const [cfgKey, inputId] of mappings) {
     const value = config[cfgKey];
     const inputEl = document.getElementById(inputId);
     if (inputEl && value !== undefined && value !== null) {
       inputEl.value = String(value);
-      // Trigger input event for any dependent updates
       inputEl.dispatchEvent(new Event('input', { bubbles: true }));
       inputEl.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
 
+  // Project info fields
+  if (config.project_name) {
+    const el = document.getElementById('inProject');
+    if (el) { el.value = config.project_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.customer_name) {
+    const el = document.getElementById('inCustomer');
+    if (el) { el.value = config.customer_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.job_code) {
+    const el = document.getElementById('inJobNo');
+    if (el) { el.value = config.job_code; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.drawn_by) {
+    const el = document.getElementById('inDrawnBy');
+    if (el) { el.value = config.drawn_by; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+
   // Handle reinforced/non-reinforced toggle
-  if (config.reinforced !== undefined) {
-    const isReinforced = config.reinforced === true || String(config.reinforced).toLowerCase() === 'true';
+  const reinforced = config.col_reinforced !== undefined ? config.col_reinforced : config.reinforced;
+  if (reinforced !== undefined) {
+    const isReinforced = reinforced === true || String(reinforced).toLowerCase() === 'true';
+    // The drawing defaults to reinforced — only toggle if non-reinforced
     if (!isReinforced) {
       toggleReinforced();
     }
   }
+
+  // Trigger full redraw after all fields are set
+  if (typeof draw === 'function') draw();
 }
 </script>
 </body>

@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 
 from shop_drawings.config import ShopDrawingConfig
 from shop_drawings.column_gen import generate_column_drawing, generate_all_column_drawings
+from shop_drawings.column_html_gen import generate_column_html, generate_all_column_html
 from shop_drawings.rafter_gen import generate_rafter_drawing, generate_all_rafter_drawings
 from shop_drawings.purlin_gen import generate_purlin_drawing
 from shop_drawings.cutlist_gen import generate_cutlist_drawing
@@ -52,9 +53,9 @@ def generate_all_shop_drawings(
 
     job = cfg.job_code or "DRAFT"
 
-    # ── 1. Column Drawings ──
+    # ── 1. Column Drawings (Interactive HTML) ──
     try:
-        col_paths = generate_all_column_drawings(cfg, output_dir, revision)
+        col_paths = generate_all_column_html(cfg, output_dir, revision)
         for p in col_paths:
             size = os.path.getsize(p)
             total_bytes += size
@@ -62,7 +63,7 @@ def generate_all_shop_drawings(
                 "path": p,
                 "filename": os.path.basename(p),
                 "type": "column",
-                "description": f"Column Shop Drawing",
+                "description": f"Column Shop Drawing (Interactive)",
                 "size_bytes": size,
             })
     except Exception as e:
