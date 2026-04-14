@@ -637,7 +637,7 @@ ADMIN_HTML = r"""
                     <td><strong>${escapeHtml(user.username)}</strong></td>
                     <td>${escapeHtml(user.display_name || '-')}</td>
                     <td>
-                        <select class="role-select" onchange="changeRole('${escapeHtml(user.username)}', this.value)" ${user.username === 'admin' ? 'disabled' : ''}>
+                        <select class="role-select" onchange="changeRole('${escapeHtml(user.username)}', this.value)">
                             ${roleOptions.map(r => `<option value="${r}" ${r === user.role ? 'selected' : ''}>${r.replace(/_/g, ' ')}</option>`).join('')}
                         </select>
                     </td>
