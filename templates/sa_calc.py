@@ -1226,7 +1226,7 @@ async function calculate() {
     customer_name: document.getElementById('proj_customer').value || '',
     quote_date: document.getElementById('proj_date').value || '',
     wind_speed_mph: parseFloat(document.getElementById('proj_wind').value) || 115,
-    footing_depth_ft: parseFloat(document.getElementById('proj_footing').value) || 10,
+    footing_depth_ft: (document.getElementById('proj_footing') ? parseFloat(document.getElementById('proj_footing').value) : (buildings[0] ? buildings[0].footing_depth_ft : 10)) || 10,
     markup_pct: parseFloat(document.getElementById('proj_markup').value) || 35,
   };
 

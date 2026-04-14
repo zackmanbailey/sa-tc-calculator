@@ -3,7 +3,7 @@
 **System:** TitanForge Mission Control
 **Companies:** Titan Carports Inc. / Structures America
 **Shop Address:** 14369 FM 1314, Conroe, TX 77302
-**Last Updated:** April 14, 2026
+**Last Updated:** April 14, 2026 (Rev 2 — per-project data, B&W stickers, inject_nav fixes)
 
 ---
 
@@ -27,7 +27,7 @@ These modules contain validated math and fabrication logic. They are extended, n
 - **Role-merged UI:** Each user sees a unified dashboard assembled from cards contributed by their assigned roles. The app feels purpose-built for each person.
 - **Financial data isolation:** Dollar amounts are never rendered in HTML for users without financial permissions. Not hidden with CSS — actually excluded from the response.
 - **Permission middleware:** Every request passes through role/permission checks before reaching the handler. Unauthorized URLs redirect to the user's dashboard, not a 403 page.
-- **Shared layout system:** One base template with dynamic sidebar. Pages only define their content area.
+- **Shared layout system:** `inject_nav()` in shared_nav.py wraps every page with the role-aware sidebar. It hides old navigation elements (`#topbar`, `.topbar`, `.tf-topbar`, `.navbar`, `.ws-topbar`) via CSS `display:none!important` and wraps page content in `<div class="tf-main">`. Templates that have their own `#topbar` or `#sidebar` include scoped CSS (`.tf-main #topbar{display:none}`, `.tf-main #main{height:calc(100vh - 84px)}`) to adapt their layout when inside the shared nav wrapper.
 
 ---
 
@@ -399,9 +399,15 @@ Default 35%, adjustable per project. Applied to both materials and labor on cust
 ### Sticker System
 
 - Printer: Zebra ZT411, 203 DPI
-- Label: 4"x6", wax resin thermal transfer, weather resistant
-- Fields: ship mark, job number, project name, quantity, total weight, machine assignment, date fabricated, drawing reference, QR code
-- QR destination: TitanForge project context (opens full project)
+- Label: 4"x6", Industrial Thermal Transfer Ribbon (Wax/Resin), weather resistant
+- **Pure black & white only** — no colors. Wax/Resin ribbons produce only black ink on white label stock.
+- Fields: ship mark (42pt bold, centered), component type (14pt below mark), "FABRICATE:" label with word-wrapped description, job code, quantity, machine assignment
+- **Dual QR codes per sticker:**
+  - Left QR: "SCAN: START/FINISH" — links to work order scan endpoint for operator start/stop tracking
+  - Right QR: "VIEW SHOP DRAWING" — links directly to the shop drawing for that specific part (columns→column drawing, rafters→rafter drawing, others→PDF endpoint)
+- Center column between QR codes: JOB, QTY, MACHINE info
+- Helper: `_shop_drawing_url()` routes component types to correct drawing endpoints
+- Export formats: PDF (4×6 print-ready), ZPL (Zebra native), CSV (NiceLabel/BarTender with drawing_qr_url column)
 
 ### Sticker Grouping
 
@@ -574,6 +580,50 @@ static/
   *.svg                 — Logos and static assets
 ```
 
+### Per-Project Data Model
+
+All project data is tied to the job code via `project_paths(job_code)` in tf_handlers.py. This is the single source of truth for data locations:
+
+```
+data/projects/{safe_job_code}/
+  metadata.json          — Project name, customer, address, dates
+  current.json           — SA Estimator saved state (latest)
+  status.json            — Project status flags
+  tc_quote.json          — TC Estimator saved state (latest)
+  tc_v{N}.json           — TC Estimator version history
+  bom_snapshot.json      — Auto-saved BOM after each calculation
+  docs/                  — Documents, RFIs, transmittals
+
+data/shop_drawings/{safe_job_code}/
+  config.json            — Shop drawing configuration
+  WO-*.json              — Work order files
+  *.pdf                  — Generated drawing PDFs
+
+data/quotes/{safe_job_code}.json      — Quote data
+data/qc/{safe_job_code}.json          — QC inspection data
+```
+
+**Helper functions (tf_handlers.py):**
+
+- `_safe_job(job_code)` — Sanitizes job code for filesystem use (strips to `[a-zA-Z0-9_-]`)
+- `project_paths(job_code)` — Returns dict of all data paths for a project
+- `project_estimator_status(job_code)` — File-existence-based status check (no flags to get out of sync). Returns: `sa_linked`, `tc_linked`, `bom_available`, `quote_linked`, `shop_linked`, `wo_count`, `qc_linked`, `docs_linked`, `jc_linked`
+- `cascade_delete_project(job_code)` — Removes ALL data tied to a project: project dir, shop drawings dir, quote file, QC file. Returns list of what was deleted.
+
+**Dependency chain:** SA Estimator → BOM (auto-saved on calculate) → TC Estimator (needs SA costs). Project page blocks access to TC/BOM until SA is linked, with a modal offering to open SA Estimator.
+
+**Versioning:** Both SA and TC estimators use `current.json` for latest state plus `v{N}.json` for version history. Version number incremented on each save.
+
+**BOM price overrides:** The BOM tab has inline editable "Override $" column. Entering a value highlights the row in gold (background #FFF8E0) with a ⬥ marker and strikes through the original cost. Overrides sync to the Price Overrides tab. Clearing the field resets to calculated value.
+
+### New API Routes (Recent)
+
+| Route | Handler | Method | Purpose |
+|-------|---------|--------|---------|
+| `/api/tc/save` | `TCQuoteSaveHandler` | POST | Save TC estimator data to project (with versioning) |
+| `/api/tc/load` | `TCQuoteLoadHandler` | POST | Load saved TC data for a project |
+| `/api/project/estimator-status` | `EstimatorStatusHandler` | GET | Returns linked status of all modules for a project |
+
 ### User Data Model
 
 ```json
@@ -653,9 +703,9 @@ These roles are primarily used on phones/tablets and must be optimized for touch
 
 All user actions confirmed with toast notifications (3-second auto-dismiss). No native alert() dialogs anywhere in the system.
 
-### Global Click Delegation
+### Click Handlers
 
-All onclick handlers use event delegation on the document body to prevent click-blocking from overlays or z-index issues.
+All buttons use **native inline onclick attributes** (e.g., `onclick="calculate()"`). Do NOT use global click delegation or capture-phase event listeners — these break shared nav links, async functions, and input interactions. Functions are defined either as `function name()` declarations or `window.name = function()` assignments depending on template scope.
 
 ---
 
