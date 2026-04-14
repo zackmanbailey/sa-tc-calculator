@@ -500,6 +500,8 @@ function addBuilding() {
     include_labor: true,
     welding_cost_per_5000sqft: 300,
     coil_prices: {},
+    // Per-building footing depth (0 = use project-level default)
+    footing_depth_ft: 0,
     // Rafter Configuration defaults (column placement, angled purlins, rebar, splice)
     column_mode: 'auto',              // "auto" (quarter-point), "spacing", or "manual"
     column_spacing_ft: 25,            // used when column_mode === 'spacing'
@@ -808,6 +810,12 @@ function buildingFormHTML(b) {
           ▸ Column Details
         </summary>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
+          <div class="form-group">
+            <label>Footing Depth (ft)</label>
+            <input type="number" value="${b.footing_depth_ft||0}" min="0" max="25" step="0.5"
+              onchange="updateBldg('${b.id}','footing_depth_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">0 = use project default</div>
+          </div>
           <div class="form-group">
             <label>Embedment (ft)</label>
             <input type="number" value="${b.embedment_ft||4.333}" min="1" max="15" step="0.083"

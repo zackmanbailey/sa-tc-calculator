@@ -93,6 +93,7 @@ class BuildingConfig:
     roofing_overhang_ft: float = 0.5        # panel overhang past eave purlin
     above_grade_ft: float = 8.0             # column height above finished grade
     cut_allowance_in: float = 6.0           # extra length for field cuts (inches)
+    footing_depth_ft: float = 0.0           # per-building override; 0 = use project-level
     # Misc
     include_trim: bool = False
     welding_cost_per_5000sqft: float = 300.0
@@ -489,8 +490,10 @@ class BOMCalculator:
                           if bldg.rebar_beam_size and bldg.rebar_beam_size != "auto"
                           else auto_rebar.get("beam"))
 
-        # Footing depth (needed for geometry dict and rebar calc below)
-        footing_depth = self.project.footing_depth_ft
+        # Footing depth: per-building override if > 0, else project-level
+        footing_depth = (bldg.footing_depth_ft
+                         if bldg.footing_depth_ft and bldg.footing_depth_ft > 0
+                         else self.project.footing_depth_ft)
 
         # ── Rafter column placement (structural columns per rafter) ──
         raft_n_cols, raft_col_pos_in = calc_rafter_columns(

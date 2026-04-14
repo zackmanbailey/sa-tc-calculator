@@ -887,6 +887,7 @@ class ShopDrawingConfig:
             cfg.clear_height_ft = geo.get("clear_height_ft", 14.0)
             cfg.roof_pitch_deg = geo.get("slope_deg", 1.19)
             cfg.n_frames = geo.get("n_frames", 5)
+            cfg.n_struct_cols = geo.get("n_struct_cols", 0)
             cfg.overhang_ft = geo.get("overhang_ft", 0.0)
             cfg.embedment_ft = geo.get("embedment_ft", 4.333)
             cfg.footing_depth_ft = geo.get("footing_depth_ft", 0.0)

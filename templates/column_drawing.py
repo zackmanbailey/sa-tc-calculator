@@ -225,6 +225,28 @@ function applyServerConfig() {
   if (cfg.job_code) {
     var lbl = document.querySelector('.top-bar h1');
     if (lbl) lbl.textContent = 'TitanForge — Column Shop Drawing — ' + cfg.job_code;
+    var jn = document.getElementById('setJobNumber');
+    if (jn) jn.value = cfg.job_code;
+  }
+  if (cfg.project_name) {
+    var pn = document.getElementById('setProjectName');
+    if (pn) pn.value = cfg.project_name;
+  }
+  if (cfg.customer) {
+    var cu = document.getElementById('setCustomer');
+    if (cu) cu.value = cfg.customer;
+  }
+  // Frame data for column count
+  if (cfg.num_frames) C.nFrames = cfg.num_frames;
+  if (cfg.frame_type) {
+    var ft = cfg.frame_type.toLowerCase();
+    C.frameType = (ft === 'tee' || ft === 't-frame') ? 'tee' : '2-post';
+  }
+  if (cfg.num_columns && cfg.num_columns > 0) {
+    // Override nFrames to produce correct totalCols
+    // For tee: totalCols = nFrames * 2, for 2-post: nFrames * 3
+    var colsPerFrame = (C.frameType === 'tee') ? 2 : 3;
+    C.nFrames = Math.round(cfg.num_columns / colsPerFrame);
   }
 }
 window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
@@ -1988,6 +2010,7 @@ function renderAnnotations(svg) {
   });
 }
 
+applyServerConfig();
 updateCheckBadge();
 draw();
 

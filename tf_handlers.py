@@ -1496,10 +1496,11 @@ class ProjectListHandler(BaseHandler):
                         with open(cpath) as f:
                             data = json.load(f)
                         n_versions = len(glob.glob(os.path.join(dpath, "v*.json")))
+                        cust_name = data.get("project", {}).get("customer_name", "")
                         result.append({
                             "job_code": data.get("job_code", d),
                             "project_name": data.get("project", {}).get("name", ""),
-                            "customer": data.get("project", {}).get("customer_name", ""),
+                            "customer": {"name": cust_name} if cust_name else {"name": ""},
                             "saved_at": data.get("saved_at", ""),
                             "version": data.get("version", 1),
                             "n_versions": n_versions,
@@ -1512,10 +1513,11 @@ class ProjectListHandler(BaseHandler):
                 try:
                     with open(dpath) as f:
                         data = json.load(f)
+                    cust_name = data.get("project", {}).get("customer_name", "")
                     result.append({
                         "job_code": data.get("job_code", d.replace(".json", "")),
                         "project_name": data.get("project", {}).get("name", ""),
-                        "customer": data.get("project", {}).get("customer_name", ""),
+                        "customer": {"name": cust_name} if cust_name else {"name": ""},
                         "saved_at": data.get("saved_at", ""),
                         "version": 1,
                         "n_versions": 1,
@@ -3613,6 +3615,13 @@ class ColumnDrawingHandler(BaseHandler):
         rc["cut_allowance_in"] = cfg_dict.get("col_cut_allowance_in", 6)
         rc["reinforced"] = cfg_dict.get("col_reinforced", True)
         rc["job_code"] = job_code
+        # Project info for title block
+        rc["project_name"] = cfg_dict.get("project_name", "")
+        rc["customer"] = cfg_dict.get("customer_name", "")
+        # Frame data for column count calculation
+        rc["num_frames"] = cfg_dict.get("n_frames") or cfg_dict.get("num_frames", 0)
+        rc["frame_type"] = cfg_dict.get("frame_type", "2-post")
+        rc["num_columns"] = cfg_dict.get("n_struct_cols") or cfg_dict.get("num_columns", 0)
         return rc
 
 
@@ -4885,6 +4894,7 @@ def get_routes():
 
         # ── App routes (Dashboard + Calculators) ────────────────
         (r"/",                      DashboardHandler),
+        (r"/dashboard",             DashboardHandler),
         (r"/sa",                    SACalcHandler),
         (r"/tc",                    TCQuoteHandler),
 
