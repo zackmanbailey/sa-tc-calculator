@@ -929,6 +929,12 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         items = [("/qc-dashboard", "&#128737;", "Inspections", "qc")]
         sections.append(("Quality", items))
 
+    # Inventory
+    if perm.can("view_inventory"):
+        sections.append(("Inventory", [
+            ("/inventory", "&#128230;", "Stock Levels", "inventory"),
+        ]))
+
     # Customers
     if perm.can("view_customer_info"):
         sections.append(("", [("/customers", "&#128101;", "Customers", "customers")]))

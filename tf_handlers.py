@@ -3984,6 +3984,19 @@ try:
         approve_change_order,
         get_job_cost_summary, get_cost_variance_report, get_financial_overview,
     )
+    # Phase 11 — Inventory Management
+    from shop_drawings.inventory import (
+        COIL_STATUSES, COIL_STATUS_LABELS,
+        TRANSACTION_TYPES, TRANSACTION_TYPE_LABELS,
+        MATERIAL_GRADES, COIL_GAUGES, ALERT_LEVELS,
+        InventoryTransaction, StockAlert, Allocation, ReceivingRecord,
+        create_coil, get_coil, list_coils, update_coil, delete_coil,
+        receive_stock, adjust_stock, consume_stock, list_transactions,
+        allocate_stock, release_allocation, list_allocations, get_allocation,
+        list_alerts, acknowledge_alert, generate_stock_alerts,
+        list_receiving, add_mill_cert, list_mill_certs, delete_mill_cert,
+        get_inventory_summary, get_coil_history, get_stock_valuation,
+    )
     HAS_SHOP_DRAWINGS = True
 except Exception:
     HAS_SHOP_DRAWINGS = False
@@ -7861,6 +7874,370 @@ class CostingConfigHandler(BaseHandler):
         }))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 11 — Inventory Management Handlers
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InventoryDashboardPageHandler(BaseHandler):
+    """GET /inventory — Inventory Management Dashboard."""
+    required_permission = "view_inventory"
+    def get(self):
+        from templates.inventory_dashboard_page import INVENTORY_DASHBOARD_PAGE_HTML
+        self.render_with_nav(INVENTORY_DASHBOARD_PAGE_HTML, active_page="inventory")
+
+
+class CoilListAPIHandler(BaseHandler):
+    """GET /api/inventory/coils — List coils with filters."""
+    required_permission = "view_inventory"
+    def get(self):
+        gauge = self.get_query_argument("gauge", "")
+        grade = self.get_query_argument("grade", "")
+        supplier = self.get_query_argument("supplier", "")
+        status = self.get_query_argument("status", "")
+        low_stock = self.get_query_argument("low_stock", "") == "true"
+        coils = list_coils(DATA_DIR, gauge=gauge, grade=grade,
+                           supplier=supplier, status=status,
+                           low_stock_only=low_stock)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "coils": coils, "total": len(coils)}))
+
+
+class CoilDetailAPIHandler(BaseHandler):
+    """GET /api/inventory/coil/detail — Get single coil."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        if not coil_id:
+            self.write(json_encode({"ok": False, "error": "coil_id required"}))
+            return
+        coil = get_coil(DATA_DIR, coil_id)
+        if not coil:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Coil not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "coil": coil}))
+
+
+class CoilCreateHandler(BaseHandler):
+    """POST /api/inventory/coil/create — Create new coil."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            coil = create_coil(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                name=data.get("name", ""),
+                gauge=data.get("gauge", ""),
+                grade=data.get("grade", ""),
+                supplier=data.get("supplier", ""),
+                weight_lbs=float(data.get("weight_lbs", 0)),
+                width_in=float(data.get("width_in", 0)),
+                stock_lbs=float(data.get("stock_lbs", 0)),
+                price_per_lb=float(data.get("price_per_lb", 0)),
+                min_order_lbs=float(data.get("min_order_lbs", 5000)),
+                lead_time_weeks=int(data.get("lead_time_weeks", 8)),
+                lbs_per_lft=float(data.get("lbs_per_lft", 0)),
+                heat_num=data.get("heat_num", ""),
+                created_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, "coil": coil}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilUpdateHandler(BaseHandler):
+    """POST /api/inventory/coil/update — Update coil fields."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        coil_id = data.pop("coil_id", "")
+        if not coil_id:
+            self.write(json_encode({"ok": False, "error": "coil_id required"}))
+            return
+        try:
+            coil = update_coil(DATA_DIR, coil_id, **data)
+            self.write(json_encode({"ok": True, "coil": coil}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilDeleteAPIHandler(BaseHandler):
+    """POST /api/inventory/coil/delete — Delete a coil."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        coil_id = data.get("coil_id", "")
+        ok = delete_coil(DATA_DIR, coil_id)
+        self.write(json_encode({"ok": ok, "error": "" if ok else "Coil not found"}))
+
+
+class ReceiveStockHandler(BaseHandler):
+    """POST /api/inventory/receive — Receive stock into coil."""
+    required_permission = "receive_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            result = receive_stock(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                quantity_lbs=float(data.get("quantity_lbs", 0)),
+                po_number=data.get("po_number", ""),
+                bol_number=data.get("bol_number", ""),
+                supplier=data.get("supplier", ""),
+                heat_number=data.get("heat_number", ""),
+                condition_notes=data.get("condition_notes", ""),
+                received_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, **result}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class AdjustStockHandler(BaseHandler):
+    """POST /api/inventory/adjust — Adjust stock (correction)."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            result = adjust_stock(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                quantity_lbs=float(data.get("quantity_lbs", 0)),
+                reason=data.get("reason", ""),
+                adjusted_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, **result}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ConsumeStockHandler(BaseHandler):
+    """POST /api/inventory/consume — Record stock consumption."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            result = consume_stock(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                quantity_lbs=float(data.get("quantity_lbs", 0)),
+                job_code=data.get("job_code", ""),
+                work_order_ref=data.get("work_order_ref", ""),
+                consumed_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, **result}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class TransactionListAPIHandler(BaseHandler):
+    """GET /api/inventory/transactions — List stock transactions."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        txn_type = self.get_query_argument("type", "")
+        date_from = self.get_query_argument("date_from", "")
+        date_to = self.get_query_argument("date_to", "")
+        txns = list_transactions(DATA_DIR, coil_id=coil_id,
+                                 transaction_type=txn_type,
+                                 date_from=date_from, date_to=date_to)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "transactions": txns, "total": len(txns)}))
+
+
+class AllocateStockHandler(BaseHandler):
+    """POST /api/inventory/allocate — Allocate stock to a job."""
+    required_permission = "allocate_stock"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            alloc = allocate_stock(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                job_code=data.get("job_code", ""),
+                quantity_lbs=float(data.get("quantity_lbs", 0)),
+                work_order_ref=data.get("work_order_ref", ""),
+                notes=data.get("notes", ""),
+                allocated_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, "allocation": alloc.to_dict()}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ReleaseAllocationHandler(BaseHandler):
+    """POST /api/inventory/allocate/release — Release an allocation."""
+    required_permission = "allocate_stock"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            result = release_allocation(
+                DATA_DIR,
+                allocation_id=data.get("allocation_id", ""),
+                released_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, **result}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class AllocationListAPIHandler(BaseHandler):
+    """GET /api/inventory/allocations — List allocations."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        job_code = self.get_query_argument("job_code", "")
+        status = self.get_query_argument("status", "")
+        allocs = list_allocations(DATA_DIR, coil_id=coil_id,
+                                  job_code=job_code, status=status)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "allocations": allocs, "total": len(allocs)}))
+
+
+class AlertListAPIHandler(BaseHandler):
+    """GET /api/inventory/alerts — List stock alerts."""
+    required_permission = "view_inventory"
+    def get(self):
+        ack = self.get_query_argument("acknowledged", "")
+        level = self.get_query_argument("level", "")
+        coil_id = self.get_query_argument("coil_id", "")
+        ack_filter = None
+        if ack == "true":
+            ack_filter = True
+        elif ack == "false":
+            ack_filter = False
+        alerts_list = list_alerts(DATA_DIR, acknowledged=ack_filter,
+                                  alert_level=level, coil_id=coil_id)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "alerts": alerts_list, "total": len(alerts_list)}))
+
+
+class AlertAcknowledgeHandler(BaseHandler):
+    """POST /api/inventory/alerts/acknowledge — Acknowledge an alert."""
+    required_permission = "edit_inventory"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            alert = acknowledge_alert(DATA_DIR, data.get("alert_id", ""),
+                                      acknowledged_by=self.current_username or "")
+            self.write(json_encode({"ok": True, "alert": alert}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class GenerateAlertsHandler(BaseHandler):
+    """POST /api/inventory/alerts/generate — Scan and generate alerts."""
+    required_permission = "edit_inventory"
+    def post(self):
+        coils_alerted = generate_stock_alerts(DATA_DIR)
+        self.write(json_encode({"ok": True, "coils_checked": len(coils_alerted)}))
+
+
+class ReceivingListAPIHandler(BaseHandler):
+    """GET /api/inventory/receiving — List receiving records."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        date_from = self.get_query_argument("date_from", "")
+        date_to = self.get_query_argument("date_to", "")
+        records = list_receiving(DATA_DIR, coil_id=coil_id,
+                                 date_from=date_from, date_to=date_to)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "records": records, "total": len(records)}))
+
+
+class MillCertListAPIHandler(BaseHandler):
+    """GET /api/inventory/mill-certs — List mill certificates."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        certs = list_mill_certs(DATA_DIR, coil_id=coil_id)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "certs": certs, "total": len(certs)}))
+
+
+class MillCertAddHandler(BaseHandler):
+    """POST /api/inventory/mill-cert/add — Add mill cert record."""
+    required_permission = "manage_mill_certs"
+    def post(self):
+        data = json_decode(self.request.body)
+        try:
+            cert = add_mill_cert(
+                DATA_DIR,
+                coil_id=data.get("coil_id", ""),
+                heat_number=data.get("heat_number", ""),
+                mill_name=data.get("mill_name", ""),
+                material_spec=data.get("material_spec", ""),
+                filename=data.get("filename", ""),
+                created_by=self.current_username or "",
+            )
+            self.write(json_encode({"ok": True, "cert": cert}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class MillCertDeleteHandler(BaseHandler):
+    """POST /api/inventory/mill-cert/delete — Delete mill cert."""
+    required_permission = "manage_mill_certs"
+    def post(self):
+        data = json_decode(self.request.body)
+        ok = delete_mill_cert(DATA_DIR, data.get("cert_id", ""))
+        self.write(json_encode({"ok": ok}))
+
+
+class InventorySummaryAPIHandler(BaseHandler):
+    """GET /api/inventory/summary — Get inventory summary analytics."""
+    required_permission = "view_inventory"
+    def get(self):
+        summary = get_inventory_summary(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, **summary}))
+
+
+class CoilHistoryAPIHandler(BaseHandler):
+    """GET /api/inventory/coil/history — Get full coil history."""
+    required_permission = "view_inventory"
+    def get(self):
+        coil_id = self.get_query_argument("coil_id", "")
+        if not coil_id:
+            self.write(json_encode({"ok": False, "error": "coil_id required"}))
+            return
+        try:
+            history = get_coil_history(DATA_DIR, coil_id)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, **history}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class StockValuationAPIHandler(BaseHandler):
+    """GET /api/inventory/valuation — Get stock valuation."""
+    required_permission = "view_inventory_costs"
+    def get(self):
+        valuation = get_stock_valuation(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, **valuation}))
+
+
+class InventoryConfigHandler(BaseHandler):
+    """GET /api/inventory/config — Return inventory constants."""
+    required_permission = "view_inventory"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "coil_statuses": COIL_STATUSES,
+            "coil_status_labels": COIL_STATUS_LABELS,
+            "transaction_types": TRANSACTION_TYPES,
+            "transaction_type_labels": TRANSACTION_TYPE_LABELS,
+            "material_grades": MATERIAL_GRADES,
+            "coil_gauges": COIL_GAUGES,
+            "alert_levels": ALERT_LEVELS,
+        }))
+
+
 # ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
@@ -8157,6 +8534,32 @@ def get_routes():
         (r"/api/costing/variance",                     CostVarianceAPIHandler),
         (r"/api/costing/overview",                     FinancialOverviewAPIHandler),
         (r"/api/costing/config",                       CostingConfigHandler),
+
+        # ── Phase 11 — Inventory Management ──────────────────
+        (r"/inventory",                                InventoryDashboardPageHandler),
+        (r"/api/inventory/coils",                      CoilListAPIHandler),
+        (r"/api/inventory/coil/detail",                CoilDetailAPIHandler),
+        (r"/api/inventory/coil/create",                CoilCreateHandler),
+        (r"/api/inventory/coil/update",                CoilUpdateHandler),
+        (r"/api/inventory/coil/delete",                CoilDeleteAPIHandler),
+        (r"/api/inventory/receive",                    ReceiveStockHandler),
+        (r"/api/inventory/adjust",                     AdjustStockHandler),
+        (r"/api/inventory/consume",                    ConsumeStockHandler),
+        (r"/api/inventory/transactions",               TransactionListAPIHandler),
+        (r"/api/inventory/allocate",                   AllocateStockHandler),
+        (r"/api/inventory/allocate/release",           ReleaseAllocationHandler),
+        (r"/api/inventory/allocations",                AllocationListAPIHandler),
+        (r"/api/inventory/alerts",                     AlertListAPIHandler),
+        (r"/api/inventory/alerts/acknowledge",         AlertAcknowledgeHandler),
+        (r"/api/inventory/alerts/generate",            GenerateAlertsHandler),
+        (r"/api/inventory/receiving",                  ReceivingListAPIHandler),
+        (r"/api/inventory/mill-certs",                 MillCertListAPIHandler),
+        (r"/api/inventory/mill-cert/add",              MillCertAddHandler),
+        (r"/api/inventory/mill-cert/delete",           MillCertDeleteHandler),
+        (r"/api/inventory/summary",                    InventorySummaryAPIHandler),
+        (r"/api/inventory/coil/history",               CoilHistoryAPIHandler),
+        (r"/api/inventory/valuation",                  StockValuationAPIHandler),
+        (r"/api/inventory/inv-config",                 InventoryConfigHandler),
 
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),

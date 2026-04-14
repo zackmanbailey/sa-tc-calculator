@@ -440,13 +440,13 @@ _ROLE_DEFS = [
 
     RoleDef(
         id="admin", name="Admin", rank=1,
-        description="Full system access. Cannot delete or manage users.",
-        financial_access="full",
+        description="Full system access including user management and project deletion.",
+        financial_access="full", can_manage_users=True, can_delete=True,
         permissions=[
-            P.VIEW_DASHBOARD,  P.VIEW_AUDIT_LOG,
+            P.VIEW_DASHBOARD, P.MANAGE_USERS, P.MANAGE_SETTINGS, P.VIEW_AUDIT_LOG, P.DELETE_ANYTHING,
             P.RUN_CALCULATOR, P.VIEW_CALCULATOR, P.CREATE_QUOTES, P.VIEW_QUOTES, P.VIEW_QUOTE_TOTALS,
             P.VIEW_BOM, P.VIEW_BOM_PRICING, P.VIEW_SELL_PRICES, P.VIEW_VENDOR_COSTS, P.VIEW_MARGINS, P.EDIT_PRICING,
-            P.CREATE_PROJECTS, P.EDIT_PROJECTS, P.VIEW_PROJECTS, P.VIEW_PROJECT_FINANCIALS, P.CONVERT_QUOTE_TO_PROJECT, P.SET_MILESTONES,
+            P.CREATE_PROJECTS, P.EDIT_PROJECTS, P.VIEW_PROJECTS, P.VIEW_PROJECT_FINANCIALS, P.CONVERT_QUOTE_TO_PROJECT, P.SET_MILESTONES, P.DELETE_PROJECTS,
             P.VIEW_SHOP_DRAWINGS, P.EDIT_SHOP_DRAWINGS, P.APPROVE_DRAWINGS,
             P.CREATE_WORK_ORDERS, P.EDIT_WORK_ORDERS, P.VIEW_WORK_ORDERS, P.APPROVE_WORK_ORDERS, P.ASSIGN_OPERATORS, P.REPRIORITIZE_QUEUE,
             P.SCAN_START_FINISH, P.LOG_COIL_CHANGEOVER, P.LOG_ITEM_NOTES,
@@ -462,7 +462,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "recent_activity"],
-        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales"],
+        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales", "admin"],
     ),
 
     RoleDef(
