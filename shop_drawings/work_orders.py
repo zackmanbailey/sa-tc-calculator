@@ -288,7 +288,7 @@ class WorkOrder:
 
     @property
     def qc_pending_items(self) -> int:
-        return sum(1 for i in self.items if i.status == STATUS_QC_PENDING)
+        return sum(1 for i in self.items if i.status in [STATUS_QC_PENDING, STATUS_FABRICATED])
 
     @property
     def rejected_items(self) -> int:

@@ -830,7 +830,7 @@ ADMIN_HTML = r"""
                     <td>
                         <div class="role-chips">
                             ${chips}
-                            <button class="edit-roles-btn" onclick="openRoleModal('${escapeHtml(user.username)}', ${escapeHtml(JSON.stringify(JSON.stringify(roles)))})">&#9998; Edit</button>
+                            <button class="edit-roles-btn" onclick='openRoleModal("${escapeHtml(user.username)}", ${JSON.stringify(JSON.stringify(roles))})'>&#9998; Edit</button>
                         </div>
                     </td>
                     <td>${formatDate(user.created_at)}</td>
@@ -957,12 +957,20 @@ ADMIN_HTML = r"""
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: username })
             })
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) {
+                    return r.text().then(t => {
+                        try { const d = JSON.parse(t); throw new Error(d.error || 'Failed'); }
+                        catch(e) { if (e.message !== 'Failed') throw e; throw new Error('HTTP ' + r.status); }
+                    });
+                }
+                return r.json();
+            })
             .then(data => {
                 if (!data.ok) alert('Error: ' + (data.error || 'Failed'));
                 else loadUsers();
             })
-            .catch(err => alert('Error: ' + err.message));
+            .catch(err => alert('Error deleting user: ' + err.message));
         }
 
         // ── Pending Registrations ──

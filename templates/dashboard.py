@@ -1361,14 +1361,14 @@ DASHBOARD_HTML = r"""
             { href: '/shop-floor', icon: '&#127981;', cls: 'li-navy', title: 'Shop Floor', desc: 'Production dashboard', show: PERM.can_view_work_orders },
             { href: '/customers', icon: '&#128100;', cls: 'li-green', title: 'Customers', desc: 'CRM & contacts', show: PERM.can_view_customers },
             { href: '/work-station/mine', icon: '&#9881;', cls: 'li-purple', title: 'My Station', desc: 'Scan & fabricate', show: PERM.primary_role === 'roll_forming_operator' || PERM.primary_role === 'welder' },
-            { href: '/field/projects', icon: '&#127959;', cls: 'li-green', title: 'Field Ops', desc: 'Reports, JHA, photos', show: PERM.can_view_field },
+            { href: '/field', icon: '&#127959;', cls: 'li-green', title: 'Field Ops', desc: 'Reports, JHA, photos', show: PERM.can_view_field },
             { href: '/receipts', icon: '&#129534;', cls: 'li-amber', title: 'Receipts', desc: 'Submit consumable receipts', show: PERM.can_submit_receipts && !PERM.can_view_calculator },
             { href: '/qc', icon: '&#128737;', cls: 'li-purple', title: 'QC Inspection', desc: 'Inspections & NCRs', show: PERM.can_view_qc && !PERM.can_view_calculator },
             { href: '/shipping', icon: '&#128666;', cls: 'li-blue', title: 'Shipping', desc: 'Loads & BOL', show: PERM.can_view_shipping && !PERM.can_view_work_orders },
-            { href: '/sales/pipeline', icon: '&#128200;', cls: 'li-green', title: 'Pipeline', desc: 'Sales & leads', show: PERM.can_view_pipeline },
+            { href: '/', icon: '&#128200;', cls: 'li-green', title: 'Pipeline', desc: 'Sales & leads', show: PERM.can_view_pipeline },
             { href: '/safety/jha', icon: '&#9888;', cls: 'li-amber', title: 'Safety', desc: 'JHA review & incidents', show: PERM.primary_role === 'safety_officer' },
             { href: '/tasks', icon: '&#128203;', cls: 'li-blue', title: 'My Tasks', desc: 'Staging & scanning', show: PERM.primary_role === 'laborer' },
-            { href: '/admin/users', icon: '&#128274;', cls: 'li-navy', title: 'Admin', desc: 'Users & settings', show: PERM.can_manage_users },
+            { href: '/admin', icon: '&#128274;', cls: 'li-navy', title: 'Admin', desc: 'Users & settings', show: PERM.can_manage_users },
         ];
 
         allCards.forEach(function(c) {

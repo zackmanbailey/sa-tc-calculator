@@ -2033,7 +2033,7 @@ class ProjectListHandler(BaseHandler):
 
 class ProjectDocUploadHandler(BaseHandler):
     """POST /api/project/docs/upload — Upload file to project documents."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_roles = ["admin", "god_mode", "estimator", "shop"]
 
     def post(self):
         try:
@@ -2126,7 +2126,7 @@ class ProjectDocListHandler(BaseHandler):
 
 class ProjectDocDeleteHandler(BaseHandler):
     """POST /api/project/docs/delete — Delete a project document."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_roles = ["admin", "god_mode", "estimator", "shop"]
 
     def post(self):
         try:
@@ -2219,7 +2219,7 @@ class ProjectDocServeHandler(BaseHandler):
 
 class ProjectStatusHandler(BaseHandler):
     """POST /api/project/status — Update project stage."""
-    required_roles = ["admin", "estimator", "shop", "tc_limited"]
+    required_roles = ["admin", "god_mode", "estimator", "shop", "tc_limited"]
 
     def post(self):
         try:
@@ -2394,7 +2394,7 @@ class ProjectNextCodeHandler(BaseHandler):
 
 class ProjectCreateHandler(BaseHandler):
     """POST /api/project/create — Create a new project with metadata."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["admin", "god_mode", "estimator"]
 
     def post(self):
         try:
@@ -2653,7 +2653,7 @@ class ProjectPageHandler(BaseHandler):
 
 class ProjectArchiveDocHandler(BaseHandler):
     """POST /api/project/docs/archive — Archive a document (move to archive subfolder)."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_roles = ["admin", "god_mode", "estimator", "shop"]
 
     def post(self):
         try:
@@ -2846,7 +2846,7 @@ class CustomerListHandler(BaseHandler):
 
 class CustomerCreateHandler(BaseHandler):
     """POST /api/customers/create — Create a new customer."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["admin", "god_mode", "estimator"]
     def post(self):
         body = json_decode(self.request.body)
         customers = load_customers()
@@ -2875,7 +2875,7 @@ class CustomerCreateHandler(BaseHandler):
 
 class CustomerUpdateHandler(BaseHandler):
     """POST /api/customers/update — Update a customer record."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["admin", "god_mode", "estimator"]
     def post(self):
         body = json_decode(self.request.body)
         cid = body.get("id", "")
@@ -2943,7 +2943,7 @@ class CustomerDetailHandler(BaseHandler):
 
 class CustomerDocUploadHandler(BaseHandler):
     """POST /api/customers/docs/upload — Upload a document for a customer."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["admin", "god_mode", "estimator"]
     def post(self):
         cid = self.get_argument("customer_id", "")
         doc_type = self.get_argument("doc_type", "other")  # contract, insurance, tax_id, credit_terms, other
@@ -3145,7 +3145,7 @@ class QuoteDataHandler(BaseHandler):
 
 class QuotePDFHandler(BaseHandler):
     """POST /api/quote/pdf — Generate a professional PDF quote."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["admin", "god_mode", "estimator"]
     def post(self):
         body = json_decode(self.request.body)
         job_code = body.get("job_code", "")
@@ -4954,7 +4954,7 @@ class ShopDrawingsDiffHandler(BaseHandler):
 
 class ShopDrawingsGenerateHandler(BaseHandler):
     """POST /api/shop-drawings/generate — Generate all shop drawings for a project."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_roles = ["admin", "god_mode", "estimator", "shop"]
 
     def post(self):
         try:
@@ -5130,6 +5130,43 @@ class ShopDrawingsZipHandler(BaseHandler):
 # ─────────────────────────────────────────────
 # WORK ORDER HANDLERS
 # ─────────────────────────────────────────────
+
+class WorkOrderGlobalPageHandler(BaseHandler):
+    """GET /work-orders — Global work orders dashboard across all projects."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        from templates.work_orders_global import WORK_ORDERS_GLOBAL_HTML
+        self.render_with_nav(WORK_ORDERS_GLOBAL_HTML, active_page="workorders_global")
+
+
+class WorkOrderAllListHandler(BaseHandler):
+    """GET /api/work-orders/all — List all work orders across all projects."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        try:
+            wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_orders": wos}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderAllItemsHandler(BaseHandler):
+    """GET /api/work-orders/all-items — List all active items across all projects."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        try:
+            items = load_all_active_items(SHOP_DRAWINGS_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "items": items}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
 
 class WorkOrderPageHandler(BaseHandler):
     """GET /work-orders/{job_code} — Work order tracking page."""
@@ -8664,7 +8701,10 @@ def get_routes():
         (r"/api/shop-drawings/zip",              ShopDrawingsZipHandler),
 
         # ── Work Orders ──────────────────────────────────────
+        (r"/work-orders",                        WorkOrderGlobalPageHandler),
         (r"/work-orders/([^/]+)",                WorkOrderPageHandler),
+        (r"/api/work-orders/all",                WorkOrderAllListHandler),
+        (r"/api/work-orders/all-items",          WorkOrderAllItemsHandler),
         (r"/api/work-orders/create",             WorkOrderCreateHandler),
         (r"/api/work-orders/list",               WorkOrderListHandler),
         (r"/api/work-orders/detail",             WorkOrderDetailHandler),

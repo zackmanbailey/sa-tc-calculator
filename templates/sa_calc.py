@@ -1221,7 +1221,7 @@ async function calculate() {
     });
     const data = await res.json();
     if (data.error) {
-      showToast('Calculation error:  + data.error);
+      showToast('Calculation error: ' + data.error);
       return;
     }
     currentBOM = data;

@@ -506,6 +506,10 @@ NAV_HTML = """
                 <span class="tf-nav-icon">&#127968;</span>
                 <span class="tf-nav-label">Dashboard</span>
             </a>
+            <a href="/work-orders" class="tf-nav-item {{ACTIVE_workorders_global}}">
+                <span class="tf-nav-icon">&#128203;</span>
+                <span class="tf-nav-label">Work Orders</span>
+            </a>
             <a href="/shop-floor" class="tf-nav-item {{ACTIVE_shopfloor}}">
                 <span class="tf-nav-icon">&#9881;</span>
                 <span class="tf-nav-label">Shop Floor</span>
@@ -880,7 +884,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     # If auth not available, fall back to static NAV_HTML
     if not perm:
         html = NAV_HTML
-        pages = ["dashboard", "shopfloor", "customers", "sa", "tc",
+        pages = ["dashboard", "workorders_global", "shopfloor", "customers", "sa", "tc",
                  "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
         for p in pages:
             html = html.replace("{{ACTIVE_" + p + "}}", "active" if p == active_page else "")
@@ -892,7 +896,8 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
     # Map active_page to URL prefixes for highlighting
     active_urls = {
-        "dashboard": "/", "shopfloor": "/shop-floor", "customers": "/customers",
+        "dashboard": "/", "workorders_global": "/work-orders",
+        "shopfloor": "/shop-floor", "customers": "/customers",
         "sa": "/sa", "tc": "/tc", "project": "/project/", "shopdrw": "/shop-drawings/",
         "workorders": "/work-orders/", "workstation": "/work-station/",
         "qc": "/qc/", "quote": "/quote/", "admin": "/admin",
@@ -926,6 +931,8 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     # Shop Floor
     if perm.can("view_work_orders") or perm.can("view_own_work_items") or perm.can("create_work_orders"):
         items = [("/shop-floor", "&#9881;", "Shop Floor", "shopfloor")]
+        if perm.can("view_work_orders"):
+            items.append(("/work-orders", "&#128203;", "Work Orders", "workorders_global"))
         if perm.can("view_shop_drawings"):
             items.append(("/documents", "&#128208;", "Shop Drawings", "shopdrw"))
         sections.append(("Shop Floor", items))
