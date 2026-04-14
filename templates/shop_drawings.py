@@ -532,13 +532,15 @@ SHOP_DRAWINGS_HTML = r"""
                 <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="downloadAllZip()" id="btnDownloadAll" disabled>
                     Download ZIP
                 </button>
-                <a href="/shop-drawings/{{JOB_CODE}}/column" target="_blank" class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;">
-                    Column Drawing
-                </a>
-                <a href="/shop-drawings/{{JOB_CODE}}/rafter" target="_blank" class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;">
-                    Rafter Drawing
-                </a>
             </div>
+        </div>
+
+        <!-- ── Interactive Drawing Links ──────────────────── -->
+        <div id="interactiveDrawingsBar" style="display:flex;gap:12px;align-items:center;padding:12px 16px;margin-bottom:16px;background:linear-gradient(135deg,#1E293B,#0F172A);border:2px solid #F6AE2D;border-radius:8px;">
+            <span style="color:#F6AE2D;font-weight:700;font-size:0.9rem;margin-right:8px;">Interactive Drawings:</span>
+            <a id="linkColumnDrawing" href="/shop-drawings/{{JOB_CODE}}/column" style="display:inline-block;padding:8px 20px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.85rem;border-radius:6px;text-decoration:none;cursor:pointer;" onclick="window.location.href=this.href;return false;">Column Shop Drawing</a>
+            <a id="linkRafterDrawing" href="/shop-drawings/{{JOB_CODE}}/rafter" style="display:inline-block;padding:8px 20px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.85rem;border-radius:6px;text-decoration:none;cursor:pointer;" onclick="window.location.href=this.href;return false;">Rafter Shop Drawing</a>
+            <span style="color:#94A3B8;font-size:0.75rem;margin-left:auto;">Opens full interactive SVG drawing with Print-to-PDF</span>
         </div>
 
         <!-- ── BOM Sync Status ─────────────────────────────── -->
