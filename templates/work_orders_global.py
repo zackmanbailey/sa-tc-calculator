@@ -421,25 +421,41 @@ function renderQCQueue(q, projectF) {
         return;
     }
 
+    // Helper: build shop drawing URL for an item
+    function shopDrawingUrl(item) {
+        const comp = (item.component_type || '').toLowerCase();
+        const base = '/shop-drawings/' + encodeURIComponent(item.job_code);
+        if (comp === 'column') return base + '/column';
+        if (comp === 'rafter') return base + '/rafter';
+        if (item.drawing_ref) return '/api/shop-drawings/file?job_code=' + encodeURIComponent(item.job_code) + '&filename=' + encodeURIComponent(item.drawing_ref);
+        return base;
+    }
+
     let html = '';
     items.forEach(item => {
         const st = item.status === 'fabricated' ? 'Awaiting QC' : 'QC Pending';
         const stClass = item.status === 'fabricated' ? 'fabricated' : 'qc_pending';
+        const drawLink = shopDrawingUrl(item);
         html += `
         <div class="qc-item-card">
             <div class="qc-header">
                 <div>
-                    <span style="font-family:'SF Mono',monospace;font-weight:700;font-size:1rem;color:var(--tf-navy);">${item.ship_mark}</span>
+                    <span style="font-family:'SF Mono',monospace;font-weight:700;font-size:1.15rem;color:var(--tf-navy);">${item.ship_mark}</span>
+                    <span style="font-weight:700;font-size:0.88rem;color:var(--tf-slate);margin-left:6px;text-transform:uppercase;">${(item.component_type || '').replace('_',' ')}</span>
                     <span class="status-badge ${stClass}" style="margin-left:8px;">${st}</span>
                 </div>
                 <span class="wo-id">${item.work_order_id}</span>
             </div>
+            <div style="font-weight:700;font-size:0.95rem;color:var(--tf-navy);padding:6px 0 4px;border-bottom:1px solid #E2E8F0;margin-bottom:8px;">
+                ${item.description || 'No description'}
+            </div>
             <div class="qc-meta">
                 <span>Job: <a class="job-code-link" href="/project/${encodeURIComponent(item.job_code)}">${item.job_code}</a></span>
-                <span>Type: <strong>${item.component_type || '-'}</strong></span>
+                <span>Qty: <strong>${item.quantity || 1}</strong></span>
                 <span>Machine: <strong>${item.machine || '-'}</strong></span>
                 ${item.assigned_to ? '<span>Operator: <strong>' + item.assigned_to + '</strong></span>' : ''}
                 ${item.finished_at ? '<span>Finished: ' + new Date(item.finished_at).toLocaleString() + '</span>' : ''}
+                <a href="${drawLink}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:3px 10px;background:var(--tf-navy);color:white;border-radius:6px;font-size:0.75rem;font-weight:600;text-decoration:none;">&#128208; View Drawing</a>
             </div>
             ${item.qc_notes ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 12px;font-size:0.82rem;margin-bottom:12px;color:#9A3412;">Previous QC Notes: ' + item.qc_notes + '</div>' : ''}
             <div class="qc-actions">
@@ -464,22 +480,27 @@ function renderShippingQueue(q, projectF) {
     }
 
     let html = `<table class="wo-table"><thead><tr>
-        <th>Ship Mark</th><th>Job</th><th>Type</th><th>Status</th>
-        <th>QC Date</th><th>Shipped</th><th>Actions</th></tr></thead><tbody>`;
+        <th>Part</th><th>What</th><th>Job</th><th>Status</th>
+        <th>QC Date</th><th>Shipped</th><th>Drawing</th><th>Actions</th></tr></thead><tbody>`;
 
     items.forEach(item => {
         const nextStatus = item.status === 'ready_to_ship' ? 'shipped'
             : item.status === 'shipped' ? 'delivered' : null;
         const nextLabel = item.status === 'ready_to_ship' ? 'Mark Shipped'
             : item.status === 'shipped' ? 'Mark Delivered' : null;
+        const drawLink = typeof shopDrawingUrl === 'function' ? shopDrawingUrl(item) : '/shop-drawings/' + encodeURIComponent(item.job_code);
 
         html += `<tr>
-            <td><span style="font-family:'SF Mono',monospace;font-weight:700;">${item.ship_mark}</span></td>
+            <td>
+                <span style="font-family:'SF Mono',monospace;font-weight:700;font-size:1rem;">${item.ship_mark}</span>
+                <div style="font-size:0.72rem;color:var(--tf-slate);text-transform:uppercase;">${(item.component_type || '').replace('_',' ')}</div>
+            </td>
+            <td style="font-weight:600;font-size:0.85rem;max-width:200px;">${item.description || '-'}</td>
             <td><a class="job-code-link" href="/project/${encodeURIComponent(item.job_code)}">${item.job_code}</a></td>
-            <td>${item.component_type || '-'}</td>
             <td><span class="status-badge ${item.status}">${item.status.replace(/_/g, ' ')}</span></td>
             <td style="font-size:0.82rem;color:var(--tf-slate);">${item.qc_at ? new Date(item.qc_at).toLocaleDateString() : '-'}</td>
             <td style="font-size:0.82rem;color:var(--tf-slate);">${item.shipped_at ? new Date(item.shipped_at).toLocaleDateString() : '-'}</td>
+            <td style="text-align:center;"><a href="${drawLink}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:var(--tf-navy);color:white;border-radius:5px;font-size:0.72rem;font-weight:600;text-decoration:none;">&#128208;</a></td>
             <td>${nextStatus ? '<button class="btn-qc pass" style="padding:4px 12px;font-size:0.78rem;" onclick="transitionItem(&quot;'+item.item_id+'&quot;, &quot;'+item.job_code+'&quot;, &quot;'+nextStatus+'&quot;)">'+nextLabel+'</button>' : '<span style="color:var(--tf-slate);font-size:0.8rem;">-</span>'}</td>
         </tr>`;
     });

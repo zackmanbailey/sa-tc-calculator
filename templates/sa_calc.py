@@ -128,7 +128,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
 </div>
 
 <!-- Inventory Alert Banner (hidden by default, shown by JS) -->
-<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab')[4].classList.add('active')">
+<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory')">
   <span style="font-weight:700">⚠️ Inventory Alert:</span>
   <span id="inv-alert-text"></span>
   <span style="float:right;color:#666;font-size:11px">Click to view →</span>
@@ -136,11 +136,11 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
 <!-- Tabs -->
 <div id="tabs">
-  <div class="tab active" onclick="showTab('calc')">⚙️ Calculator</div>
-  <div class="tab" onclick="showTab('bom')">📋 Bill of Materials</div>
-  <div class="tab" onclick="showTab('pricing')">💰 Price Overrides</div>
-  <div class="tab" onclick="showTab('labels')">🏷️ Shop Labels</div>
-  <div class="tab" onclick="showTab('inventory')">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
+  <div class="tab active" onclick="showTab('calc', this)">⚙️ Calculator</div>
+  <div class="tab" onclick="showTab('bom', this)">📋 Bill of Materials</div>
+  <div class="tab" onclick="showTab('pricing', this)">💰 Price Overrides</div>
+  <div class="tab" onclick="showTab('labels', this)">🏷️ Shop Labels</div>
+  <div class="tab" onclick="showTab('inventory', this)">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
 </div>
 
 <!-- Main -->
@@ -392,6 +392,11 @@ window.onload = function() {
   if (projectCode) {
     autoLoadFromProject(projectCode);
   }
+  // Auto-switch tab from URL param ?tab=bom (or calc, pricing, labels, inventory)
+  const tabParam = urlParams.get('tab');
+  if (tabParam) {
+    showTab(tabParam);
+  }
 };
 
 async function autoLoadFromProject(jobCode) {
@@ -448,11 +453,19 @@ async function checkInventoryAlerts() {
 // ─────────────────────────────────────────────
 // TABS
 // ─────────────────────────────────────────────
-function showTab(name) {
+function showTab(name, clickedEl) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.remove('hidden');
-  event.target.classList.add('active');
+  // Highlight the correct tab — use clicked element if available, else find by tab name
+  if (clickedEl) {
+    clickedEl.classList.add('active');
+  } else {
+    const tabNames = ['calc', 'bom', 'pricing', 'labels', 'inventory'];
+    const idx = tabNames.indexOf(name);
+    if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+  }
   if (name === 'inventory') loadInventory();
   if (name === 'pricing') renderPricingTab();
 }
@@ -1229,10 +1242,7 @@ async function calculate() {
     renderBOM(data);
     renderPricingTab();
     // Switch to BOM tab
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('tab-bom').classList.remove('hidden');
-    document.querySelectorAll('.tab')[1].classList.add('active');
+    showTab('bom');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }

@@ -74,6 +74,151 @@ QUOTES_DIR = os.path.join(BASE_DIR, "data", "quotes")
 QC_DIR = os.path.join(BASE_DIR, "data", "qc")
 COOKIE_SECRET = None   # Set at startup from env or auto-generated
 
+
+# ─────────────────────────────────────────────
+# PROJECT DATA PATHS — Single source of truth
+# Every piece of data tied to a project is mapped here.
+# Delete uses this to cascade-remove everything.
+# Status API uses this to check what exists.
+# ─────────────────────────────────────────────
+
+def _safe_job(job_code):
+    """Sanitize a job code for filesystem use."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", job_code.strip())
+
+
+def project_paths(job_code):
+    """Return a dict of ALL data paths tied to a project.
+    This is the single source of truth — if a module stores data for a project,
+    its path MUST be listed here so cascade-delete catches it.
+    """
+    safe = _safe_job(job_code)
+    shop_base = os.path.join(BASE_DIR, "data", "shop_drawings")
+    return {
+        # Core project metadata + SA estimator data
+        "project_dir":      os.path.join(PROJECTS_DIR, safe),
+        "metadata":         os.path.join(PROJECTS_DIR, safe, "metadata.json"),
+        "sa_current":       os.path.join(PROJECTS_DIR, safe, "current.json"),
+        "status":           os.path.join(PROJECTS_DIR, safe, "status.json"),
+        # TC Estimator
+        "tc_quote":         os.path.join(PROJECTS_DIR, safe, "tc_quote.json"),
+        # Quote Editor
+        "quote":            os.path.join(QUOTES_DIR, f"{safe}.json"),
+        # QC Records
+        "qc":               os.path.join(QC_DIR, f"{safe}.json"),
+        # Shop Drawings (entire subdirectory)
+        "shop_drawings_dir": os.path.join(shop_base, safe),
+        # Docs directory within project
+        "docs_dir":         os.path.join(PROJECTS_DIR, safe, "docs"),
+    }
+
+
+def project_estimator_status(job_code):
+    """Check which estimators/modules have saved data for a project.
+    Returns a dict of booleans + metadata for the project page UI.
+    """
+    paths = project_paths(job_code)
+    safe = _safe_job(job_code)
+
+    # SA Estimator — check for current.json
+    sa_linked = os.path.isfile(paths["sa_current"])
+    sa_meta = {}
+    if sa_linked:
+        try:
+            with open(paths["sa_current"]) as f:
+                sa_data = json.load(f)
+            sa_meta = {
+                "version": sa_data.get("version", 1),
+                "saved_at": sa_data.get("saved_at", ""),
+                "saved_by": sa_data.get("saved_by", ""),
+                "has_bom": bool(sa_data.get("bom_data")),
+            }
+        except Exception:
+            pass
+
+    # TC Estimator — check for tc_quote.json
+    tc_linked = os.path.isfile(paths["tc_quote"])
+    tc_meta = {}
+    if tc_linked:
+        try:
+            with open(paths["tc_quote"]) as f:
+                tc_data = json.load(f)
+            tc_meta = {
+                "version": tc_data.get("version", 1),
+                "saved_at": tc_data.get("saved_at", ""),
+                "saved_by": tc_data.get("saved_by", ""),
+            }
+        except Exception:
+            pass
+
+    # BOM — it's inside the SA data
+    bom_available = sa_linked and sa_meta.get("has_bom", False)
+
+    # Quote Editor
+    quote_linked = os.path.isfile(paths["quote"])
+
+    # Shop Drawings
+    shop_config = os.path.join(paths["shop_drawings_dir"], "config.json")
+    shop_linked = os.path.isfile(shop_config)
+
+    # Work Orders
+    wo_dir = os.path.join(paths["shop_drawings_dir"], "work_orders")
+    wo_count = 0
+    if os.path.isdir(wo_dir):
+        wo_count = len([f for f in os.listdir(wo_dir) if f.endswith(".json")])
+
+    # QC Records
+    qc_linked = os.path.isfile(paths["qc"])
+
+    # Documents (RFIs, transmittals, revisions)
+    docs_dir = os.path.join(paths["shop_drawings_dir"], "_documents")
+    docs_linked = os.path.isdir(docs_dir)
+
+    # Job Costing
+    jc_dir = os.path.join(paths["shop_drawings_dir"], "_job_costing")
+    jc_linked = os.path.isdir(jc_dir) and any(
+        os.path.isfile(os.path.join(jc_dir, f))
+        for f in ["estimates.json", "cost_entries.json"]
+    )
+
+    return {
+        "sa_linked":     sa_linked,
+        "sa_meta":       sa_meta,
+        "tc_linked":     tc_linked,
+        "tc_meta":       tc_meta,
+        "bom_available": bom_available,
+        "quote_linked":  quote_linked,
+        "shop_linked":   shop_linked,
+        "wo_count":      wo_count,
+        "qc_linked":     qc_linked,
+        "docs_linked":   docs_linked,
+        "jc_linked":     jc_linked,
+    }
+
+
+def cascade_delete_project(job_code):
+    """Delete ALL data tied to a project across every directory.
+    Returns a list of what was deleted for audit logging.
+    """
+    paths = project_paths(job_code)
+    deleted = []
+
+    # Delete directories
+    for key in ["project_dir", "shop_drawings_dir"]:
+        d = paths[key]
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+            deleted.append(f"directory: {d}")
+
+    # Delete individual files
+    for key in ["quote", "qc"]:
+        f = paths[key]
+        if os.path.isfile(f):
+            os.remove(f)
+            deleted.append(f"file: {f}")
+
+    return deleted
+
 # Auth is enabled by default for hosted deployments; disabled for localhost dev.
 AUTH_ENABLED = False   # Set at startup
 
@@ -1291,6 +1436,29 @@ class CalculateHandler(BaseHandler):
             calc = BOMCalculator(project)
             proj_bom = calc.calculate_project(buildings)
             result = bom_to_dict(proj_bom)
+
+            # ── BOM Auto-Save: persist to project if job_code exists ──
+            job_code = proj_data.get("job_code", "").strip()
+            if job_code:
+                try:
+                    paths = project_paths(job_code)
+                    proj_dir = paths["project_dir"]
+                    if os.path.isdir(proj_dir):
+                        # Save BOM snapshot alongside project data
+                        bom_path = os.path.join(proj_dir, "bom_snapshot.json")
+                        bom_snapshot = {
+                            "job_code": job_code,
+                            "bom_data": result,
+                            "project": proj_data,
+                            "buildings": bldg_data,
+                            "calculated_at": datetime.datetime.now().isoformat(),
+                            "calculated_by": self.get_current_user() or "unknown",
+                        }
+                        with open(bom_path, "w") as f:
+                            json.dump(bom_snapshot, f, indent=2)
+                except Exception:
+                    pass  # Don't fail the calculation if auto-save fails
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
@@ -2304,6 +2472,109 @@ class TCExportExcelHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# TC ESTIMATOR — SAVE / LOAD PER PROJECT
+# ─────────────────────────────────────────────
+
+class TCQuoteSaveHandler(BaseHandler):
+    """POST /api/tc/save — Save TC quote data per-project with versioning."""
+    required_permission = "create_quotes"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = (body.get("project", {}).get("job_code", "")
+                        or body.get("job_code", "")).strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "No job_code in payload"}))
+                return
+
+            paths = project_paths(job_code)
+            proj_dir = paths["project_dir"]
+            os.makedirs(proj_dir, exist_ok=True)
+
+            # Load existing TC data for versioning
+            tc_path = paths["tc_quote"]
+            version = 1
+            if os.path.isfile(tc_path):
+                try:
+                    with open(tc_path) as f:
+                        old = json.load(f)
+                    version = old.get("version", 0) + 1
+                except Exception:
+                    pass
+
+            body["version"] = version
+            body["saved_at"] = datetime.datetime.now().isoformat()
+            body["saved_by"] = self.get_current_user() or "unknown"
+
+            # Save current
+            with open(tc_path, "w") as f:
+                json.dump(body, f, indent=2)
+
+            # Also save versioned copy
+            tc_ver_path = os.path.join(proj_dir, f"tc_v{version}.json")
+            with open(tc_ver_path, "w") as f:
+                json.dump(body, f, indent=2)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "version": version}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class TCQuoteLoadHandler(BaseHandler):
+    """POST /api/tc/load — Load saved TC quote for a project."""
+    required_permission = "view_quotes"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "No job_code"}))
+                return
+
+            paths = project_paths(job_code)
+            tc_path = paths["tc_quote"]
+
+            if not os.path.isfile(tc_path):
+                self.write(json_encode({"ok": False, "error": "No TC quote saved for this project"}))
+                return
+
+            with open(tc_path) as f:
+                data = json.load(f)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# ESTIMATOR STATUS API — Project Hub
+# ─────────────────────────────────────────────
+
+class EstimatorStatusHandler(BaseHandler):
+    """GET /api/project/estimator-status?job_code=X
+    Returns linked status for all modules tied to this project.
+    Used by the project page to show what's been completed.
+    """
+    def get(self):
+        job_code = self.get_query_argument("job_code", "").strip()
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "No job_code"}))
+            return
+        status = project_estimator_status(job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, **status}))
+
+
+# ─────────────────────────────────────────────
 # PROJECT CREATE & FULL PROJECT PAGE HANDLERS
 # ─────────────────────────────────────────────
 
@@ -2785,7 +3056,10 @@ class ProjectListEnhancedHandler(BaseHandler):
 
 
 class ProjectDeleteHandler(BaseHandler):
-    """POST /api/project/delete — Delete a project and all associated data."""
+    """POST /api/project/delete — Delete a project and ALL associated data.
+    Cascade-deletes: SA data, TC quote, quote editor, QC records,
+    shop drawings, work orders, documents, job costing, scheduling.
+    """
     required_roles = ["admin", "god_mode"]
 
     def post(self):
@@ -2797,24 +3071,23 @@ class ProjectDeleteHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Job code is required"}))
                 return
 
-            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+            paths = project_paths(job_code)
 
-            # Check if project exists
-            if not os.path.isdir(proj_dir):
+            # Check if project exists (at minimum, metadata dir must exist)
+            if not os.path.isdir(paths["project_dir"]):
                 self.write(json_encode({"ok": False, "error": f"Project {job_code} not found"}))
                 return
 
-            # Delete the entire project directory
+            # Cascade delete everything tied to this project
             try:
-                shutil.rmtree(proj_dir)
+                deleted = cascade_delete_project(job_code)
             except Exception as e:
                 self.set_status(500)
                 self.write(json_encode({"ok": False, "error": f"Failed to delete project: {str(e)}"}))
                 return
 
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True}))
+            self.write(json_encode({"ok": True, "deleted": deleted}))
 
         except Exception as e:
             import traceback
@@ -8940,9 +9213,14 @@ def get_routes():
         (r"/api/inventory/valuation",                  StockValuationAPIHandler),
         (r"/api/inventory/inv-config",                 InventoryConfigHandler),
 
-        # ── TC Export ──────────────────────────────────────────
+        # ── TC Export & Save/Load ─────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),
         (r"/tc/export/excel",            TCExportExcelHandler),
+        (r"/api/tc/save",                TCQuoteSaveHandler),
+        (r"/api/tc/load",                TCQuoteLoadHandler),
+
+        # ── Project Status API ────────────────────────────────
+        (r"/api/project/estimator-status", EstimatorStatusHandler),
 
         # ── Static files ───────────────────────────────────────
         (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": static_path}),

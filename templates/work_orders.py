@@ -1047,18 +1047,28 @@ function renderDetail() {
         actionsHtml = stickerBtns;
     }
 
-    // Items table
+    // Helper: build shop drawing URL for an item
+    function shopDrawingUrl(item) {
+        const comp = (item.component_type || '').toLowerCase();
+        const base = '/shop-drawings/' + encodeURIComponent(JOB_CODE);
+        if (comp === 'column') return base + '/column';
+        if (comp === 'rafter') return base + '/rafter';
+        if (item.drawing_ref) return '/api/shop-drawings/file?job_code=' + encodeURIComponent(JOB_CODE) + '&filename=' + encodeURIComponent(item.drawing_ref);
+        return base;
+    }
+
+    // Items table — clear "what are we making" focus
     let itemsHtml = `
     <table class="items-table">
     <thead>
         <tr>
-            <th>Ship Mark</th>
-            <th>Type</th>
-            <th>Description</th>
+            <th>Part</th>
+            <th>What to Fabricate</th>
             <th>Qty</th>
             <th>Machine</th>
             <th>Status</th>
             <th>Duration</th>
+            <th>Drawing</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -1085,15 +1095,27 @@ function renderDetail() {
             ? `<div style="font-size:0.72rem;color:#9A3412;margin-top:2px;" title="${item.qc_notes}">QC: ${item.qc_notes.substring(0, 40)}${item.qc_notes.length > 40 ? '...' : ''}</div>`
             : '';
 
+        const drawingLink = shopDrawingUrl(item);
+
         itemsHtml += `
         <tr>
-            <td><span class="ship-mark">${item.ship_mark}</span></td>
-            <td><span class="component-type-badge ${item.component_type}">${item.component_type}</span></td>
-            <td>${item.description}${qcInfo}</td>
-            <td>${item.quantity}</td>
+            <td>
+                <span class="ship-mark" style="font-size:1.05rem;">${item.ship_mark}</span>
+                <div><span class="component-type-badge ${item.component_type}" style="font-size:0.7rem;">${(item.component_type || '').toUpperCase().replace('_',' ')}</span></div>
+            </td>
+            <td style="max-width:280px;">
+                <div style="font-weight:700;font-size:0.92rem;color:var(--tf-navy);line-height:1.3;">${item.description}</div>
+                ${qcInfo}
+            </td>
+            <td style="font-weight:700;font-size:1.1rem;text-align:center;">${item.quantity}</td>
             <td><span class="machine-badge">${item.machine}</span></td>
             <td><span class="status-badge ${iStatusClass}">${statusLabels[iStatus] || iStatus}</span></td>
             <td class="duration-cell">${dur}</td>
+            <td style="text-align:center;">
+                <a href="${drawingLink}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--tf-navy);color:white;border-radius:6px;font-size:0.75rem;font-weight:600;text-decoration:none;" title="View shop drawing for ${item.ship_mark}">
+                    &#128208; Drawing
+                </a>
+            </td>
             <td class="item-actions">
                 ${canStart ? `<button class="btn-item start" onclick="scanItem('${item.item_id}','start')">Start</button>` : ''}
                 ${canFinish ? `<button class="btn-item finish" onclick="scanItem('${item.item_id}','finish')">Finish</button>` : ''}

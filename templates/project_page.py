@@ -256,6 +256,21 @@ PROJECT_PAGE_HTML = r"""
             font-weight: 700;
             color: var(--tf-gray-800);
         }
+        .tool-status {
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+            min-height: 16px;
+        }
+        .tool-status.linked {
+            color: #10B981;
+        }
+        .tool-status.not-linked {
+            color: #94A3B8;
+        }
+        .tool-card.has-dependency {
+            position: relative;
+        }
 
         /* Completion Bar (kept for backwards compat) */
         .completion-section { display: none; }
@@ -766,30 +781,57 @@ PROJECT_PAGE_HTML = r"""
         </div>
 
         <!-- TOOLBOX -->
-        <div class="toolbox">
-            <div class="tool-card" onclick="openInSACalc()">
+        <div class="toolbox" id="projectToolbox">
+            <div class="tool-card" id="tool-sa" onclick="openInSACalc()">
                 <div class="tool-icon ti-blue">&#128208;</div>
                 <div class="tool-label">SA Estimator</div>
+                <div class="tool-status" id="status-sa"></div>
             </div>
-            <div class="tool-card" onclick="openInTCQuote()">
+            <div class="tool-card" id="tool-tc" onclick="handleTCClick()">
                 <div class="tool-icon ti-amber">&#128221;</div>
                 <div class="tool-label">TC Estimator</div>
+                <div class="tool-status" id="status-tc"></div>
             </div>
-            <div class="tool-card" onclick="openQuoteEditor()">
+            <div class="tool-card" id="tool-bom" onclick="handleBOMClick()">
+                <div class="tool-icon ti-teal">&#128203;</div>
+                <div class="tool-label">Bill of Materials</div>
+                <div class="tool-status" id="status-bom"></div>
+            </div>
+            <div class="tool-card" id="tool-quote" onclick="openQuoteEditor()">
                 <div class="tool-icon ti-green">&#128196;</div>
                 <div class="tool-label">Quote Editor</div>
+                <div class="tool-status" id="status-quote"></div>
             </div>
-            <div class="tool-card" onclick="openShopDrawings()">
+            <div class="tool-card" id="tool-shop" onclick="openShopDrawings()">
                 <div class="tool-icon ti-blue">&#9998;</div>
                 <div class="tool-label">Shop Drawings</div>
+                <div class="tool-status" id="status-shop"></div>
             </div>
-            <div class="tool-card" onclick="openWorkOrders()">
+            <div class="tool-card" id="tool-wo" onclick="openWorkOrders()">
                 <div class="tool-icon ti-teal">&#128203;</div>
                 <div class="tool-label">Work Orders</div>
+                <div class="tool-status" id="status-wo"></div>
             </div>
-            <div class="tool-card" onclick="openQCDashboard()">
+            <div class="tool-card" id="tool-qc" onclick="openQCDashboard()">
                 <div class="tool-icon ti-purple">&#128203;</div>
                 <div class="tool-label">QC Dashboard</div>
+                <div class="tool-status" id="status-qc"></div>
+            </div>
+        </div>
+
+        <!-- "Not Linked" Modal -->
+        <div id="notLinkedModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">
+                <div style="font-size:2.5rem;margin-bottom:12px;">&#9888;</div>
+                <h3 style="margin:0 0 8px;color:#0F172A;" id="notLinkedTitle">SA Estimator Not Linked</h3>
+                <p style="color:#64748B;font-size:0.9rem;margin:0 0 24px;" id="notLinkedMsg">
+                    The SA Estimator hasn't been completed for this project yet.
+                    This module depends on SA Estimator data.
+                </p>
+                <div style="display:flex;gap:12px;justify-content:center;">
+                    <button onclick="openInSACalc()" style="padding:10px 24px;background:#1E40AF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;">Open SA Estimator</button>
+                    <button onclick="closeNotLinkedModal()" style="padding:10px 24px;background:#E2E8F0;color:#334155;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem;">Cancel</button>
+                </div>
             </div>
         </div>
 
@@ -887,6 +929,7 @@ PROJECT_PAGE_HTML = r"""
                 setProjectContext(JOB_CODE);
             }
             initProjectPage();
+            loadEstimatorStatus();
         });
 
         var PJ_STAGES = ['quote', 'contract', 'engineering', 'shop_drawings', 'fabrication', 'shipping', 'install'];
@@ -1526,13 +1569,93 @@ PROJECT_PAGE_HTML = r"""
             return s;
         }
 
-        // ── Quick Actions ─────────────────────────────────
+        // ── Estimator Status ──────────────────────────────
+        var estStatus = {};
+
+        async function loadEstimatorStatus() {
+            try {
+                const resp = await fetch('/api/project/estimator-status?job_code=' + encodeURIComponent(JOB_CODE));
+                const data = await resp.json();
+                if (!data.ok) return;
+                estStatus = data;
+
+                // Update tool card badges
+                setToolStatus('status-sa', data.sa_linked, data.sa_meta
+                    ? 'v' + (data.sa_meta.version || '?') : null);
+                setToolStatus('status-tc', data.tc_linked, data.tc_meta
+                    ? 'v' + (data.tc_meta.version || '?') : null);
+                setToolStatus('status-bom', data.bom_available, null);
+                setToolStatus('status-quote', data.quote_linked, null);
+                setToolStatus('status-shop', data.shop_linked, null);
+                setToolStatus('status-wo', data.wo_count > 0,
+                    data.wo_count > 0 ? data.wo_count + ' orders' : null);
+                setToolStatus('status-qc', data.qc_linked, null);
+            } catch(e) { /* silent */ }
+        }
+
+        function setToolStatus(elId, linked, detail) {
+            var el = document.getElementById(elId);
+            if (!el) return;
+            if (linked) {
+                el.className = 'tool-status linked';
+                el.textContent = detail ? '\\u2713 ' + detail : '\\u2713 Linked';
+            } else {
+                el.className = 'tool-status not-linked';
+                el.textContent = '\\u2014 Not linked';
+            }
+        }
+
+        function showNotLinkedModal(title, msg) {
+            document.getElementById('notLinkedTitle').textContent = title;
+            document.getElementById('notLinkedMsg').textContent = msg;
+            document.getElementById('notLinkedModal').style.display = 'flex';
+        }
+
+        function closeNotLinkedModal() {
+            document.getElementById('notLinkedModal').style.display = 'none';
+        }
+
+        // ── Quick Actions (with dependency checks) ───────
         function openInSACalc() {
+            closeNotLinkedModal();
             window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE);
         }
 
         function openInTCQuote() {
             window.location.href = '/tc?project=' + encodeURIComponent(JOB_CODE);
+        }
+
+        function handleTCClick() {
+            if (!estStatus.sa_linked) {
+                showNotLinkedModal(
+                    'SA Estimator Not Linked',
+                    'The TC Estimator depends on SA Estimator data (material costs, column count, footing depth). Complete the SA Estimator first.'
+                );
+                return;
+            }
+            openInTCQuote();
+        }
+
+        function handleBOMClick() {
+            if (!estStatus.sa_linked) {
+                showNotLinkedModal(
+                    'SA Estimator Not Linked',
+                    'The Bill of Materials is generated from the SA Estimator. Complete the SA Estimator and run Calculate BOM first.'
+                );
+                return;
+            }
+            if (!estStatus.bom_available) {
+                showNotLinkedModal(
+                    'BOM Not Calculated Yet',
+                    'The SA Estimator is linked but no BOM has been calculated yet. Open the SA Estimator and click Calculate BOM.'
+                );
+                return;
+            }
+            openBOM();
+        }
+
+        function openBOM() {
+            window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE) + '&tab=bom';
         }
 
         function openQuoteEditor() {
