@@ -803,6 +803,12 @@ class ShopDrawingConfig:
     col_rebar_size: str = "#9"
     col_reinforced: bool = True
     col_connection_bolts: int = 4
+    col_pitch_deg: float = 1.19
+    col_clear_height_ft: float = 14.0
+    col_width_ft: float = 40.0
+    col_footing_ft: float = 10.0
+    col_above_grade_ft: float = 8.0
+    col_cut_allowance_in: float = 6.0
 
     # Rafter config
     raft_material_grade: str = "G90 80 KSI"
@@ -886,6 +892,19 @@ class ShopDrawingConfig:
             cfg.footing_depth_ft = geo.get("footing_depth_ft", 0.0)
             cfg.purlin_spacing_ft = geo.get("purlin_spacing_ft", 5.0)
             cfg.frame_type = geo.get("frame_type", "tee")
+            cfg.raft_purlin_type = geo.get("purlin_type", "z").lower()
+            cfg.purlin_type = cfg.raft_purlin_type
+            cfg.raft_roofing_overhang_ft = geo.get("roofing_overhang_ft", 1.0)
+            cfg.col_above_grade_ft = geo.get("above_grade_ft", 8.0)
+            cfg.col_cut_allowance_in = geo.get("cut_allowance_in", 6.0)
+            cfg.raft_angled_purlins = geo.get("angled_purlins", False)
+            cfg.raft_purlin_angle_deg = geo.get("purlin_angle_deg", 15.0)
+            cfg.raft_column_mode = geo.get("column_mode", "auto")
+            # Column drawing fields
+            cfg.col_pitch_deg = geo.get("slope_deg", 1.19)
+            cfg.col_clear_height_ft = geo.get("clear_height_ft", 14.0)
+            cfg.col_width_ft = geo.get("width_ft", 40.0)
+            cfg.col_footing_ft = geo.get("footing_depth_ft", 10.0)
 
             col_positions = geo.get("col_positions", [])
             if col_positions:

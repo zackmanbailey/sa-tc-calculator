@@ -269,6 +269,8 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   }
 </style>
 <script>window.RAFTER_CONFIG = {{RAFTER_CONFIG_JSON}};</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -393,7 +395,9 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 
-    <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ PDF</button>
+    <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ Print</button>
+    <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
+    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;margin-left:4px;"></span>
     <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" style="margin-left:8px;">← Dashboard</a></div>
 
 <!-- APPROVAL MODAL -->
@@ -3995,8 +3999,89 @@ document.getElementById('btnNonReinforced').addEventListener('click', function()
   }
 });
 
+// ═══════════════════════════════════════════════
+// SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
+// ═══════════════════════════════════════════════
+function savePdfToProject() {
+  var btn = document.getElementById('btnSavePdf');
+  var status = document.getElementById('savePdfStatus');
+  var jobCode = (window.RAFTER_CONFIG && window.RAFTER_CONFIG.job_code) || '{{JOB_CODE}}';
+  if (!jobCode || jobCode === 'null') {
+    alert('No project job code — open this drawing from a project to save.');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  status.textContent = '';
+
+  try {
+    var svgEl = document.getElementById('svg');
+    // Get the SVG's viewBox dimensions for the PDF page size
+    var vb = svgEl.viewBox.baseVal;
+    var svgW = vb.width || 1100;
+    var svgH = vb.height || 850;
+
+    // Create landscape PDF matching the drawing proportions
+    var pdf = new jspdf.jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: [svgW, svgH]
+    });
+
+    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
+      var pdfData = pdf.output('arraybuffer');
+      var blob = new Blob([pdfData], { type: 'application/pdf' });
+
+      var formData = new FormData();
+      formData.append('job_code', jobCode);
+      formData.append('drawing_type', 'rafter');
+      formData.append('source', 'interactive');
+      formData.append('pdf_file', blob, jobCode + '_RAFTER_INTERACTIVE.pdf');
+
+      fetch('/api/shop-drawings/save-interactive-pdf', {
+        method: 'POST',
+        body: formData
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          btn.textContent = 'Saved!';
+          btn.style.background = '#059669';
+          status.textContent = 'PDF saved to project';
+          status.style.color = '#10B981';
+          setTimeout(function() {
+            btn.textContent = 'Save PDF to Project';
+            btn.disabled = false;
+          }, 3000);
+        } else {
+          btn.textContent = 'Save PDF to Project';
+          btn.disabled = false;
+          status.textContent = 'Error: ' + (data.error || 'unknown');
+          status.style.color = '#EF4444';
+        }
+      })
+      .catch(function(err) {
+        btn.textContent = 'Save PDF to Project';
+        btn.disabled = false;
+        status.textContent = 'Network error';
+        status.style.color = '#EF4444';
+      });
+    }).catch(function(err) {
+      btn.textContent = 'Save PDF to Project';
+      btn.disabled = false;
+      status.textContent = 'PDF render error: ' + err.message;
+      status.style.color = '#EF4444';
+    });
+  } catch(err) {
+    btn.textContent = 'Save PDF to Project';
+    btn.disabled = false;
+    status.textContent = 'Error: ' + err.message;
+    status.style.color = '#EF4444';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-  
+
   applyServerConfig();
   updateColModeUI();
   // Auto-fill column positions on initial load if empty

@@ -88,6 +88,11 @@ class BuildingConfig:
     column_positions_manual: str = ""       # comma-separated ft positions for manual mode
     front_col_position_ft: float = 0.0      # front column position when back wall enabled
     splice_location_ft: float = 0.0         # user-specified splice (0 = auto)
+    # Purlin & column drawing fields
+    purlin_type: str = "Z"                  # "Z" or "C" purlin profile
+    roofing_overhang_ft: float = 0.5        # panel overhang past eave purlin
+    above_grade_ft: float = 8.0             # column height above finished grade
+    cut_allowance_in: float = 6.0           # extra length for field cuts (inches)
     # Misc
     include_trim: bool = False
     welding_cost_per_5000sqft: float = 300.0
@@ -545,6 +550,15 @@ class BOMCalculator:
                     bldg.embedment_ft, bldg.column_buffer_ft), 2)
                 for p in raft_col_pos_in
             ],
+            # Drawing-related fields
+            "purlin_type": bldg.purlin_type,
+            "roofing_overhang_ft": bldg.roofing_overhang_ft,
+            "above_grade_ft": bldg.above_grade_ft,
+            "cut_allowance_in": bldg.cut_allowance_in,
+            "width_ft": bldg.width_ft,
+            "clear_height_ft": bldg.clear_height_ft,
+            "embedment_ft": bldg.embedment_ft,
+            "frame_type": bldg.type,
         }
 
         wf = WASTE_FACTORS["10GA"]

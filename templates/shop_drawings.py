@@ -1346,31 +1346,36 @@ SHOP_DRAWINGS_HTML = r"""
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
                 var interactiveRoute = d.type === 'rafter' ? '/rafter' : d.type === 'column' ? '/column' : '';
-                const interactiveBtn = interactiveRoute
-                    ? `<button class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;" onclick="window.open('/shop-drawings/' + JOB_CODE + '${interactiveRoute}', '_blank')">Interactive View</button>`
+                // For column/rafter: show Interactive View link + only show View PDF if generated from interactive
+                // For other types (purlin, cutlist, stickers, manifest): show View PDF normally
+                var isInteractive = (d.type === 'rafter' || d.type === 'column');
+                var hasInteractivePdf = d.source === 'interactive';
+                var interactiveBtn = interactiveRoute
+                    ? '<a href="/shop-drawings/' + JOB_CODE + interactiveRoute + '" style="display:inline-block;padding:6px 14px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.8rem;border-radius:6px;text-decoration:none;" onclick="window.location.href=this.href;return false;">Open Interactive Drawing</a>'
                     : '';
-                card.innerHTML = `
-                    <div class="dc-preview">
-                        <div class="dc-icon">${typeInfo.icon}</div>
-                        <div class="dc-type-badge ${d.type}">${typeInfo.label}</div>
-                    </div>
-                    <div class="dc-body">
-                        <div class="dc-title">${escHtml(d.filename || d.description || typeInfo.label)}</div>
-                        <div class="dc-meta">
-                            <span>${sizeStr}</span>
-                            <span>${d.description || ''}</span>
-                        </div>
-                    </div>
-                    <div class="dc-actions">
-                        ${interactiveBtn}
-                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
-                            View PDF
-                        </button>
-                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
-                            Download
-                        </button>
-                    </div>
-                `;
+                var pdfBtn = '';
+                if (!isInteractive || hasInteractivePdf) {
+                    pdfBtn = '<button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(' + idx + ')">View PDF</button>' +
+                             '<button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(' + idx + ')">Download</button>';
+                } else {
+                    pdfBtn = '<span style="font-size:0.75rem;color:var(--tf-gray-500);font-style:italic;">Open interactive drawing to generate PDF</span>';
+                }
+                card.innerHTML =
+                    '<div class="dc-preview">' +
+                        '<div class="dc-icon">' + typeInfo.icon + '</div>' +
+                        '<div class="dc-type-badge ' + d.type + '">' + typeInfo.label + '</div>' +
+                    '</div>' +
+                    '<div class="dc-body">' +
+                        '<div class="dc-title">' + escHtml(d.filename || d.description || typeInfo.label) + '</div>' +
+                        '<div class="dc-meta">' +
+                            '<span>' + sizeStr + '</span>' +
+                            '<span>' + (d.description || '') + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="dc-actions">' +
+                        interactiveBtn +
+                        pdfBtn +
+                    '</div>';
                 grid.appendChild(card);
             });
         }

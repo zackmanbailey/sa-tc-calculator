@@ -3479,7 +3479,7 @@ class RafterDrawingHandler(BaseHandler):
         # Building dimensions
         rc["width_ft"] = cfg_dict.get("raft_width_ft") or cfg_dict.get("width_ft", 0)
         rc["purlin_spacing_ft"] = cfg_dict.get("raft_purlin_spacing_ft") or cfg_dict.get("purlin_spacing", 5)
-        rc["overhang_ft"] = cfg_dict.get("raft_overhang_ft") or cfg_dict.get("overhang", 1)
+        rc["overhang_ft"] = cfg_dict.get("raft_roofing_overhang_ft") or cfg_dict.get("raft_overhang_ft") or cfg_dict.get("overhang", 1)
         rc["purlin_type"] = cfg_dict.get("raft_purlin_type") or cfg_dict.get("purlin_type", "Z")
         # Angled purlins
         rc["angled_purlins"] = cfg_dict.get("raft_angled_purlins", False)
@@ -3549,6 +3549,99 @@ class ColumnDrawingHandler(BaseHandler):
         rc["reinforced"] = cfg_dict.get("col_reinforced", True)
         rc["job_code"] = job_code
         return rc
+
+
+class SaveInteractivePdfHandler(BaseHandler):
+    """POST /api/shop-drawings/save-interactive-pdf
+
+    Receives a PDF file generated client-side from an interactive drawing
+    (via jsPDF + svg2pdf.js), saves it to the project's pdfs/ directory,
+    and updates the generation log so the dashboard card shows 'View PDF'.
+    """
+    def post(self):
+        try:
+            job_code = self.get_argument("job_code", "").strip()
+            drawing_type = self.get_argument("drawing_type", "").strip()  # 'column' or 'rafter'
+            source = self.get_argument("source", "interactive").strip()
+
+            if not job_code or not drawing_type:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or drawing_type"}))
+                return
+
+            if drawing_type not in ("column", "rafter"):
+                self.write(json_encode({"ok": False, "error": f"Invalid drawing_type: {drawing_type}"}))
+                return
+
+            # Get the uploaded PDF file
+            file_info = self.request.files.get("pdf_file")
+            if not file_info or len(file_info) == 0:
+                self.write(json_encode({"ok": False, "error": "No pdf_file uploaded"}))
+                return
+
+            pdf_data = file_info[0]["body"]
+            original_name = file_info[0].get("filename", f"{job_code}_{drawing_type.upper()}_INTERACTIVE.pdf")
+
+            # Save PDF to project directory
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+            os.makedirs(pdfs_dir, exist_ok=True)
+
+            safe_jc = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            filename = f"{safe_jc}_{drawing_type.upper()}_INTERACTIVE.pdf"
+            filepath = os.path.join(pdfs_dir, filename)
+
+            with open(filepath, "wb") as f:
+                f.write(pdf_data)
+
+            # Update generation log so dashboard recognises this drawing
+            log_path = os.path.join(pdfs_dir, f"{job_code}_generation_log.json")
+            gen_log = {"files": [], "summary": {}}
+            if os.path.isfile(log_path):
+                with open(log_path) as f:
+                    gen_log = json.load(f)
+
+            # Find existing entry for this drawing type or create new one
+            files = gen_log.get("files", [])
+            found = False
+            for entry in files:
+                if entry.get("type") == drawing_type:
+                    entry["filename"] = filename
+                    entry["source"] = "interactive"
+                    entry["size_bytes"] = len(pdf_data)
+                    entry["description"] = f"{drawing_type.title()} Shop Drawing (Interactive)"
+                    entry["updated_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    found = True
+                    break
+
+            if not found:
+                files.append({
+                    "filename": filename,
+                    "type": drawing_type,
+                    "source": "interactive",
+                    "description": f"{drawing_type.title()} Shop Drawing (Interactive)",
+                    "size_bytes": len(pdf_data),
+                    "updated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                })
+                gen_log["files"] = files
+
+            with open(log_path, "w") as f:
+                json.dump(gen_log, f, indent=2)
+
+            self.write(json_encode({
+                "ok": True,
+                "filename": filename,
+                "size_bytes": len(pdf_data),
+                "source": "interactive",
+            }))
+
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({
+                "ok": False,
+                "error": str(e),
+                "trace": traceback.format_exc()
+            }))
 
 
 class ShopDrawingsConfigHandler(BaseHandler):
@@ -4784,6 +4877,7 @@ def get_routes():
         (r"/shop-drawings/([^/]+)/rafter",       RafterDrawingHandler),
         (r"/shop-drawings/([^/]+)/column",       ColumnDrawingHandler),
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
+        (r"/api/shop-drawings/save-interactive-pdf", SaveInteractivePdfHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
         (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),

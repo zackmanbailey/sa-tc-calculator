@@ -500,6 +500,11 @@ function addBuilding() {
     include_labor: true,
     welding_cost_per_5000sqft: 300,
     coil_prices: {},
+    // Rafter/Column drawing fields
+    purlin_type: 'Z',
+    roofing_overhang_ft: 0.5,
+    above_grade_ft: 8,
+    cut_allowance_in: 6,
   });
   renderBuildingList();
   renderBuildingForms();
@@ -985,11 +990,41 @@ function buildingFormHTML(b) {
         </div>` : ''}
 
         <!-- Splice override -->
-        <div class="form-group" style="max-width:220px;margin-bottom:6px">
+        <div class="form-group" style="max-width:220px;margin-bottom:10px">
           <label>Splice Location Override (ft)</label>
           <input type="number" value="${b.splice_location_ft||0}" min="0" max="100" step="0.5"
             onchange="updateBldg('${b.id}','splice_location_ft',parseFloat(this.value))"/>
           <div style="font-size:10px;color:#888;margin-top:2px">0 = auto-calculate</div>
+        </div>
+
+        <!-- Purlin Type, Roofing Overhang, Above Grade, Cut Allowance -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Purlin Type</label>
+            <select onchange="updateBldg('${b.id}','purlin_type',this.value)">
+              <option value="Z" ${(b.purlin_type||'Z')==='Z'?'selected':''}>Z-Purlin</option>
+              <option value="C" ${b.purlin_type==='C'?'selected':''}>C-Purlin</option>
+            </select>
+            <div style="font-size:10px;color:#888;margin-top:2px">Z or C channel purlins</div>
+          </div>
+          <div class="form-group">
+            <label>Roofing Overhang (ft)</label>
+            <input type="number" value="${b.roofing_overhang_ft||0.5}" min="0" max="5" step="0.25"
+              onchange="updateBldg('${b.id}','roofing_overhang_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Panel overhang past eave purlin</div>
+          </div>
+          <div class="form-group">
+            <label>Above-Grade Height (ft)</label>
+            <input type="number" value="${b.above_grade_ft||8}" min="0" max="20" step="0.5"
+              onchange="updateBldg('${b.id}','above_grade_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Column height above finished grade</div>
+          </div>
+          <div class="form-group">
+            <label>Cut Allowance (in)</label>
+            <input type="number" value="${b.cut_allowance_in||6}" min="0" max="24" step="1"
+              onchange="updateBldg('${b.id}','cut_allowance_in',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Extra length for field cuts</div>
+          </div>
         </div>
 
       </details>
