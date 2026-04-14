@@ -3382,43 +3382,108 @@ def _save_revision(job_code, rev_entry):
 
 
 def _derive_bom_config(job_code):
-    """Try to load BOM data for a project and derive ShopDrawingConfig from it."""
+    """Try to load BOM data for a project and derive ShopDrawingConfig from it.
+
+    The SA Calculator saves projects via ProjectSaveHandler to:
+      /data/projects/{job_code}/current.json   (latest)
+      /data/projects/{job_code}/v{n}.json      (versioned)
+
+    The saved payload structure is:
+      { job_code, project, buildings, bom_data: { project, buildings: [{geometry, line_items, ...}] } }
+
+    We extract geometry from bom_data.buildings[0].geometry and feed it
+    to ShopDrawingConfig.from_bom_data().
+    """
     if not HAS_SHOP_DRAWINGS:
         return {}
     safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
     proj_dir = os.path.join(PROJECTS_DIR, safe)
-
-    # Look for the latest saved version with BOM data
-    versions_dir = os.path.join(proj_dir, "versions")
-    if not os.path.isdir(versions_dir):
+    if not os.path.isdir(proj_dir):
         return {}
 
-    # Find most recent version file
-    version_files = sorted(
-        [f for f in os.listdir(versions_dir) if f.endswith(".json")],
-        reverse=True
-    )
+    # Try current.json first (always the latest), then versioned files
+    candidates = []
+    current_path = os.path.join(proj_dir, "current.json")
+    if os.path.isfile(current_path):
+        candidates.append(current_path)
 
-    for vf in version_files:
+    # Also check versioned files (v1.json, v2.json, ...) in descending order
+    try:
+        version_files = sorted(
+            [f for f in os.listdir(proj_dir)
+             if f.startswith("v") and f.endswith(".json") and f != "current.json"],
+            key=lambda f: int(re.sub(r"[^0-9]", "", f) or "0"),
+            reverse=True
+        )
+        for vf in version_files:
+            candidates.append(os.path.join(proj_dir, vf))
+    except Exception:
+        pass
+
+    # Also check legacy versions/ subdirectory if it exists
+    versions_dir = os.path.join(proj_dir, "versions")
+    if os.path.isdir(versions_dir):
         try:
-            with open(os.path.join(versions_dir, vf)) as f:
+            legacy_files = sorted(
+                [f for f in os.listdir(versions_dir) if f.endswith(".json")],
+                reverse=True
+            )
+            for vf in legacy_files:
+                candidates.append(os.path.join(versions_dir, vf))
+        except Exception:
+            pass
+
+    for filepath in candidates:
+        try:
+            with open(filepath) as f:
                 data = json.load(f)
-            bom_result = data.get("bom_result") or data.get("results", {})
-            if bom_result and "geometry" in bom_result:
-                # Load project metadata for project_info
+
+            # Extract BOM result — handle multiple payload formats
+            bom_result = None
+
+            # Format 1: bom_data.buildings[0].geometry (SA Calculator save format)
+            bom_data = data.get("bom_data") or data.get("bom_result") or data.get("results")
+            if bom_data and isinstance(bom_data, dict):
+                bldgs = bom_data.get("buildings", [])
+                if bldgs and isinstance(bldgs, list) and len(bldgs) > 0:
+                    first_bldg = bldgs[0]
+                    if isinstance(first_bldg, dict) and "geometry" in first_bldg:
+                        # Found it — construct the expected format for from_bom_data()
+                        bom_result = {"geometry": first_bldg["geometry"]}
+
+            # Format 2: geometry at top level (legacy format)
+            if not bom_result and "geometry" in data:
+                bom_result = data
+
+            if not bom_result:
+                continue
+
+            # Build project_info from saved data
+            project_info = {"job_code": job_code}
+            proj = data.get("project", {})
+            if proj:
+                project_info["project_name"] = proj.get("name", "")
+                project_info["customer_name"] = proj.get("customer_name", "")
+                project_info["location"] = (
+                    f"{proj.get('city', '')}, {proj.get('state', '')}"
+                    if proj.get("city") else proj.get("state", "")
+                )
+
+            # Also check metadata.json as fallback
+            if not project_info.get("project_name"):
                 meta_path = os.path.join(proj_dir, "metadata.json")
-                project_info = {}
                 if os.path.isfile(meta_path):
-                    with open(meta_path) as mf:
-                        meta = json.load(mf)
-                    project_info = {
-                        "job_code": job_code,
-                        "project_name": meta.get("project_name", ""),
-                        "customer_name": meta.get("customer_name", ""),
-                        "location": meta.get("location", ""),
-                    }
-                cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
-                return cfg.to_dict()
+                    try:
+                        with open(meta_path) as mf:
+                            meta = json.load(mf)
+                        project_info["project_name"] = meta.get("project_name", "")
+                        project_info["customer_name"] = meta.get("customer_name", "")
+                        project_info["location"] = meta.get("location", "")
+                    except Exception:
+                        pass
+
+            cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
+            return cfg.to_dict()
         except Exception:
             continue
 
@@ -3477,7 +3542,7 @@ class RafterDrawingHandler(BaseHandler):
         into the format expected by the HTML drawing's applyServerConfig()."""
         rc = {}
         # Building dimensions
-        rc["width_ft"] = cfg_dict.get("raft_width_ft") or cfg_dict.get("width_ft", 0)
+        rc["width_ft"] = cfg_dict.get("raft_width_ft") or cfg_dict.get("building_width_ft") or cfg_dict.get("width_ft", 0)
         rc["purlin_spacing_ft"] = cfg_dict.get("raft_purlin_spacing_ft") or cfg_dict.get("purlin_spacing", 5)
         rc["overhang_ft"] = cfg_dict.get("raft_roofing_overhang_ft") or cfg_dict.get("raft_overhang_ft") or cfg_dict.get("overhang", 1)
         rc["purlin_type"] = cfg_dict.get("raft_purlin_type") or cfg_dict.get("purlin_type", "Z")
@@ -3540,9 +3605,9 @@ class ColumnDrawingHandler(BaseHandler):
         into the format expected by the HTML drawing's applyServerConfig()."""
         rc = {}
         rc["pitch_deg"] = cfg_dict.get("col_pitch_deg") or cfg_dict.get("pitch_deg", 1.2)
-        rc["clear_height_ft"] = cfg_dict.get("col_clear_height_ft") or cfg_dict.get("clear_height", 14)
-        rc["width_ft"] = cfg_dict.get("col_width_ft") or cfg_dict.get("width_ft") or cfg_dict.get("raft_width_ft", 40)
-        rc["footing_ft"] = cfg_dict.get("col_footing_ft") or cfg_dict.get("footing_depth", 10)
+        rc["clear_height_ft"] = cfg_dict.get("col_clear_height_ft") or cfg_dict.get("clear_height_ft") or cfg_dict.get("clear_height", 14)
+        rc["width_ft"] = cfg_dict.get("col_width_ft") or cfg_dict.get("building_width_ft") or cfg_dict.get("width_ft", 40)
+        rc["footing_ft"] = cfg_dict.get("col_footing_ft") or cfg_dict.get("footing_depth_ft") or cfg_dict.get("footing_depth", 10)
         rc["rebar_size"] = cfg_dict.get("col_rebar_size") or cfg_dict.get("rebar_size", "#9")
         rc["above_grade_ft"] = cfg_dict.get("col_above_grade_ft") or cfg_dict.get("above_grade", 8)
         rc["cut_allowance_in"] = cfg_dict.get("col_cut_allowance_in", 6)

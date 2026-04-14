@@ -500,11 +500,22 @@ function addBuilding() {
     include_labor: true,
     welding_cost_per_5000sqft: 300,
     coil_prices: {},
+    // Rafter Configuration defaults (column placement, angled purlins, rebar, splice)
+    column_mode: 'auto',              // "auto" (quarter-point), "spacing", or "manual"
+    column_spacing_ft: 25,            // used when column_mode === 'spacing'
+    column_count_manual: 1,           // used when column_mode === 'manual'
+    column_positions_manual: '',      // comma-separated ft positions for manual mode
+    front_col_position_ft: 0,         // front column position when back wall enabled
+    angled_purlins: false,            // master toggle for angled purlin mode
+    purlin_angle_deg: 15,             // angle from perpendicular (5–45°)
+    rebar_max_stick_ft: 20,           // max rebar stick length in rafter
+    rebar_end_gap_ft: 5,              // gap from rafter end to first rebar
+    splice_location_ft: 0,            // 0 = auto-calculate splice point
     // Rafter/Column drawing fields
-    purlin_type: 'Z',
-    roofing_overhang_ft: 0.5,
-    above_grade_ft: 8,
-    cut_allowance_in: 6,
+    purlin_type: 'Z',                 // Z or C channel purlins
+    roofing_overhang_ft: 0.5,         // panel overhang past eave purlin
+    above_grade_ft: 8,                // column height above finished grade
+    cut_allowance_in: 6,              // extra length for field cuts (inches)
   });
   renderBuildingList();
   renderBuildingForms();
