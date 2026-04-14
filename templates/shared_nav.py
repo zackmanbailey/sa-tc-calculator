@@ -250,6 +250,24 @@ NAV_CSS = """
     color: rgba(255,255,255,0.4);
     text-transform: capitalize;
 }
+.tf-logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.tf-logout-btn:hover {
+    background: rgba(220,38,38,0.2);
+    color: #f87171;
+}
+.tf-sidebar.collapsed .tf-logout-btn { display: none; }
 
 /* Toggle button */
 .tf-sidebar-toggle {
@@ -1057,11 +1075,16 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     </nav>
 
     <div class="tf-sidebar-footer">
-        <div class="user-avatar" id="userAvatar">U</div>
-        <div class="user-info">
-            <div class="user-name" id="userName">{user_name}</div>
-            <div class="user-role" id="userRole">{role_display}</div>
-        </div>
+        <a href="/profile" class="tf-footer-user" title="Edit Profile" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">
+            <div class="user-avatar" id="userAvatar">{user_name[0:1].upper()}</div>
+            <div class="user-info">
+                <div class="user-name" id="userName">{user_name}</div>
+                <div class="user-role" id="userRole">{role_display}</div>
+            </div>
+        </a>
+        <a href="/auth/logout" class="tf-logout-btn" title="Logout" onclick="return confirm('Are you sure you want to logout?')">
+            <span style="font-size:16px;">&#9211;</span>
+        </a>
     </div>
 </aside>
 

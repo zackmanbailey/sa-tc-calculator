@@ -47,6 +47,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 USERS_PATH = os.path.join(DATA_DIR, "users.json")
 AUDIT_PATH = os.path.join(DATA_DIR, "audit_log.json")
+PENDING_PATH = os.path.join(DATA_DIR, "pending_users.json")
 
 # Lockout config (RULES.md §13)
 MAX_FAILED_ATTEMPTS = 5
@@ -504,3 +505,218 @@ def list_users(include_inactive: bool = False) -> List[dict]:
             "created_at": record.get("created_at"),
         })
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PENDING USER REGISTRATION (Approval Queue)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_pending() -> List[dict]:
+    """Load pending user registrations."""
+    if not os.path.isfile(PENDING_PATH):
+        return []
+    try:
+        with open(PENDING_PATH, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def _save_pending(data: List[dict]):
+    """Save pending user registrations."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(PENDING_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def submit_registration(
+    username: str,
+    password: str,
+    display_name: str,
+    email: str = "",
+    phone: str = "",
+    address: str = "",
+    company_role: str = "",
+    ip_address: str = "",
+) -> dict:
+    """
+    Submit a new user registration for admin approval.
+    Raises ValueError if username already taken or pending.
+    Returns the pending record.
+    """
+    # Check if username already exists as active user
+    users = load_users()
+    if username in users:
+        raise ValueError("Username already taken")
+
+    # Check if already pending
+    pending = _load_pending()
+    for p in pending:
+        if p["username"] == username and p["status"] == "pending":
+            raise ValueError("Registration already submitted and awaiting approval")
+
+    record = {
+        "request_id": f"REG-{secrets.token_hex(6).upper()}",
+        "username": username,
+        "password_hash": hash_password(password),
+        "display_name": display_name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "company_role": company_role,
+        "status": "pending",  # pending | approved | rejected
+        "submitted_at": _now_iso(),
+        "submitted_ip": ip_address,
+        "reviewed_by": None,
+        "reviewed_at": None,
+        "review_notes": "",
+    }
+
+    pending.append(record)
+    _save_pending(pending)
+    _audit_log("registration_submitted", username, f"Registration request from IP {ip_address}")
+    return record
+
+
+def list_pending_registrations(status_filter: str = None) -> List[dict]:
+    """List pending registrations. Optionally filter by status."""
+    pending = _load_pending()
+    if status_filter:
+        pending = [p for p in pending if p.get("status") == status_filter]
+    # Don't expose password hashes
+    safe = []
+    for p in pending:
+        entry = {k: v for k, v in p.items() if k != "password_hash"}
+        safe.append(entry)
+    return safe
+
+
+def approve_registration(
+    request_id: str,
+    roles: List[str],
+    approved_by: str = "admin",
+    notes: str = "",
+) -> dict:
+    """
+    Approve a pending registration — creates the user account.
+    Raises ValueError if request not found or already processed.
+    """
+    from auth.roles import ROLES
+
+    pending = _load_pending()
+    target = None
+    for p in pending:
+        if p["request_id"] == request_id:
+            target = p
+            break
+
+    if not target:
+        raise ValueError(f"Registration request '{request_id}' not found")
+    if target["status"] != "pending":
+        raise ValueError(f"Request already {target['status']}")
+
+    # Validate roles
+    for r in roles:
+        if r not in ROLES:
+            raise ValueError(f"Invalid role: '{r}'")
+
+    # Create the user account
+    users = load_users()
+    if target["username"] in users:
+        raise ValueError(f"Username '{target['username']}' already exists")
+
+    now = _now_iso()
+    user_id = _gen_user_id()
+
+    users[target["username"]] = {
+        "user_id": user_id,
+        "username": target["username"],
+        "display_name": target["display_name"],
+        "email": target.get("email", ""),
+        "phone": target.get("phone", ""),
+        "address": target.get("address", ""),
+        "company_role": target.get("company_role", ""),
+        "password_hash": target["password_hash"],
+        "password": target["password_hash"],  # Legacy compat
+        "roles": roles,
+        "role": roles[0],
+        "active": True,
+        "created_at": now,
+        "created_by": approved_by,
+        "last_login": None,
+        "force_password_change": False,
+        "failed_attempts": 0,
+        "locked_until": None,
+    }
+    save_users(users)
+
+    # Update pending record
+    target["status"] = "approved"
+    target["reviewed_by"] = approved_by
+    target["reviewed_at"] = now
+    target["review_notes"] = notes
+    _save_pending(pending)
+
+    _audit_log("registration_approved", approved_by,
+               f"Approved '{target['username']}' with roles {roles}")
+    return target
+
+
+def reject_registration(
+    request_id: str,
+    rejected_by: str = "admin",
+    notes: str = "",
+) -> dict:
+    """Reject a pending registration."""
+    pending = _load_pending()
+    target = None
+    for p in pending:
+        if p["request_id"] == request_id:
+            target = p
+            break
+
+    if not target:
+        raise ValueError(f"Registration request '{request_id}' not found")
+    if target["status"] != "pending":
+        raise ValueError(f"Request already {target['status']}")
+
+    target["status"] = "rejected"
+    target["reviewed_by"] = rejected_by
+    target["reviewed_at"] = _now_iso()
+    target["review_notes"] = notes
+    _save_pending(pending)
+
+    _audit_log("registration_rejected", rejected_by,
+               f"Rejected '{target['username']}': {notes}")
+    return target
+
+
+def update_user_profile(
+    username: str,
+    phone: Optional[str] = None,
+    address: Optional[str] = None,
+    company_role: Optional[str] = None,
+    display_name: Optional[str] = None,
+    email: Optional[str] = None,
+) -> dict:
+    """Update a user's profile fields (phone, address, company role)."""
+    users = load_users()
+    user = users.get(username)
+    if not user:
+        raise ValueError(f"User '{username}' not found")
+
+    if phone is not None:
+        user["phone"] = phone
+    if address is not None:
+        user["address"] = address
+    if company_role is not None:
+        user["company_role"] = company_role
+    if display_name is not None:
+        user["display_name"] = display_name
+    if email is not None:
+        user["email"] = email
+
+    users[username] = user
+    save_users(users)
+    _audit_log("profile_updated", username, f"Updated profile for '{username}'")
+    return user

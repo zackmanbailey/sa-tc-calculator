@@ -24,6 +24,11 @@ sys.path.insert(0, BASE_DIR)
 from auth.roles import P, ROLES, ROLE_IDS, get_role, get_role_permissions, list_all_roles
 from auth.permissions import PermissionSet, merge_permissions, build_template_context
 from auth.middleware import AuthMixin, require_permission, require_any_role, require_financial_access, require_delete_capability
+from auth.security import (
+    apply_security_headers, check_login_rate, check_api_rate, check_register_rate,
+    sanitize_string, sanitize_username, sanitize_email, sanitize_phone,
+    validate_password_strength, has_xss_patterns, SECURE_COOKIE_KWARGS,
+)
 import auth.middleware as auth_middleware
 import auth.users as auth_users
 
@@ -623,6 +628,18 @@ class BaseHandler(AuthMixin, tornado.web.RequestHandler):
 
     def prepare(self):
         """Check auth before handling request. Bridges old and new RBAC."""
+        # Apply security headers to every response
+        apply_security_headers(self)
+
+        # API rate limiting
+        if self.request.path.startswith("/api/"):
+            ip = self.request.remote_ip or "unknown"
+            allowed, remaining = check_api_rate(ip)
+            if not allowed:
+                self.set_status(429)
+                self.write(json_encode({"error": "Too many requests. Please slow down."}))
+                raise tornado.web.Finish()
+
         # Sync AUTH_ENABLED to auth middleware module
         auth_middleware.AUTH_ENABLED = AUTH_ENABLED
 
@@ -667,11 +684,14 @@ class BaseHandler(AuthMixin, tornado.web.RequestHandler):
 
         user = self.get_current_user() or "local"
         role = self.get_user_role() or "god_mode"
-        users = load_users()
-        display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
+        users_db = load_users()
+        user_data = users_db.get(user, {})
+        display = user_data.get("display_name", user) if user != "local" else "Admin"
+        # Pass full roles list for multi-role support
+        user_roles = user_data.get("roles", [role]) if user != "local" else ["god_mode"]
 
         result = inject_nav(html, active_page=active_page, job_code=job_code,
-                            user_name=display, user_role=role)
+                            user_name=display, user_role=role, user_roles=user_roles)
         self.set_header("Content-Type", "text/html")
         self.write(result)
 
@@ -683,6 +703,7 @@ class BaseHandler(AuthMixin, tornado.web.RequestHandler):
 class LoginHandler(tornado.web.RequestHandler):
     """POST /auth/login — Authenticate user and set secure cookie."""
     def get(self):
+        apply_security_headers(self)
         # If already logged in, redirect to dashboard
         if self.get_secure_cookie("sa_user"):
             self.redirect("/")
@@ -692,6 +713,16 @@ class LoginHandler(tornado.web.RequestHandler):
         self.write(LOGIN_HTML)
 
     def post(self):
+        apply_security_headers(self)
+        ip = self.request.remote_ip or "unknown"
+
+        # Rate limit login attempts by IP
+        allowed, remaining = check_login_rate(ip)
+        if not allowed:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Too many login attempts. Please wait a few minutes."}))
+            return
+
         try:
             body = json_decode(self.request.body)
         except:
@@ -699,8 +730,15 @@ class LoginHandler(tornado.web.RequestHandler):
                 "username": self.get_argument("username", ""),
                 "password": self.get_argument("password", "")
             }
-        username = body.get("username", "").strip().lower()
+
+        # Sanitize username input
+        username = sanitize_username(body.get("username", ""))
         password = body.get("password", "")
+
+        if not username or not password:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Username and password required."}))
+            return
 
         # Check lockout first
         lockout = auth_users.check_lockout(username)
@@ -718,8 +756,7 @@ class LoginHandler(tornado.web.RequestHandler):
             stored_hash = user.get("password_hash") or user.get("password")
 
         if not user or not stored_hash or not verify_password(stored_hash, password):
-            # Record failed login
-            ip = self.request.remote_ip or ""
+            # Record failed login — use generic error to prevent username enumeration
             auth_users.record_login(username, False, ip)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
@@ -732,10 +769,9 @@ class LoginHandler(tornado.web.RequestHandler):
             return
 
         # Record successful login
-        ip = self.request.remote_ip or ""
         auth_users.record_login(username, True, ip)
 
-        self.set_secure_cookie("sa_user", username, expires_days=30)
+        self.set_secure_cookie("sa_user", username, expires_days=30, **SECURE_COOKIE_KWARGS)
         self.set_header("Content-Type", "application/json")
 
         # Get user roles for response
@@ -758,6 +794,264 @@ class LogoutHandler(tornado.web.RequestHandler):
         self.redirect("/auth/login")
 
 
+# ─────────────────────────────────────────────
+# REGISTRATION (Self-service with Approval Queue)
+# ─────────────────────────────────────────────
+
+class RegisterPageHandler(tornado.web.RequestHandler):
+    """GET /auth/register — Show registration request form."""
+    def get(self):
+        apply_security_headers(self)
+        from templates.register import REGISTER_HTML
+        self.set_header("Content-Type", "text/html")
+        self.write(REGISTER_HTML)
+
+
+class RegisterSubmitHandler(tornado.web.RequestHandler):
+    """POST /auth/register — Submit registration for admin approval."""
+    def post(self):
+        apply_security_headers(self)
+        ip = self.request.remote_ip or "unknown"
+
+        # Rate limit registrations
+        allowed, remaining = check_register_rate(ip)
+        if not allowed:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Too many registration attempts. Please try again later."}))
+            return
+
+        try:
+            body = json_decode(self.request.body)
+        except:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Invalid request."}))
+            return
+
+        # Sanitize all inputs
+        username = sanitize_username(body.get("username", ""))
+        password = body.get("password", "")
+        display_name = sanitize_string(body.get("display_name", ""), max_length=100)
+        email = sanitize_email(body.get("email", ""))
+        phone = sanitize_phone(body.get("phone", ""))
+        address = sanitize_string(body.get("address", ""), max_length=300)
+        company_role = sanitize_string(body.get("company_role", ""), max_length=100)
+
+        # Validate required fields
+        if not username or len(username) < 3:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Username must be at least 3 characters (letters, numbers, underscores only)."}))
+            return
+        if not display_name:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Display name is required."}))
+            return
+
+        # Validate password strength
+        pw_valid, pw_error = validate_password_strength(password)
+        if not pw_valid:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": pw_error}))
+            return
+
+        # Check for XSS in all text fields
+        for field_name, value in [("display_name", display_name), ("address", address), ("company_role", company_role)]:
+            if has_xss_patterns(value):
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": f"Invalid characters detected in {field_name}."}))
+                return
+
+        try:
+            record = auth_users.submit_registration(
+                username=username,
+                password=password,
+                display_name=display_name,
+                email=email,
+                phone=phone,
+                address=address,
+                company_role=company_role,
+                ip_address=ip,
+            )
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "message": "Registration submitted! An admin will review your request.",
+                "request_id": record["request_id"],
+            }))
+        except ValueError as e:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# PENDING REGISTRATIONS (Admin Approval)
+# ─────────────────────────────────────────────
+
+class PendingRegistrationsHandler(BaseHandler):
+    """GET /auth/registrations/pending — List pending registrations."""
+    required_roles = ["admin", "god_mode"]
+
+    def get(self):
+        pending = auth_users.list_pending_registrations(status_filter="pending")
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"registrations": pending}))
+
+
+class ApproveRegistrationHandler(BaseHandler):
+    """POST /auth/registrations/approve — Approve a pending registration."""
+    required_roles = ["admin", "god_mode"]
+
+    def post(self):
+        body = json_decode(self.request.body)
+        request_id = sanitize_string(body.get("request_id", ""), max_length=30)
+        roles = body.get("roles", ["laborer"])
+        notes = sanitize_string(body.get("notes", ""), max_length=500)
+
+        if not request_id:
+            self.write(json_encode({"ok": False, "error": "Request ID required."}))
+            return
+
+        # Sanitize roles
+        if isinstance(roles, list):
+            roles = [sanitize_string(r, max_length=50) for r in roles if r]
+        else:
+            roles = ["laborer"]
+
+        admin_user = self.get_current_user() or "admin"
+        try:
+            result = auth_users.approve_registration(request_id, roles, approved_by=admin_user, notes=notes)
+            self.write(json_encode({"ok": True, "message": f"User '{result['username']}' approved."}))
+        except ValueError as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class RejectRegistrationHandler(BaseHandler):
+    """POST /auth/registrations/reject — Reject a pending registration."""
+    required_roles = ["admin", "god_mode"]
+
+    def post(self):
+        body = json_decode(self.request.body)
+        request_id = sanitize_string(body.get("request_id", ""), max_length=30)
+        notes = sanitize_string(body.get("notes", ""), max_length=500)
+
+        if not request_id:
+            self.write(json_encode({"ok": False, "error": "Request ID required."}))
+            return
+
+        admin_user = self.get_current_user() or "admin"
+        try:
+            result = auth_users.reject_registration(request_id, rejected_by=admin_user, notes=notes)
+            self.write(json_encode({"ok": True, "message": f"Registration for '{result['username']}' rejected."}))
+        except ValueError as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# USER PROFILE
+# ─────────────────────────────────────────────
+
+class ProfilePageHandler(BaseHandler):
+    """GET /profile — User's own profile page."""
+    def get(self):
+        from templates.profile import PROFILE_HTML
+        self.render_with_nav(PROFILE_HTML, active_page="profile")
+
+
+class ProfileAPIHandler(BaseHandler):
+    """GET /api/profile — Get current user's profile data."""
+    def get(self):
+        username = self.get_current_user()
+        if not username or username == "local":
+            self.write(json_encode({"ok": False, "error": "Not authenticated"}))
+            return
+        users = load_users()
+        user = users.get(username, {})
+        self.write(json_encode({
+            "ok": True,
+            "profile": {
+                "username": username,
+                "display_name": user.get("display_name", ""),
+                "email": user.get("email", ""),
+                "phone": user.get("phone", ""),
+                "address": user.get("address", ""),
+                "company_role": user.get("company_role", ""),
+                "roles": user.get("roles", [user.get("role", "laborer")]),
+                "created_at": user.get("created_at", user.get("created", "")),
+                "last_login": user.get("last_login", ""),
+            }
+        }))
+
+
+class ProfileUpdateHandler(BaseHandler):
+    """POST /api/profile/update — Update current user's profile."""
+    def post(self):
+        username = self.get_current_user()
+        if not username or username == "local":
+            self.write(json_encode({"ok": False, "error": "Not authenticated"}))
+            return
+
+        body = json_decode(self.request.body)
+
+        # Sanitize inputs
+        display_name = sanitize_string(body.get("display_name", ""), max_length=100) or None
+        email = sanitize_email(body.get("email", "")) or None
+        phone = sanitize_phone(body.get("phone", "")) or None
+        address = sanitize_string(body.get("address", ""), max_length=300) or None
+        company_role = sanitize_string(body.get("company_role", ""), max_length=100) or None
+
+        # Check for XSS
+        for val in [display_name, address, company_role]:
+            if val and has_xss_patterns(val):
+                self.write(json_encode({"ok": False, "error": "Invalid characters detected."}))
+                return
+
+        try:
+            auth_users.update_user_profile(
+                username,
+                phone=phone,
+                address=address,
+                company_role=company_role,
+                display_name=display_name,
+                email=email,
+            )
+            self.write(json_encode({"ok": True, "message": "Profile updated."}))
+        except ValueError as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ChangePasswordHandler(BaseHandler):
+    """POST /api/profile/change-password — Change own password."""
+    def post(self):
+        username = self.get_current_user()
+        if not username or username == "local":
+            self.write(json_encode({"ok": False, "error": "Not authenticated"}))
+            return
+
+        body = json_decode(self.request.body)
+        current_password = body.get("current_password", "")
+        new_password = body.get("new_password", "")
+
+        # Verify current password
+        users = load_users()
+        user = users.get(username, {})
+        stored_hash = user.get("password_hash") or user.get("password")
+        if not stored_hash or not verify_password(stored_hash, current_password):
+            self.write(json_encode({"ok": False, "error": "Current password is incorrect."}))
+            return
+
+        # Validate new password strength
+        pw_valid, pw_error = validate_password_strength(new_password)
+        if not pw_valid:
+            self.write(json_encode({"ok": False, "error": pw_error}))
+            return
+
+        # Update password
+        try:
+            auth_users.update_user(username, password=new_password, updated_by=username)
+            self.write(json_encode({"ok": True, "message": "Password changed successfully."}))
+        except ValueError as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class AdminPageHandler(BaseHandler):
     """GET /admin — User management page (God Mode only)."""
     required_roles = ["admin", "god_mode"]
@@ -767,17 +1061,23 @@ class AdminPageHandler(BaseHandler):
 
 
 class UsersListHandler(BaseHandler):
-    """GET /auth/users — List all users (admin only)."""
-    required_roles = ["admin"]
+    """GET /auth/users — List all users (admin/god_mode)."""
+    required_roles = ["admin", "god_mode"]
 
     def get(self):
         users = load_users()
         safe = []
         for uname, udata in users.items():
+            # Support multi-role: return roles array + primary role for backward compat
+            roles_list = udata.get("roles", [])
+            primary_role = udata.get("role", "viewer")
+            if not roles_list:
+                roles_list = [primary_role]
             safe.append({
                 "username": uname,
                 "display_name": udata.get("display_name", ""),
-                "role": udata.get("role", "viewer"),
+                "role": primary_role,
+                "roles": roles_list,
                 "created_at": udata.get("created", ""),
             })
         self.set_header("Content-Type", "application/json")
@@ -785,8 +1085,8 @@ class UsersListHandler(BaseHandler):
 
 
 class UserAddHandler(BaseHandler):
-    """POST /auth/users/add — Add a new user (admin only)."""
-    required_roles = ["admin"]
+    """POST /auth/users/add — Add a new user (admin/god_mode)."""
+    required_roles = ["admin", "god_mode"]
 
     def post(self):
         body = json_decode(self.request.body)
@@ -801,10 +1101,21 @@ class UserAddHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": "Username already exists"}))
             return
 
+        # Support multi-role: accept "roles" array or single "role"
+        roles_list = body.get("roles", [])
+        primary_role = body.get("role", "viewer")
+        if roles_list and isinstance(roles_list, list):
+            roles_list = [r for r in roles_list if r]
+            if roles_list:
+                primary_role = roles_list[0]
+        else:
+            roles_list = [primary_role]
+
         users[username] = {
             "password": hash_password(password),
             "display_name": body.get("display_name", username),
-            "role": body.get("role", "viewer"),
+            "role": primary_role,
+            "roles": roles_list,
             "created": datetime.datetime.now().isoformat(),
         }
         save_users(users)
@@ -812,16 +1123,28 @@ class UserAddHandler(BaseHandler):
 
 
 class UserUpdateRoleHandler(BaseHandler):
-    """POST /auth/users/update-role — Change a user's role (admin only)."""
-    required_roles = ["admin"]
+    """POST /auth/users/update-role — Change a user's roles (admin/god_mode).
+
+    Accepts either:
+      {"username": "x", "role": "admin"}           — single role (legacy)
+      {"username": "x", "roles": ["admin", "pm"]}  — multi-role (new)
+    """
+    required_roles = ["admin", "god_mode"]
 
     def post(self):
         body = json_decode(self.request.body)
         username = body.get("username", "").strip().lower()
+        new_roles = body.get("roles", [])
         new_role = body.get("role", "")
 
-        if not username or not new_role:
-            self.write(json_encode({"ok": False, "error": "Username and role required"}))
+        # Accept either roles array or single role string
+        if new_roles and isinstance(new_roles, list):
+            new_roles = [r for r in new_roles if r]  # filter empties
+        elif new_role:
+            new_roles = [new_role]
+
+        if not username or not new_roles:
+            self.write(json_encode({"ok": False, "error": "Username and at least one role required"}))
             return
 
         users = load_users()
@@ -829,28 +1152,35 @@ class UserUpdateRoleHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": "User not found"}))
             return
 
-        users[username]["role"] = new_role
-        # Also update the roles list if present
-        users[username]["roles"] = [new_role]
+        users[username]["role"] = new_roles[0]  # primary role = first in list
+        users[username]["roles"] = new_roles
         save_users(users)
-        self.write(json_encode({"ok": True, "message": f"Role updated to {new_role}"}))
+        role_str = ", ".join(r.replace("_", " ") for r in new_roles)
+        self.write(json_encode({"ok": True, "message": f"Roles updated to: {role_str}"}))
 
 
 class UserDeleteHandler(BaseHandler):
-    """POST /auth/users/delete — Delete a user (admin only)."""
-    required_roles = ["admin"]
+    """POST /auth/users/delete — Delete a user (admin/god_mode)."""
+    required_roles = ["admin", "god_mode"]
 
     def post(self):
         body = json_decode(self.request.body)
         username = body.get("username", "")
-        if username == "admin":
-            self.write(json_encode({"ok": False, "error": "Cannot delete the admin account"}))
+        current_user = self.get_current_user()
+
+        # Can't delete yourself
+        if username == current_user:
+            self.write(json_encode({"ok": False, "error": "Cannot delete your own account. Have another admin do it."}))
             return
 
         users = load_users()
-        if username in users:
-            del users[username]
-            save_users(users)
+        if username not in users:
+            self.write(json_encode({"ok": False, "error": "User not found."}))
+            return
+
+        del users[username]
+        save_users(users)
+        auth_users._audit_log("user_deleted", current_user, f"Deleted user '{username}'")
         self.write(json_encode({"ok": True}))
 
 
@@ -2456,7 +2786,7 @@ class ProjectListEnhancedHandler(BaseHandler):
 
 class ProjectDeleteHandler(BaseHandler):
     """POST /api/project/delete — Delete a project and all associated data."""
-    required_roles = ["admin"]
+    required_roles = ["admin", "god_mode"]
 
     def post(self):
         try:
@@ -2568,7 +2898,7 @@ class CustomerUpdateHandler(BaseHandler):
 
 class CustomerDeleteHandler(BaseHandler):
     """POST /api/customers/delete — Delete a customer record."""
-    required_roles = ["admin"]
+    required_roles = ["admin", "god_mode"]
     def post(self):
         body = json_decode(self.request.body)
         cid = body.get("id", "")
@@ -8249,7 +8579,16 @@ def get_routes():
         # ── Auth routes ────────────────────────────────────────
         (r"/auth/login",         LoginHandler),
         (r"/auth/logout",        LogoutHandler),
+        (r"/auth/register",      RegisterPageHandler),
+        (r"/auth/register/submit", RegisterSubmitHandler),
+        (r"/auth/registrations/pending",  PendingRegistrationsHandler),
+        (r"/auth/registrations/approve",  ApproveRegistrationHandler),
+        (r"/auth/registrations/reject",   RejectRegistrationHandler),
         (r"/admin",              AdminPageHandler),
+        (r"/profile",            ProfilePageHandler),
+        (r"/api/profile",        ProfileAPIHandler),
+        (r"/api/profile/update", ProfileUpdateHandler),
+        (r"/api/profile/change-password", ChangePasswordHandler),
         (r"/auth/users",         UsersListHandler),
         (r"/auth/users/add",         UserAddHandler),
         (r"/auth/users/update-role", UserUpdateRoleHandler),

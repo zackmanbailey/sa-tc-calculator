@@ -192,9 +192,12 @@ LOGIN_HTML = r"""
             </form>
 
             <div class="footer">
+                <a href="/auth/register" style="color:#60a5fa;text-decoration:none;font-size:13px;display:block;margin-bottom:12px;">
+                    Need access? Request an account
+                </a>
                 <span>Internal use only</span>
                 <span>·</span>
-                <span>v3.0</span>
+                <span>v4.0</span>
             </div>
         </div>
     </div>

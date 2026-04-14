@@ -1864,8 +1864,7 @@ DASHBOARD_HTML = r"""
     }
 
     function deleteProject(jobCode) {
-        if (!confirm('Are you sure you want to delete project ' + jobCode + '? This cannot be undone.')) return;
-        if (!confirm('FINAL WARNING: All data for ' + jobCode + ' (drawings, work orders, BOM) will be permanently deleted. Continue?')) return;
+        if (!confirm('Delete project ' + jobCode + '?\n\nAll data (drawings, work orders, BOM) will be permanently deleted. This cannot be undone.')) return;
         fetch('/api/project/delete', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
