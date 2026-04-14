@@ -1,9 +1,9 @@
 """
-TitanForge v4.2 — Interactive Column Shop Drawing Template
-==============================================================
-Interactive SVG-based column drawing with parameter controls and
-AWS weld notation. Embeds the full ColumnShopDrawing_v9 application
-with TitanForge integration for fetching project configuration.
+TitanForge — Interactive Column Shop Drawing Template
+=====================================================
+Full-featured SVG-based column shop drawing served as an interactive page.
+Pre-fills with project data via window.COLUMN_CONFIG injection.
+Supports browser Print→PDF for clean shop-floor output.
 """
 
 COLUMN_DRAWING_HTML = r"""
@@ -26,17 +26,6 @@ COLUMN_DRAWING_HTML = r"""
     flex-wrap: wrap; gap: 8px;
   }
   .top-bar h1 { font-size: 1rem; font-weight: 700; color: #F6AE2D; }
-  .top-bar .back-link {
-    padding: 6px 12px; background: #334155; color: #94A3B8; border: 1px solid #475569;
-    border-radius: 5px; text-decoration: none; font-size: 0.78rem; cursor: pointer;
-    transition: all 0.2s;
-  }
-  .top-bar .back-link:hover {
-    background: #475569; color: #F1F5F9;
-  }
-  .top-bar .job-code-label {
-    font-size: 0.85rem; color: #94A3B8;
-  }
   .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .ctrl-group { display: flex; align-items: center; gap: 6px; }
   .ctrl-group label { font-size: 0.75rem; color: #94A3B8; white-space: nowrap; }
@@ -201,15 +190,49 @@ COLUMN_DRAWING_HTML = r"""
     body { background: #fff; }
   }
 </style>
+<script>
+// ── Server-injected project config ──
+window.COLUMN_CONFIG = window.COLUMN_CONFIG || null;
+
+function applyServerConfig() {
+  var cfg = window.COLUMN_CONFIG;
+  if (!cfg) return;  // standalone mode
+
+  if (cfg.pitch_deg !== undefined) {
+    document.getElementById('inPitch').value = cfg.pitch_deg;
+    var vp = document.getElementById('vPitch');
+    if (vp) vp.textContent = cfg.pitch_deg + '°';
+  }
+  if (cfg.clear_height_ft) document.getElementById('inClearHt').value = cfg.clear_height_ft;
+  if (cfg.width_ft) document.getElementById('inWidth').value = cfg.width_ft;
+  if (cfg.footing_ft) document.getElementById('inFooting').value = cfg.footing_ft;
+  if (cfg.rebar_size) {
+    var sel = document.getElementById('inRebar');
+    if (sel) sel.value = cfg.rebar_size;
+  }
+  if (cfg.above_grade_ft) document.getElementById('inAboveGrade').value = cfg.above_grade_ft;
+  if (cfg.cut_allowance_in !== undefined) document.getElementById('inCutAllowance').value = cfg.cut_allowance_in;
+  if (cfg.reinforced === false) {
+    // Click the non-reinforced button
+    var btnR = document.getElementById('btnReinforced');
+    var btnNR = document.getElementById('btnNonReinforced');
+    if (btnR && btnNR) {
+      btnR.classList.remove('active');
+      btnNR.classList.add('active');
+    }
+  }
+  // Project info for title block
+  if (cfg.job_code) {
+    var lbl = document.querySelector('.top-bar h1');
+    if (lbl) lbl.textContent = 'TitanForge — Column Shop Drawing — ' + cfg.job_code;
+  }
+}
+window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
 </head>
 <body>
 
 <div class="top-bar">
-  <div style="display: flex; align-items: center; gap: 12px;">
-    <a href="/shop-drawings/{{JOB_CODE}}" class="back-link">← Back to Shop Drawings</a>
-    <h1>TitanForge — Column Shop Drawing</h1>
-    <span class="job-code-label" id="jobCodeDisplay">Job: {{JOB_CODE}}</span>
-  </div>
+  <h1>TitanForge — Column Shop Drawing</h1>
   <div class="controls">
     <div class="ctrl-group">
       <label>Pitch:</label>
@@ -260,6 +283,8 @@ COLUMN_DRAWING_HTML = r"""
     <button class="btn-gold" id="btnWeldEdit" style="background:#0055AA;color:#FFF;" onclick="toggleWeldEditMode()">🔧 Edit Welds</button>
     <button class="btn-gold" id="btnWeldReset" style="background:#7C2D12;color:#FDBA74;display:none;" onclick="resetAllWeldOverrides()">↺ Reset Welds</button>
     <button class="btn-gold" id="btnExportLayout" style="background:#334155;color:#94A3B8;border:1px solid #475569;display:none;" onclick="exportLayout()">📋 Export Layout</button>
+    <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ PDF</button>
+    <a style="padding:6px 12px;background:#334155;color:#94A3B8;border:1px solid #475569;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;" href="/shop-drawings/{{JOB_CODE}}">← Dashboard</a>
   </div>
 </div>
 
@@ -1530,7 +1555,9 @@ function toggleReinforced() {
   } else {
     b.classList.remove('active'); a.classList.add('active');
   }
-  draw();
+applyServerConfig();
+updateCheckBadge();
+draw();
 }
 
 ['inPitch','inClearHt','inWidth','inFooting','inRebar','inAboveGrade','inCutAllowance'].forEach(id => {
@@ -2487,90 +2514,6 @@ window.addEventListener('keydown', function(e) {
     applyVB();
   };
 })();
-
-// ══════════════════════════════════════════════════════
-//  TITANFORGE INTEGRATION
-// ══════════════════════════════════════════════════════
-
-document.addEventListener('DOMContentLoaded', function() {
-  // Extract job code from URL
-  const jobCode = window.location.pathname.match(/\/column-drawing\/([^\/]+)/)?.[1];
-  if (jobCode) {
-    // Fetch project config from TitanForge API
-    fetch('/api/shop-drawings/config?job_code=' + encodeURIComponent(jobCode))
-      .then(resp => resp.json())
-      .then(data => {
-        if (data.ok && data.config) {
-          applyConfigToDrawing(data.config);
-        }
-      })
-      .catch(err => console.error('Failed to load project config:', err));
-  }
-});
-
-// Map TitanForge ShopDrawingConfig fields to drawing input elements
-function applyConfigToDrawing(config) {
-  // Map config field names → [inputId, optional transform]
-  const mappings = [
-    ['roof_pitch_deg', 'inPitch'],
-    ['clear_height_ft', 'inClearHt'],
-    ['building_width_ft', 'inWidth'],
-    ['footing_depth_ft', 'inFooting'],
-    ['col_rebar_size', 'inRebar'],
-    // fallback aliases from older/derived configs
-    ['pitch', 'inPitch'],
-    ['clearHt', 'inClearHt'],
-    ['width', 'inWidth'],
-    ['footing', 'inFooting'],
-    ['rebar_size', 'inRebar'],
-    ['rebar', 'inRebar'],
-    ['above_grade', 'inAboveGrade'],
-    ['above_grade_depth', 'inAboveGrade'],
-    ['cut_allowance', 'inCutAllowance'],
-    ['cut_allow', 'inCutAllowance'],
-  ];
-
-  for (const [cfgKey, inputId] of mappings) {
-    const value = config[cfgKey];
-    const inputEl = document.getElementById(inputId);
-    if (inputEl && value !== undefined && value !== null) {
-      inputEl.value = String(value);
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }
-
-  // Project info fields
-  if (config.project_name) {
-    const el = document.getElementById('inProject');
-    if (el) { el.value = config.project_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-  if (config.customer_name) {
-    const el = document.getElementById('inCustomer');
-    if (el) { el.value = config.customer_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-  if (config.job_code) {
-    const el = document.getElementById('inJobNo');
-    if (el) { el.value = config.job_code; el.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-  if (config.drawn_by) {
-    const el = document.getElementById('inDrawnBy');
-    if (el) { el.value = config.drawn_by; el.dispatchEvent(new Event('input', { bubbles: true })); }
-  }
-
-  // Handle reinforced/non-reinforced toggle
-  const reinforced = config.col_reinforced !== undefined ? config.col_reinforced : config.reinforced;
-  if (reinforced !== undefined) {
-    const isReinforced = reinforced === true || String(reinforced).toLowerCase() === 'true';
-    // The drawing defaults to reinforced — only toggle if non-reinforced
-    if (!isReinforced) {
-      toggleReinforced();
-    }
-  }
-
-  // Trigger full redraw after all fields are set
-  if (typeof draw === 'function') draw();
-}
 </script>
 </body>
 </html>

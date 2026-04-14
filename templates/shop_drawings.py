@@ -1337,8 +1337,9 @@ SHOP_DRAWINGS_HTML = r"""
 
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
-                const interactiveBtn = d.type === 'rafter'
-                    ? `<button class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;" onclick="window.open('/shop-drawings/' + JOB_CODE + '/rafter', '_blank')">Interactive View</button>`
+                var interactiveRoute = d.type === 'rafter' ? '/rafter' : d.type === 'column' ? '/column' : '';
+                const interactiveBtn = interactiveRoute
+                    ? `<button class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;" onclick="window.open('/shop-drawings/' + JOB_CODE + '${interactiveRoute}', '_blank')">Interactive View</button>`
                     : '';
                 card.innerHTML = `
                     <div class="dc-preview">

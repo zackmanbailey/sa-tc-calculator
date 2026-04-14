@@ -3509,6 +3509,54 @@ class RafterDrawingHandler(BaseHandler):
         return rc
 
 
+class ColumnDrawingHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/column — Interactive Column Shop Drawing.
+
+    Serves the full SVG-based interactive column drawing pre-filled with
+    project data from BOM/config.  Supports browser Print→PDF.
+    """
+    def get(self, job_code):
+        role = self.get_user_role() or "viewer"
+        display = "User"
+        if AUTH_ENABLED:
+            user = self.get_current_user()
+            users_db = load_users()
+            display = users_db.get(user, {}).get("display_name", user or "User")
+
+        # Build config JSON for the drawing from saved config or BOM
+        col_cfg = {}
+        saved = _load_shop_config(job_code)
+        if saved:
+            col_cfg = self._extract_column_config(saved, job_code)
+        else:
+            bom_cfg = _derive_bom_config(job_code)
+            if bom_cfg:
+                col_cfg = self._extract_column_config(bom_cfg, job_code)
+
+        cfg_json = json.dumps(col_cfg) if col_cfg else "null"
+
+        html = COLUMN_DRAWING_HTML
+        html = html.replace("{{COLUMN_CONFIG_JSON}}", cfg_json)
+        html = html.replace("{{JOB_CODE}}", job_code)
+        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+
+    @staticmethod
+    def _extract_column_config(cfg_dict, job_code):
+        """Extract column-relevant fields from a ShopDrawingConfig dict
+        into the format expected by the HTML drawing's applyServerConfig()."""
+        rc = {}
+        rc["pitch_deg"] = cfg_dict.get("col_pitch_deg") or cfg_dict.get("pitch_deg", 1.2)
+        rc["clear_height_ft"] = cfg_dict.get("col_clear_height_ft") or cfg_dict.get("clear_height", 14)
+        rc["width_ft"] = cfg_dict.get("col_width_ft") or cfg_dict.get("width_ft") or cfg_dict.get("raft_width_ft", 40)
+        rc["footing_ft"] = cfg_dict.get("col_footing_ft") or cfg_dict.get("footing_depth", 10)
+        rc["rebar_size"] = cfg_dict.get("col_rebar_size") or cfg_dict.get("rebar_size", "#9")
+        rc["above_grade_ft"] = cfg_dict.get("col_above_grade_ft") or cfg_dict.get("above_grade", 8)
+        rc["cut_allowance_in"] = cfg_dict.get("col_cut_allowance_in", 6)
+        rc["reinforced"] = cfg_dict.get("col_reinforced", True)
+        rc["job_code"] = job_code
+        return rc
+
+
 class ShopDrawingsConfigHandler(BaseHandler):
     """
     GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
@@ -4740,6 +4788,7 @@ def get_routes():
 
         # ── Shop Drawings ─────────────────────────────────────
         (r"/shop-drawings/([^/]+)/rafter",       RafterDrawingHandler),
+        (r"/shop-drawings/([^/]+)/column",       ColumnDrawingHandler),
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
@@ -4832,6 +4881,7 @@ from templates.quote_editor import QUOTE_EDITOR_HTML
 from templates.qc_page import QC_PAGE_HTML
 from templates.shop_drawings import SHOP_DRAWINGS_HTML
 from templates.rafter_drawing import RAFTER_DRAWING_HTML
+from templates.column_drawing import COLUMN_DRAWING_HTML
 from templates.work_orders import WORK_ORDERS_HTML
 from templates.shop_floor import SHOP_FLOOR_HTML
 from templates.work_station import WORK_STATION_HTML
