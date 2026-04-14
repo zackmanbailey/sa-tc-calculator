@@ -559,6 +559,11 @@ class BOMCalculator:
             "clear_height_ft": bldg.clear_height_ft,
             "embedment_ft": bldg.embedment_ft,
             "frame_type": bldg.type,
+            "reinforced": bldg.reinforced,
+            "rebar_rafter_size": bldg.rebar_rafter_size,
+            "rebar_max_stick_ft": bldg.rebar_max_stick_ft,
+            "rebar_end_gap_ft": bldg.rebar_end_gap_ft,
+            "splice_location_ft": bldg.splice_location_ft,
         }
 
         wf = WASTE_FACTORS["10GA"]
