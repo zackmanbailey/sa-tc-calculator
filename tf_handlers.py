@@ -772,13 +772,14 @@ class UsersListHandler(BaseHandler):
 
     def get(self):
         users = load_users()
-        safe = {}
+        safe = []
         for uname, udata in users.items():
-            safe[uname] = {
+            safe.append({
+                "username": uname,
                 "display_name": udata.get("display_name", ""),
                 "role": udata.get("role", "viewer"),
-                "created": udata.get("created", ""),
-            }
+                "created_at": udata.get("created", ""),
+            })
         self.set_header("Content-Type", "application/json")
         self.write(json_encode({"users": safe}))
 
@@ -808,6 +809,31 @@ class UserAddHandler(BaseHandler):
         }
         save_users(users)
         self.write(json_encode({"ok": True}))
+
+
+class UserUpdateRoleHandler(BaseHandler):
+    """POST /auth/users/update-role — Change a user's role (admin only)."""
+    required_roles = ["admin"]
+
+    def post(self):
+        body = json_decode(self.request.body)
+        username = body.get("username", "").strip().lower()
+        new_role = body.get("role", "")
+
+        if not username or not new_role:
+            self.write(json_encode({"ok": False, "error": "Username and role required"}))
+            return
+
+        users = load_users()
+        if username not in users:
+            self.write(json_encode({"ok": False, "error": "User not found"}))
+            return
+
+        users[username]["role"] = new_role
+        # Also update the roles list if present
+        users[username]["roles"] = [new_role]
+        save_users(users)
+        self.write(json_encode({"ok": True, "message": f"Role updated to {new_role}"}))
 
 
 class UserDeleteHandler(BaseHandler):
@@ -7848,8 +7874,9 @@ def get_routes():
         (r"/auth/logout",        LogoutHandler),
         (r"/admin",              AdminPageHandler),
         (r"/auth/users",         UsersListHandler),
-        (r"/auth/users/add",     UserAddHandler),
-        (r"/auth/users/delete",  UserDeleteHandler),
+        (r"/auth/users/add",         UserAddHandler),
+        (r"/auth/users/update-role", UserUpdateRoleHandler),
+        (r"/auth/users/delete",      UserDeleteHandler),
 
         # ── App routes (Dashboard + Calculators) ────────────────
         (r"/",                      DashboardHandler),

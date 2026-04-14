@@ -898,67 +898,36 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     if perm.can("run_calculator") or perm.can("view_calculator"):
         items = [("/sa", "&#127959;", "SA Estimator", "sa")]
         items.append(("/tc", "&#128663;", "TC Estimator", "tc"))
-        if perm.can("create_quotes"):
-            items.append(("/quotes", "&#128196;", "Quotes", "quotes"))
         sections.append(("Estimating", items))
 
     # Projects
     if perm.can("view_projects"):
-        items = [("/projects", "&#128194;", "All Projects", "projects")]
+        items = [("/", "&#128194;", "All Projects", "projects")]
         sections.append(("Projects", items))
 
     # Shop Floor
     if perm.can("view_work_orders") or perm.can("view_own_work_items") or perm.can("create_work_orders"):
         items = [("/shop-floor", "&#9881;", "Shop Floor", "shopfloor")]
-        if perm.can("view_work_orders") or perm.can("create_work_orders"):
-            items.append(("/work-orders", "&#128203;", "Work Orders", "workorders"))
         if perm.can("view_shop_drawings"):
-            items.append(("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"))
-        if perm.can("submit_receipts"):
-            items.append(("/receipts", "&#129534;", "Consumable Receipts", "receipts"))
+            items.append(("/documents", "&#128208;", "Shop Drawings", "shopdrw"))
         sections.append(("Shop Floor", items))
 
     # My Station (operator roles)
     if perm.has_role("roll_forming_operator"):
         sections.append(("My Station", [
             ("/work-station/mine", "&#128190;", "My Machine", "workstation"),
-            ("/work-station/queue", "&#128203;", "Run Queue", "queue"),
         ]))
 
     # My Work (welder)
     if perm.has_role("welder"):
         sections.append(("My Work", [
             ("/work-station/mine", "&#128293;", "My Queue", "workstation"),
-            ("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"),
-        ]))
-
-    # My Tasks (laborer)
-    if perm.has_role("laborer") and not perm.has_role("shop_foreman"):
-        sections.append(("My Tasks", [
-            ("/tasks", "&#128203;", "Tasks", "tasks"),
-            ("/scan", "&#128244;", "Scan", "scan"),
         ]))
 
     # Quality
     if perm.can("view_qc") or perm.can("perform_inspections"):
-        items = [("/qc", "&#128737;", "Inspections", "qc")]
-        if perm.can("view_aisc_library"):
-            items.append(("/aisc", "&#128218;", "AISC Library", "aisc"))
+        items = [("/qc-dashboard", "&#128737;", "Inspections", "qc")]
         sections.append(("Quality", items))
-
-    # Inventory
-    if perm.can("view_inventory"):
-        items = [("/inventory", "&#128230;", "Stock Levels", "inventory")]
-        if perm.can("manage_mill_certs"):
-            items.append(("/certs", "&#128196;", "Mill Certs", "certs"))
-        sections.append(("Inventory", items))
-
-    # Purchasing
-    if perm.can("view_po") or perm.can("create_po"):
-        items = [("/pos", "&#128722;", "Purchase Orders", "pos")]
-        if perm.can("manage_vendors"):
-            items.append(("/vendors", "&#128101;", "Vendors", "vendors"))
-        sections.append(("Purchasing", items))
 
     # Customers
     if perm.can("view_customer_info"):
@@ -971,37 +940,37 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
     # Field
     if perm.can("submit_daily_report") or perm.can("view_field_reports"):
-        items = [("/field/projects", "&#127959;", "Field Ops", "field")]
-        if perm.can("submit_jha"):
-            items.append(("/field/jha", "&#9888;", "Hazard Analysis", "jha"))
+        items = [("/field", "&#127959;", "Field Ops", "field")]
         sections.append(("Field", items))
 
-    # Safety
-    if perm.can("review_jha") or perm.can("file_incident"):
-        sections.append(("Safety", [
-            ("/safety/jha", "&#9888;", "JHA Review", "safety"),
-            ("/safety/incidents", "&#128680;", "Incidents", "incidents"),
+    # Scheduling
+    if perm.can("view_schedule") or perm.can("manage_schedule"):
+        sections.append(("Planning", [
+            ("/schedule", "&#128197;", "Schedule", "schedule"),
+        ]))
+
+    # Document Management
+    if perm.can("view_shop_drawings"):
+        sections.append(("Documents", [
+            ("/documents", "&#128196;", "Doc Management", "documents"),
         ]))
 
     # Financial
     if perm.has_financial_access() and perm.can("view_financials"):
         sections.append(("Financial", [
-            ("/financial", "&#128176;", "Reports", "financial"),
+            ("/job-costing", "&#128176;", "Job Costing", "jobcosting"),
+            ("/reports/production", "&#128200;", "Reports", "reports"),
         ]))
 
-    # Sales
-    if perm.can("view_pipeline") or perm.can("manage_leads"):
-        sections.append(("Sales", [
-            ("/sales/pipeline", "&#128200;", "Pipeline", "pipeline"),
-            ("/sales/leads", "&#128101;", "Leads", "leads"),
-        ]))
+    # Activity
+    sections.append(("", [
+        ("/activity", "&#128276;", "Activity Feed", "activity"),
+    ]))
 
     # Admin
     if perm.can_manage_users:
         sections.append(("Admin", [
             ("/admin", "&#128274;", "Users", "admin"),
-            ("/admin/settings", "&#9881;", "Settings", "settings"),
-            ("/audit", "&#128203;", "Audit Log", "audit"),
         ]))
 
     # Current Project (context-aware — shown when in a project page)

@@ -330,6 +330,22 @@ ADMIN_HTML = r"""
             width: fit-content;
         }
 
+        .role-select {
+            background: rgba(255,255,255,0.08);
+            color: #F59E0B;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            cursor: pointer;
+            min-width: 160px;
+        }
+        .role-select:hover { border-color: #F59E0B; }
+        .role-select:disabled { opacity: 0.5; cursor: not-allowed; }
+        .role-select option { background: #1a1a2e; color: #e2e8f0; }
+
         .role-admin {
             background: rgba(245, 158, 11, 0.2);
             color: #F59E0B;
@@ -500,11 +516,24 @@ ADMIN_HTML = r"""
                             <label for="newRole">Role</label>
                             <select id="newRole" required>
                                 <option value="">Select a role</option>
+                                <option value="god_mode">God Mode</option>
                                 <option value="admin">Admin</option>
+                                <option value="project_manager">Project Manager</option>
                                 <option value="estimator">Estimator</option>
-                                <option value="shop">Shop</option>
-                                <option value="viewer">Viewer</option>
-                                <option value="tc_limited">TC Limited</option>
+                                <option value="sales">Sales / Business Dev</option>
+                                <option value="purchasing">Purchasing</option>
+                                <option value="inventory_manager">Inventory Manager</option>
+                                <option value="accounting">Accounting</option>
+                                <option value="shop_foreman">Shop Foreman</option>
+                                <option value="qc_inspector">QA/QC Inspector</option>
+                                <option value="engineer">Engineer / Detailer</option>
+                                <option value="roll_forming_operator">Roll Forming Operator</option>
+                                <option value="welder">Welder</option>
+                                <option value="shipping_coordinator">Shipping Coordinator</option>
+                                <option value="laborer">Laborer</option>
+                                <option value="field_crew">Field Crew</option>
+                                <option value="safety_officer">Safety Officer</option>
+                                <option value="customer">Customer</option>
                             </select>
                         </div>
                     </div>
@@ -597,14 +626,24 @@ ADMIN_HTML = r"""
                 return;
             }
 
+            const roleOptions = [
+                'god_mode', 'admin', 'project_manager', 'estimator', 'sales',
+                'purchasing', 'inventory_manager', 'accounting', 'shop_foreman',
+                'qc_inspector', 'engineer', 'roll_forming_operator', 'welder',
+                'shipping_coordinator', 'laborer', 'field_crew', 'safety_officer', 'customer'
+            ];
             tbody.innerHTML = users.map(user => `
                 <tr>
                     <td><strong>${escapeHtml(user.username)}</strong></td>
                     <td>${escapeHtml(user.display_name || '-')}</td>
-                    <td><span class="role-badge role-${user.role}">${escapeHtml(user.role)}</span></td>
+                    <td>
+                        <select class="role-select" onchange="changeRole('${escapeHtml(user.username)}', this.value)" ${user.username === 'admin' ? 'disabled' : ''}>
+                            ${roleOptions.map(r => `<option value="${r}" ${r === user.role ? 'selected' : ''}>${r.replace(/_/g, ' ')}</option>`).join('')}
+                        </select>
+                    </td>
                     <td>${formatDate(user.created_at)}</td>
                     <td>
-                        <button class="btn btn-danger" onclick="deleteUser('${escapeHtml(user.username)}')">Delete</button>
+                        <button class="btn btn-danger" onclick="deleteUser('${escapeHtml(user.username)}')" ${user.username === 'admin' ? 'disabled' : ''}>Delete</button>
                     </td>
                 </tr>
             `).join('');
@@ -631,7 +670,7 @@ ADMIN_HTML = r"""
             addUserBtn.disabled = true;
             addUserBtn.textContent = 'Adding...';
 
-            fetch('/auth/users', {
+            fetch('/auth/users/add', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -670,24 +709,42 @@ ADMIN_HTML = r"""
             });
         }
 
+        function changeRole(username, newRole) {
+            fetch('/auth/users/update-role', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, role: newRole })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.ok) {
+                    alert('Error changing role: ' + (data.error || 'Unknown error'));
+                    loadUsers();
+                }
+            })
+            .catch(error => {
+                alert('Error changing role: ' + (error.message || 'Unknown error'));
+                loadUsers();
+            });
+        }
+
         function deleteUser(username) {
             if (!confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
                 return;
             }
 
-            fetch(`/auth/users/${encodeURIComponent(username)}`, {
-                method: 'DELETE'
+            fetch('/auth/users/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username })
             })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || 'Failed to delete user');
-                    });
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                loadUsers();
+                if (!data.ok) {
+                    alert('Error: ' + (data.error || 'Failed to delete user'));
+                } else {
+                    loadUsers();
+                }
             })
             .catch(error => {
                 alert('Error deleting user: ' + (error.message || 'Unknown error'));
