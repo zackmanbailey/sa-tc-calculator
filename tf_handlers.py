@@ -3943,6 +3943,21 @@ try:
         log_bom_change, list_bom_changes, get_bom_change_summary,
         get_document_summary,
     )
+    # Phase 10 — Job Costing & Financial Tracking
+    from shop_drawings.job_costing import (
+        COST_CATEGORIES, COST_CATEGORY_LABELS,
+        EST_STATUSES, EST_STATUS_LABELS,
+        DEFAULT_LABOR_RATES, DEFAULT_LABOR_RATE_LABELS,
+        CostEstimate, CostEntry, LaborEntry, ChangeOrderCost,
+        create_estimate, get_estimate, list_estimates,
+        update_estimate, approve_estimate, delete_estimate,
+        add_cost_entry, get_cost_entry, list_cost_entries, delete_cost_entry,
+        add_labor_entry, get_labor_entry, list_labor_entries, delete_labor_entry,
+        get_labor_rates, update_labor_rates,
+        create_change_order, get_change_order, list_change_orders,
+        approve_change_order,
+        get_job_cost_summary, get_cost_variance_report, get_financial_overview,
+    )
     HAS_SHOP_DRAWINGS = True
 except Exception:
     HAS_SHOP_DRAWINGS = False
@@ -7417,6 +7432,410 @@ class DocumentConfigHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# PHASE 10 — Job Costing & Financial Tracking
+# ─────────────────────────────────────────────
+
+class JobCostingPageHandler(BaseHandler):
+    """GET /job-costing — Job Costing dashboard."""
+    required_permission = "view_financials"
+    def get(self):
+        from templates.job_costing_page import JOB_COSTING_PAGE_HTML
+        self.set_header("Content-Type", "text/html")
+        self.write(JOB_COSTING_PAGE_HTML)
+
+
+# ── Cost Estimates ────────────────────────────────────────────────────
+
+class EstimateListAPIHandler(BaseHandler):
+    """GET /api/costing/estimates — List cost estimates."""
+    required_permission = "view_financials"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        status = self.get_argument("status", "")
+        estimates = list_estimates(DATA_DIR, job_code=job_code, status=status)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "estimates": [e.to_dict() for e in estimates],
+            "count": len(estimates),
+        }))
+
+
+class EstimateDetailAPIHandler(BaseHandler):
+    """GET /api/costing/estimate?estimate_id=X — Get single estimate."""
+    required_permission = "view_financials"
+    def get(self):
+        est_id = self.get_argument("estimate_id", "")
+        if not est_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "estimate_id required"}))
+            return
+        est = get_estimate(DATA_DIR, est_id)
+        if not est:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Estimate not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "estimate": est.to_dict()}))
+
+
+class EstimateCreateHandler(BaseHandler):
+    """POST /api/costing/estimate/create — Create a cost estimate."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        name = data.get("name", "").strip()
+        if not job_code or not name:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code and name required"}))
+            return
+        est = create_estimate(
+            DATA_DIR, job_code=job_code, name=name,
+            created_by=self.current_user,
+            contract_value=float(data.get("contract_value", 0)),
+            line_items=data.get("line_items", []),
+            notes=data.get("notes", ""),
+        )
+        self.write(json_encode({"ok": True, "estimate": est.to_dict()}))
+
+
+class EstimateUpdateHandler(BaseHandler):
+    """POST /api/costing/estimate/update — Update a cost estimate."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        est_id = data.get("estimate_id", "")
+        if not est_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "estimate_id required"}))
+            return
+        kwargs = {}
+        for k in ["name", "status", "contract_value", "line_items", "notes"]:
+            if k in data:
+                kwargs[k] = data[k]
+        if "contract_value" in kwargs:
+            kwargs["contract_value"] = float(kwargs["contract_value"])
+        est = update_estimate(DATA_DIR, est_id, **kwargs)
+        if not est:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Estimate not found"}))
+            return
+        self.write(json_encode({"ok": True, "estimate": est.to_dict()}))
+
+
+class EstimateApproveHandler(BaseHandler):
+    """POST /api/costing/estimate/approve — Approve a cost estimate."""
+    required_permission = "view_financials"
+    def post(self):
+        data = json.loads(self.request.body)
+        est_id = data.get("estimate_id", "")
+        if not est_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "estimate_id required"}))
+            return
+        est = approve_estimate(DATA_DIR, est_id, approved_by=self.current_user)
+        if not est:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Estimate not found"}))
+            return
+        self.write(json_encode({"ok": True, "estimate": est.to_dict()}))
+
+
+class EstimateDeleteHandler(BaseHandler):
+    """POST /api/costing/estimate/delete — Delete a cost estimate."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        est_id = data.get("estimate_id", "")
+        if not est_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "estimate_id required"}))
+            return
+        ok = delete_estimate(DATA_DIR, est_id)
+        if not ok:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Estimate not found"}))
+            return
+        self.write(json_encode({"ok": True}))
+
+
+# ── Cost Entries (Actuals) ────────────────────────────────────────────
+
+class CostEntryListAPIHandler(BaseHandler):
+    """GET /api/costing/costs — List actual cost entries."""
+    required_permission = "view_financials"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        category = self.get_argument("category", "")
+        date_from = self.get_argument("date_from", "")
+        date_to = self.get_argument("date_to", "")
+        entries = list_cost_entries(DATA_DIR, job_code=job_code,
+                                    category=category,
+                                    date_from=date_from, date_to=date_to)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "entries": [e.to_dict() for e in entries],
+            "count": len(entries),
+            "total": round(sum(e.total for e in entries), 2),
+        }))
+
+
+class CostEntryCreateHandler(BaseHandler):
+    """POST /api/costing/cost/create — Record an actual cost."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        category = data.get("category", "").strip()
+        description = data.get("description", "").strip()
+        if not job_code or not category or not description:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, category, description required"}))
+            return
+        entry = add_cost_entry(
+            DATA_DIR, job_code=job_code, category=category,
+            description=description, created_by=self.current_user,
+            quantity=float(data.get("quantity", 1)),
+            unit=data.get("unit", ""),
+            unit_cost=float(data.get("unit_cost", 0)),
+            vendor=data.get("vendor", ""),
+            po_number=data.get("po_number", ""),
+            invoice_number=data.get("invoice_number", ""),
+            work_order_ref=data.get("work_order_ref", ""),
+            date=data.get("date", ""),
+            notes=data.get("notes", ""),
+        )
+        self.write(json_encode({"ok": True, "entry": entry.to_dict()}))
+
+
+class CostEntryDeleteHandler(BaseHandler):
+    """POST /api/costing/cost/delete — Delete a cost entry."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        entry_id = data.get("entry_id", "")
+        if not entry_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "entry_id required"}))
+            return
+        ok = delete_cost_entry(DATA_DIR, entry_id)
+        if not ok:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Entry not found"}))
+            return
+        self.write(json_encode({"ok": True}))
+
+
+# ── Labor Entries ─────────────────────────────────────────────────────
+
+class LaborEntryListAPIHandler(BaseHandler):
+    """GET /api/costing/labor — List labor entries."""
+    required_permission = "view_financials"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        worker = self.get_argument("worker", "")
+        date_from = self.get_argument("date_from", "")
+        date_to = self.get_argument("date_to", "")
+        entries = list_labor_entries(DATA_DIR, job_code=job_code,
+                                     worker=worker,
+                                     date_from=date_from, date_to=date_to)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "entries": [e.to_dict() for e in entries],
+            "count": len(entries),
+            "total_hours": round(sum(e.hours for e in entries), 1),
+            "total_cost": round(sum(e.total for e in entries), 2),
+        }))
+
+
+class LaborEntryCreateHandler(BaseHandler):
+    """POST /api/costing/labor/create — Record a labor entry."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        worker = data.get("worker", "").strip()
+        hours = float(data.get("hours", 0))
+        if not job_code or not worker or hours <= 0:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, worker, hours required"}))
+            return
+        entry = add_labor_entry(
+            DATA_DIR, job_code=job_code, worker=worker,
+            hours=hours, created_by=self.current_user,
+            labor_type=data.get("labor_type", "welder"),
+            work_order_ref=data.get("work_order_ref", ""),
+            item_ref=data.get("item_ref", ""),
+            date=data.get("date", ""),
+            rate=float(data.get("rate", 0)),
+            overtime=data.get("overtime", False),
+            overtime_multiplier=float(data.get("overtime_multiplier", 1.5)),
+            description=data.get("description", ""),
+        )
+        self.write(json_encode({"ok": True, "entry": entry.to_dict()}))
+
+
+class LaborEntryDeleteHandler(BaseHandler):
+    """POST /api/costing/labor/delete — Delete a labor entry."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        labor_id = data.get("labor_id", "")
+        if not labor_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "labor_id required"}))
+            return
+        ok = delete_labor_entry(DATA_DIR, labor_id)
+        if not ok:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Entry not found"}))
+            return
+        self.write(json_encode({"ok": True}))
+
+
+# ── Labor Rates ───────────────────────────────────────────────────────
+
+class LaborRatesAPIHandler(BaseHandler):
+    """GET /api/costing/labor-rates — Get current labor rates."""
+    required_permission = "view_financials"
+    def get(self):
+        rates = get_labor_rates(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "rates": rates,
+            "labels": DEFAULT_LABOR_RATE_LABELS,
+        }))
+
+
+class LaborRatesUpdateHandler(BaseHandler):
+    """POST /api/costing/labor-rates/update — Update labor rates."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        rates = data.get("rates", {})
+        if not rates:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "rates required"}))
+            return
+        updated = update_labor_rates(DATA_DIR, rates)
+        self.write(json_encode({"ok": True, "rates": updated}))
+
+
+# ── Change Orders ─────────────────────────────────────────────────────
+
+class ChangeOrderListAPIHandler(BaseHandler):
+    """GET /api/costing/change-orders — List change orders."""
+    required_permission = "view_financials"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        cos = list_change_orders(DATA_DIR, job_code=job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "change_orders": [co.to_dict() for co in cos],
+            "count": len(cos),
+        }))
+
+
+class ChangeOrderCreateHandler(BaseHandler):
+    """POST /api/costing/change-order/create — Create a change order."""
+    required_permission = "process_expenses"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        description = data.get("description", "").strip()
+        if not job_code or not description:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code and description required"}))
+            return
+        co = create_change_order(
+            DATA_DIR, job_code=job_code, description=description,
+            created_by=self.current_user,
+            material_impact=float(data.get("material_impact", 0)),
+            labor_impact=float(data.get("labor_impact", 0)),
+            other_impact=float(data.get("other_impact", 0)),
+        )
+        self.write(json_encode({"ok": True, "change_order": co.to_dict()}))
+
+
+class ChangeOrderApproveHandler(BaseHandler):
+    """POST /api/costing/change-order/approve — Approve a change order."""
+    required_permission = "view_financials"
+    def post(self):
+        data = json.loads(self.request.body)
+        co_id = data.get("co_id", "")
+        if not co_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "co_id required"}))
+            return
+        co = approve_change_order(DATA_DIR, co_id, approved_by=self.current_user)
+        if not co:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Change order not found"}))
+            return
+        self.write(json_encode({"ok": True, "change_order": co.to_dict()}))
+
+
+# ── Job Cost Reports ──────────────────────────────────────────────────
+
+class JobCostSummaryAPIHandler(BaseHandler):
+    """GET /api/costing/job-summary?job_code=X — Job P&L summary."""
+    required_permission = "view_project_pnl"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        if not job_code:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        summary = get_job_cost_summary(DATA_DIR, job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "summary": summary}))
+
+
+class CostVarianceAPIHandler(BaseHandler):
+    """GET /api/costing/variance?job_code=X — Cost variance report."""
+    required_permission = "view_project_pnl"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        if not job_code:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        report = get_cost_variance_report(DATA_DIR, job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "report": report}))
+
+
+class FinancialOverviewAPIHandler(BaseHandler):
+    """GET /api/costing/overview — Cross-job financial overview."""
+    required_permission = "view_financials"
+    def get(self):
+        overview = get_financial_overview(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "overview": overview}))
+
+
+class CostingConfigHandler(BaseHandler):
+    """GET /api/costing/config — Return costing constants."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "cost_categories": COST_CATEGORIES,
+            "cost_category_labels": COST_CATEGORY_LABELS,
+            "estimate_statuses": EST_STATUSES,
+            "estimate_status_labels": EST_STATUS_LABELS,
+            "labor_rate_labels": DEFAULT_LABOR_RATE_LABELS,
+            "default_labor_rates": DEFAULT_LABOR_RATES,
+        }))
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -7687,6 +8106,30 @@ def get_routes():
         (r"/api/documents/bom-changes/summary",        BOMChangeSummaryAPIHandler),
         (r"/api/documents/summary",                    DocumentSummaryAPIHandler),
         (r"/api/documents/config",                     DocumentConfigHandler),
+
+        # ── Phase 10 — Job Costing ────────────────────────────
+        (r"/job-costing",                              JobCostingPageHandler),
+        (r"/api/costing/estimates",                    EstimateListAPIHandler),
+        (r"/api/costing/estimate",                     EstimateDetailAPIHandler),
+        (r"/api/costing/estimate/create",              EstimateCreateHandler),
+        (r"/api/costing/estimate/update",              EstimateUpdateHandler),
+        (r"/api/costing/estimate/approve",             EstimateApproveHandler),
+        (r"/api/costing/estimate/delete",              EstimateDeleteHandler),
+        (r"/api/costing/costs",                        CostEntryListAPIHandler),
+        (r"/api/costing/cost/create",                  CostEntryCreateHandler),
+        (r"/api/costing/cost/delete",                  CostEntryDeleteHandler),
+        (r"/api/costing/labor",                        LaborEntryListAPIHandler),
+        (r"/api/costing/labor/create",                 LaborEntryCreateHandler),
+        (r"/api/costing/labor/delete",                 LaborEntryDeleteHandler),
+        (r"/api/costing/labor-rates",                  LaborRatesAPIHandler),
+        (r"/api/costing/labor-rates/update",           LaborRatesUpdateHandler),
+        (r"/api/costing/change-orders",                ChangeOrderListAPIHandler),
+        (r"/api/costing/change-order/create",          ChangeOrderCreateHandler),
+        (r"/api/costing/change-order/approve",         ChangeOrderApproveHandler),
+        (r"/api/costing/job-summary",                  JobCostSummaryAPIHandler),
+        (r"/api/costing/variance",                     CostVarianceAPIHandler),
+        (r"/api/costing/overview",                     FinancialOverviewAPIHandler),
+        (r"/api/costing/config",                       CostingConfigHandler),
 
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),
