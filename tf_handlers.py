@@ -59,6 +59,7 @@ except Exception:
 # FILE PATHS & CONSTANTS
 # ─────────────────────────────────────────────
 
+DATA_DIR = os.path.join(BASE_DIR, "data")
 INVENTORY_PATH = os.path.join(BASE_DIR, "data", "inventory.json")
 USERS_PATH = os.path.join(BASE_DIR, "data", "users.json")
 CERTS_DIR = os.path.join(BASE_DIR, "data", "certs")
@@ -3208,7 +3209,7 @@ class QCDataHandler(BaseHandler):
 
 class QCInspectionCreateHandler(BaseHandler):
     """POST /api/qc/inspection/create — Create a new inspection record."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "perform_inspections"
     def post(self):
         body = json_decode(self.request.body)
         job_code = body.get("job_code", "")
@@ -3244,34 +3245,61 @@ class QCInspectionCreateHandler(BaseHandler):
 
 
 class QCInspectionUpdateHandler(BaseHandler):
-    """POST /api/qc/inspection/update — Update an inspection record (checklist items, status, notes)."""
-    required_roles = ["admin", "estimator", "shop"]
+    """POST /api/qc/inspection/update — Update an inspection record (checklist items, status, notes).
+    Passing/failing requires sign_off_qc permission. Integrates with WO item lifecycle."""
+    required_permission = "perform_inspections"
     def post(self):
         body = json_decode(self.request.body)
         job_code = body.get("job_code", "")
         insp_id = body.get("inspection_id", "")
+        new_status = body.get("status", "")
+
+        # Sign-off requires elevated permission
+        if new_status in ["passed", "failed"]:
+            if not self.perm.can("sign_off_qc"):
+                self.set_status(403)
+                self.write(json_encode({"ok": False, "error": "sign_off_qc permission required to pass/fail inspections"}))
+                return
+
         qc = load_project_qc(job_code)
         found = False
+        insp_data = None
         for i, insp in enumerate(qc["inspections"]):
             if insp["id"] == insp_id:
                 for k in ["items", "notes", "status", "location", "member_marks", "photos"]:
                     if k in body:
                         qc["inspections"][i][k] = body[k]
-                if body.get("status") in ["passed", "failed"]:
+                if new_status in ["passed", "failed"]:
                     qc["inspections"][i]["completed_at"] = datetime.datetime.now().isoformat()
+                    qc["inspections"][i]["signed_off_by"] = self.current_username or ""
+                insp_data = qc["inspections"][i]
                 found = True
                 break
         if not found:
             self.write(json_encode({"ok": False, "error": "Inspection not found"}))
             return
         save_project_qc(job_code, qc)
+
+        # ── WO Integration: transition linked items on pass/fail ──
+        wo_transitions = []
+        if new_status in ["passed", "failed"] and insp_data:
+            item_ids = body.get("work_order_item_ids", [])
+            if item_ids:
+                inspector = self.current_username or "qc_system"
+                for item_id in item_ids:
+                    target = STATUS_QC_APPROVED if new_status == "passed" else STATUS_QC_REJECTED
+                    result = transition_item_status(
+                        SHOP_DRAWINGS_DIR, job_code, item_id, target, inspector,
+                        notes=f"QC inspection {insp_id}: {new_status}")
+                    wo_transitions.append({"item_id": item_id, "result": result})
+
         self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        self.write(json_encode({"ok": True, "wo_transitions": wo_transitions}))
 
 
 class NCRCreateHandler(BaseHandler):
     """POST /api/qc/ncr/create — Create a Non-Conformance Report."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "create_ncr"
     def post(self):
         body = json_decode(self.request.body)
         job_code = body.get("job_code", "")
@@ -3312,11 +3340,19 @@ class NCRCreateHandler(BaseHandler):
 
 class NCRUpdateHandler(BaseHandler):
     """POST /api/qc/ncr/update — Update an NCR (status, corrective action, disposition, etc.)."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "create_ncr"
     def post(self):
         body = json_decode(self.request.body)
         job_code = body.get("job_code", "")
         ncr_id = body.get("ncr_id", "")
+
+        # Closing an NCR requires sign_off_qc
+        if body.get("status") == "closed":
+            if not self.perm.can("sign_off_qc"):
+                self.set_status(403)
+                self.write(json_encode({"ok": False, "error": "sign_off_qc permission required to close NCRs"}))
+                return
+
         qc = load_project_qc(job_code)
         found = False
         for i, ncr in enumerate(qc["ncrs"]):
@@ -3328,9 +3364,10 @@ class NCRUpdateHandler(BaseHandler):
                         qc["ncrs"][i][k] = body[k]
                 if body.get("status") == "closed":
                     qc["ncrs"][i]["closed_at"] = datetime.datetime.now().isoformat()
+                    qc["ncrs"][i]["closed_by"] = self.current_username or ""
                 qc["ncrs"][i]["history"].append({
                     "action": f"updated ({', '.join(k for k in body if k not in ['job_code','ncr_id'])})",
-                    "by": self.get_current_user() or "",
+                    "by": self.current_username or "",
                     "at": datetime.datetime.now().isoformat(),
                 })
                 found = True
@@ -3370,7 +3407,7 @@ class TraceabilityIndexHandler(BaseHandler):
 
 class TraceabilityRegisterHandler(BaseHandler):
     """POST /api/traceability/register — Register a heat number with a coil."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "manage_mill_certs"
     def post(self):
         body = json_decode(self.request.body)
         heat_number = body.get("heat_number", "").strip()
@@ -3402,7 +3439,7 @@ class TraceabilityRegisterHandler(BaseHandler):
 
 class TraceabilityAssignHandler(BaseHandler):
     """POST /api/traceability/assign — Assign a member to a heat number."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "manage_mill_certs"
     def post(self):
         body = json_decode(self.request.body)
         heat_number = body.get("heat_number", "")
@@ -3464,11 +3501,343 @@ class TraceabilityReportHandler(BaseHandler):
 
 class QCPageHandler(BaseHandler):
     """GET /qc/{job_code} — QC Dashboard page for a project."""
+    required_permission = "view_qc"
     def get(self, job_code):
         html = QC_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
         html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
         html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
         self.render_with_nav(html, active_page="qc", job_code=job_code)
+
+
+class QCInspectionQueuePageHandler(BaseHandler):
+    """GET /qc-queue — Inspector workspace: all items needing QC across all projects."""
+    required_permission = "perform_inspections"
+    def get(self):
+        from templates.qc_queue_page import QC_QUEUE_PAGE_HTML
+        self.render_with_nav(QC_QUEUE_PAGE_HTML, active_page="qc")
+
+
+class QCInspectionQueueAPIHandler(BaseHandler):
+    """GET /api/qc/queue — Returns all WO items needing QC inspection across projects."""
+    required_permission = "perform_inspections"
+    def get(self):
+        try:
+            queue_items = []
+            # Scan all projects for items needing QC
+            if os.path.isdir(SHOP_DRAWINGS_DIR):
+                for project_dir in os.listdir(SHOP_DRAWINGS_DIR):
+                    wo_dir = os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
+                    if not os.path.isdir(wo_dir):
+                        continue
+                    for wo_file in os.listdir(wo_dir):
+                        if not wo_file.endswith(".json"):
+                            continue
+                        wo = load_work_order(SHOP_DRAWINGS_DIR, project_dir,
+                                             wo_file.replace(".json", ""))
+                        if wo is None:
+                            continue
+                        for item in wo.items_needing_qc():
+                            queue_items.append({
+                                "job_code": project_dir,
+                                "wo_id": wo.work_order_id,
+                                "wo_name": wo.work_order_id,
+                                "item_id": item.item_id,
+                                "ship_mark": item.ship_mark,
+                                "description": item.description,
+                                "machine_type": item.machine_type,
+                                "status": item.status,
+                                "status_label": item.status_label,
+                                "fabricated_by": item.assigned_to,
+                                "priority": item.priority,
+                                "qc_notes": getattr(item, 'qc_notes', ''),
+                            })
+            # Sort: qc_pending first, then by priority
+            queue_items.sort(key=lambda x: (
+                0 if x["status"] == STATUS_QC_PENDING else 1,
+                x.get("priority", 50)))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "items": queue_items, "total": len(queue_items)}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QCSignOffHandler(BaseHandler):
+    """POST /api/qc/sign-off — QC inspector signs off (approve/reject) a WO item.
+    Creates inspection record AND transitions WO item status in one operation."""
+    required_permission = "sign_off_qc"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            result = body.get("result", "").strip()  # "passed" or "failed"
+            insp_type = body.get("inspection_type", "weld_visual")
+            notes = body.get("notes", "")
+            checklist_items = body.get("checklist_items", {})
+
+            if not job_code or not item_id or result not in ["passed", "failed"]:
+                self.write(json_encode({"ok": False, "error": "job_code, item_id, and result (passed/failed) required"}))
+                return
+
+            inspector = self.current_username or "qc_system"
+            now = datetime.datetime.now()
+
+            # 1. Create the inspection record
+            qc = load_project_qc(job_code)
+            inspection = {
+                "id": "INS-" + now.strftime("%Y%m%d%H%M%S") + "-" + secrets.token_hex(3).upper(),
+                "type": insp_type,
+                "type_label": AISC_INSPECTION_TYPES.get(insp_type, {}).get("label", insp_type),
+                "standard": AISC_INSPECTION_TYPES.get(insp_type, {}).get("standard", ""),
+                "status": result,
+                "inspector": inspector,
+                "location": body.get("location", ""),
+                "member_marks": body.get("member_marks", []),
+                "items": checklist_items,
+                "notes": notes,
+                "photos": [],
+                "created_at": now.isoformat(),
+                "completed_at": now.isoformat(),
+                "signed_off_by": inspector,
+                "work_order_item_id": item_id,
+            }
+            qc["inspections"].append(inspection)
+
+            # 2. If failed, optionally create NCR
+            ncr_created = None
+            if result == "failed" and body.get("create_ncr", False):
+                ncr_num = len(qc["ncrs"]) + 1
+                ncr = {
+                    "id": f"NCR-{job_code}-{ncr_num:03d}",
+                    "number": ncr_num,
+                    "severity": body.get("ncr_severity", "major"),
+                    "status": "open",
+                    "title": body.get("ncr_title", f"QC Rejection: {item_id}"),
+                    "description": notes or f"Item {item_id} failed QC inspection {inspection['id']}",
+                    "member_marks": body.get("member_marks", []),
+                    "inspection_id": inspection["id"],
+                    "root_cause": "",
+                    "corrective_action": "",
+                    "preventive_action": "",
+                    "disposition": body.get("disposition", "rework"),
+                    "reported_by": inspector,
+                    "assigned_to": body.get("assigned_to", ""),
+                    "photos": [],
+                    "created_at": now.isoformat(),
+                    "closed_at": None,
+                    "history": [
+                        {"action": "created (auto from QC rejection)", "by": inspector, "at": now.isoformat()}
+                    ],
+                }
+                qc["ncrs"].append(ncr)
+                ncr_created = ncr
+
+            save_project_qc(job_code, qc)
+
+            # 3. Transition the WO item
+            target_status = STATUS_QC_APPROVED if result == "passed" else STATUS_QC_REJECTED
+            wo_result = transition_item_status(
+                SHOP_DRAWINGS_DIR, job_code, item_id, target_status, inspector,
+                notes=f"QC {result}: {inspection['id']}" + (f" | NCR: {ncr_created['id']}" if ncr_created else ""))
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "inspection": inspection,
+                "ncr": ncr_created,
+                "wo_transition": wo_result,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QCDashboardAPIHandler(BaseHandler):
+    """GET /api/qc/dashboard — Aggregated QC metrics across all projects."""
+    required_permission = "view_qc"
+    def get(self):
+        try:
+            metrics = {
+                "total_inspections": 0,
+                "passed": 0,
+                "failed": 0,
+                "in_progress": 0,
+                "open_ncrs": 0,
+                "critical_ncrs": 0,
+                "items_awaiting_qc": 0,
+                "items_approved_today": 0,
+                "items_rejected_today": 0,
+                "pass_rate": 0,
+                "inspections_by_type": {},
+                "ncrs_by_severity": {"minor": 0, "major": 0, "critical": 0},
+                "ncrs_by_status": {},
+                "recent_inspections": [],
+                "recent_ncrs": [],
+                "inspector_workload": {},
+            }
+
+            today = datetime.date.today().isoformat()
+
+            # Scan all QC data files
+            if os.path.isdir(QC_DIR):
+                for qc_file in os.listdir(QC_DIR):
+                    if not qc_file.endswith(".json"):
+                        continue
+                    job_code = qc_file.replace(".json", "")
+                    qc = load_project_qc(job_code)
+
+                    for insp in qc.get("inspections", []):
+                        metrics["total_inspections"] += 1
+                        s = insp.get("status", "")
+                        if s == "passed":
+                            metrics["passed"] += 1
+                        elif s == "failed":
+                            metrics["failed"] += 1
+                        elif s == "in_progress":
+                            metrics["in_progress"] += 1
+
+                        itype = insp.get("type", "unknown")
+                        metrics["inspections_by_type"][itype] = metrics["inspections_by_type"].get(itype, 0) + 1
+
+                        inspector = insp.get("inspector", "unknown")
+                        if inspector not in metrics["inspector_workload"]:
+                            metrics["inspector_workload"][inspector] = {"total": 0, "passed": 0, "failed": 0}
+                        metrics["inspector_workload"][inspector]["total"] += 1
+                        if s in ["passed", "failed"]:
+                            metrics["inspector_workload"][inspector][s] += 1
+
+                        if insp.get("completed_at", "").startswith(today):
+                            if s == "passed":
+                                metrics["items_approved_today"] += 1
+                            elif s == "failed":
+                                metrics["items_rejected_today"] += 1
+
+                        metrics["recent_inspections"].append({
+                            "id": insp["id"],
+                            "job_code": job_code,
+                            "type": itype,
+                            "type_label": insp.get("type_label", itype),
+                            "status": s,
+                            "inspector": inspector,
+                            "created_at": insp.get("created_at", ""),
+                            "completed_at": insp.get("completed_at", ""),
+                        })
+
+                    for ncr in qc.get("ncrs", []):
+                        ns = ncr.get("status", "open")
+                        sev = ncr.get("severity", "minor")
+                        metrics["ncrs_by_severity"][sev] = metrics["ncrs_by_severity"].get(sev, 0) + 1
+                        metrics["ncrs_by_status"][ns] = metrics["ncrs_by_status"].get(ns, 0) + 1
+                        if ns not in ["closed", "voided"]:
+                            metrics["open_ncrs"] += 1
+                            if sev == "critical":
+                                metrics["critical_ncrs"] += 1
+
+                        metrics["recent_ncrs"].append({
+                            "id": ncr["id"],
+                            "job_code": job_code,
+                            "title": ncr.get("title", ""),
+                            "severity": sev,
+                            "status": ns,
+                            "reported_by": ncr.get("reported_by", ""),
+                            "created_at": ncr.get("created_at", ""),
+                        })
+
+            # Count items awaiting QC from work orders
+            if os.path.isdir(SHOP_DRAWINGS_DIR):
+                for project_dir in os.listdir(SHOP_DRAWINGS_DIR):
+                    wo_dir = os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
+                    if not os.path.isdir(wo_dir):
+                        continue
+                    for wo_file in os.listdir(wo_dir):
+                        if not wo_file.endswith(".json"):
+                            continue
+                        wo = load_work_order(SHOP_DRAWINGS_DIR, project_dir,
+                                             wo_file.replace(".json", ""))
+                        if wo:
+                            metrics["items_awaiting_qc"] += len(wo.items_needing_qc())
+
+            # Calculate pass rate
+            completed = metrics["passed"] + metrics["failed"]
+            metrics["pass_rate"] = round(metrics["passed"] / completed * 100, 1) if completed > 0 else 0
+
+            # Sort recent items by date descending, limit to 20
+            metrics["recent_inspections"].sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            metrics["recent_inspections"] = metrics["recent_inspections"][:20]
+            metrics["recent_ncrs"].sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            metrics["recent_ncrs"] = metrics["recent_ncrs"][:20]
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "metrics": metrics}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QCItemHistoryHandler(BaseHandler):
+    """GET /api/qc/item-history?job_code=X&item_id=Y — Full QC history for a work order item."""
+    required_permission = "view_qc"
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            item_id = self.get_query_argument("item_id", "").strip()
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "job_code and item_id required"}))
+                return
+
+            qc = load_project_qc(job_code)
+            history = {
+                "inspections": [],
+                "ncrs": [],
+                "traceability": [],
+            }
+
+            # Find all inspections linked to this item
+            for insp in qc.get("inspections", []):
+                if item_id == insp.get("work_order_item_id", ""):
+                    history["inspections"].append(insp)
+                elif item_id in [m for m in insp.get("member_marks", [])]:
+                    history["inspections"].append(insp)
+
+            # Find NCRs linked to this item
+            for ncr in qc.get("ncrs", []):
+                if item_id in [m for m in ncr.get("member_marks", [])]:
+                    history["ncrs"].append(ncr)
+
+            # Find traceability records
+            for trace in qc.get("traceability", []):
+                if trace.get("member_mark", "") == item_id:
+                    history["traceability"].append(trace)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "item_id": item_id, "history": history}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QCDashboardPageHandler(BaseHandler):
+    """GET /qc-dashboard — Global QC Dashboard with metrics across all projects."""
+    required_permission = "view_qc"
+    def get(self):
+        from templates.qc_dashboard_page import QC_DASHBOARD_PAGE_HTML
+        self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc")
+
+
+class NCRDetailHandler(BaseHandler):
+    """GET /api/qc/ncr/detail?job_code=X&ncr_id=Y — Get full NCR detail with history."""
+    required_permission = "view_qc"
+    def get(self):
+        job_code = self.get_query_argument("job_code", "")
+        ncr_id = self.get_query_argument("ncr_id", "")
+        qc = load_project_qc(job_code)
+        for ncr in qc.get("ncrs", []):
+            if ncr["id"] == ncr_id:
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": True, "ncr": ncr}))
+                return
+        self.write(json_encode({"ok": False, "error": "NCR not found"}))
 
 
 # ─────────────────────────────────────────────
@@ -3482,16 +3851,97 @@ try:
     from shop_drawings.master import generate_all_shop_drawings
     from shop_drawings.work_orders import (
         WorkOrder, WorkOrderItem, STATUS_QUEUED, STATUS_APPROVED,
-        STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
-        STATUS_ON_HOLD, STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
+        STATUS_STICKERS_PRINTED, STATUS_STAGED, STATUS_IN_PROGRESS,
+        STATUS_FABRICATED, STATUS_QC_PENDING, STATUS_QC_APPROVED,
+        STATUS_QC_REJECTED, STATUS_READY_TO_SHIP, STATUS_SHIPPED,
+        STATUS_DELIVERED, STATUS_INSTALLED,
+        STATUS_COMPLETE, STATUS_ON_HOLD,
+        STATUS_FLOW, STATUS_LABELS, STATUS_COLORS, VALID_STATUSES,
+        MACHINE_TYPES,
         create_work_order, save_work_order, load_work_order,
         list_work_orders, list_all_work_orders, load_all_active_items,
         find_work_order_by_item,
         qr_scan_start, qr_scan_finish,
+        assign_item, reassign_item, reprioritize_item, stage_item,
+        transition_item_status,
+        get_operator_queue, get_machine_queue, get_shop_floor_summary,
     )
     from shop_drawings.wo_stickers import (
         generate_wo_sticker_pdf, generate_wo_sticker_zpl,
         generate_wo_sticker_csv,
+    )
+    from shop_drawings.shipping import (
+        ShippingLoad, LoadItem,
+        LOAD_STATUS_BUILDING, LOAD_STATUS_READY, LOAD_STATUS_IN_TRANSIT,
+        LOAD_STATUS_DELIVERED, LOAD_STATUS_COMPLETE,
+        LOAD_STATUSES, LOAD_STATUS_LABELS, LOAD_STATUS_COLORS, LOAD_FLOW,
+        save_load, load_shipping_load, list_loads, next_load_number,
+        create_load, add_items_to_load, remove_item_from_load,
+        transition_load_status, generate_bol,
+        get_shippable_items, get_shipping_summary,
+    )
+    from shop_drawings.field_ops import (
+        PunchListItem, DailyFieldReport, InstallationRecord,
+        PUNCH_STATUSES, PUNCH_STATUS_LABELS, PUNCH_STATUS_COLORS, PUNCH_FLOW,
+        PUNCH_PRIORITIES, PUNCH_CATEGORIES, PUNCH_CATEGORY_LABELS,
+        PUNCH_STATUS_OPEN, PUNCH_STATUS_IN_PROGRESS,
+        PUNCH_STATUS_RESOLVED, PUNCH_STATUS_VERIFIED, PUNCH_STATUS_DEFERRED,
+        create_punch_item, transition_punch_status,
+        load_punch_items, load_punch_item, load_all_punch_items,
+        confirm_installation, submit_daily_report,
+        load_daily_reports, load_installation_records,
+        get_project_completion, get_field_summary,
+    )
+    from shop_drawings.reporting import (
+        REPORT_TYPES, REPORT_LABELS,
+        REPORT_PRODUCTION_METRICS, REPORT_EXECUTIVE_SUMMARY,
+        REPORT_OPERATOR_PERFORMANCE, REPORT_PROJECT_STATUS,
+        REPORT_DELIVERY_ANALYSIS, REPORT_QC_ANALYSIS,
+        generate_report, list_available_reports,
+        get_production_metrics, get_executive_summary,
+        get_operator_performance, get_project_status_report,
+        get_delivery_analysis, get_qc_analysis,
+    )
+    from shop_drawings.activity import (
+        EVENT_CATEGORIES, CATEGORY_LABELS, CATEGORY_COLORS,
+        SEVERITY_LEVELS, SEVERITY_LABELS,
+        EVENT_TYPES, EVENT_LABELS, EVENT_DEFAULT_SEVERITY,
+        ActivityEvent, AlertRule, Notification,
+        log_event, get_events, get_activity_feed, get_event_stats,
+        create_alert_rule, update_alert_rule, delete_alert_rule, list_alert_rules,
+        get_notifications, get_unread_count, mark_notification_read,
+        mark_all_read, clear_notifications,
+    )
+    # Phase 8 — Scheduling & Production Planning
+    from shop_drawings.scheduling import (
+        SCHED_STATUSES, SCHED_STATUS_LABELS, SCHED_STATUS_DRAFT, SCHED_STATUS_ACTIVE,
+        PRIORITY_LABELS, PRIORITY_COLORS,
+        PRIORITY_URGENT, PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW,
+        ProductionSchedule, ScheduleEntry,
+        create_schedule, get_schedule, list_schedules, update_schedule, delete_schedule,
+        add_schedule_entry, get_schedule_entry, update_schedule_entry, delete_schedule_entry,
+        get_entries_for_date, get_entries_for_range, get_entries_for_job,
+        get_machine_capacity, update_machine_capacity,
+        get_daily_capacity_usage, get_capacity_forecast,
+        auto_schedule_job,
+        get_schedule_summary, get_job_timeline, get_machine_schedule,
+        get_bottleneck_forecast, get_overdue_entries,
+    )
+    # Phase 9 — Document Management & Drawing Revisions
+    from shop_drawings.documents import (
+        REV_STATUSES, REV_STATUS_LABELS, REV_STATUS_COLORS, REV_STATUS_FLOW,
+        DOC_CATEGORIES, DOC_CATEGORY_LABELS,
+        RFI_STATUSES, RFI_STATUS_LABELS, RFI_PRIORITIES, RFI_PRIORITY_LABELS,
+        XMIT_STATUSES, XMIT_STATUS_LABELS, XMIT_PURPOSES, XMIT_PURPOSE_LABELS,
+        BOM_CHANGE_TYPES, BOM_CHANGE_TYPE_LABELS,
+        DrawingRevision, RFI, Transmittal, BOMChangeOrder,
+        create_revision, get_revision, list_revisions,
+        transition_revision, get_latest_revision, get_revision_history,
+        create_rfi, get_rfi, list_rfis, respond_to_rfi, close_rfi, void_rfi,
+        create_transmittal, get_transmittal, list_transmittals,
+        send_transmittal, acknowledge_transmittal,
+        log_bom_change, list_bom_changes, get_bom_change_summary,
+        get_document_summary,
     )
     HAS_SHOP_DRAWINGS = True
 except Exception:
@@ -4299,7 +4749,7 @@ class ShopDrawingsZipHandler(BaseHandler):
 
 class WorkOrderPageHandler(BaseHandler):
     """GET /work-orders/{job_code} — Work order tracking page."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self, job_code):
         from templates.work_orders import WORK_ORDERS_HTML
@@ -4309,7 +4759,7 @@ class WorkOrderPageHandler(BaseHandler):
 
 class WorkOrderCreateHandler(BaseHandler):
     """POST /api/work-orders/create — Create a new work order from shop drawings."""
-    required_roles = ["admin", "estimator"]
+    required_permission = "create_work_orders"
 
     def post(self):
         try:
@@ -4366,7 +4816,7 @@ class WorkOrderCreateHandler(BaseHandler):
 
 class WorkOrderListHandler(BaseHandler):
     """GET /api/work-orders/list?job_code=XXX — List all work orders for a project."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4385,7 +4835,7 @@ class WorkOrderListHandler(BaseHandler):
 
 class WorkOrderDetailHandler(BaseHandler):
     """GET /api/work-orders/detail?job_code=XXX&wo_id=YYY — Get full work order with items."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4410,7 +4860,7 @@ class WorkOrderDetailHandler(BaseHandler):
 
 class WorkOrderApproveHandler(BaseHandler):
     """POST /api/work-orders/approve — Approve a work order for fabrication."""
-    required_roles = ["admin", "estimator"]
+    required_permission = "edit_work_orders"
 
     def post(self):
         try:
@@ -4444,7 +4894,7 @@ class WorkOrderApproveHandler(BaseHandler):
 
 class WorkOrderStickersPrintedHandler(BaseHandler):
     """POST /api/work-orders/stickers-printed — Mark stickers as printed."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "edit_work_orders"
 
     def post(self):
         try:
@@ -4477,7 +4927,7 @@ class WorkOrderStickersPrintedHandler(BaseHandler):
 
 class WorkOrderHoldHandler(BaseHandler):
     """POST /api/work-orders/hold — Put a work order on hold or resume it."""
-    required_roles = ["admin", "estimator"]
+    required_permission = "edit_work_orders"
 
     def post(self):
         try:
@@ -4523,7 +4973,7 @@ class WorkOrderHoldHandler(BaseHandler):
 
 class WorkOrderQRScanHandler(BaseHandler):
     """POST /api/work-orders/qr-scan — Process a QR code scan (start or finish)."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "scan_start_finish"
 
     def post(self):
         try:
@@ -4555,7 +5005,7 @@ class WorkOrderQRScanHandler(BaseHandler):
 
 class WorkOrderItemNotesHandler(BaseHandler):
     """POST /api/work-orders/item-notes — Add notes to a work order item."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "log_item_notes"
 
     def post(self):
         try:
@@ -4585,7 +5035,7 @@ class WorkOrderItemNotesHandler(BaseHandler):
 
 class WorkOrderStickerPDFHandler(BaseHandler):
     """GET /api/work-orders/stickers/pdf?job_code=X&wo_id=Y — Generate sticker PDF."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4622,7 +5072,7 @@ class WorkOrderStickerPDFHandler(BaseHandler):
 
 class WorkOrderStickerZPLHandler(BaseHandler):
     """GET /api/work-orders/stickers/zpl?job_code=X&wo_id=Y — Generate ZPL for Zebra printers."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4657,7 +5107,7 @@ class WorkOrderStickerZPLHandler(BaseHandler):
 
 class WorkOrderStickerCSVHandler(BaseHandler):
     """GET /api/work-orders/stickers/csv?job_code=X&wo_id=Y — Export sticker data as CSV."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4692,7 +5142,7 @@ class WorkOrderStickerCSVHandler(BaseHandler):
 
 class WorkOrderSingleStickerHandler(BaseHandler):
     """GET /api/work-orders/stickers/single?job_code=X&item_id=Y — Single item sticker PDF."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4732,7 +5182,7 @@ class WorkOrderSingleStickerHandler(BaseHandler):
 
 class ShopFloorPageHandler(BaseHandler):
     """GET /shop-floor — Shop floor fabrication dashboard."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         from templates.shop_floor import SHOP_FLOOR_HTML
@@ -4741,7 +5191,7 @@ class ShopFloorPageHandler(BaseHandler):
 
 class ShopFloorDataHandler(BaseHandler):
     """GET /api/shop-floor/data — Aggregated shop floor metrics."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -4868,7 +5318,7 @@ class ShopFloorDataHandler(BaseHandler):
 
 class WorkStationPageHandler(BaseHandler):
     """GET /work-station/{job_code} — Digital work station for shop floor workers."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_own_work_items"
 
     def get(self, job_code):
         from templates.work_station import WORK_STATION_HTML
@@ -4881,7 +5331,7 @@ class WorkStationPageHandler(BaseHandler):
 
 class WorkStationDataHandler(BaseHandler):
     """GET /api/work-station/data — Items + machine info for a job's work station."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_own_work_items"
 
     def get(self):
         try:
@@ -4953,7 +5403,7 @@ class WorkStationDataHandler(BaseHandler):
 
 class WorkStationStepsHandler(BaseHandler):
     """GET /api/work-station/steps — Fab steps for a specific item."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_own_work_items"
 
     def get(self):
         try:
@@ -4989,7 +5439,7 @@ class WorkStationStepsHandler(BaseHandler):
 
 class WorkStationStepOverrideHandler(BaseHandler):
     """POST /api/work-station/steps/override — Save custom fab steps for a component type."""
-    required_roles = ["admin"]
+    required_permission = "edit_work_orders"
 
     def post(self):
         try:
@@ -5014,7 +5464,7 @@ class WorkStationStepOverrideHandler(BaseHandler):
 
 class WorkOrderPacketPDFHandler(BaseHandler):
     """GET /api/work-orders/packet/pdf — Generate printable work order packet PDF."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_permission = "view_work_orders"
 
     def get(self):
         try:
@@ -5054,6 +5504,1916 @@ class WorkOrderPacketPDFHandler(BaseHandler):
             import traceback
             self.set_status(500)
             self.write(f"Error: {e}\n{traceback.format_exc()}")
+
+
+# ─────────────────────────────────────────────
+# PHASE 2: WORK ORDER ASSIGNMENT & QUEUE HANDLERS
+# ─────────────────────────────────────────────
+
+class WorkOrderAssignHandler(BaseHandler):
+    """POST /api/work-orders/assign — Assign item to operator/welder. Foreman action."""
+    required_permission = "assign_operators"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            assigned_to = body.get("assigned_to", "").strip()
+            priority = int(body.get("priority", 50))
+
+            if not job_code or not item_id or not assigned_to:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or assigned_to"}))
+                return
+
+            assigned_by = self.current_username or "system"
+            result = assign_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                 assigned_to, assigned_by, priority)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderReassignHandler(BaseHandler):
+    """POST /api/work-orders/reassign — Reassign item to different operator. Foreman action."""
+    required_permission = "assign_operators"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            new_operator = body.get("new_operator", "").strip()
+
+            if not job_code or not item_id or not new_operator:
+                self.write(json_encode({"ok": False, "error": "Missing required fields"}))
+                return
+
+            reassigned_by = self.current_username or "system"
+            result = reassign_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                   new_operator, reassigned_by)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderReprioritizeHandler(BaseHandler):
+    """POST /api/work-orders/reprioritize — Change item priority. Foreman action."""
+    required_permission = "reprioritize_queue"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            new_priority = int(body.get("priority", 50))
+
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            changed_by = self.current_username or "system"
+            result = reprioritize_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                       new_priority, changed_by)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderStageHandler(BaseHandler):
+    """POST /api/work-orders/stage — Mark item as staged. Laborer action."""
+    required_permission = "scan_start_finish"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            staged_by = self.current_username or "system"
+            result = stage_item(SHOP_DRAWINGS_DIR, job_code, item_id, staged_by)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderTransitionHandler(BaseHandler):
+    """POST /api/work-orders/transition — Generic status transition.
+    Used for QC, shipping, delivery, and install transitions."""
+    required_permission = "view_work_orders"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            new_status = body.get("new_status", "").strip()
+            notes = body.get("notes", "").strip()
+
+            if not job_code or not item_id or not new_status:
+                self.write(json_encode({"ok": False, "error": "Missing required fields"}))
+                return
+
+            # Permission gate based on target status
+            perm = self.perm
+            if new_status in [STATUS_QC_APPROVED, STATUS_QC_REJECTED, STATUS_QC_PENDING]:
+                if not perm.can("perform_inspections") and not perm.can("sign_off_qc"):
+                    self._deny_access()
+                    return
+            elif new_status in [STATUS_SHIPPED, STATUS_READY_TO_SHIP]:
+                if not perm.can("build_loads") and not perm.can("view_shipping"):
+                    self._deny_access()
+                    return
+            elif new_status == STATUS_FABRICATED:
+                if not perm.can("scan_start_finish"):
+                    self._deny_access()
+                    return
+
+            changed_by = self.current_username or "system"
+            result = transition_item_status(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                            new_status, changed_by, notes)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class OperatorQueueHandler(BaseHandler):
+    """GET /api/operator/queue — Get assigned items for current user (My Station / My Work)."""
+    required_permission = "view_own_work_items"
+
+    def get(self):
+        try:
+            username = self.get_query_argument("username", "").strip()
+            if not username:
+                username = self.current_username or ""
+
+            if not username:
+                self.write(json_encode({"ok": False, "error": "No username"}))
+                return
+
+            items = get_operator_queue(SHOP_DRAWINGS_DIR, username)
+
+            # Split into active vs upcoming
+            active = [i for i in items if i.get("status") == STATUS_IN_PROGRESS]
+            upcoming = [i for i in items if i.get("status") in
+                        [STATUS_STAGED, STATUS_STICKERS_PRINTED, STATUS_APPROVED,
+                         STATUS_QC_REJECTED]]
+            completed = [i for i in items if i.get("status") in
+                         [STATUS_FABRICATED, STATUS_QC_PENDING, STATUS_QC_APPROVED,
+                          STATUS_READY_TO_SHIP, STATUS_SHIPPED]]
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "username": username,
+                "active": active,
+                "upcoming": upcoming,
+                "completed_today": completed,
+                "total_assigned": len(items),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class MachineQueueHandler(BaseHandler):
+    """GET /api/machine/queue?machine=WELDING — Get all items for a machine."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        try:
+            machine = self.get_query_argument("machine", "").strip()
+            if not machine:
+                self.write(json_encode({"ok": False, "error": "Missing machine parameter"}))
+                return
+
+            items = get_machine_queue(SHOP_DRAWINGS_DIR, machine)
+            machine_info = MACHINE_TYPES.get(machine, {"label": machine, "operator_type": "unknown"})
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "machine": machine,
+                "machine_info": machine_info,
+                "items": items,
+                "total": len(items),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShopFloorSummaryHandler(BaseHandler):
+    """GET /api/shop-floor/summary — Enhanced shop floor overview for foreman."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        try:
+            summary = get_shop_floor_summary(SHOP_DRAWINGS_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, **summary}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderBulkAssignHandler(BaseHandler):
+    """POST /api/work-orders/bulk-assign — Assign multiple items at once. Foreman action."""
+    required_permission = "assign_operators"
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            assignments = body.get("assignments", [])
+            # Each: {job_code, item_id, assigned_to, priority?}
+
+            if not assignments:
+                self.write(json_encode({"ok": False, "error": "No assignments provided"}))
+                return
+
+            assigned_by = self.current_username or "system"
+            results = []
+            for a in assignments:
+                job_code = a.get("job_code", "").strip()
+                item_id = a.get("item_id", "").strip()
+                assigned_to = a.get("assigned_to", "").strip()
+                priority = int(a.get("priority", 50))
+
+                if not job_code or not item_id or not assigned_to:
+                    results.append({"ok": False, "item_id": item_id, "error": "Missing fields"})
+                    continue
+
+                result = assign_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                     assigned_to, assigned_by, priority)
+                result["item_id"] = item_id
+                results.append(result)
+
+            success = sum(1 for r in results if r.get("ok"))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "total": len(results),
+                "success": success,
+                "failed": len(results) - success,
+                "results": results,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class MyStationPageHandler(BaseHandler):
+    """GET /work-station/mine — Operator's personal queue (My Station). Mobile-first."""
+    required_permission = "view_own_work_items"
+
+    def get(self):
+        from templates.my_station import MY_STATION_HTML
+        username = self.current_username or "local"
+        display = self.get_display_name()
+        roles_json = json.dumps(self.user_roles)
+        html = (MY_STATION_HTML
+                .replace("{{USERNAME}}", username)
+                .replace("{{DISPLAY_NAME}}", display)
+                .replace("{{USER_ROLES}}", roles_json))
+        self.render_with_nav(html, active_page="workstation")
+
+
+class ForemanPanelPageHandler(BaseHandler):
+    """GET /shop-floor/assign — Foreman assignment panel."""
+    required_permission = "assign_operators"
+
+    def get(self):
+        from templates.foreman_panel import FOREMAN_PANEL_HTML
+        username = self.current_username or "local"
+        display = self.get_display_name()
+        html = (FOREMAN_PANEL_HTML
+                .replace("{{USERNAME}}", username)
+                .replace("{{DISPLAY_NAME}}", display))
+        self.render_with_nav(html, active_page="shopfloor")
+
+
+class StatusConfigHandler(BaseHandler):
+    """GET /api/work-orders/status-config — Return status labels, colors, and flow map."""
+    required_permission = "view_work_orders"
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "statuses": VALID_STATUSES,
+            "labels": STATUS_LABELS,
+            "colors": STATUS_COLORS,
+            "flow": {k: v for k, v in STATUS_FLOW.items()},
+            "machines": {k: v for k, v in MACHINE_TYPES.items()},
+        }))
+
+
+# ─────────────────────────────────────────────
+# SHIPPING & LOAD MANAGEMENT HANDLERS (Phase 4)
+# ─────────────────────────────────────────────
+
+class ShippingDashboardPageHandler(BaseHandler):
+    """GET /shipping — Shipping dashboard page."""
+    required_permission = "view_shipping"
+    def get(self):
+        from templates.shipping_page import SHIPPING_PAGE_HTML
+        self.render_with_nav(SHIPPING_PAGE_HTML, active_page="shipping")
+
+
+class LoadBuilderPageHandler(BaseHandler):
+    """GET /shipping/load-builder — Load builder page."""
+    required_permission = "build_loads"
+    def get(self):
+        from templates.load_builder_page import LOAD_BUILDER_PAGE_HTML
+        self.render_with_nav(LOAD_BUILDER_PAGE_HTML, active_page="shipping")
+
+
+class ShippingListAPIHandler(BaseHandler):
+    """GET /api/shipping/loads — List all loads with optional filters."""
+    required_permission = "view_shipping"
+    def get(self):
+        try:
+            status = self.get_query_argument("status", "")
+            job_code = self.get_query_argument("job_code", "")
+            loads = list_loads(BASE_DIR, status=status, job_code=job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "loads": [sl.to_dict() for sl in loads],
+                "total": len(loads),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingLoadDetailHandler(BaseHandler):
+    """GET /api/shipping/load?load_id=X — Get full load details."""
+    required_permission = "view_shipping"
+    def get(self):
+        load_id = self.get_query_argument("load_id", "")
+        load = load_shipping_load(BASE_DIR, load_id)
+        if not load:
+            self.write(json_encode({"ok": False, "error": "Load not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "load": load.to_dict()}))
+
+
+class ShippingCreateLoadHandler(BaseHandler):
+    """POST /api/shipping/create — Create a new shipping load."""
+    required_permission = "build_loads"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            load = create_load(
+                BASE_DIR, job_code,
+                created_by=self.current_username or "system",
+                destination=body.get("destination", ""),
+                carrier=body.get("carrier", ""),
+                notes=body.get("notes", ""),
+                special_instructions=body.get("special_instructions", ""),
+            )
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "load": load.to_dict()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingAddItemsHandler(BaseHandler):
+    """POST /api/shipping/add-items — Add WO items to a load."""
+    required_permission = "build_loads"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "").strip()
+            items = body.get("items", [])
+            if not load_id or not items:
+                self.write(json_encode({"ok": False, "error": "load_id and items required"}))
+                return
+            result = add_items_to_load(
+                BASE_DIR, SHOP_DRAWINGS_DIR, load_id, items,
+                added_by=self.current_username or "system")
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingRemoveItemHandler(BaseHandler):
+    """POST /api/shipping/remove-item — Remove an item from a load."""
+    required_permission = "build_loads"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "").strip()
+            item_id = body.get("item_id", "").strip()
+            result = remove_item_from_load(
+                BASE_DIR, SHOP_DRAWINGS_DIR, load_id, item_id,
+                removed_by=self.current_username or "system")
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingTransitionHandler(BaseHandler):
+    """POST /api/shipping/transition — Transition a load's status (ship, deliver, complete)."""
+    required_permission = "mark_shipped"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "").strip()
+            new_status = body.get("new_status", "").strip()
+            notes = body.get("notes", "")
+
+            if not load_id or not new_status:
+                self.write(json_encode({"ok": False, "error": "load_id and new_status required"}))
+                return
+
+            result = transition_load_status(
+                BASE_DIR, SHOP_DRAWINGS_DIR, load_id, new_status,
+                changed_by=self.current_username or "system",
+                notes=notes)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingUpdateLoadHandler(BaseHandler):
+    """POST /api/shipping/update — Update load metadata (carrier, destination, etc.)."""
+    required_permission = "build_loads"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "").strip()
+            load = load_shipping_load(BASE_DIR, load_id)
+            if not load:
+                self.write(json_encode({"ok": False, "error": "Load not found"}))
+                return
+            for k in ["destination", "site_contact", "site_phone", "carrier",
+                       "truck_number", "trailer_type", "driver_name", "driver_phone",
+                       "notes", "special_instructions"]:
+                if k in body:
+                    setattr(load, k, body[k])
+            save_load(BASE_DIR, load)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "load": load.to_dict()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingBOLHandler(BaseHandler):
+    """POST /api/shipping/bol — Generate a BOL number for a load."""
+    required_permission = "generate_bol"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "").strip()
+            result = generate_bol(BASE_DIR, load_id,
+                                  generated_by=self.current_username or "system")
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippableItemsHandler(BaseHandler):
+    """GET /api/shipping/shippable-items — Items ready to be loaded (qc_approved, not on a load)."""
+    required_permission = "view_shipping"
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "")
+            items = get_shippable_items(SHOP_DRAWINGS_DIR, job_code=job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "items": items, "total": len(items)}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingSummaryHandler(BaseHandler):
+    """GET /api/shipping/summary — Shipping dashboard metrics."""
+    required_permission = "view_shipping"
+    def get(self):
+        try:
+            summary = get_shipping_summary(BASE_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "summary": summary}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ShippingConfigHandler(BaseHandler):
+    """GET /api/shipping/config — Return load status labels, colors, flow."""
+    required_permission = "view_shipping"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "statuses": LOAD_STATUSES,
+            "labels": LOAD_STATUS_LABELS,
+            "colors": LOAD_STATUS_COLORS,
+            "flow": LOAD_FLOW,
+        }))
+
+
+# ─────────────────────────────────────────────
+# FIELD OPERATIONS & INSTALLATION (Phase 5)
+# ─────────────────────────────────────────────
+
+class FieldDashboardPageHandler(BaseHandler):
+    """GET /field — Field operations dashboard (mobile-friendly)."""
+    required_permission = "view_field_reports"
+    def get(self):
+        from templates.field_ops_page import FIELD_OPS_PAGE_HTML
+        self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field")
+
+
+class InstallTrackerPageHandler(BaseHandler):
+    """GET /field/install-tracker — Installation tracking dashboard."""
+    required_permission = "view_field_reports"
+    def get(self):
+        from templates.install_tracker_page import INSTALL_TRACKER_PAGE_HTML
+        self.render_with_nav(INSTALL_TRACKER_PAGE_HTML, active_page="field")
+
+
+class ProjectCompletionPageHandler(BaseHandler):
+    """GET /field/completion — Project completion dashboard."""
+    required_permission = "view_field_reports"
+    def get(self):
+        from templates.project_completion_page import PROJECT_COMPLETION_PAGE_HTML
+        self.render_with_nav(PROJECT_COMPLETION_PAGE_HTML, active_page="field")
+
+
+class PunchListAPIHandler(BaseHandler):
+    """GET /api/field/punch-list — List punch items, optionally by project."""
+    required_permission = "view_field_reports"
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            status = self.get_argument("status", "")
+            if job_code:
+                items = load_punch_items(BASE_DIR, job_code, status=status)
+            else:
+                items = load_all_punch_items(BASE_DIR)
+                if status:
+                    items = [i for i in items if i.status == status]
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "items": [i.to_dict() for i in items],
+                "count": len(items),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PunchCreateHandler(BaseHandler):
+    """POST /api/field/punch-list/create — Create a new punch list item."""
+    required_permission = "create_punch_list"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            title = body.get("title", "").strip()
+            if not job_code or not title:
+                self.write(json_encode({"ok": False, "error": "job_code and title required"}))
+                return
+            punch = create_punch_item(
+                BASE_DIR, job_code,
+                created_by=self.current_username or "system",
+                title=title,
+                description=body.get("description", ""),
+                priority=body.get("priority", "medium"),
+                category=body.get("category", "other"),
+                item_id=body.get("item_id", ""),
+                ship_mark=body.get("ship_mark", ""),
+                load_id=body.get("load_id", ""),
+                location=body.get("location", ""),
+                assigned_to=body.get("assigned_to", ""),
+                photos=body.get("photos", []),
+            )
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "punch": punch.to_dict()}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PunchTransitionHandler(BaseHandler):
+    """POST /api/field/punch-list/transition — Transition punch item status."""
+    required_permission = "create_punch_list"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            punch_id = body.get("punch_id", "").strip()
+            new_status = body.get("new_status", "").strip()
+            if not all([job_code, punch_id, new_status]):
+                self.write(json_encode({"ok": False, "error": "job_code, punch_id, and new_status required"}))
+                return
+            result = transition_punch_status(
+                BASE_DIR, job_code, punch_id, new_status,
+                changed_by=self.current_username or "system",
+                notes=body.get("notes", ""))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PunchDetailHandler(BaseHandler):
+    """GET /api/field/punch-list/detail — Get a specific punch item."""
+    required_permission = "view_field_reports"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        punch_id = self.get_argument("punch_id", "")
+        if not job_code or not punch_id:
+            self.write(json_encode({"ok": False, "error": "job_code and punch_id required"}))
+            return
+        punch = load_punch_item(BASE_DIR, job_code, punch_id)
+        if not punch:
+            self.write(json_encode({"ok": False, "error": "Punch item not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "punch": punch.to_dict()}))
+
+
+class InstallConfirmHandler(BaseHandler):
+    """POST /api/field/confirm-install — Confirm item installation."""
+    required_permission = "create_punch_list"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "job_code and item_id required"}))
+                return
+            result = confirm_installation(
+                BASE_DIR, SHOP_DRAWINGS_DIR, job_code, item_id,
+                installed_by=self.current_username or "system",
+                location=body.get("location", ""),
+                notes=body.get("notes", ""),
+                photos=body.get("photos", []))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class DailyReportSubmitHandler(BaseHandler):
+    """POST /api/field/daily-report — Submit a daily field report."""
+    required_permission = "submit_daily_report"
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            result = submit_daily_report(
+                BASE_DIR, SHOP_DRAWINGS_DIR, job_code,
+                submitted_by=self.current_username or "system",
+                date=body.get("date", ""),
+                crew_count=body.get("crew_count", 0),
+                crew_names=body.get("crew_names", []),
+                hours_worked=body.get("hours_worked", 0.0),
+                work_summary=body.get("work_summary", ""),
+                items_installed=body.get("items_installed", []),
+                equipment_used=body.get("equipment_used", []),
+                weather=body.get("weather", ""),
+                temperature_f=body.get("temperature_f", 0.0),
+                delays=body.get("delays", ""),
+                safety_incidents=body.get("safety_incidents", ""),
+                photos=body.get("photos", []),
+                notes=body.get("notes", ""),
+                issues=body.get("issues", ""))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class DailyReportListHandler(BaseHandler):
+    """GET /api/field/daily-reports — List daily reports for a project."""
+    required_permission = "view_field_reports"
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            reports = load_daily_reports(BASE_DIR, job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "reports": [r.to_dict() for r in reports],
+                "count": len(reports),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class InstallationRecordsHandler(BaseHandler):
+    """GET /api/field/installations — List installation records for a project."""
+    required_permission = "view_field_reports"
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            records = load_installation_records(BASE_DIR, job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "records": [r.to_dict() for r in records],
+                "count": len(records),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ProjectCompletionAPIHandler(BaseHandler):
+    """GET /api/field/project-completion — Get completion metrics for a project."""
+    required_permission = "view_field_reports"
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            completion = get_project_completion(SHOP_DRAWINGS_DIR, BASE_DIR, job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "completion": completion}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class FieldSummaryHandler(BaseHandler):
+    """GET /api/field/summary — Summary metrics across all projects."""
+    required_permission = "view_field_reports"
+    def get(self):
+        try:
+            summary = get_field_summary(SHOP_DRAWINGS_DIR, BASE_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "summary": summary}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class FieldConfigHandler(BaseHandler):
+    """GET /api/field/config — Return punch list constants."""
+    required_permission = "view_field_reports"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "punch_statuses": PUNCH_STATUSES,
+            "punch_status_labels": PUNCH_STATUS_LABELS,
+            "punch_priorities": PUNCH_PRIORITIES,
+            "punch_categories": PUNCH_CATEGORIES,
+            "punch_category_labels": PUNCH_CATEGORY_LABELS,
+            "punch_flow": PUNCH_FLOW,
+        }))
+
+
+# ─────────────────────────────────────────────
+# PHASE 6: REPORTING & ANALYTICS
+# ─────────────────────────────────────────────
+
+class ProductionMetricsPageHandler(BaseHandler):
+    """GET /reports/production — Production Metrics dashboard page."""
+    required_permission = "view_financials"
+    def get(self):
+        from templates.production_metrics_page import PRODUCTION_METRICS_PAGE_HTML
+        self.write(PRODUCTION_METRICS_PAGE_HTML)
+
+
+class ExecutiveSummaryPageHandler(BaseHandler):
+    """GET /reports/executive — Executive Summary dashboard page."""
+    required_permission = "view_financials"
+    def get(self):
+        from templates.executive_summary_page import EXECUTIVE_SUMMARY_PAGE_HTML
+        self.write(EXECUTIVE_SUMMARY_PAGE_HTML)
+
+
+class ReportListHandler(BaseHandler):
+    """GET /api/reports — List available report types."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "reports": list_available_reports(),
+        }))
+
+
+class ReportGenerateHandler(BaseHandler):
+    """POST /api/reports/generate — Generate a report by type."""
+    required_permission = "view_financials"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        data = json_decode(self.request.body)
+        report_type = data.get("report_type", "")
+        days_back = int(data.get("days_back", 30))
+
+        result = generate_report(
+            report_type,
+            wo_base_dir=SHOP_DRAWINGS_DIR,
+            shipping_base_dir=DATA_DIR,
+            field_base_dir=DATA_DIR,
+            days_back=days_back,
+        )
+        self.write(json_encode(result))
+
+
+class ProductionMetricsAPIHandler(BaseHandler):
+    """GET /api/reports/production — Production metrics data."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        days_back = int(self.get_argument("days_back", "30"))
+        try:
+            data = get_production_metrics(
+                SHOP_DRAWINGS_DIR, DATA_DIR, DATA_DIR,
+                days_back=days_back,
+            )
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ExecutiveSummaryAPIHandler(BaseHandler):
+    """GET /api/reports/executive — Executive summary data."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = get_executive_summary(SHOP_DRAWINGS_DIR, DATA_DIR, DATA_DIR)
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class OperatorPerformanceAPIHandler(BaseHandler):
+    """GET /api/reports/operators — Operator performance data."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        days_back = int(self.get_argument("days_back", "30"))
+        try:
+            data = get_operator_performance(SHOP_DRAWINGS_DIR, days_back=days_back)
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ProjectStatusReportAPIHandler(BaseHandler):
+    """GET /api/reports/project-status — Per-project status breakdown."""
+    required_permission = "view_project_pnl"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = get_project_status_report(SHOP_DRAWINGS_DIR, DATA_DIR, DATA_DIR)
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class DeliveryAnalysisAPIHandler(BaseHandler):
+    """GET /api/reports/delivery — Delivery analysis data."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = get_delivery_analysis(DATA_DIR, DATA_DIR, SHOP_DRAWINGS_DIR)
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class QCAnalysisAPIHandler(BaseHandler):
+    """GET /api/reports/qc — QC analysis data."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = get_qc_analysis(SHOP_DRAWINGS_DIR)
+            self.write(json_encode({"ok": True, "report": data}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class ReportConfigHandler(BaseHandler):
+    """GET /api/reports/config — Return report constants."""
+    required_permission = "view_financials"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "report_types": REPORT_TYPES,
+            "report_labels": REPORT_LABELS,
+        }))
+
+
+# ─────────────────────────────────────────────
+# PHASE 7: ACTIVITY FEED, AUDIT TRAIL & NOTIFICATIONS
+# ─────────────────────────────────────────────
+
+class ActivityFeedPageHandler(BaseHandler):
+    """GET /activity — Activity Feed & Audit Trail dashboard page."""
+    required_permission = "view_audit_log"
+    def get(self):
+        from templates.activity_feed_page import ACTIVITY_FEED_PAGE_HTML
+        self.write(ACTIVITY_FEED_PAGE_HTML)
+
+
+class ActivityEventsAPIHandler(BaseHandler):
+    """GET /api/activity/events — Query activity events with filters."""
+    required_permission = "view_audit_log"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        category = self.get_argument("category", "")
+        event_type = self.get_argument("event_type", "")
+        severity = self.get_argument("severity", "")
+        job_code = self.get_argument("job_code", "")
+        actor = self.get_argument("actor", "")
+        since = self.get_argument("since", "")
+        limit = int(self.get_argument("limit", "100"))
+        offset = int(self.get_argument("offset", "0"))
+
+        result = get_events(
+            DATA_DIR, category=category, event_type=event_type,
+            severity=severity, job_code=job_code, actor=actor,
+            since=since, limit=limit, offset=offset,
+        )
+        self.write(json_encode({"ok": True, **result}))
+
+
+class ActivityFeedAPIHandler(BaseHandler):
+    """GET /api/activity/feed — Recent activity feed."""
+    required_permission = "view_dashboard"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        limit = int(self.get_argument("limit", "50"))
+        job_code = self.get_argument("job_code", "")
+        events = get_activity_feed(DATA_DIR, limit=limit, job_code=job_code)
+        self.write(json_encode({"ok": True, "events": events}))
+
+
+class ActivityStatsAPIHandler(BaseHandler):
+    """GET /api/activity/stats — Event statistics."""
+    required_permission = "view_audit_log"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        days = int(self.get_argument("days", "7"))
+        stats = get_event_stats(DATA_DIR, days_back=days)
+        self.write(json_encode({"ok": True, "stats": stats}))
+
+
+class AlertRulesAPIHandler(BaseHandler):
+    """GET/POST /api/activity/rules — List or create alert rules."""
+    required_permission = "view_audit_log"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        rules = list_alert_rules(DATA_DIR)
+        self.write(json_encode({"ok": True, "rules": rules}))
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        data = json_decode(self.request.body)
+        user = self.get_current_user()
+        username = user.get("username", "unknown") if isinstance(user, dict) else "unknown"
+
+        rule = create_alert_rule(
+            DATA_DIR, name=data.get("name", ""),
+            created_by=username,
+            event_types=data.get("event_types", []),
+            categories=data.get("categories", []),
+            severities=data.get("severities", []),
+            job_codes=data.get("job_codes", []),
+            notify_roles=data.get("notify_roles", []),
+            notify_users=data.get("notify_users", []),
+        )
+        self.write(json_encode({"ok": True, "rule": rule.to_dict()}))
+
+
+class AlertRuleUpdateHandler(BaseHandler):
+    """POST /api/activity/rules/update — Update an alert rule."""
+    required_permission = "view_audit_log"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        data = json_decode(self.request.body)
+        rule_id = data.pop("rule_id", "")
+        result = update_alert_rule(DATA_DIR, rule_id, **data)
+        self.write(json_encode(result))
+
+
+class AlertRuleDeleteHandler(BaseHandler):
+    """POST /api/activity/rules/delete — Delete an alert rule."""
+    required_permission = "view_audit_log"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        data = json_decode(self.request.body)
+        result = delete_alert_rule(DATA_DIR, data.get("rule_id", ""))
+        self.write(json_encode(result))
+
+
+class NotificationsAPIHandler(BaseHandler):
+    """GET /api/notifications — Get notifications for current user."""
+    required_permission = "view_dashboard"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        user = self.get_current_user()
+        username = user.get("username", "unknown") if isinstance(user, dict) else "unknown"
+        unread = self.get_argument("unread_only", "false").lower() == "true"
+        limit = int(self.get_argument("limit", "50"))
+
+        notifs = get_notifications(DATA_DIR, username, unread_only=unread, limit=limit)
+        count = get_unread_count(DATA_DIR, username)
+        self.write(json_encode({
+            "ok": True,
+            "notifications": notifs,
+            "unread_count": count,
+        }))
+
+
+class NotificationReadHandler(BaseHandler):
+    """POST /api/notifications/read — Mark notification as read."""
+    required_permission = "view_dashboard"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        data = json_decode(self.request.body)
+        user = self.get_current_user()
+        username = user.get("username", "unknown") if isinstance(user, dict) else "unknown"
+        result = mark_notification_read(DATA_DIR, data.get("notification_id", ""), username)
+        self.write(json_encode(result))
+
+
+class NotificationReadAllHandler(BaseHandler):
+    """POST /api/notifications/read-all — Mark all notifications as read."""
+    required_permission = "view_dashboard"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        user = self.get_current_user()
+        username = user.get("username", "unknown") if isinstance(user, dict) else "unknown"
+        result = mark_all_read(DATA_DIR, username)
+        self.write(json_encode(result))
+
+
+class NotificationClearHandler(BaseHandler):
+    """POST /api/notifications/clear — Clear all notifications for user."""
+    required_permission = "view_dashboard"
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        user = self.get_current_user()
+        username = user.get("username", "unknown") if isinstance(user, dict) else "unknown"
+        result = clear_notifications(DATA_DIR, username)
+        self.write(json_encode(result))
+
+
+class ActivityConfigHandler(BaseHandler):
+    """GET /api/activity/config — Return activity/event constants."""
+    required_permission = "view_audit_log"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "event_categories": EVENT_CATEGORIES,
+            "category_labels": CATEGORY_LABELS,
+            "severity_levels": SEVERITY_LEVELS,
+            "severity_labels": SEVERITY_LABELS,
+            "event_types": EVENT_TYPES,
+            "event_labels": EVENT_LABELS,
+        }))
+
+
+# ─────────────────────────────────────────────
+# PHASE 8 — Scheduling & Production Planning
+# ─────────────────────────────────────────────
+
+class ProductionSchedulePageHandler(BaseHandler):
+    """GET /schedule — Production Schedule dashboard."""
+    required_permission = "view_schedule"
+    def get(self):
+        from templates.production_schedule_page import PRODUCTION_SCHEDULE_PAGE_HTML
+        self.set_header("Content-Type", "text/html")
+        self.write(PRODUCTION_SCHEDULE_PAGE_HTML)
+
+
+class ScheduleListAPIHandler(BaseHandler):
+    """GET /api/schedule/list — List all production schedules."""
+    required_permission = "view_schedule"
+    def get(self):
+        schedules = list_schedules(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "schedules": [s.to_dict() for s in schedules],
+        }))
+
+
+class ScheduleCreateHandler(BaseHandler):
+    """POST /api/schedule/create — Create a new production schedule."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        name = data.get("name", "").strip()
+        start_date = data.get("start_date", "")
+        end_date = data.get("end_date", "")
+        if not name or not start_date or not end_date:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "name, start_date, end_date required"}))
+            return
+        ps = create_schedule(
+            DATA_DIR, name=name, start_date=start_date, end_date=end_date,
+            created_by=self.current_user, description=data.get("description", ""),
+            job_codes=data.get("job_codes", []),
+        )
+        self.write(json_encode({"ok": True, "schedule": ps.to_dict()}))
+
+
+class ScheduleUpdateHandler(BaseHandler):
+    """POST /api/schedule/update — Update a production schedule."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        schedule_id = data.get("schedule_id", "")
+        if not schedule_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "schedule_id required"}))
+            return
+        kwargs = {}
+        for k in ["name", "description", "status", "start_date", "end_date", "job_codes"]:
+            if k in data:
+                kwargs[k] = data[k]
+        ps = update_schedule(DATA_DIR, schedule_id, **kwargs)
+        if not ps:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Schedule not found"}))
+            return
+        self.write(json_encode({"ok": True, "schedule": ps.to_dict()}))
+
+
+class ScheduleDeleteHandler(BaseHandler):
+    """POST /api/schedule/delete — Delete a production schedule."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        schedule_id = data.get("schedule_id", "")
+        if not schedule_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "schedule_id required"}))
+            return
+        ok = delete_schedule(DATA_DIR, schedule_id)
+        if not ok:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Schedule not found"}))
+            return
+        self.write(json_encode({"ok": True}))
+
+
+class ScheduleEntryAddHandler(BaseHandler):
+    """POST /api/schedule/entry/add — Add an entry to the schedule."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        required = ["job_code", "work_order_id", "item_id", "machine", "scheduled_date", "estimated_minutes"]
+        for f in required:
+            if not data.get(f):
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": f"{f} required"}))
+                return
+        entry = add_schedule_entry(
+            DATA_DIR,
+            job_code=data["job_code"],
+            work_order_id=data["work_order_id"],
+            item_id=data["item_id"],
+            machine=data["machine"],
+            scheduled_date=data["scheduled_date"],
+            estimated_minutes=int(data["estimated_minutes"]),
+            created_by=self.current_user,
+            priority=int(data.get("priority", PRIORITY_NORMAL)),
+            assigned_to=data.get("assigned_to", ""),
+            ship_mark=data.get("ship_mark", ""),
+            component_type=data.get("component_type", ""),
+            notes=data.get("notes", ""),
+            schedule_id=data.get("schedule_id", ""),
+        )
+        self.write(json_encode({"ok": True, "entry": entry.to_dict()}))
+
+
+class ScheduleEntryUpdateHandler(BaseHandler):
+    """POST /api/schedule/entry/update — Update a schedule entry."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        entry_id = data.get("entry_id", "")
+        if not entry_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "entry_id required"}))
+            return
+        kwargs = {}
+        for k in ["machine", "scheduled_date", "estimated_minutes", "priority",
+                   "sequence", "assigned_to", "status", "notes"]:
+            if k in data:
+                kwargs[k] = data[k]
+        entry = update_schedule_entry(DATA_DIR, entry_id, **kwargs)
+        if not entry:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Entry not found"}))
+            return
+        self.write(json_encode({"ok": True, "entry": entry.to_dict()}))
+
+
+class ScheduleEntryDeleteHandler(BaseHandler):
+    """POST /api/schedule/entry/delete — Delete a schedule entry."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        entry_id = data.get("entry_id", "")
+        if not entry_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "entry_id required"}))
+            return
+        ok = delete_schedule_entry(DATA_DIR, entry_id)
+        if not ok:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Entry not found"}))
+            return
+        self.write(json_encode({"ok": True}))
+
+
+class ScheduleDateAPIHandler(BaseHandler):
+    """GET /api/schedule/date — Get entries for a specific date."""
+    required_permission = "view_schedule"
+    def get(self):
+        date = self.get_argument("date", "")
+        machine = self.get_argument("machine", "")
+        if not date:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "date required"}))
+            return
+        entries = get_entries_for_date(DATA_DIR, date, machine=machine)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "date": date,
+            "entries": [e.to_dict() for e in entries],
+        }))
+
+
+class ScheduleRangeAPIHandler(BaseHandler):
+    """GET /api/schedule/range — Get entries for a date range."""
+    required_permission = "view_schedule"
+    def get(self):
+        start = self.get_argument("start", "")
+        end = self.get_argument("end", "")
+        machine = self.get_argument("machine", "")
+        job_code = self.get_argument("job_code", "")
+        if not start or not end:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "start and end required"}))
+            return
+        entries = get_entries_for_range(DATA_DIR, start, end,
+                                        machine=machine, job_code=job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "entries": [e.to_dict() for e in entries],
+        }))
+
+
+class CapacityAPIHandler(BaseHandler):
+    """GET /api/schedule/capacity — Get machine capacity configuration."""
+    required_permission = "view_schedule"
+    def get(self):
+        capacity = get_machine_capacity(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "capacity": capacity}))
+
+
+class CapacityUpdateHandler(BaseHandler):
+    """POST /api/schedule/capacity/update — Update machine capacity."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        machine = data.get("machine", "")
+        if not machine:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "machine required"}))
+            return
+        kwargs = {}
+        for k in ["shift_hours", "shifts_per_day", "efficiency_factor", "enabled"]:
+            if k in data:
+                kwargs[k] = data[k]
+        result = update_machine_capacity(DATA_DIR, machine, **kwargs)
+        if not result:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Machine not found"}))
+            return
+        self.write(json_encode({"ok": True, "machine_capacity": result}))
+
+
+class CapacityUsageAPIHandler(BaseHandler):
+    """GET /api/schedule/capacity/usage — Get daily capacity usage."""
+    required_permission = "view_schedule"
+    def get(self):
+        date = self.get_argument("date", "")
+        if not date:
+            import datetime as dt
+            date = dt.date.today().isoformat()
+        usage = get_daily_capacity_usage(DATA_DIR, date)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "date": date, "usage": usage}))
+
+
+class CapacityForecastAPIHandler(BaseHandler):
+    """GET /api/schedule/capacity/forecast — Get capacity forecast."""
+    required_permission = "view_schedule"
+    def get(self):
+        days = int(self.get_argument("days", "14"))
+        forecast = get_capacity_forecast(DATA_DIR, days_ahead=days)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "forecast": forecast}))
+
+
+class AutoScheduleHandler(BaseHandler):
+    """POST /api/schedule/auto — Auto-schedule unscheduled items for a job."""
+    required_permission = "manage_schedule"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "")
+        start_date = data.get("start_date", "")
+        if not job_code or not start_date:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code and start_date required"}))
+            return
+        wo_base = os.path.join(DATA_DIR, "shop_drawings")
+        priority = int(data.get("priority", PRIORITY_NORMAL))
+        entries = auto_schedule_job(
+            DATA_DIR, wo_base, job_code, start_date,
+            created_by=self.current_user, priority=priority,
+        )
+        self.write(json_encode({
+            "ok": True,
+            "entries_created": len(entries),
+            "entries": [e.to_dict() for e in entries],
+        }))
+
+
+class ScheduleSummaryAPIHandler(BaseHandler):
+    """GET /api/schedule/summary — Get overall scheduling summary."""
+    required_permission = "view_schedule"
+    def get(self):
+        summary = get_schedule_summary(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "summary": summary}))
+
+
+class JobTimelineAPIHandler(BaseHandler):
+    """GET /api/schedule/job-timeline — Get timeline for a job."""
+    required_permission = "view_schedule"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        if not job_code:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        timeline = get_job_timeline(DATA_DIR, job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "timeline": timeline}))
+
+
+class MachineScheduleAPIHandler(BaseHandler):
+    """GET /api/schedule/machine — Get detailed schedule for a machine."""
+    required_permission = "view_schedule"
+    def get(self):
+        machine = self.get_argument("machine", "")
+        days = int(self.get_argument("days", "7"))
+        if not machine:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "machine required"}))
+            return
+        schedule = get_machine_schedule(DATA_DIR, machine, days_ahead=days)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "schedule": schedule}))
+
+
+class BottleneckForecastAPIHandler(BaseHandler):
+    """GET /api/schedule/bottlenecks — Get bottleneck forecast."""
+    required_permission = "view_schedule"
+    def get(self):
+        days = int(self.get_argument("days", "14"))
+        bottlenecks = get_bottleneck_forecast(DATA_DIR, days_ahead=days)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "bottlenecks": bottlenecks}))
+
+
+class OverdueEntriesAPIHandler(BaseHandler):
+    """GET /api/schedule/overdue — Get overdue schedule entries."""
+    required_permission = "view_schedule"
+    def get(self):
+        overdue = get_overdue_entries(DATA_DIR)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "overdue": [e.to_dict() for e in overdue],
+            "count": len(overdue),
+        }))
+
+
+class ScheduleConfigHandler(BaseHandler):
+    """GET /api/schedule/config — Return scheduling constants."""
+    required_permission = "view_schedule"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "schedule_statuses": SCHED_STATUSES,
+            "schedule_status_labels": SCHED_STATUS_LABELS,
+            "priority_labels": PRIORITY_LABELS,
+            "priority_colors": PRIORITY_COLORS,
+            "machine_types": {k: v["label"] for k, v in MACHINE_TYPES.items()},
+        }))
+
+
+# ─────────────────────────────────────────────
+# PHASE 9 — Document Management & Drawing Revisions
+# ─────────────────────────────────────────────
+
+class DocumentManagementPageHandler(BaseHandler):
+    """GET /documents — Document Management dashboard."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        from templates.document_management_page import DOCUMENT_MANAGEMENT_PAGE_HTML
+        self.set_header("Content-Type", "text/html")
+        self.write(DOCUMENT_MANAGEMENT_PAGE_HTML)
+
+
+# ── Drawing Revisions ─────────────────────────────────────────────────
+
+class RevisionListAPIHandler(BaseHandler):
+    """GET /api/documents/revisions — List drawing revisions."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        category = self.get_argument("category", "")
+        status = self.get_argument("status", "")
+        drawing_number = self.get_argument("drawing_number", "")
+        revs = list_revisions(DATA_DIR, job_code=job_code, category=category,
+                              status=status, drawing_number=drawing_number)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "revisions": [r.to_dict() for r in revs],
+            "count": len(revs),
+        }))
+
+
+class RevisionDetailAPIHandler(BaseHandler):
+    """GET /api/documents/revision?revision_id=X — Get single revision."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        rev_id = self.get_argument("revision_id", "")
+        if not rev_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "revision_id required"}))
+            return
+        rev = get_revision(DATA_DIR, rev_id)
+        if not rev:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Revision not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "revision": rev.to_dict()}))
+
+
+class RevisionCreateHandler(BaseHandler):
+    """POST /api/documents/revision/create — Create a new drawing revision."""
+    required_permission = "edit_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        drawing_number = data.get("drawing_number", "").strip()
+        title = data.get("title", "").strip()
+        if not job_code or not drawing_number or not title:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, drawing_number, title required"}))
+            return
+        rev = create_revision(
+            DATA_DIR, job_code=job_code, drawing_number=drawing_number,
+            title=title, revision=data.get("revision", ""),
+            created_by=self.current_user,
+            category=data.get("category", "shop_drawings"),
+            filename=data.get("filename", ""),
+            file_size=data.get("file_size", 0),
+            description=data.get("description", ""),
+            metadata=data.get("metadata", {}),
+        )
+        self.write(json_encode({"ok": True, "revision": rev.to_dict()}))
+
+
+class RevisionTransitionHandler(BaseHandler):
+    """POST /api/documents/revision/transition — Change revision status."""
+    required_permission = "approve_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        rev_id = data.get("revision_id", "")
+        new_status = data.get("status", "")
+        if not rev_id or not new_status:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "revision_id and status required"}))
+            return
+        rev = transition_revision(
+            DATA_DIR, rev_id, new_status, actor=self.current_user,
+            reason=data.get("rejection_reason", ""),
+        )
+        if not rev:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "Invalid transition or revision not found"}))
+            return
+        self.write(json_encode({"ok": True, "revision": rev.to_dict()}))
+
+
+class RevisionHistoryAPIHandler(BaseHandler):
+    """GET /api/documents/revision/history — Revision history for a drawing."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        drawing_number = self.get_argument("drawing_number", "")
+        if not job_code or not drawing_number:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code and drawing_number required"}))
+            return
+        history = get_revision_history(DATA_DIR, job_code, drawing_number)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "history": [r.to_dict() for r in history],
+            "count": len(history),
+        }))
+
+
+class RevisionLatestAPIHandler(BaseHandler):
+    """GET /api/documents/revision/latest — Latest revision for a drawing."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        drawing_number = self.get_argument("drawing_number", "")
+        if not job_code or not drawing_number:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code and drawing_number required"}))
+            return
+        rev = get_latest_revision(DATA_DIR, job_code, drawing_number)
+        if not rev:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "No revisions found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "revision": rev.to_dict()}))
+
+
+# ── RFIs ──────────────────────────────────────────────────────────────
+
+class RFIListAPIHandler(BaseHandler):
+    """GET /api/documents/rfis — List RFIs."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        status = self.get_argument("status", "")
+        rfis = list_rfis(DATA_DIR, job_code=job_code, status=status)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "rfis": [r.to_dict() for r in rfis],
+            "count": len(rfis),
+        }))
+
+
+class RFIDetailAPIHandler(BaseHandler):
+    """GET /api/documents/rfi?rfi_id=X — Get a single RFI."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        rfi_id = self.get_argument("rfi_id", "")
+        if not rfi_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "rfi_id required"}))
+            return
+        rfi = get_rfi(DATA_DIR, rfi_id)
+        if not rfi:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "RFI not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "rfi": rfi.to_dict()}))
+
+
+class RFICreateHandler(BaseHandler):
+    """POST /api/documents/rfi/create — Create a new RFI."""
+    required_permission = "edit_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        subject = data.get("subject", "").strip()
+        question = data.get("question", "").strip()
+        if not job_code or not subject or not question:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, subject, question required"}))
+            return
+        rfi = create_rfi(
+            DATA_DIR, job_code=job_code, subject=subject, question=question,
+            created_by=self.current_user,
+            priority=data.get("priority", "normal"),
+            drawing_ref=data.get("drawing_ref", ""),
+            revision_ref=data.get("revision_ref", ""),
+            impact_description=data.get("impact_description", ""),
+            due_date=data.get("due_date", ""),
+        )
+        self.write(json_encode({"ok": True, "rfi": rfi.to_dict()}))
+
+
+class RFIRespondHandler(BaseHandler):
+    """POST /api/documents/rfi/respond — Respond to an RFI."""
+    required_permission = "approve_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        rfi_id = data.get("rfi_id", "")
+        response = data.get("response", "").strip()
+        if not rfi_id or not response:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "rfi_id and response required"}))
+            return
+        rfi = respond_to_rfi(DATA_DIR, rfi_id, response, responded_by=self.current_user)
+        if not rfi:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "RFI not found"}))
+            return
+        self.write(json_encode({"ok": True, "rfi": rfi.to_dict()}))
+
+
+class RFICloseHandler(BaseHandler):
+    """POST /api/documents/rfi/close — Close an RFI."""
+    required_permission = "approve_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        rfi_id = data.get("rfi_id", "")
+        if not rfi_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "rfi_id required"}))
+            return
+        rfi = close_rfi(DATA_DIR, rfi_id, closed_by=self.current_user)
+        if not rfi:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "RFI not found or already closed"}))
+            return
+        self.write(json_encode({"ok": True, "rfi": rfi.to_dict()}))
+
+
+class RFIVoidHandler(BaseHandler):
+    """POST /api/documents/rfi/void — Void an RFI."""
+    required_permission = "approve_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        rfi_id = data.get("rfi_id", "")
+        if not rfi_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "rfi_id required"}))
+            return
+        rfi = void_rfi(DATA_DIR, rfi_id)
+        if not rfi:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "RFI not found"}))
+            return
+        self.write(json_encode({"ok": True, "rfi": rfi.to_dict()}))
+
+
+# ── Transmittals ──────────────────────────────────────────────────────
+
+class TransmittalListAPIHandler(BaseHandler):
+    """GET /api/documents/transmittals — List transmittals."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        status = self.get_argument("status", "")
+        xmits = list_transmittals(DATA_DIR, job_code=job_code, status=status)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "transmittals": [x.to_dict() for x in xmits],
+            "count": len(xmits),
+        }))
+
+
+class TransmittalDetailAPIHandler(BaseHandler):
+    """GET /api/documents/transmittal?transmittal_id=X — Get a single transmittal."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        xmit_id = self.get_argument("transmittal_id", "")
+        if not xmit_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "transmittal_id required"}))
+            return
+        xmit = get_transmittal(DATA_DIR, xmit_id)
+        if not xmit:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Transmittal not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "transmittal": xmit.to_dict()}))
+
+
+class TransmittalCreateHandler(BaseHandler):
+    """POST /api/documents/transmittal/create — Create a new transmittal."""
+    required_permission = "edit_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        recipient = data.get("recipient", "").strip()
+        purpose = data.get("purpose", "").strip()
+        if not job_code or not recipient or not purpose:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, recipient, purpose required"}))
+            return
+        xmit = create_transmittal(
+            DATA_DIR, job_code=job_code, recipient=recipient, purpose=purpose,
+            created_by=self.current_user,
+            recipient_email=data.get("recipient_email", ""),
+            subject=data.get("subject", ""),
+            notes=data.get("notes", ""),
+            documents=data.get("documents", []),
+        )
+        self.write(json_encode({"ok": True, "transmittal": xmit.to_dict()}))
+
+
+class TransmittalSendHandler(BaseHandler):
+    """POST /api/documents/transmittal/send — Mark transmittal as sent."""
+    required_permission = "edit_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        xmit_id = data.get("transmittal_id", "")
+        if not xmit_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "transmittal_id required"}))
+            return
+        xmit = send_transmittal(DATA_DIR, xmit_id)
+        if not xmit:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Transmittal not found or already sent"}))
+            return
+        self.write(json_encode({"ok": True, "transmittal": xmit.to_dict()}))
+
+
+class TransmittalAckHandler(BaseHandler):
+    """POST /api/documents/transmittal/acknowledge — Acknowledge a transmittal."""
+    required_permission = "view_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        xmit_id = data.get("transmittal_id", "")
+        if not xmit_id:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "transmittal_id required"}))
+            return
+        xmit = acknowledge_transmittal(DATA_DIR, xmit_id, acknowledged_by=self.current_user)
+        if not xmit:
+            self.set_status(404)
+            self.write(json_encode({"ok": False, "error": "Transmittal not found or not sent"}))
+            return
+        self.write(json_encode({"ok": True, "transmittal": xmit.to_dict()}))
+
+
+# ── BOM Changes ───────────────────────────────────────────────────────
+
+class BOMChangeLogHandler(BaseHandler):
+    """POST /api/documents/bom-change/log — Log a BOM change."""
+    required_permission = "edit_shop_drawings"
+    def post(self):
+        data = json.loads(self.request.body)
+        job_code = data.get("job_code", "").strip()
+        change_type = data.get("change_type", "").strip()
+        component = data.get("component", "").strip()
+        if not job_code or not change_type or not component:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code, change_type, component required"}))
+            return
+        bco = log_bom_change(
+            DATA_DIR, job_code=job_code,
+            from_revision=data.get("from_revision", ""),
+            to_revision=data.get("to_revision", ""),
+            change_type=change_type,
+            component=component, created_by=self.current_user,
+            field_changed=data.get("field_changed", ""),
+            old_value=data.get("old_value", ""),
+            new_value=data.get("new_value", ""),
+            reason=data.get("reason", ""),
+        )
+        self.write(json_encode({"ok": True, "change": bco.to_dict()}))
+
+
+class BOMChangeListAPIHandler(BaseHandler):
+    """GET /api/documents/bom-changes — List BOM changes."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        from_rev = self.get_argument("from_revision", "")
+        to_rev = self.get_argument("to_revision", "")
+        changes = list_bom_changes(DATA_DIR, job_code=job_code,
+                                   from_revision=from_rev, to_revision=to_rev)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "changes": [c.to_dict() for c in changes],
+            "count": len(changes),
+        }))
+
+
+class BOMChangeSummaryAPIHandler(BaseHandler):
+    """GET /api/documents/bom-changes/summary — BOM change summary for a job."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        if not job_code:
+            self.set_status(400)
+            self.write(json_encode({"ok": False, "error": "job_code required"}))
+            return
+        summary = get_bom_change_summary(DATA_DIR, job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "summary": summary}))
+
+
+# ── Document Summary & Config ─────────────────────────────────────────
+
+class DocumentSummaryAPIHandler(BaseHandler):
+    """GET /api/documents/summary — Document management summary/analytics."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        summary = get_document_summary(DATA_DIR, job_code=job_code)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "summary": summary}))
+
+
+class DocumentConfigHandler(BaseHandler):
+    """GET /api/documents/config — Return document management constants."""
+    required_permission = "view_shop_drawings"
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "revision_statuses": REV_STATUSES,
+            "revision_status_labels": REV_STATUS_LABELS,
+            "revision_status_colors": REV_STATUS_COLORS,
+            "revision_status_flow": REV_STATUS_FLOW,
+            "document_categories": DOC_CATEGORIES,
+            "document_category_labels": DOC_CATEGORY_LABELS,
+            "rfi_statuses": RFI_STATUSES,
+            "rfi_status_labels": RFI_STATUS_LABELS,
+            "rfi_priorities": RFI_PRIORITIES,
+            "rfi_priority_labels": RFI_PRIORITY_LABELS,
+            "transmittal_statuses": XMIT_STATUSES,
+            "transmittal_status_labels": XMIT_STATUS_LABELS,
+            "transmittal_purposes": XMIT_PURPOSES,
+            "transmittal_purpose_labels": XMIT_PURPOSE_LABELS,
+            "bom_change_types": BOM_CHANGE_TYPES,
+            "bom_change_type_labels": BOM_CHANGE_TYPE_LABELS,
+        }))
 
 
 # ─────────────────────────────────────────────
@@ -5156,11 +7516,25 @@ def get_routes():
         (r"/api/work-orders/stickers/csv",       WorkOrderStickerCSVHandler),
         (r"/api/work-orders/stickers/single",    WorkOrderSingleStickerHandler),
 
+        # ── Phase 2: Assignment & Queue APIs ─────────────────
+        (r"/api/work-orders/assign",             WorkOrderAssignHandler),
+        (r"/api/work-orders/reassign",           WorkOrderReassignHandler),
+        (r"/api/work-orders/reprioritize",       WorkOrderReprioritizeHandler),
+        (r"/api/work-orders/stage",              WorkOrderStageHandler),
+        (r"/api/work-orders/transition",         WorkOrderTransitionHandler),
+        (r"/api/work-orders/bulk-assign",        WorkOrderBulkAssignHandler),
+        (r"/api/work-orders/status-config",      StatusConfigHandler),
+        (r"/api/operator/queue",                 OperatorQueueHandler),
+        (r"/api/machine/queue",                  MachineQueueHandler),
+        (r"/api/shop-floor/summary",             ShopFloorSummaryHandler),
+
         # ── Shop Floor Dashboard ─────────────────────────────
         (r"/shop-floor",                         ShopFloorPageHandler),
+        (r"/shop-floor/assign",                  ForemanPanelPageHandler),
         (r"/api/shop-floor/data",                ShopFloorDataHandler),
 
         # ── Work Station (tablet/phone) ───────────────────────
+        (r"/work-station/mine",                  MyStationPageHandler),
         (r"/work-station/([^/]+)",               WorkStationPageHandler),
         (r"/api/work-station/data",              WorkStationDataHandler),
         (r"/api/work-station/steps",             WorkStationStepsHandler),
@@ -5188,8 +7562,15 @@ def get_routes():
 
         # ── AISC QC Module ─────────────────────────────────────
         (r"/qc/([^/]+)",                     QCPageHandler),
+        (r"/qc-queue",                       QCInspectionQueuePageHandler),
+        (r"/qc-dashboard",                   QCDashboardPageHandler),
         (r"/api/qc/types",                   QCInspectionTypesHandler),
         (r"/api/qc/data",                    QCDataHandler),
+        (r"/api/qc/queue",                   QCInspectionQueueAPIHandler),
+        (r"/api/qc/sign-off",               QCSignOffHandler),
+        (r"/api/qc/dashboard",              QCDashboardAPIHandler),
+        (r"/api/qc/item-history",           QCItemHistoryHandler),
+        (r"/api/qc/ncr/detail",             NCRDetailHandler),
         (r"/api/qc/inspection/create",       QCInspectionCreateHandler),
         (r"/api/qc/inspection/update",       QCInspectionUpdateHandler),
         (r"/api/qc/ncr/create",              NCRCreateHandler),
@@ -5200,6 +7581,112 @@ def get_routes():
         (r"/api/traceability/register",      TraceabilityRegisterHandler),
         (r"/api/traceability/assign",        TraceabilityAssignHandler),
         (r"/api/traceability/report",        TraceabilityReportHandler),
+
+        # ── Shipping & Load Management (Phase 4) ─────────────
+        (r"/shipping",                       ShippingDashboardPageHandler),
+        (r"/shipping/load-builder",          LoadBuilderPageHandler),
+        (r"/api/shipping/loads",             ShippingListAPIHandler),
+        (r"/api/shipping/load",              ShippingLoadDetailHandler),
+        (r"/api/shipping/create",            ShippingCreateLoadHandler),
+        (r"/api/shipping/add-items",         ShippingAddItemsHandler),
+        (r"/api/shipping/remove-item",       ShippingRemoveItemHandler),
+        (r"/api/shipping/transition",        ShippingTransitionHandler),
+        (r"/api/shipping/update",            ShippingUpdateLoadHandler),
+        (r"/api/shipping/bol",               ShippingBOLHandler),
+        (r"/api/shipping/shippable-items",   ShippableItemsHandler),
+        (r"/api/shipping/summary",           ShippingSummaryHandler),
+        (r"/api/shipping/config",            ShippingConfigHandler),
+
+        # ── Field Operations & Installation (Phase 5) ────────
+        (r"/field",                          FieldDashboardPageHandler),
+        (r"/field/install-tracker",          InstallTrackerPageHandler),
+        (r"/field/completion",               ProjectCompletionPageHandler),
+        (r"/api/field/punch-list",           PunchListAPIHandler),
+        (r"/api/field/punch-list/create",    PunchCreateHandler),
+        (r"/api/field/punch-list/transition", PunchTransitionHandler),
+        (r"/api/field/punch-list/detail",    PunchDetailHandler),
+        (r"/api/field/confirm-install",      InstallConfirmHandler),
+        (r"/api/field/daily-report",         DailyReportSubmitHandler),
+        (r"/api/field/daily-reports",        DailyReportListHandler),
+        (r"/api/field/installations",        InstallationRecordsHandler),
+        (r"/api/field/project-completion",   ProjectCompletionAPIHandler),
+        (r"/api/field/summary",              FieldSummaryHandler),
+        (r"/api/field/config",               FieldConfigHandler),
+
+        # ── Reporting & Analytics (Phase 6) ──────────────────
+        (r"/reports/production",         ProductionMetricsPageHandler),
+        (r"/reports/executive",          ExecutiveSummaryPageHandler),
+        (r"/api/reports",                ReportListHandler),
+        (r"/api/reports/generate",       ReportGenerateHandler),
+        (r"/api/reports/production",     ProductionMetricsAPIHandler),
+        (r"/api/reports/executive",      ExecutiveSummaryAPIHandler),
+        (r"/api/reports/operators",      OperatorPerformanceAPIHandler),
+        (r"/api/reports/project-status", ProjectStatusReportAPIHandler),
+        (r"/api/reports/delivery",       DeliveryAnalysisAPIHandler),
+        (r"/api/reports/qc",            QCAnalysisAPIHandler),
+        (r"/api/reports/config",         ReportConfigHandler),
+
+        # ── Activity Feed, Audit Trail & Notifications (Phase 7) ──
+        (r"/activity",                   ActivityFeedPageHandler),
+        (r"/api/activity/events",        ActivityEventsAPIHandler),
+        (r"/api/activity/feed",          ActivityFeedAPIHandler),
+        (r"/api/activity/stats",         ActivityStatsAPIHandler),
+        (r"/api/activity/rules",         AlertRulesAPIHandler),
+        (r"/api/activity/rules/update",  AlertRuleUpdateHandler),
+        (r"/api/activity/rules/delete",  AlertRuleDeleteHandler),
+        (r"/api/notifications",          NotificationsAPIHandler),
+        (r"/api/notifications/read",     NotificationReadHandler),
+        (r"/api/notifications/read-all", NotificationReadAllHandler),
+        (r"/api/notifications/clear",    NotificationClearHandler),
+        (r"/api/activity/config",        ActivityConfigHandler),
+
+        # ── Phase 8: Scheduling & Production Planning ──────────
+        (r"/schedule",                       ProductionSchedulePageHandler),
+        (r"/api/schedule/list",              ScheduleListAPIHandler),
+        (r"/api/schedule/create",            ScheduleCreateHandler),
+        (r"/api/schedule/update",            ScheduleUpdateHandler),
+        (r"/api/schedule/delete",            ScheduleDeleteHandler),
+        (r"/api/schedule/entry/add",         ScheduleEntryAddHandler),
+        (r"/api/schedule/entry/update",      ScheduleEntryUpdateHandler),
+        (r"/api/schedule/entry/delete",      ScheduleEntryDeleteHandler),
+        (r"/api/schedule/date",              ScheduleDateAPIHandler),
+        (r"/api/schedule/range",             ScheduleRangeAPIHandler),
+        (r"/api/schedule/capacity",          CapacityAPIHandler),
+        (r"/api/schedule/capacity/update",   CapacityUpdateHandler),
+        (r"/api/schedule/capacity/usage",    CapacityUsageAPIHandler),
+        (r"/api/schedule/capacity/forecast", CapacityForecastAPIHandler),
+        (r"/api/schedule/auto",              AutoScheduleHandler),
+        (r"/api/schedule/summary",           ScheduleSummaryAPIHandler),
+        (r"/api/schedule/job-timeline",      JobTimelineAPIHandler),
+        (r"/api/schedule/machine",           MachineScheduleAPIHandler),
+        (r"/api/schedule/bottlenecks",       BottleneckForecastAPIHandler),
+        (r"/api/schedule/overdue",           OverdueEntriesAPIHandler),
+        (r"/api/schedule/config",            ScheduleConfigHandler),
+
+        # ── Phase 9 — Document Management ─────────────────────
+        (r"/documents",                                DocumentManagementPageHandler),
+        (r"/api/documents/revisions",                  RevisionListAPIHandler),
+        (r"/api/documents/revision",                   RevisionDetailAPIHandler),
+        (r"/api/documents/revision/create",            RevisionCreateHandler),
+        (r"/api/documents/revision/transition",        RevisionTransitionHandler),
+        (r"/api/documents/revision/history",           RevisionHistoryAPIHandler),
+        (r"/api/documents/revision/latest",            RevisionLatestAPIHandler),
+        (r"/api/documents/rfis",                       RFIListAPIHandler),
+        (r"/api/documents/rfi",                        RFIDetailAPIHandler),
+        (r"/api/documents/rfi/create",                 RFICreateHandler),
+        (r"/api/documents/rfi/respond",                RFIRespondHandler),
+        (r"/api/documents/rfi/close",                  RFICloseHandler),
+        (r"/api/documents/rfi/void",                   RFIVoidHandler),
+        (r"/api/documents/transmittals",               TransmittalListAPIHandler),
+        (r"/api/documents/transmittal",                TransmittalDetailAPIHandler),
+        (r"/api/documents/transmittal/create",         TransmittalCreateHandler),
+        (r"/api/documents/transmittal/send",           TransmittalSendHandler),
+        (r"/api/documents/transmittal/acknowledge",    TransmittalAckHandler),
+        (r"/api/documents/bom-change/log",             BOMChangeLogHandler),
+        (r"/api/documents/bom-changes",                BOMChangeListAPIHandler),
+        (r"/api/documents/bom-changes/summary",        BOMChangeSummaryAPIHandler),
+        (r"/api/documents/summary",                    DocumentSummaryAPIHandler),
+        (r"/api/documents/config",                     DocumentConfigHandler),
 
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),

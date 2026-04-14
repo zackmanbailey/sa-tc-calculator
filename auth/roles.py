@@ -130,6 +130,10 @@ class P:
     VIEW_SAFETY_METRICS  = "view_safety_metrics"
     STOP_WORK            = "stop_work"                 # Alerts PM + God Mode
 
+    # ── Scheduling & Production Planning ────────────────────────────────────
+    MANAGE_SCHEDULE      = "manage_schedule"            # Create/edit schedules, set priorities
+    VIEW_SCHEDULE        = "view_schedule"              # Read-only schedule/calendar access
+
     # ── Customer Portal (future) ─────────────────────────────────────────────
     VIEW_OWN_PROJECT     = "view_own_project"          # Customer sees their project only
     VIEW_SHARED_PHOTOS   = "view_shared_photos"
@@ -428,6 +432,7 @@ _ROLE_DEFS = [
             P.SUBMIT_DAILY_REPORT, P.SUBMIT_JHA, P.UPLOAD_FIELD_PHOTOS, P.TRACK_EQUIPMENT, P.SUBMIT_EXPENSES, P.CREATE_PUNCH_LIST, P.VIEW_FIELD_REPORTS, P.VIEW_FIELD_DRAWINGS,
             P.REVIEW_JHA, P.FILE_INCIDENT, P.VIEW_SAFETY_METRICS, P.STOP_WORK,
             P.VIEW_OWN_PROJECT, P.VIEW_SHARED_PHOTOS, P.DOWNLOAD_DOCUMENTS,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "user_management", "system_health", "audit_log"],
         sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales", "admin"],
@@ -454,6 +459,7 @@ _ROLE_DEFS = [
             P.SUBMIT_RECEIPTS, P.VIEW_ALL_RECEIPTS, P.VIEW_OWN_RECEIPTS,
             P.SUBMIT_DAILY_REPORT, P.SUBMIT_JHA, P.UPLOAD_FIELD_PHOTOS, P.TRACK_EQUIPMENT, P.SUBMIT_EXPENSES, P.CREATE_PUNCH_LIST, P.VIEW_FIELD_REPORTS, P.VIEW_FIELD_DRAWINGS,
             P.REVIEW_JHA, P.FILE_INCIDENT, P.VIEW_SAFETY_METRICS, P.STOP_WORK,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "recent_activity"],
         sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales"],
@@ -477,6 +483,7 @@ _ROLE_DEFS = [
             P.VIEW_PIPELINE, P.VIEW_CUSTOMER_INFO,
             P.VIEW_ALL_RECEIPTS, P.VIEW_OWN_RECEIPTS,
             P.VIEW_FIELD_REPORTS, P.VIEW_FIELD_DRAWINGS,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["active_projects", "milestones", "shop_progress", "field_status", "customer_comms"],
         sidebar_sections=["dashboard", "projects", "estimating", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "financial", "sales"],
@@ -567,6 +574,7 @@ _ROLE_DEFS = [
             P.SCAN_START_FINISH, P.LOG_COIL_CHANGEOVER, P.LOG_ITEM_NOTES,
             P.VIEW_QC,
             P.SUBMIT_RECEIPTS, P.VIEW_OWN_RECEIPTS,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["shop_overview", "active_projects_nf", "today_priorities", "crew_status", "receipt_log"],
         sidebar_sections=["dashboard", "shop_floor"],
@@ -610,6 +618,7 @@ _ROLE_DEFS = [
             P.VIEW_DASHBOARD,
             P.VIEW_OWN_WORK_ITEMS,
             P.SCAN_START_FINISH, P.LOG_COIL_CHANGEOVER, P.LOG_ITEM_NOTES,
+            P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["machine_status", "run_queue", "production_log"],
         sidebar_sections=["dashboard", "my_station"],
@@ -624,6 +633,7 @@ _ROLE_DEFS = [
             P.VIEW_SHOP_DRAWINGS,
             P.VIEW_OWN_WORK_ITEMS,
             P.SCAN_START_FINISH, P.LOG_ITEM_NOTES,
+            P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["my_queue", "active_item", "recently_completed"],
         sidebar_sections=["dashboard", "my_work"],
@@ -638,6 +648,7 @@ _ROLE_DEFS = [
             P.VIEW_PROJECTS,
             P.VIEW_WORK_ORDERS,
             P.BUILD_LOADS, P.GENERATE_BOL, P.MARK_SHIPPED, P.VIEW_SHIPPING,
+            P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["ready_to_ship", "active_loads", "fab_progress"],
         sidebar_sections=["dashboard", "shipping"],
