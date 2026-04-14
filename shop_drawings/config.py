@@ -905,6 +905,14 @@ class ShopDrawingConfig:
             cfg.col_clear_height_ft = geo.get("clear_height_ft", 14.0)
             cfg.col_width_ft = geo.get("width_ft", 40.0)
             cfg.col_footing_ft = geo.get("footing_depth_ft", 10.0)
+            cfg.col_rebar_size = geo.get("rebar_col", "#9")
+            cfg.col_reinforced = geo.get("reinforced", True) if "reinforced" in geo else True
+            # Rafter rebar and splice fields
+            cfg.raft_rebar_size = geo.get("rebar_rafter_size", "#9")
+            cfg.raft_rebar_max_stick_ft = geo.get("rebar_max_stick_ft", 20.0)
+            cfg.raft_rebar_end_gap_ft = geo.get("rebar_end_gap_ft", 5.0)
+            cfg.raft_splice_location_ft = geo.get("splice_location_ft", 0.0)
+            cfg.raft_reinforced = geo.get("reinforced", True) if "reinforced" in geo else True
 
             col_positions = geo.get("col_positions", [])
             if col_positions:
