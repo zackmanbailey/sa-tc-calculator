@@ -94,11 +94,19 @@ input[type=checkbox]{width:auto;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Hidden */
 .hidden{display:none}
+/* Toast Notifications */
+.toast-container{position:fixed;top:60px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:12px 20px;border-radius:6px;color:#fff;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn .3s ease;max-width:400px;pointer-events:auto}
+.toast-success{background:#16A34A}.toast-error{background:#DC2626}.toast-info{background:#1E40AF}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 /* Responsive tweaks */
 @media(max-width:768px){#main{flex-direction:column}#sidebar{width:100%;border-right:none;border-bottom:1px solid var(--tf-border)}}
 </style>
 </head>
 <body>
+
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container"></div>
 
 <!-- Topbar -->
 <div id="topbar">
@@ -206,15 +214,9 @@ input[type=checkbox]{width:auto;margin-right:6px}
           <label>Job Code</label>
           <input type="text" id="proj_jobcode" placeholder="e.g. BGATN-24"/>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="form-group">
-            <label>Wind Speed (MPH)</label>
-            <input type="number" id="proj_wind" value="115" min="90" max="200"/>
-          </div>
-          <div class="form-group">
-            <label>Footing Depth (ft)</label>
-            <input type="number" id="proj_footing" value="10" min="4" max="25" step="0.5"/>
-          </div>
+        <div class="form-group">
+          <label>Wind Speed (MPH)</label>
+          <input type="number" id="proj_wind" value="115" min="90" max="200"/>
         </div>
         <div class="form-group">
           <label>Markup (%)</label>
@@ -341,6 +343,19 @@ input[type=checkbox]{width:auto;margin-right:6px}
 </div>
 
 <script>
+// ─────────────────────────────────────────────
+// TOAST NOTIFICATIONS
+// ─────────────────────────────────────────────
+function showToast(msg, type='info', duration=3000) {
+  let c = document.getElementById('toast-container');
+  if (!c) { c = document.createElement('div'); c.id = 'toast-container'; c.className = 'toast-container'; document.body.appendChild(c); }
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, duration);
+}
+
 // ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
@@ -498,10 +513,12 @@ function addBuilding() {
     rebar_rafter_size: '#9',
     include_trim: false,
     include_labor: true,
+    include_consumables: true,
     welding_cost_per_5000sqft: 300,
+    labor_daily_rate: 960,
     coil_prices: {},
-    // Per-building footing depth (0 = use project-level default)
-    footing_depth_ft: 0,
+    // Per-building footing depth (default 10')
+    footing_depth_ft: 10,
     // Rafter Configuration defaults (column placement, angled purlins, rebar, splice)
     column_mode: 'auto',              // "auto" (quarter-point), "spacing", or "manual"
     column_spacing_ft: 25,            // used when column_mode === 'spacing'
@@ -541,7 +558,7 @@ function renderBuildingList() {
   el.innerHTML = buildings.map((b,i) => `
     <div class="bldg-item ${i===0?'active':''}" onclick="scrollToBldg('${b.id}')">
       <div class="bldg-name">${b.building_name || b.name || 'Building '+(i+1)}</div>
-      <div class="bldg-dims">${b.type.toUpperCase()} · ${b.width_ft}'×${b.length_ft}' · Ht:${b.clear_height_ft}'</div>
+      <div class="bldg-dims">${b.width_ft <= 45 ? 'TEE' : 'DBL-COL'} · ${b.width_ft}'×${b.length_ft}' · Ht:${b.clear_height_ft}'</div>
     </div>
   `).join('');
 }
@@ -671,12 +688,11 @@ function buildingFormHTML(b) {
       <!-- Row 1: Type, Pitch, Width, Clear Height -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
-          <label>Frame Type</label>
-          <select onchange="updateBldg('${b.id}','type',this.value)">
-            <option value="2post" ${b.type==='2post'?'selected':''}>2-Post</option>
-            <option value="tee" ${b.type==='tee'?'selected':''}>Tee (Center Col)</option>
-          </select>
-          <div style="font-size:10px;color:#888;margin-top:2px">Legacy. See Rafter Config for column placement.</div>
+          <label>Frame Type (Auto)</label>
+          <div id="${b.id}_frame_type" style="padding:7px 10px;background:#F0F7FF;border:1px solid var(--tf-border);border-radius:4px;font-size:13px;font-weight:600;color:var(--tf-blue)">
+            ${b.width_ft <= 45 ? 'Tee (1 col/rafter)' : 'Double Column (2+ cols/rafter)'}
+          </div>
+          <div style="font-size:10px;color:#888;margin-top:2px">Auto: ≤45' = Tee, >45' = multi-column</div>
         </div>
         <div class="form-group">
           <label>Roof Pitch</label>
@@ -736,7 +752,7 @@ function buildingFormHTML(b) {
         </div>
       </div>
 
-      <!-- Column Placement (Overhang + Space Width) -->
+      <!-- Rafter Placement (Overhang + Space Width) -->
       ${(() => {
         const sw = parseFloat(b.space_width_ft) || 0;
         const layout = previewColumnLayout(b);
@@ -744,7 +760,7 @@ function buildingFormHTML(b) {
         return `
       <div style="background:#F0F7FF;border:1px solid #BDD6EE;border-radius:6px;padding:10px;margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:var(--tf-blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">
-          Column Placement
+          Rafter Placement
         </div>
         <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
           <div class="form-group" style="margin-bottom:0">
@@ -776,31 +792,13 @@ function buildingFormHTML(b) {
       </div>`;
       })()}
 
-      <!-- Row 3: Purlin spacing (auto-calc with override) -->
+      <!-- Row 3: Purlin spacing (direct input) -->
       <div style="background:#F0F4FA;border:1px solid var(--tf-border);border-radius:6px;padding:10px;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;color:var(--tf-blue);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">
-          Purlin Spacing
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <div>
-            <span style="font-size:12px">Spacing: </span>
-            <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
-              style="width:70px;padding:4px 6px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px"
-              onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
-            <span style="font-size:11px;color:#888"> ft OC</span>
-            <span id="${b.id}_purlin_auto" style="font-size:10px;color:var(--tf-blue-m);margin-left:4px">${spacingLabel}</span>
-          </div>
-          <div>
-            <span style="font-size:12px">Rows: </span>
-            <input type="number" value="${rows}" min="1" max="50" step="1"
-              style="width:60px;padding:4px 6px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px"
-              onchange="(function(v){const sp=${b.width_ft}/(v-1||1);updateBldg('${b.id}','purlin_spacing_override',parseFloat(sp.toFixed(3)));refreshPurlinDisplay('${b.id}')})(parseInt(this.value))"/>
-            <span id="${b.id}_purlin_rows" style="font-size:10px;color:#888"> rows</span>
-          </div>
-          <button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px"
-            onclick="updateBldg('${b.id}','purlin_spacing_override',null);renderBuildingForms()">
-            Reset Auto
-          </button>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Purlin Spacing (ft)</label>
+          <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
+            onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
+          <div style="font-size:10px;color:#888;margin-top:2px">OC (on-center) spacing</div>
         </div>
       </div>
 
@@ -812,9 +810,9 @@ function buildingFormHTML(b) {
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
           <div class="form-group">
             <label>Footing Depth (ft)</label>
-            <input type="number" value="${b.footing_depth_ft||0}" min="0" max="25" step="0.5"
+            <input type="number" value="${b.footing_depth_ft||10}" min="4" max="25" step="0.5"
               onchange="updateBldg('${b.id}','footing_depth_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">0 = use project default</div>
+            <div style="font-size:10px;color:#888;margin-top:2px">Default: 10 ft</div>
           </div>
           <div class="form-group">
             <label>Embedment (ft)</label>
@@ -1080,10 +1078,29 @@ function buildingFormHTML(b) {
             Include Trim (J-Channel)
           </label>
           <label class="check-label">
+            <input type="checkbox" ${b.include_consumables?'checked':''}
+              onchange="updateBldg('${b.id}','include_consumables',this.checked)"/>
+            Include Consumables
+          </label>
+          <label class="check-label">
             <input type="checkbox" ${b.include_labor?'checked':''}
               onchange="updateBldg('${b.id}','include_labor',this.checked)"/>
             Include Fabrication Labor
           </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <div class="form-group">
+            <label>Consumables Rate ($/5,000 sqft)</label>
+            <input type="number" value="${b.welding_cost_per_5000sqft||300}" min="0" step="10"
+              onchange="updateBldg('${b.id}','welding_cost_per_5000sqft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Wire, gas, cold galvanize paint</div>
+          </div>
+          <div class="form-group">
+            <label>Labor Daily Rate ($)</label>
+            <input type="number" value="${b.labor_daily_rate||960}" min="100" step="10"
+              onchange="updateBldg('${b.id}','labor_daily_rate',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Default: $960/day</div>
+          </div>
         </div>
       </details>
 
@@ -1204,7 +1221,7 @@ async function calculate() {
     });
     const data = await res.json();
     if (data.error) {
-      alert('Calculation error: ' + data.error);
+      showToast('Calculation error:  + data.error);
       return;
     }
     currentBOM = data;
@@ -1217,7 +1234,7 @@ async function calculate() {
     document.getElementById('tab-bom').classList.remove('hidden');
     document.querySelectorAll('.tab')[1].classList.add('active');
   } catch(e) {
-    alert('Error: ' + e.message);
+    showToast('Error: ' + e.message, 'error');
   }
 }
 
@@ -1380,7 +1397,7 @@ function renderBOM(data) {
 // SEND TO TC QUOTE
 // ─────────────────────────────────────────────
 function sendToTCQuote() {
-  if (!currentBOM) { alert('Please calculate BOM first.'); return; }
+  if (!currentBOM) { showToast('Please calculate BOM first.', 'info'); return; }
   // Use adjusted totals if price overrides / manual items exist
   const totals = getAdjustedTotals();
   const sellPrice = (Object.keys(priceOverrides).length > 0 || manualItems.length > 0)
@@ -1687,11 +1704,11 @@ async function autoSaveProject() {
 }
 
 async function saveProjectManual() {
-  if (!currentBOM) { alert('Please calculate BOM first.'); return; }
+  if (!currentBOM) { showToast('Please calculate BOM first.', 'info'); return; }
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
-  if (!jobCode) { alert('Please enter a Job Code first.'); return; }
+  if (!jobCode) { showToast('Please enter a Job Code first.', 'info'); return; }
   await autoSaveProject();
-  alert('Project saved as v' + currentVersion + ': ' + jobCode);
+  showToast('Project saved as v' + currentVersion + ': ' + jobCode, 'success');
   loadRecentProjects();
 }
 
@@ -1731,7 +1748,7 @@ async function loadProject(jobCode, version) {
       body: JSON.stringify(payload),
     });
     const result = await resp.json();
-    if (!result.ok) { alert('Load failed: ' + (result.error||'unknown')); return; }
+    if (!result.ok) { showToast('Load failed: ' + (result.error||'unknown'), 'error'); return; }
     const d = result.data;
 
     // Restore project info fields
@@ -1771,13 +1788,13 @@ async function loadProject(jobCode, version) {
     updateVersionBadge();
     if (currentBOM) renderPricingTab();
 
-    alert('Project loaded: ' + jobCode + ' (v' + currentVersion + ')');
-  } catch(e) { alert('Load error: ' + e.message); }
+    showToast('Project loaded: ' + jobCode + ' (v' + currentVersion + ')', 'success');
+  } catch(e) { showToast('Load error: ' + e.message, 'error'); }
 }
 
 async function showRevisionHistory() {
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
-  if (!jobCode) { alert('Enter a Job Code or load a project first.'); return; }
+  if (!jobCode) { showToast('Enter a Job Code or load a project first.', 'info'); return; }
   try {
     const resp = await fetch('/api/project/revisions', {
       method: 'POST',
@@ -1786,7 +1803,7 @@ async function showRevisionHistory() {
     });
     const result = await resp.json();
     if (!result.ok || !result.revisions.length) {
-      alert('No revisions found for ' + jobCode);
+      showToast('No revisions found for ' + jobCode, 'info');
       return;
     }
     // Render revision history in a modal-style overlay
@@ -1834,13 +1851,13 @@ async function showRevisionHistory() {
     html += '</table>';
     html += '</div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 async function compareVersions(jobCode) {
   const va = parseInt(document.getElementById('compare_va')?.value);
   const vb = parseInt(document.getElementById('compare_vb')?.value);
-  if (!va || !vb || va === vb) { alert('Select two different versions.'); return; }
+  if (!va || !vb || va === vb) { showToast('Select two different versions.', 'info'); return; }
   const el = document.getElementById('compare-results');
   if (el) el.innerHTML = '<div style="color:#888;font-size:12px">Loading comparison...</div>';
   try {
@@ -1893,7 +1910,7 @@ async function compareVersions(jobCode) {
 // DOWNLOADS
 // ─────────────────────────────────────────────
 async function downloadExcel() {
-  if (!currentBOM) { alert('Please calculate first.'); return; }
+  if (!currentBOM) { showToast('Please calculate first.', 'info'); return; }
   const res = await fetch('/api/excel', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -1908,7 +1925,7 @@ async function downloadExcel() {
 }
 
 async function downloadPDF() {
-  if (!currentBOM) { alert('Please calculate first.'); return; }
+  if (!currentBOM) { showToast('Please calculate first.', 'info'); return; }
   const res = await fetch('/api/pdf', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -1926,7 +1943,7 @@ async function downloadPDF() {
 // LABELS
 // ─────────────────────────────────────────────
 async function generateLabels() {
-  if (!currentBOM) { alert('Please calculate a BOM first.'); return; }
+  if (!currentBOM) { showToast('Please calculate a BOM first.', 'info'); return; }
   const payload = {
     bom: currentBOM,
     destination: document.getElementById('lbl_destination').value,
@@ -1945,7 +1962,7 @@ async function generateLabels() {
     body: JSON.stringify(payload),
   });
   const data = await res.json();
-  if (data.error) { alert(data.error); return; }
+  if (data.error) { showToast(data.error, 'error'); return; }
   currentLabels = data;
   document.getElementById('labels-preview').innerHTML = `
     <div class="alert alert-success">✅ Generated ${data.count} labels. ZPL file ready to print on Zebra ZT411.</div>
@@ -1954,7 +1971,7 @@ async function generateLabels() {
 }
 
 async function downloadZPL() {
-  if (!currentLabels || !currentLabels.zpl) { alert('Please generate labels first.'); return; }
+  if (!currentLabels || !currentLabels.zpl) { showToast('Please generate labels first.', 'info'); return; }
   const blob = new Blob([currentLabels.zpl], {type:'text/plain'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1964,14 +1981,14 @@ async function downloadZPL() {
 }
 
 async function downloadLabelsPDF() {
-  if (!currentBOM) { alert('Please calculate BOM first, then generate labels.'); return; }
+  if (!currentBOM) { showToast('Please calculate BOM first, then generate labels.', 'info'); return; }
   const payload = buildLabelsPayload();
   const res = await fetch('/api/labels/pdf', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
-  if (!res.ok) { alert('PDF export failed: ' + await res.text()); return; }
+  if (!res.ok) { showToast('PDF export failed: ' + await res.text(), 'error'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1982,14 +1999,14 @@ async function downloadLabelsPDF() {
 }
 
 async function downloadLabelsCSV() {
-  if (!currentBOM) { alert('Please calculate BOM first, then generate labels.'); return; }
+  if (!currentBOM) { showToast('Please calculate BOM first, then generate labels.', 'info'); return; }
   const payload = buildLabelsPayload();
   const res = await fetch('/api/labels/csv', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
-  if (!res.ok) { alert('CSV export failed: ' + await res.text()); return; }
+  if (!res.ok) { showToast('CSV export failed: ' + await res.text(), 'error'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2395,9 +2412,9 @@ async function deleteCoil(coilId, coilName) {
     if (result.ok) {
       loadInventory();
     } else {
-      alert('Delete failed: ' + (result.error || 'unknown error'));
+      showToast('Delete failed: ' + (result.error || 'unknown error'), 'error');
     }
-  } catch(e) { alert('Delete error: ' + e.message); }
+  } catch(e) { showToast('Delete error: ' + e.message, 'error'); }
 }
 
 function generateCoilId() {
@@ -2428,7 +2445,7 @@ async function printCoilSticker(fmt) {
   const coilId    = existingId || (newIdEl?.value.trim() || '');
 
   if (!coilId) {
-    alert('Please select an existing coil or enter a New Coil ID.');
+    showToast('Please select an existing coil or enter a New Coil ID.', 'info');
     return;
   }
 
@@ -2456,7 +2473,7 @@ async function printCoilSticker(fmt) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ coil_id: coilId, format: fmt, coil: coilData }),
     });
-    if (!resp.ok) { alert('Sticker error: ' + await resp.text()); return; }
+    if (!resp.ok) { showToast('Sticker error: ' + await resp.text(), 'error'); return; }
     const blob = await resp.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2468,7 +2485,7 @@ async function printCoilSticker(fmt) {
     if (status) status.textContent = '✅ Downloaded!';
     if (createEntry) { setTimeout(loadInventory, 800); }
   } catch(e) {
-    alert('Failed: ' + e);
+    showToast('Failed: ' + e, 'error');
     if (status) status.textContent = '';
   }
 }
@@ -2512,7 +2529,7 @@ async function quickPrintSticker(coilId, coilName) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ coil_id: coilId, format: 'pdf', coil: {} }),
   });
-  if (!resp.ok) { alert('Sticker error: ' + await resp.text()); return; }
+  if (!resp.ok) { showToast('Sticker error: ' + await resp.text(), 'error'); return; }
   const blob = await resp.blob();
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -2525,7 +2542,7 @@ async function quickPrintSticker(coilId, coilName) {
 async function addNewCoil() {
   const coilId = document.getElementById('new_coil_id')?.value.trim();
   const name   = document.getElementById('new_coil_name')?.value.trim();
-  if (!coilId || !name) { alert('Coil ID and Material Name are required.'); return; }
+  if (!coilId || !name) { showToast('Coil ID and Material Name are required.', 'info'); return; }
 
   const statusEl = document.getElementById('new-coil-status');
   if (statusEl) statusEl.textContent = 'Adding...';
@@ -2547,7 +2564,7 @@ async function addNewCoil() {
     const invResp = await fetch('/api/inventory');
     const inv = await invResp.json();
     if (inv.coils && inv.coils[coilId]) {
-      alert('Coil ID "' + coilId + '" already exists. Choose a different ID.');
+      showToast('Coil ID "' + coilId + '" already exists. Choose a different ID.', 'warning');
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -2593,7 +2610,7 @@ async function addMillCert() {
   const date    = document.getElementById('cert_date').value.trim();
   const pdfFile = document.getElementById('cert_pdf').files[0];
 
-  if (!heat) { alert('Please enter a Heat Number.'); return; }
+  if (!heat) { showToast('Please enter a Heat Number.', 'info'); return; }
 
   const statusEl = document.getElementById('cert-upload-status');
   statusEl.textContent = '⏳ Uploading...';
@@ -2627,6 +2644,21 @@ async function addMillCert() {
     statusEl.textContent = '❌ Upload failed: ' + e.message;
   }
 }
+
+// ─────────────────────────────────────────────
+// GLOBAL CLICK HANDLER FOR BUTTONS
+// ─────────────────────────────────────────────
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('[onclick]');
+  if (btn && btn.getAttribute('onclick')) {
+    try {
+      e.stopPropagation();
+      new Function(btn.getAttribute('onclick')).call(btn);
+    } catch(err) {
+      console.error('onclick handler error:', err);
+    }
+  }
+}, true);
 </script>
 
 <!-- Global Search Overlay -->

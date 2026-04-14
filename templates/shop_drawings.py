@@ -1002,6 +1002,12 @@ SHOP_DRAWINGS_HTML = r"""
 
         // ── State ──
         const JOB_CODE = '{{JOB_CODE}}';
+
+        // Set project context in sidebar
+        if (typeof setProjectContext === 'function') {
+            setProjectContext(JOB_CODE);
+        }
+
         let config = {};           // Current config (ShopDrawingConfig fields)
         let bomConfig = {};        // Config as last derived from BOM
         let drawings = [];         // Last generation result files

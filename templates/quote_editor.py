@@ -389,7 +389,12 @@ const JOB_CODE = '{{JOB_CODE}}';
 let quoteData = null;
 let isDirty = false;
 
-document.addEventListener('DOMContentLoaded', loadQuoteData);
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof setProjectContext === 'function') {
+        setProjectContext(JOB_CODE);
+    }
+    loadQuoteData();
+});
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveQuote(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openGlobalSearch(); }

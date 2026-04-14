@@ -758,7 +758,8 @@ function escNavHtml(s) {
 # ─────────────────────────────────────────────
 
 def inject_nav(html: str, active_page: str = "", job_code: str = "",
-               user_name: str = "User", user_role: str = "admin") -> str:
+               user_name: str = "User", user_role: str = "admin",
+               user_roles: list = None) -> str:
     """Inject sidebar navigation into an existing HTML page.
 
     This is the primary integration method. It:
@@ -771,7 +772,7 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     Works with any existing template — no template changes needed.
     """
     import re
-    nav = build_nav(active_page, job_code, user_name, user_role)
+    nav = build_nav(active_page, job_code, user_name, user_role, user_roles=user_roles)
 
     # Prepend CSS to hide old nav elements across all templates
     hide_old = """
@@ -817,7 +818,8 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
 
 
 def build_nav(active_page: str = "", job_code: str = "",
-              user_name: str = "User", user_role: str = "admin") -> dict:
+              user_name: str = "User", user_role: str = "admin",
+              user_roles: list = None) -> dict:
     """Build nav component strings for a specific page.
 
     Args:
@@ -825,21 +827,14 @@ def build_nav(active_page: str = "", job_code: str = "",
                      project, shopdrw, workorders, workstation, qc, quote, admin
         job_code: If set, shows the project section in sidebar
         user_name: Display name
-        user_role: User role
+        user_role: User role (primary)
+        user_roles: List of role IDs (new RBAC). Falls back to [user_role].
 
     Returns:
-        dict with keys: css, html, js, context_bar_html
+        dict with keys: css, html, js
     """
-    # Set active classes
-    html = NAV_HTML
-    pages = ["dashboard", "shopfloor", "customers", "sa", "tc",
-             "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
-    for p in pages:
-        placeholder = "{{ACTIVE_" + p + "}}"
-        html = html.replace(placeholder, "active" if p == active_page else "")
-
-    html = html.replace("{{USER_NAME}}", user_name)
-    html = html.replace("{{USER_ROLE}}", user_role)
+    # Build role-aware sidebar if the auth package is available
+    sidebar_html = _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
     # Project context JS
     context_js = ""
@@ -848,6 +843,272 @@ def build_nav(active_page: str = "", job_code: str = "",
 
     return {
         "css": NAV_CSS,
-        "html": html,
+        "html": sidebar_html,
         "js": NAV_JS + context_js,
     }
+
+
+def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles):
+    """Build sidebar HTML from user's RBAC roles."""
+    # Try to use new auth system
+    perm = None
+    try:
+        from auth.permissions import merge_permissions
+        roles = user_roles or [user_role]
+        perm = merge_permissions(roles)
+    except ImportError:
+        perm = None
+
+    # If auth not available, fall back to static NAV_HTML
+    if not perm:
+        html = NAV_HTML
+        pages = ["dashboard", "shopfloor", "customers", "sa", "tc",
+                 "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
+        for p in pages:
+            html = html.replace("{{ACTIVE_" + p + "}}", "active" if p == active_page else "")
+        html = html.replace("{{USER_NAME}}", user_name)
+        html = html.replace("{{USER_ROLE}}", user_role)
+        return html
+
+    # ── Build dynamic sidebar from permissions ──
+
+    # Map active_page to URL prefixes for highlighting
+    active_urls = {
+        "dashboard": "/", "shopfloor": "/shop-floor", "customers": "/customers",
+        "sa": "/sa", "tc": "/tc", "project": "/project/", "shopdrw": "/shop-drawings/",
+        "workorders": "/work-orders/", "workstation": "/work-station/",
+        "qc": "/qc/", "quote": "/quote/", "admin": "/admin",
+    }
+    active_href = active_urls.get(active_page, "")
+
+    # Role display labels
+    role_labels = []
+    for r in (user_roles or [user_role]):
+        role_labels.append(r.replace("_", " ").title())
+    role_display = " + ".join(role_labels) if role_labels else user_role.replace("_", " ").title()
+
+    # Sidebar section definitions — each maps to permission checks
+    # This is the definitive sidebar order from RULES.md §12
+    sections = []
+
+    # Dashboard always visible
+    sections.append(("", [("/", "&#127968;", "Dashboard", "dashboard")]))
+
+    # Estimating — calculator access
+    if perm.can("run_calculator") or perm.can("view_calculator"):
+        items = [("/sa", "&#127959;", "SA Estimator", "sa")]
+        items.append(("/tc", "&#128663;", "TC Estimator", "tc"))
+        if perm.can("create_quotes"):
+            items.append(("/quotes", "&#128196;", "Quotes", "quotes"))
+        sections.append(("Estimating", items))
+
+    # Projects
+    if perm.can("view_projects"):
+        items = [("/projects", "&#128194;", "All Projects", "projects")]
+        sections.append(("Projects", items))
+
+    # Shop Floor
+    if perm.can("view_work_orders") or perm.can("view_own_work_items") or perm.can("create_work_orders"):
+        items = [("/shop-floor", "&#9881;", "Shop Floor", "shopfloor")]
+        if perm.can("view_work_orders") or perm.can("create_work_orders"):
+            items.append(("/work-orders", "&#128203;", "Work Orders", "workorders"))
+        if perm.can("view_shop_drawings"):
+            items.append(("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"))
+        if perm.can("submit_receipts"):
+            items.append(("/receipts", "&#129534;", "Consumable Receipts", "receipts"))
+        sections.append(("Shop Floor", items))
+
+    # My Station (operator roles)
+    if perm.has_role("roll_forming_operator"):
+        sections.append(("My Station", [
+            ("/work-station/mine", "&#128190;", "My Machine", "workstation"),
+            ("/work-station/queue", "&#128203;", "Run Queue", "queue"),
+        ]))
+
+    # My Work (welder)
+    if perm.has_role("welder"):
+        sections.append(("My Work", [
+            ("/work-station/mine", "&#128293;", "My Queue", "workstation"),
+            ("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"),
+        ]))
+
+    # My Tasks (laborer)
+    if perm.has_role("laborer") and not perm.has_role("shop_foreman"):
+        sections.append(("My Tasks", [
+            ("/tasks", "&#128203;", "Tasks", "tasks"),
+            ("/scan", "&#128244;", "Scan", "scan"),
+        ]))
+
+    # Quality
+    if perm.can("view_qc") or perm.can("perform_inspections"):
+        items = [("/qc", "&#128737;", "Inspections", "qc")]
+        if perm.can("view_aisc_library"):
+            items.append(("/aisc", "&#128218;", "AISC Library", "aisc"))
+        sections.append(("Quality", items))
+
+    # Inventory
+    if perm.can("view_inventory"):
+        items = [("/inventory", "&#128230;", "Stock Levels", "inventory")]
+        if perm.can("manage_mill_certs"):
+            items.append(("/certs", "&#128196;", "Mill Certs", "certs"))
+        sections.append(("Inventory", items))
+
+    # Purchasing
+    if perm.can("view_po") or perm.can("create_po"):
+        items = [("/pos", "&#128722;", "Purchase Orders", "pos")]
+        if perm.can("manage_vendors"):
+            items.append(("/vendors", "&#128101;", "Vendors", "vendors"))
+        sections.append(("Purchasing", items))
+
+    # Customers
+    if perm.can("view_customer_info"):
+        sections.append(("", [("/customers", "&#128101;", "Customers", "customers")]))
+
+    # Shipping
+    if perm.can("view_shipping") or perm.can("build_loads"):
+        items = [("/shipping", "&#128666;", "Shipping", "shipping")]
+        sections.append(("Shipping", items))
+
+    # Field
+    if perm.can("submit_daily_report") or perm.can("view_field_reports"):
+        items = [("/field/projects", "&#127959;", "Field Ops", "field")]
+        if perm.can("submit_jha"):
+            items.append(("/field/jha", "&#9888;", "Hazard Analysis", "jha"))
+        sections.append(("Field", items))
+
+    # Safety
+    if perm.can("review_jha") or perm.can("file_incident"):
+        sections.append(("Safety", [
+            ("/safety/jha", "&#9888;", "JHA Review", "safety"),
+            ("/safety/incidents", "&#128680;", "Incidents", "incidents"),
+        ]))
+
+    # Financial
+    if perm.has_financial_access() and perm.can("view_financials"):
+        sections.append(("Financial", [
+            ("/financial", "&#128176;", "Reports", "financial"),
+        ]))
+
+    # Sales
+    if perm.can("view_pipeline") or perm.can("manage_leads"):
+        sections.append(("Sales", [
+            ("/sales/pipeline", "&#128200;", "Pipeline", "pipeline"),
+            ("/sales/leads", "&#128101;", "Leads", "leads"),
+        ]))
+
+    # Admin
+    if perm.can_manage_users:
+        sections.append(("Admin", [
+            ("/admin", "&#128274;", "Users", "admin"),
+            ("/admin/settings", "&#9881;", "Settings", "settings"),
+            ("/audit", "&#128203;", "Audit Log", "audit"),
+        ]))
+
+    # Current Project (context-aware — shown when in a project page)
+    project_section = """
+        <div class="tf-sidebar-section" id="projectNavSection" style="display:none;">
+            <div class="tf-sidebar-section-label">Current Project</div>
+            <a href="#" class="tf-nav-item" id="navProjectLink">
+                <span class="tf-nav-icon">&#128194;</span>
+                <span class="tf-nav-label" id="navProjectLabel">Project</span>
+            </a>"""
+    if perm.can("view_shop_drawings"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navShopDrwLink">
+                <span class="tf-nav-icon">&#128208;</span>
+                <span class="tf-nav-label">Shop Drawings</span>
+            </a>"""
+    if perm.can("view_work_orders") or perm.can("view_own_work_items"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navWorkOrdersLink">
+                <span class="tf-nav-icon">&#128203;</span>
+                <span class="tf-nav-label">Work Orders</span>
+            </a>
+            <a href="#" class="tf-nav-item" id="navWorkStationLink">
+                <span class="tf-nav-icon">&#128241;</span>
+                <span class="tf-nav-label">Work Station</span>
+            </a>"""
+    if perm.can("view_qc"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navQCLink">
+                <span class="tf-nav-icon">&#9989;</span>
+                <span class="tf-nav-label">QC Dashboard</span>
+            </a>"""
+    if perm.can("create_quotes") or perm.can("view_quotes"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navQuoteLink">
+                <span class="tf-nav-icon">&#128196;</span>
+                <span class="tf-nav-label">Quote Editor</span>
+            </a>"""
+    project_section += "\n        </div>"
+
+    # ── Assemble the full sidebar HTML ──
+    nav_items_html = ""
+    for label, items in sections:
+        nav_items_html += '        <div class="tf-sidebar-section">\n'
+        if label:
+            nav_items_html += f'            <div class="tf-sidebar-section-label">{label}</div>\n'
+        for href, icon, text, page_id in items:
+            active_cls = " active" if page_id == active_page else ""
+            nav_items_html += f'            <a href="{href}" class="tf-nav-item{active_cls}">\n'
+            nav_items_html += f'                <span class="tf-nav-icon">{icon}</span>\n'
+            nav_items_html += f'                <span class="tf-nav-label">{text}</span>\n'
+            nav_items_html += f'            </a>\n'
+        nav_items_html += '        </div>\n'
+
+    nav_items_html += project_section
+
+    sidebar = f"""
+<!-- Mobile overlay -->
+<div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- Sidebar -->
+<aside class="tf-sidebar" id="tfSidebar">
+    <button class="tf-sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">&#10094;</button>
+
+    <a href="/" class="tf-sidebar-logo" style="text-decoration:none;color:#fff;">
+        <div class="logo-mark">TF</div>
+        <span class="logo-text">TitanForge</span>
+    </a>
+
+    <div class="tf-sidebar-search" onclick="openGlobalSearch()" title="Search (Ctrl+K)">
+        <span style="font-size:0.9rem;">&#128269;</span>
+        <span>Search...</span>
+        <kbd>Ctrl+K</kbd>
+    </div>
+
+    <nav class="tf-sidebar-nav">
+{nav_items_html}
+    </nav>
+
+    <div class="tf-sidebar-footer">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-info">
+            <div class="user-name" id="userName">{user_name}</div>
+            <div class="user-role" id="userRole">{role_display}</div>
+        </div>
+    </div>
+</aside>
+
+<!-- Global Search Modal -->
+<div class="tf-search-overlay" id="searchOverlay" onclick="if(event.target===this)closeGlobalSearch()">
+    <div class="tf-search-box">
+        <div class="tf-search-input-wrap">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" class="tf-search-input" id="globalSearchInput"
+                   placeholder="Search projects, customers, tools..." autocomplete="off">
+        </div>
+        <div class="tf-search-results" id="searchResults">
+            <div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">
+                Type to search across projects, customers, and tools
+            </div>
+        </div>
+        <div class="tf-search-footer">
+            <span><kbd>&#8593;&#8595;</kbd> Navigate</span>
+            <span><kbd>&#9166;</kbd> Open</span>
+            <span><kbd>Esc</kbd> Close</span>
+        </div>
+    </div>
+</div>
+"""
+    return sidebar

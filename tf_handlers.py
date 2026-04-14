@@ -1,10 +1,10 @@
 """
-TitanForge v3.0 Backend Handlers
-Complete rewrite of handler classes for the steel fabrication shop management system.
-Includes: Auth (4-tier roles), Calculation, Inventory, Projects, Documents, Status tracking.
+TitanForge v4.0 Backend Handlers
+Steel fabrication shop management system.
+Includes: Auth (18-role RBAC), Calculation, Inventory, Projects, Documents, Status tracking.
 """
 
-import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time
+import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time, shutil
 import tornado.ioloop
 import tornado.web
 from tornado.escape import json_decode, json_encode
@@ -19,6 +19,13 @@ except ImportError:
 # ── Ensure calc package is importable ─────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
+
+# ── New RBAC system ───────────────────────────────────────────────────────────
+from auth.roles import P, ROLES, ROLE_IDS, get_role, get_role_permissions, list_all_roles
+from auth.permissions import PermissionSet, merge_permissions, build_template_context
+from auth.middleware import AuthMixin, require_permission, require_any_role, require_financial_access, require_delete_capability
+import auth.middleware as auth_middleware
+import auth.users as auth_users
 
 from calc.bom import (
     BOMCalculator, ProjectInfo, BuildingConfig,
@@ -64,7 +71,7 @@ COOKIE_SECRET = None   # Set at startup from env or auto-generated
 # Auth is enabled by default for hosted deployments; disabled for localhost dev.
 AUTH_ENABLED = False   # Set at startup
 
-# 4-Tier Role System
+# ── Legacy 4-Tier Role System (kept for backward compat, new code uses auth.roles) ──
 ROLE_PERMISSIONS = {
     "admin": [
         "quotes", "pricing", "bom", "inventory", "projects", "labels",
@@ -81,7 +88,33 @@ ROLE_PERMISSIONS = {
     ],
     "tc_limited": [
         "project_status", "shipping", "install_schedules"
-    ]
+    ],
+    # Map new roles to legacy permission groups for transition period
+    "god_mode": [
+        "quotes", "pricing", "bom", "inventory", "projects", "labels",
+        "price_overrides", "user_management", "project_documents", "project_status",
+        "work_orders", "quality", "shipping", "install_schedules"
+    ],
+    "project_manager": [
+        "quotes", "pricing", "bom", "inventory", "projects", "labels",
+        "price_overrides", "project_documents", "project_status", "work_orders"
+    ],
+    "shop_foreman": [
+        "work_orders", "inventory", "quality", "labels", "project_documents"
+    ],
+    "qc_inspector": ["quality", "labels", "project_documents"],
+    "engineer": ["project_documents", "labels"],
+    "roll_forming_operator": ["work_orders", "labels"],
+    "welder": ["work_orders", "labels"],
+    "shipping_coordinator": ["shipping", "labels"],
+    "laborer": ["labels"],
+    "field_crew": ["project_documents"],
+    "safety_officer": [],
+    "customer": ["project_status"],
+    "accounting": ["quotes", "pricing", "bom", "inventory", "projects"],
+    "sales": ["quotes", "projects", "project_status"],
+    "purchasing": ["inventory", "pricing"],
+    "inventory_manager": ["inventory", "labels"],
 }
 
 PROJECT_DOC_CATEGORIES = [
@@ -496,54 +529,36 @@ def assign_member_to_heat(heat_number, job_code, member_mark, description=""):
 
 
 def _ensure_users_file():
-    """Create users.json with default admin account if it doesn't exist."""
-    if os.path.isfile(USERS_PATH):
-        return
-    default_password = "titan2026"
-    if HAS_BCRYPT:
-        hashed = bcrypt.hashpw(default_password.encode(), bcrypt.gensalt()).decode()
-    else:
-        hashed = hashlib.sha256(default_password.encode()).hexdigest()
-    users = {
-        "admin": {
-            "password": hashed,
-            "display_name": "Admin",
-            "role": "admin",
-            "created": datetime.datetime.now().isoformat(),
-        },
-        "brad": {
-            "password": bcrypt.hashpw("brad2026".encode(), bcrypt.gensalt()).decode() if HAS_BCRYPT
-                        else hashlib.sha256("brad2026".encode()).hexdigest(),
-            "display_name": "Brad Spence",
-            "role": "estimator",
-            "created": datetime.datetime.now().isoformat(),
-        },
-    }
-    os.makedirs(os.path.dirname(USERS_PATH), exist_ok=True)
-    with open(USERS_PATH, "w") as f:
-        json.dump(users, f, indent=2)
-    print(f"  [AUTH] Created default users file: {USERS_PATH}")
-    print(f"  [AUTH] Default login  →  admin / titan2026")
-    print(f"  [AUTH]                →  brad  / brad2026")
+    """Create users.json with default users if it doesn't exist. Delegates to new auth module."""
+    auth_users.ensure_users_file()
 
 def verify_password(stored_hash: str, password: str) -> bool:
     """Verify password against stored hash (bcrypt or SHA256)."""
-    if HAS_BCRYPT and stored_hash.startswith("$2"):
-        return bcrypt.checkpw(password.encode(), stored_hash.encode())
-    return stored_hash == hashlib.sha256(password.encode()).hexdigest()
+    return auth_users.verify_password(stored_hash, password)
 
 def hash_password(password: str) -> str:
     """Hash password using bcrypt or SHA256."""
-    if HAS_BCRYPT:
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    return hashlib.sha256(password.encode()).hexdigest()
+    return auth_users.hash_password(password)
 
 def check_role(user_role: str, required_roles: list) -> bool:
-    """Check if user role has permission for required roles."""
-    return user_role in required_roles
+    """Check if user role has permission for required roles.
+    LEGACY: new code should use perm.has_any_role() instead."""
+    # Handle both old single-role and new multi-role
+    if user_role in required_roles:
+        return True
+    # Also check new role system mappings
+    legacy_to_new = {
+        "admin": ["admin", "god_mode"],
+        "estimator": ["estimator"],
+        "shop": ["shop_foreman"],
+        "viewer": ["laborer", "customer"],
+    }
+    new_roles = legacy_to_new.get(user_role, [user_role])
+    return any(nr in required_roles for nr in new_roles)
 
 def get_user_permissions(user_role: str) -> list:
-    """Get list of permissions for a user role."""
+    """Get list of permissions for a user role.
+    LEGACY: new code should use auth.roles.get_role_permissions() instead."""
     return ROLE_PERMISSIONS.get(user_role, [])
 
 
@@ -551,9 +566,22 @@ def get_user_permissions(user_role: str) -> list:
 # BASE AUTHENTICATED HANDLER WITH ROLE CHECKING
 # ─────────────────────────────────────────────
 
-class BaseHandler(tornado.web.RequestHandler):
-    """Base handler that checks authentication and role permissions."""
-    required_roles = None  # Override in subclasses. None = no role check.
+class BaseHandler(AuthMixin, tornado.web.RequestHandler):
+    """
+    Base handler with RBAC authentication and role permissions.
+
+    Now powered by the auth/ package (18-role system with multi-role merging).
+    All existing handler subclasses continue to work unchanged.
+
+    New capabilities available to all handlers:
+        self.perm              — PermissionSet with .can(), .has_role(), financial checks
+        self.user_roles        — list of role IDs
+        self.current_user_data — full user dict
+        self.template_ctx      — dict with all permission flags for templates
+    """
+    # Legacy: override in subclasses for old-style role checking
+    # New handlers should use @require_permission or @require_any_role instead
+    required_roles = None
 
     def get_current_user(self):
         """Get current authenticated user (username or 'local' in dev mode)."""
@@ -565,24 +593,38 @@ class BaseHandler(tornado.web.RequestHandler):
         return None
 
     def get_user_role(self):
-        """Get current user's role."""
+        """Get current user's primary role (LEGACY — use self.user_roles instead)."""
         if not AUTH_ENABLED:
-            return "admin"
+            return "god_mode"
         current = self.get_current_user()
         if not current:
             return None
         users = load_users()
-        return users.get(current, {}).get("role", "viewer")
+        user = users.get(current, {})
+        # New format: multi-role
+        roles = user.get("roles", [])
+        if roles:
+            return roles[0]
+        # Legacy format: single role
+        return user.get("role", "laborer")
 
     def check_permission(self, permission: str) -> bool:
-        """Check if current user has a specific permission."""
+        """Check if current user has a specific permission.
+        LEGACY: new handlers should use self.perm.can(permission) instead."""
+        # Try new RBAC system first
+        if hasattr(self, 'perm') and self.perm:
+            return self.perm.can(permission)
+        # Fallback to legacy
         role = self.get_user_role()
         if not role:
             return False
         return permission in get_user_permissions(role)
 
     def prepare(self):
-        """Check auth before handling request."""
+        """Check auth before handling request. Bridges old and new RBAC."""
+        # Sync AUTH_ENABLED to auth middleware module
+        auth_middleware.AUTH_ENABLED = AUTH_ENABLED
+
         if not AUTH_ENABLED:
             return
         path = self.request.path
@@ -598,27 +640,32 @@ class BaseHandler(tornado.web.RequestHandler):
                 self.write(json_encode({"error": "Not authenticated"}))
             raise tornado.web.Finish()
 
-        # Check role permissions if required
+        # Check user is active (new RBAC feature)
+        user = self.current_user_data
+        if user and not user.get("active", True):
+            self.clear_cookie("sa_user")
+            self.redirect("/auth/login")
+            raise tornado.web.Finish()
+
+        # Legacy role check (old handlers use required_roles = ["admin"])
         if self.required_roles is not None:
             role = self.get_user_role()
             if not check_role(role, self.required_roles):
-                self.set_status(403)
-                self.write(json_encode({"error": "Insufficient permissions for this action"}))
+                # Per RULES.md: redirect to dashboard, not 403 page
+                if self.request.method == "GET" and not path.startswith("/api/"):
+                    self.redirect("/dashboard")
+                else:
+                    self.set_status(403)
+                    self.write(json_encode({"error": "Insufficient permissions"}))
                 raise tornado.web.Finish()
 
     def render_with_nav(self, html: str, active_page: str = "",
                         job_code: str = ""):
-        """Render HTML with the unified sidebar navigation injected.
-
-        Args:
-            html: Raw HTML string from template
-            active_page: Which sidebar item to highlight
-            job_code: If set, shows project sub-nav in sidebar
-        """
+        """Render HTML with the unified sidebar navigation injected."""
         from templates.shared_nav import inject_nav
 
         user = self.get_current_user() or "local"
-        role = self.get_user_role() or "admin"
+        role = self.get_user_role() or "god_mode"
         users = load_users()
         display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
 
@@ -644,20 +691,63 @@ class LoginHandler(tornado.web.RequestHandler):
         self.write(LOGIN_HTML)
 
     def post(self):
-        body     = json_decode(self.request.body)
+        try:
+            body = json_decode(self.request.body)
+        except:
+            body = {
+                "username": self.get_argument("username", ""),
+                "password": self.get_argument("password", "")
+            }
         username = body.get("username", "").strip().lower()
         password = body.get("password", "")
 
+        # Check lockout first
+        lockout = auth_users.check_lockout(username)
+        if lockout:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Account locked. Try again later."}))
+            return
+
         users = load_users()
-        user  = users.get(username)
-        if not user or not verify_password(user["password"], password):
+        user = users.get(username)
+
+        # Get the password hash — support both new and legacy field names
+        stored_hash = None
+        if user:
+            stored_hash = user.get("password_hash") or user.get("password")
+
+        if not user or not stored_hash or not verify_password(stored_hash, password):
+            # Record failed login
+            ip = self.request.remote_ip or ""
+            auth_users.record_login(username, False, ip)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
             return
 
+        # Check if user is active
+        if not user.get("active", True):
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": "Account deactivated. Contact admin."}))
+            return
+
+        # Record successful login
+        ip = self.request.remote_ip or ""
+        auth_users.record_login(username, True, ip)
+
         self.set_secure_cookie("sa_user", username, expires_days=30)
         self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "redirect": "/"}))
+
+        # Get user roles for response
+        roles = user.get("roles", [user.get("role", "laborer")])
+        self.write(json_encode({
+            "ok": True,
+            "redirect": "/",
+            "user": {
+                "username": username,
+                "display_name": user.get("display_name", username),
+                "roles": roles,
+            }
+        }))
 
 
 class LogoutHandler(tornado.web.RequestHandler):
@@ -668,8 +758,8 @@ class LogoutHandler(tornado.web.RequestHandler):
 
 
 class AdminPageHandler(BaseHandler):
-    """GET /admin — User management page (admin only)."""
-    required_roles = ["admin"]
+    """GET /admin — User management page (God Mode only)."""
+    required_roles = ["admin", "god_mode"]
 
     def get(self):
         self.render_with_nav(ADMIN_HTML, active_page="admin")
@@ -742,13 +832,64 @@ class UserDeleteHandler(BaseHandler):
 # ─────────────────────────────────────────────
 
 class DashboardHandler(BaseHandler):
-    """GET / — Main TitanForge dashboard."""
+    """GET / — Role-aware TitanForge dashboard."""
     def get(self):
         user = self.get_current_user() or "local"
         users_db = load_users()
-        role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
-        display = users_db.get(user, {}).get("display_name", user) if user != "local" else "Admin"
-        html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", display)
+        user_data = users_db.get(user, {})
+        display = user_data.get("display_name", user) if user != "local" else "Admin"
+
+        # Get role info for template
+        roles = self.user_roles
+        perm = self.perm
+        primary_role = roles[0] if roles else "god_mode"
+
+        # Build role-aware dashboard card JSON for the frontend
+        card_groups = perm.get_dashboard_card_groups()
+        cards_json = json.dumps({
+            group: [{"id": c.id, "title": c.title, "group": c.group,
+                     "link": c.link, "icon": c.icon, "priority": c.priority,
+                     "requires_financial": c.requires_financial}
+                    for c in cards]
+            for group, cards in card_groups.items()
+        })
+
+        # Build permission flags JSON for frontend conditional rendering
+        perm_flags = json.dumps({
+            "roles": roles,
+            "primary_role": primary_role,
+            "show_financial": perm.has_financial_access(),
+            "show_bom_pricing": perm.can_see_bom_pricing(),
+            "show_margins": perm.can_see_margins(),
+            "can_delete": perm.can_delete,
+            "can_manage_users": perm.can_manage_users,
+            "can_create_projects": perm.can(P.CREATE_PROJECTS),
+            "can_run_calculator": perm.can(P.RUN_CALCULATOR),
+            "can_view_calculator": perm.can(P.VIEW_CALCULATOR) or perm.can(P.RUN_CALCULATOR),
+            "can_view_inventory": perm.can(P.VIEW_INVENTORY),
+            "can_edit_inventory": perm.can(P.EDIT_INVENTORY),
+            "can_view_projects": perm.can(P.VIEW_PROJECTS),
+            "can_view_work_orders": perm.can(P.VIEW_WORK_ORDERS) or perm.can(P.VIEW_OWN_WORK_ITEMS),
+            "can_view_shop_drawings": perm.can(P.VIEW_SHOP_DRAWINGS),
+            "can_view_qc": perm.can(P.VIEW_QC),
+            "can_view_shipping": perm.can(P.VIEW_SHIPPING),
+            "can_view_field": perm.can(P.VIEW_FIELD_REPORTS) or perm.can(P.SUBMIT_DAILY_REPORT),
+            "can_view_pipeline": perm.can(P.VIEW_PIPELINE),
+            "can_submit_receipts": perm.can(P.SUBMIT_RECEIPTS),
+            "can_view_customers": perm.can(P.VIEW_CUSTOMER_INFO),
+            "mobile_first": perm.mobile_first,
+        })
+
+        # Build sidebar section IDs for frontend
+        sidebar_ids = json.dumps([s["id"] for s in perm.get_sidebar()])
+
+        html = DASHBOARD_HTML
+        html = html.replace("{{USER_ROLE}}", primary_role)
+        html = html.replace("{{USER_ROLES}}", json.dumps(roles))
+        html = html.replace("{{USER_NAME}}", display)
+        html = html.replace("{{CARD_GROUPS}}", cards_json)
+        html = html.replace("{{PERM_FLAGS}}", perm_flags)
+        html = html.replace("{{SIDEBAR_IDS}}", sidebar_ids)
         self.render_with_nav(html, active_page="dashboard")
 
 
@@ -2284,6 +2425,45 @@ class ProjectListEnhancedHandler(BaseHandler):
 
         self.set_header("Content-Type", "application/json")
         self.write(json_encode({"ok": True, "projects": result}))
+
+
+class ProjectDeleteHandler(BaseHandler):
+    """POST /api/project/delete — Delete a project and all associated data."""
+    required_roles = ["admin"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Job code is required"}))
+                return
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+
+            # Check if project exists
+            if not os.path.isdir(proj_dir):
+                self.write(json_encode({"ok": False, "error": f"Project {job_code} not found"}))
+                return
+
+            # Delete the entire project directory
+            try:
+                shutil.rmtree(proj_dir)
+            except Exception as e:
+                self.set_status(500)
+                self.write(json_encode({"ok": False, "error": f"Failed to delete project: {str(e)}"}))
+                return
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
+
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
 
 # ─────────────────────────────────────────────
@@ -4943,6 +5123,7 @@ def get_routes():
         (r"/api/project/metadata",       ProjectMetadataHandler),
         (r"/api/project/checklist",      ProjectChecklistHandler),
         (r"/api/project/next-steps",     ProjectNextStepsHandler),
+        (r"/api/project/delete",         ProjectDeleteHandler),
         (r"/api/projects/full",          ProjectListEnhancedHandler),
 
         # ── Project Page ──────────────────────────────────────

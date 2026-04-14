@@ -857,6 +857,9 @@ DASHBOARD_HTML = r"""
     <script>
         var USER_ROLE = '{{USER_ROLE}}';
         var USER_NAME = '{{USER_NAME}}';
+        var USER_ROLES = {{USER_ROLES}};
+        var CARD_GROUPS = {{CARD_GROUPS}};
+        var PERM = {{PERM_FLAGS}};
     </script>
 
     <!-- OLD TOPBAR (hidden by inject_nav CSS but kept for fallback) -->
@@ -894,8 +897,8 @@ DASHBOARD_HTML = r"""
             </div>
         </div>
 
-        <!-- PULSE STATS -->
-        <div class="mc-pulse">
+        <!-- PULSE STATS (hidden for roles without project access) -->
+        <div class="mc-pulse" id="pulseStats">
             <div class="pulse-card pc-blue" onclick="scrollToProjects('all')">
                 <div class="pulse-icon blue">&#128202;</div>
                 <div>
@@ -926,40 +929,14 @@ DASHBOARD_HTML = r"""
             </div>
         </div>
 
-        <!-- LAUNCHPAD -->
-        <div class="mc-launchpad">
-            <a class="launch-card" href="/sa">
-                <div class="launch-icon li-blue">&#128208;</div>
-                <div class="launch-title">SA Estimator</div>
-                <div class="launch-desc">Structures America pricing</div>
-            </a>
-            <a class="launch-card" href="/tc">
-                <div class="launch-icon li-amber">&#128221;</div>
-                <div class="launch-title">TC Estimator</div>
-                <div class="launch-desc">Titan Carports pricing</div>
-            </a>
-            <a class="launch-card" href="/shop-floor">
-                <div class="launch-icon li-navy">&#127981;</div>
-                <div class="launch-title">Shop Floor</div>
-                <div class="launch-desc">Production dashboard</div>
-            </a>
-            <a class="launch-card" href="/customers">
-                <div class="launch-icon li-green">&#128100;</div>
-                <div class="launch-title">Customers</div>
-                <div class="launch-desc">CRM & contacts</div>
-            </a>
-        </div>
+        <!-- ROLE-AWARE LAUNCHPAD (built dynamically from PERM flags) -->
+        <div class="mc-launchpad" id="launchpad"></div>
 
-        <!-- SECTION TABS -->
-        <div class="mc-section-tabs">
-            <button class="mc-tab active" id="tabProjects" onclick="switchSection('projects')">
-                &#128204; Projects
-            </button>
-            <button class="mc-tab" id="tabInventory" onclick="switchSection('inventory')">
-                &#128230; Inventory
-                <span class="mc-tab-badge" id="invAlertDot">0</span>
-            </button>
-        </div>
+        <!-- ROLE-AWARE DASHBOARD CARDS (dynamic card groups from RBAC) -->
+        <div id="roleCards" style="margin-bottom:var(--tf-sp-6);"></div>
+
+        <!-- SECTION TABS (built dynamically based on permissions) -->
+        <div class="mc-section-tabs" id="sectionTabs"></div>
 
         <!-- ═══════════════════════════════════════════════ -->
         <!-- PROJECTS SECTION                                -->
@@ -1011,9 +988,9 @@ DASHBOARD_HTML = r"""
         <div id="sectionInventory" style="display:none;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--tf-sp-5);flex-wrap:wrap;gap:var(--tf-sp-3);">
                 <h2 style="font-size:var(--tf-text-lg);font-weight:700;color:var(--tf-gray-900);">Steel Coil Inventory</h2>
-                <div style="display:flex;gap:var(--tf-sp-2);">
-                    <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openAddCoilModal()">+ Add Coil</button>
-                    <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="openAddCertModal()">Upload Mill Cert</button>
+                <div style="display:flex;gap:var(--tf-sp-2);" id="invActionButtons">
+                    <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openAddCoilModal()" id="addCoilBtn">+ Add Coil</button>
+                    <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="openAddCertModal()" id="uploadCertBtn">Upload Mill Cert</button>
                 </div>
             </div>
 
@@ -1297,6 +1274,7 @@ DASHBOARD_HTML = r"""
                     <button class="tf-btn tf-btn-primary" id="openFullPageBtn" onclick="">Open Project</button>
                     <button class="tf-btn tf-btn-outline" id="openShopDrawingsBtn" style="border-color:#1E40AF;color:#1E40AF;">Shop Drawings</button>
                     <button class="tf-btn tf-btn-outline" id="openWorkOrdersBtn" style="border-color:#0F766E;color:#0F766E;">Work Orders</button>
+                    <button class="tf-btn tf-btn-outline admin-only" id="deleteProjectBtn" style="border-color:#DC2626;color:#DC2626;display:none;">Delete Project</button>
                     <button class="tf-btn tf-btn-outline" onclick="closeProjectModal()">Close</button>
                 </div>
             </div>
@@ -1322,35 +1300,188 @@ DASHBOARD_HTML = r"""
     document.addEventListener('DOMContentLoaded', function() { initializePage(); });
 
     function initializePage() {
+        // Fallback if PERM not injected
+        if (typeof PERM === 'undefined' || !PERM) {
+            PERM = { roles: [USER_ROLE], primary_role: USER_ROLE, show_financial: true, can_create_projects: true, can_run_calculator: true, can_view_calculator: true, can_view_inventory: true, can_edit_inventory: true, can_view_projects: true, can_view_work_orders: true, can_view_shop_drawings: true, can_view_qc: true, can_view_shipping: true, can_view_field: false, can_view_pipeline: false, can_submit_receipts: false, can_view_customers: true, can_delete: false, can_manage_users: false, mobile_first: false };
+        }
+        if (typeof CARD_GROUPS === 'undefined') { CARD_GROUPS = {}; }
+
         // Set hero name
         var displayName = (USER_NAME && USER_NAME !== '{{USER_NAME}}') ? USER_NAME : 'there';
         document.getElementById('heroName').textContent = displayName;
 
-        // Date subtitle
+        // Date subtitle + role badge
         var now = new Date();
         var opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        document.getElementById('heroDate').textContent = now.toLocaleDateString('en-US', opts);
+        var dateStr = now.toLocaleDateString('en-US', opts);
+        var roles = (PERM.roles || [USER_ROLE]);
+        var roleLabels = roles.map(function(r) { return r.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }); });
+        document.getElementById('heroDate').textContent = dateStr + '  ·  ' + roleLabels.join(' + ');
 
-        // Role-based visibility
-        if (USER_ROLE !== 'admin' && USER_ROLE !== 'estimator') {
+        // Role-based visibility for New Project button
+        if (!PERM.can_create_projects) {
             document.getElementById('newProjectBtn').style.display = 'none';
         }
 
-        loadProjects();
-        loadInventoryAlerts();
+        // Build role-aware launchpad
+        buildLaunchpad();
+
+        // Build role-aware dashboard card groups
+        buildRoleCards();
+
+        // Build section tabs based on permissions
+        buildSectionTabs();
+
+        // Load data based on permissions
+        if (PERM.can_view_projects) {
+            loadProjects();
+        }
+        if (PERM.can_view_inventory) {
+            loadInventoryAlerts();
+        }
+
         setupEventListeners();
 
-        if (USER_ROLE === 'shop') {
-            document.querySelectorAll('.price').forEach(function(el) { el.classList.add('hidden'); });
+        // Hide financial data for non-financial roles
+        if (!PERM.show_financial) {
+            document.querySelectorAll('.price, .financial-data').forEach(function(el) { el.style.display = 'none'; });
+        }
+    }
+
+    // ── Role-Aware Launchpad Builder ──────────────
+    function buildLaunchpad() {
+        var pad = document.getElementById('launchpad');
+        if (!pad) return;
+        var cards = [];
+
+        // Define all possible launch cards with their permission requirements
+        var allCards = [
+            { href: '/sa', icon: '&#128208;', cls: 'li-blue', title: 'SA Estimator', desc: 'Structures America pricing', show: PERM.can_view_calculator },
+            { href: '/tc', icon: '&#128221;', cls: 'li-amber', title: 'TC Estimator', desc: 'Titan Carports pricing', show: PERM.can_view_calculator },
+            { href: '/shop-floor', icon: '&#127981;', cls: 'li-navy', title: 'Shop Floor', desc: 'Production dashboard', show: PERM.can_view_work_orders },
+            { href: '/customers', icon: '&#128100;', cls: 'li-green', title: 'Customers', desc: 'CRM & contacts', show: PERM.can_view_customers },
+            { href: '/work-station/mine', icon: '&#9881;', cls: 'li-purple', title: 'My Station', desc: 'Scan & fabricate', show: PERM.primary_role === 'roll_forming_operator' || PERM.primary_role === 'welder' },
+            { href: '/field/projects', icon: '&#127959;', cls: 'li-green', title: 'Field Ops', desc: 'Reports, JHA, photos', show: PERM.can_view_field },
+            { href: '/receipts', icon: '&#129534;', cls: 'li-amber', title: 'Receipts', desc: 'Submit consumable receipts', show: PERM.can_submit_receipts && !PERM.can_view_calculator },
+            { href: '/qc', icon: '&#128737;', cls: 'li-purple', title: 'QC Inspection', desc: 'Inspections & NCRs', show: PERM.can_view_qc && !PERM.can_view_calculator },
+            { href: '/shipping', icon: '&#128666;', cls: 'li-blue', title: 'Shipping', desc: 'Loads & BOL', show: PERM.can_view_shipping && !PERM.can_view_work_orders },
+            { href: '/sales/pipeline', icon: '&#128200;', cls: 'li-green', title: 'Pipeline', desc: 'Sales & leads', show: PERM.can_view_pipeline },
+            { href: '/safety/jha', icon: '&#9888;', cls: 'li-amber', title: 'Safety', desc: 'JHA review & incidents', show: PERM.primary_role === 'safety_officer' },
+            { href: '/tasks', icon: '&#128203;', cls: 'li-blue', title: 'My Tasks', desc: 'Staging & scanning', show: PERM.primary_role === 'laborer' },
+            { href: '/admin/users', icon: '&#128274;', cls: 'li-navy', title: 'Admin', desc: 'Users & settings', show: PERM.can_manage_users },
+        ];
+
+        allCards.forEach(function(c) {
+            if (!c.show) return;
+            cards.push(
+                '<a class="launch-card" href="' + c.href + '">'
+                + '<div class="launch-icon ' + c.cls + '">' + c.icon + '</div>'
+                + '<div class="launch-title">' + c.title + '</div>'
+                + '<div class="launch-desc">' + c.desc + '</div>'
+                + '</a>'
+            );
+        });
+
+        pad.innerHTML = cards.join('');
+    }
+
+    // ── Role-Aware Dashboard Cards Builder ────────
+    function buildRoleCards() {
+        var container = document.getElementById('roleCards');
+        if (!container || !CARD_GROUPS || Object.keys(CARD_GROUPS).length === 0) return;
+
+        // Don't show card groups that overlap with the main sections (Projects, Inventory)
+        var skipGroups = ['Overview'];
+        var html = '';
+
+        // Card group icons
+        var groupIcons = {
+            'Shop Floor': '&#127981;', 'Quality': '&#128737;', 'My Station': '&#9881;',
+            'My Work': '&#128293;', 'Shipping': '&#128666;', 'Field': '&#127959;',
+            'Safety': '&#9888;', 'My Tasks': '&#128203;', 'Estimating': '&#128208;',
+            'Purchasing': '&#128722;', 'Inventory': '&#128230;', 'Financial': '&#128176;',
+            'Sales': '&#128200;', 'Engineering': '&#128736;', 'Administration': '&#128274;',
+            'My Project': '&#128065;', 'Projects': '&#128204;'
+        };
+
+        Object.keys(CARD_GROUPS).forEach(function(group) {
+            if (skipGroups.indexOf(group) >= 0) return;
+            var cards = CARD_GROUPS[group];
+            if (!cards || cards.length === 0) return;
+
+            html += '<div style="margin-bottom:var(--tf-sp-4);">';
+            html += '<h3 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-500);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:var(--tf-sp-3);">';
+            html += (groupIcons[group] || '&#128196;') + ' ' + group;
+            html += '</h3>';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--tf-sp-3);">';
+
+            cards.forEach(function(card) {
+                var link = card.link || '#';
+                html += '<a class="launch-card" href="' + link + '" style="padding:var(--tf-sp-4);gap:var(--tf-sp-2);">';
+                html += '<div class="launch-title" style="font-size:var(--tf-text-sm);">' + esc(card.title) + '</div>';
+                if (card.requires_financial && PERM.show_financial) {
+                    html += '<div class="launch-desc" id="card_' + card.id + '_val" style="font-size:var(--tf-text-2xl);font-weight:700;color:var(--tf-gray-900);">&mdash;</div>';
+                } else if (!card.requires_financial) {
+                    html += '<div class="launch-desc" id="card_' + card.id + '_val" style="font-size:var(--tf-text-2xl);font-weight:700;color:var(--tf-gray-900);">&mdash;</div>';
+                }
+                html += '</a>';
+            });
+
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+    }
+
+    // ── Dynamic Section Tabs ─────────────────────
+    function buildSectionTabs() {
+        var tabs = document.getElementById('sectionTabs');
+        if (!tabs) return;
+
+        var tabDefs = [];
+        if (PERM.can_view_projects) {
+            tabDefs.push({ id: 'projects', icon: '&#128204;', label: 'Projects', section: 'sectionProjects' });
+        }
+        if (PERM.can_view_inventory) {
+            tabDefs.push({ id: 'inventory', icon: '&#128230;', label: 'Inventory', section: 'sectionInventory', badge: 'invAlertDot' });
+        }
+
+        // If user has no projects or inventory access, hide the tabs entirely
+        if (tabDefs.length === 0) {
+            tabs.style.display = 'none';
+            document.getElementById('sectionProjects').style.display = 'none';
+            document.getElementById('sectionInventory').style.display = 'none';
+            return;
+        }
+
+        var html = '';
+        tabDefs.forEach(function(t, i) {
+            var activeClass = (i === 0) ? ' active' : '';
+            html += '<button class="mc-tab' + activeClass + '" id="tab' + t.id.charAt(0).toUpperCase() + t.id.slice(1) + '" onclick="switchSection(\'' + t.id + '\')">';
+            html += t.icon + ' ' + t.label;
+            if (t.badge) {
+                html += ' <span class="mc-tab-badge" id="' + t.badge + '">0</span>';
+            }
+            html += '</button>';
+        });
+        tabs.innerHTML = html;
+
+        // Show first section, hide others
+        if (tabDefs.length > 0) {
+            document.getElementById('sectionProjects').style.display = PERM.can_view_projects ? '' : 'none';
+            document.getElementById('sectionInventory').style.display = 'none';
         }
     }
 
     function setupEventListeners() {
         // Close modals on backdrop click
         ['projectModal', 'newProjectModal', 'addCoilModal', 'addCertModal', 'editStockModal'].forEach(function(id) {
-            document.getElementById(id).addEventListener('click', function(e) {
-                if (e.target === this) this.classList.remove('show');
-            });
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('click', function(e) {
+                    if (e.target === this) this.classList.remove('show');
+                });
+            }
         });
 
         // Keyboard shortcuts
@@ -1359,6 +1490,28 @@ DASHBOARD_HTML = r"""
                 document.querySelectorAll('.modal.show').forEach(function(m) { m.classList.remove('show'); });
             }
         });
+
+        // ── RBAC: Hide elements based on permissions ──
+        // Pulse stats — only for project viewers
+        var pulse = document.getElementById('pulseStats');
+        if (pulse && !PERM.can_view_projects) {
+            pulse.style.display = 'none';
+        }
+
+        // Inventory edit buttons — only for users who can edit inventory
+        if (!PERM.can_edit_inventory) {
+            var addBtn = document.getElementById('addCoilBtn');
+            var certBtn = document.getElementById('uploadCertBtn');
+            if (addBtn) addBtn.style.display = 'none';
+            if (certBtn) certBtn.style.display = 'none';
+        }
+
+        // Cost column in inventory — hide for non-financial roles
+        if (!PERM.show_financial) {
+            document.querySelectorAll('.price, .financial-data, [data-financial]').forEach(function(el) {
+                el.style.display = 'none';
+            });
+        }
     }
 
     // ── Load Projects ─────────────────────────────
@@ -1692,12 +1845,45 @@ DASHBOARD_HTML = r"""
         document.getElementById('openShopDrawingsBtn').onclick = function() { window.location.href = '/shop-drawings/' + jc; };
         document.getElementById('openWorkOrdersBtn').onclick = function() { window.location.href = '/work-orders/' + jc; };
 
+        // Delete button (God Mode only — requires can_delete)
+        var deleteBtn = document.getElementById('deleteProjectBtn');
+        deleteBtn.onclick = function() { deleteProject(project.job_code); };
+        deleteBtn.style.display = PERM.can_delete ? 'block' : 'none';
+
+        // Shop drawings button — only if user can view them
+        document.getElementById('openShopDrawingsBtn').style.display = (PERM.can_view_shop_drawings) ? '' : 'none';
+        // Work orders button — only if user can view them
+        document.getElementById('openWorkOrdersBtn').style.display = (PERM.can_view_work_orders) ? '' : 'none';
+
         document.getElementById('projectModal').classList.add('show');
     }
 
     function closeProjectModal() {
         document.getElementById('projectModal').classList.remove('show');
         currentProject = null;
+    }
+
+    function deleteProject(jobCode) {
+        if (!confirm('Are you sure you want to delete project ' + jobCode + '? This cannot be undone.')) return;
+        if (!confirm('FINAL WARNING: All data for ' + jobCode + ' (drawings, work orders, BOM) will be permanently deleted. Continue?')) return;
+        fetch('/api/project/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_code: jobCode })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                showToast ? showToast('Project ' + jobCode + ' deleted', 'success') : alert('Project deleted successfully');
+                closeProjectModal();
+                loadProjects();
+            } else {
+                showToast ? showToast(data.error || 'Delete failed', 'error') : alert(data.error || 'Failed to delete project');
+            }
+        })
+        .catch(function(err) {
+            showToast ? showToast('Error: ' + err, 'error') : alert('Error: ' + err);
+        });
     }
 
     // ── New Project Modal ─────────────────────────

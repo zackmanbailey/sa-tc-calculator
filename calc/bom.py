@@ -93,11 +93,12 @@ class BuildingConfig:
     roofing_overhang_ft: float = 0.5        # panel overhang past eave purlin
     above_grade_ft: float = 8.0             # column height above finished grade
     cut_allowance_in: float = 6.0           # extra length for field cuts (inches)
-    footing_depth_ft: float = 0.0           # per-building override; 0 = use project-level
+    footing_depth_ft: float = 10.0          # per-building footing depth (default 10')
     # Misc
     include_trim: bool = False
     welding_cost_per_5000sqft: float = 300.0
     include_labor: bool = True
+    labor_daily_rate: float = 960.0      # adjustable base daily rate (4 crew × $30/hr × 8hrs)
     coil_prices: Optional[Dict] = None   # {"c_section_23": 0.85, ...}
 
 
@@ -421,11 +422,28 @@ class BOMCalculator:
         items = []
         cp = bldg.coil_prices
 
+        # ── Auto-determine frame type from width (rafter-first design) ──
+        # ≤45' = TEE (1 column per rafter in auto mode)
+        # >45' = multi-column (auto places 2+ columns per rafter)
+        frame_type = "tee" if bldg.width_ft <= 45.0 else "2post"
+
         # Slope
         slope_deg = get_slope_deg(bldg.pitch_key)
         tan_slope = math.tan(math.radians(slope_deg))
 
-        # Column layout
+        # ── Rafter column placement (structural columns per rafter) ──
+        # Must be calculated before n_struct_cols since it determines cols/rafter
+        raft_n_cols, raft_col_pos_in = calc_rafter_columns(
+            bldg.width_ft,
+            column_mode=bldg.column_mode,
+            column_spacing_ft=bldg.column_spacing_ft,
+            column_count_manual=bldg.column_count_manual,
+            column_positions_manual=bldg.column_positions_manual,
+            include_back_wall=bldg.include_back_wall,
+            front_col_position_ft=bldg.front_col_position_ft,
+        )
+
+        # Rafter layout along building length (frames / bays)
         col_positions = None
         bay_sizes_list = None
         if bldg.space_width_ft and bldg.space_width_ft > 0:
@@ -442,18 +460,30 @@ class BOMCalculator:
             bay_sizes_list = [bay_size_ft] * (n_frames - 1)
 
         n_bays = n_frames - 1
-        n_struct_cols = n_frames if bldg.type == "tee" else n_frames * 2
+        # Structural columns = frames × columns per rafter (from rafter drawing)
+        n_struct_cols = n_frames * raft_n_cols
 
         # Rafter: 1 per frame, full width
         n_rafters = n_frames
         rafter_slope_ft = calc_rafter_slope_length(bldg.width_ft, slope_deg)
 
-        # Column height
-        col_ht_ft = calc_column_height(
-            bldg.clear_height_ft, bldg.width_ft, bldg.type,
-            slope_deg, bldg.embedment_ft, bldg.column_buffer_ft)
+        # ── Per-position column heights (variable due to slope) ──
+        # Each column position on the rafter has a different height based on
+        # its distance from the eave (closer to peak = taller column)
+        raft_col_heights_ft = [
+            calc_column_height_at(
+                bldg.clear_height_ft, p / 12.0, slope_deg,
+                bldg.embedment_ft, bldg.column_buffer_ft)
+            for p in raft_col_pos_in
+        ]
+        # For BOM coil calculation, use average column height across positions
+        # (each frame has the same set of column heights)
+        avg_col_ht_ft = sum(raft_col_heights_ft) / len(raft_col_heights_ft) if raft_col_heights_ft else 0
+        col_ht_ft = avg_col_ht_ft
         col_ht_in = col_ht_ft * 12.0
-        angle_add_in = (bldg.width_ft / (2 if bldg.type == "tee" else 3)) * tan_slope * 12
+        # Angle addition for display (use max column position from eave)
+        max_dist_from_eave = max(p / 12.0 for p in raft_col_pos_in) if raft_col_pos_in else bldg.width_ft / 2.0
+        angle_add_in = max_dist_from_eave * tan_slope * 12
 
         # Purlin spacing
         if bldg.purlin_spacing_override:
@@ -480,8 +510,8 @@ class BOMCalculator:
         n_sag_pieces = n_rafters * 4   # 2 rods x 2 pieces
         total_sag_net = n_rafters * 2 * (sag_front_ft + sag_back_ft)
 
-        # Rebar selection
-        auto_rebar = get_rebar_size(bldg.type, bldg.width_ft,
+        # Rebar selection (uses auto-determined frame type)
+        auto_rebar = get_rebar_size(frame_type, bldg.width_ft,
                                      self.project.wind_speed_mph, bay_size_ft)
         rebar_col_key = (bldg.rebar_col_size
                          if bldg.rebar_col_size and bldg.rebar_col_size != "auto"
@@ -490,21 +520,8 @@ class BOMCalculator:
                           if bldg.rebar_beam_size and bldg.rebar_beam_size != "auto"
                           else auto_rebar.get("beam"))
 
-        # Footing depth: per-building override if > 0, else project-level
-        footing_depth = (bldg.footing_depth_ft
-                         if bldg.footing_depth_ft and bldg.footing_depth_ft > 0
-                         else self.project.footing_depth_ft)
-
-        # ── Rafter column placement (structural columns per rafter) ──
-        raft_n_cols, raft_col_pos_in = calc_rafter_columns(
-            bldg.width_ft,
-            column_mode=bldg.column_mode,
-            column_spacing_ft=bldg.column_spacing_ft,
-            column_count_manual=bldg.column_count_manual,
-            column_positions_manual=bldg.column_positions_manual,
-            include_back_wall=bldg.include_back_wall,
-            front_col_position_ft=bldg.front_col_position_ft,
-        )
+        # Footing depth: always per-building (default 10' set in BuildingConfig)
+        footing_depth = bldg.footing_depth_ft
 
         # Save geometry for display
         result.geometry = {
@@ -519,7 +536,7 @@ class BOMCalculator:
             "n_struct_cols": n_struct_cols,
             "n_rafters": n_rafters,
             "rafter_slope_ft": round(rafter_slope_ft, 2),
-            "col_ht_ft": round(col_ht_ft, 2),
+            "col_ht_ft": round(col_ht_ft, 2),  # average across positions
             "col_ht_in": round(col_ht_in, 1),
             "angle_add_in": round(angle_add_in, 2),
             "slope_deg": round(slope_deg, 2),
@@ -547,12 +564,7 @@ class BOMCalculator:
             "angled_purlins": bldg.angled_purlins,
             "purlin_angle_deg": bldg.purlin_angle_deg,
             # Per-position column heights (for variable height due to slope)
-            "raft_col_heights_ft": [
-                round(calc_column_height_at(
-                    bldg.clear_height_ft, p / 12.0, slope_deg,
-                    bldg.embedment_ft, bldg.column_buffer_ft), 2)
-                for p in raft_col_pos_in
-            ],
+            "raft_col_heights_ft": [round(h, 2) for h in raft_col_heights_ft],
             # Drawing-related fields
             "purlin_type": bldg.purlin_type,
             "roofing_overhang_ft": bldg.roofing_overhang_ft,
@@ -561,7 +573,7 @@ class BOMCalculator:
             "width_ft": bldg.width_ft,
             "clear_height_ft": bldg.clear_height_ft,
             "embedment_ft": bldg.embedment_ft,
-            "frame_type": bldg.type,
+            "frame_type": frame_type,  # auto-determined from width
             "reinforced": bldg.reinforced,
             "rebar_rafter_size": bldg.rebar_rafter_size,
             "rebar_max_stick_ft": bldg.rebar_max_stick_ft,
@@ -571,26 +583,32 @@ class BOMCalculator:
 
         wf = WASTE_FACTORS["10GA"]
         # ── COIL 1: Columns ──────────────────────────────────────────────
+        # With rafter-first design, columns have variable heights per position.
+        # Total coil = sum of all per-position heights × n_frames × 2 C-sections
         coil = COILS["c_section_23"]
         ppb = coil_price("c_section_23", cp)
-        col_net = n_struct_cols * col_ht_ft * 2
+        # Sum of column heights per rafter × number of rafter frames × 2 C-sections
+        col_lft_per_frame = sum(raft_col_heights_ft)
+        col_net = n_frames * col_lft_per_frame * 2
         col_raw = col_net * (1 + wf)
         col_wt = col_raw * coil["lbs_per_lft"]
         col_cost_v = col_wt * ppb
+        ht_summary = "/".join(f"{h:.1f}'" for h in raft_col_heights_ft)
         items.append(BOMLineItem(
             category="Structural Steel - Coil 1",
             item_id="c_section_columns",
             description=(f"23\" 10GA C-Section — Columns "
-                         f"({n_struct_cols} pcs, {col_ht_ft:.2f}' ea)"),
+                         f"({n_struct_cols} pcs, avg {col_ht_ft:.2f}' ea)"),
             qty=round(col_raw, 2), unit="LFT (coil)",
             unit_weight_lbs=coil["lbs_per_lft"],
             total_weight_lbs=round(col_wt, 1),
             unit_cost=ppb, total_cost=round(col_cost_v, 2),
             waste_factor=wf,
-            notes=(f"{n_struct_cols} cols x {col_ht_ft:.2f}' "
-                   f"({bldg.clear_height_ft}'clr + {angle_add_in:.2f}\"ang + "
-                   f"{bldg.embedment_ft*12:.0f}\"emb + {bldg.column_buffer_ft*12:.0f}\"buf)"
-                   f" x 2 C-sections"),
+            notes=(f"{n_frames} frames × {raft_n_cols} cols/frame = {n_struct_cols} cols | "
+                   f"Heights: {ht_summary} | "
+                   f"{bldg.clear_height_ft}'clr + slope + "
+                   f"{bldg.embedment_ft*12:.0f}\"emb + {bldg.column_buffer_ft*12:.0f}\"buf"
+                   f" × 2 C-sections"),
             piece_count=n_struct_cols,
             piece_length_in=round(col_ht_in, 1),
         ))
@@ -1290,7 +1308,9 @@ class BOMCalculator:
         labor_raw_cost = 0.0
         if bldg.include_labor:
             lr = LABOR["rates"]
-            effective_daily = LABOR["effective_daily_rate"]   # $1,056/day incl. 10% overhead
+            # Use per-building adjustable daily rate + 10% overhead
+            overhead_pct = LABOR["overhead_pct"] / 100.0
+            effective_daily = bldg.labor_daily_rate * (1 + overhead_pct)
 
             # Column and rafter days (piece-based, sequential — same equipment)
             days_cols = math.ceil(n_struct_cols / lr["box_pieces_per_day"])
@@ -1333,9 +1353,9 @@ class BOMCalculator:
                 "days_angle": days_angle,
                 "box_stream_days": box_stream_days,
                 "total_fab_days": total_fab_days,
-                "daily_rate": LABOR["daily_rate"],
+                "daily_rate": bldg.labor_daily_rate,  # adjustable per building
                 "overhead_pct": LABOR["overhead_pct"],
-                "effective_daily_rate": effective_daily,
+                "effective_daily_rate": round(effective_daily, 2),
                 "labor_raw_cost": round(labor_raw_cost, 2),
                 "labor_sell_price": labor_sell,
                 "crew_size": LABOR["crew_size"],
@@ -1479,7 +1499,7 @@ def bom_to_dict(bom: ProjectBOM) -> dict:
             "building_id": bb.building.building_id,
             "errors": bb.errors,
             "building_name": bb.building.building_name,
-            "type": bb.building.type,
+            "type": bb.geometry.get("frame_type", bb.building.type),  # auto-determined
             "width_ft": bb.building.width_ft,
             "length_ft": bb.building.length_ft,
             "clear_height_ft": bb.building.clear_height_ft,

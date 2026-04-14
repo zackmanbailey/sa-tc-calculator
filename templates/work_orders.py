@@ -729,6 +729,9 @@ let scanHistory = [];
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof setProjectContext === 'function') {
+        setProjectContext(JOB_CODE);
+    }
     refreshAll();
 });
 

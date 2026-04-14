@@ -660,7 +660,12 @@ let completedSteps = new Set();
 let timerInterval = null;
 
 // ── Init ──
-document.addEventListener('DOMContentLoaded', loadWorkStation);
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof setProjectContext === 'function') {
+        setProjectContext(JOB_CODE);
+    }
+    loadWorkStation();
+});
 
 async function loadWorkStation() {
     try {

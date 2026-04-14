@@ -883,6 +883,9 @@ PROJECT_PAGE_HTML = r"""
 
         // ── Init ──────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
+            if (typeof setProjectContext === 'function') {
+                setProjectContext(JOB_CODE);
+            }
             initProjectPage();
         });
 

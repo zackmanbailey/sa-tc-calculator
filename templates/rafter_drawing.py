@@ -2547,7 +2547,7 @@ function draw() {
     svg.appendChild($t(c5+6, ty+26+i*8, n, 'note'));
   });
 
-  svg.appendChild($t(480, ty-8, d.p1Count+2 + ' Beams - ' + rafterMark, 'ttl'));
+  svg.appendChild($t(480, ty-8, 'Rafter Shop Drawing - ' + rafterMark, 'ttl'));
 
   document.getElementById('fWt').textContent = d.totalWeight.toLocaleString() + ' lbs';
   document.getElementById('fLen').textContent = fmtFtIn(d.cutLengthIn);
