@@ -3447,15 +3447,10 @@ class RafterDrawingHandler(BaseHandler):
 
     Serves the full SVG-based interactive rafter drawing pre-filled with
     project data from BOM/config.  Supports browser Print→PDF.
+    NOTE: Served standalone (no sidebar nav) — the drawing is a full-page
+    interactive tool with its own controls and back-link to the dashboard.
     """
     def get(self, job_code):
-        role = self.get_user_role() or "viewer"
-        display = "User"
-        if AUTH_ENABLED:
-            user = self.get_current_user()
-            users_db = load_users()
-            display = users_db.get(user, {}).get("display_name", user or "User")
-
         # Build config JSON for the drawing from saved config or BOM
         rafter_cfg = {}
         saved = _load_shop_config(job_code)
@@ -3472,7 +3467,9 @@ class RafterDrawingHandler(BaseHandler):
         html = RAFTER_DRAWING_HTML
         html = html.replace("{{RAFTER_CONFIG_JSON}}", cfg_json)
         html = html.replace("{{JOB_CODE}}", job_code)
-        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+        # Serve standalone — no sidebar nav injection (would break the drawing layout)
+        self.set_header("Content-Type", "text/html")
+        self.write(html)
 
     @staticmethod
     def _extract_rafter_config(cfg_dict, job_code):
@@ -3514,15 +3511,10 @@ class ColumnDrawingHandler(BaseHandler):
 
     Serves the full SVG-based interactive column drawing pre-filled with
     project data from BOM/config.  Supports browser Print→PDF.
+    NOTE: Served standalone (no sidebar nav) — the drawing is a full-page
+    interactive tool with its own controls and back-link to the dashboard.
     """
     def get(self, job_code):
-        role = self.get_user_role() or "viewer"
-        display = "User"
-        if AUTH_ENABLED:
-            user = self.get_current_user()
-            users_db = load_users()
-            display = users_db.get(user, {}).get("display_name", user or "User")
-
         # Build config JSON for the drawing from saved config or BOM
         col_cfg = {}
         saved = _load_shop_config(job_code)
@@ -3538,7 +3530,9 @@ class ColumnDrawingHandler(BaseHandler):
         html = COLUMN_DRAWING_HTML
         html = html.replace("{{COLUMN_CONFIG_JSON}}", cfg_json)
         html = html.replace("{{JOB_CODE}}", job_code)
-        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+        # Serve standalone — no sidebar nav injection (would break the drawing layout)
+        self.set_header("Content-Type", "text/html")
+        self.write(html)
 
     @staticmethod
     def _extract_column_config(cfg_dict, job_code):

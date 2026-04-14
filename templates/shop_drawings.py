@@ -532,6 +532,12 @@ SHOP_DRAWINGS_HTML = r"""
                 <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="downloadAllZip()" id="btnDownloadAll" disabled>
                     Download ZIP
                 </button>
+                <a href="/shop-drawings/{{JOB_CODE}}/column" target="_blank" class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;">
+                    Column Drawing
+                </a>
+                <a href="/shop-drawings/{{JOB_CODE}}/rafter" target="_blank" class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;">
+                    Rafter Drawing
+                </a>
             </div>
         </div>
 
