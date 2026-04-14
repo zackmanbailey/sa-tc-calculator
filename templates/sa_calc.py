@@ -60,6 +60,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .cat-row td{background:var(--tf-blue-l)!important;font-weight:700;color:var(--tf-blue);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .total-row td{background:var(--tf-green)!important;color:#fff!important;font-weight:700}
 .sell-row td{background:var(--tf-red)!important;color:#fff!important;font-weight:700;font-size:13px}
+.bom-override td{background:#FFF8E0!important}
+.bom-override-marker{color:#C89A2E;font-weight:700;font-size:14px}
 /* Summary stats */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
 .stat-card{background:#fff;border:1px solid var(--tf-border);border-radius:6px;padding:12px 14px;text-align:center}
@@ -94,6 +96,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Hidden */
 .hidden{display:none}
+/* When wrapped by shared_nav inject_nav(), adjust layout */
+.tf-main #main{height:calc(100vh - 84px)}
+.tf-main #topbar{display:none}
+.tf-main #tabs{border-radius:0}
 /* Toast Notifications */
 .toast-container{position:fixed;top:60px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast{padding:12px 20px;border-radius:6px;color:#fff;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn .3s ease;max-width:400px;pointer-events:auto}
@@ -1335,30 +1341,40 @@ function renderBOM(data) {
               <th style="text-align:right">Wt (LBS)</th>
               <th style="text-align:right">Unit Cost</th>
               <th style="text-align:right">Total Cost</th>
+              <th style="text-align:right">Override $</th>
               <th>Notes</th>
             </tr>
           </thead>
           <tbody>`;
 
     let lastCat = null;
-    for (const item of bldg.line_items) {
+    for (let li = 0; li < bldg.line_items.length; li++) {
+      const item = bldg.line_items[li];
       if (item.category !== lastCat) {
         lastCat = item.category;
-        html += `<tr class="cat-row"><td colspan="8">${item.category}</td></tr>`;
+        html += `<tr class="cat-row"><td colspan="9">${item.category}</td></tr>`;
       }
       const qty = typeof item.qty === 'number' ? item.qty.toLocaleString('en-US',{maximumFractionDigits:2}) : item.qty;
       const wt = item.total_weight_lbs ? item.total_weight_lbs.toLocaleString('en-US',{maximumFractionDigits:1}) : '—';
       const uc = item.unit_cost ? '$' + item.unit_cost.toFixed(4) : '—';
       const tc = item.total_cost ? '$' + item.total_cost.toLocaleString('en-US',{minimumFractionDigits:2}) : '—';
+      const ov = (priceOverrides[bi] || {})[li];
+      const isEdited = ov && ov.cost !== undefined;
+      const ovVal = isEdited ? ov.cost.toFixed(2) : '';
+      const rowBg = isEdited ? 'background:#FFF8E0;' : '';
       html += `
-        <tr>
-          <td></td>
+        <tr style="${rowBg}">
+          <td>${isEdited ? '<span title="Price Override" style="color:#C89A2E;font-weight:700;font-size:14px">⬥</span>' : ''}</td>
           <td>${item.description}</td>
           <td style="text-align:right;font-weight:600">${qty}</td>
           <td>${item.unit}</td>
           <td style="text-align:right">${wt}</td>
-          <td style="text-align:right">${uc}</td>
-          <td style="text-align:right;font-weight:600">${tc}</td>
+          <td style="text-align:right;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${uc}</td>
+          <td style="text-align:right;font-weight:600;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${tc}</td>
+          <td style="text-align:right">
+            <input type="number" value="${ovVal}" placeholder="—" step="0.01" style="width:90px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px;background:${isEdited?'#FFF8E0':'#fff'}"
+              onchange="bomOverrideCost(${bi},${li},this.value)" title="Enter override total cost"/>
+          </td>
           <td style="font-size:10px;color:#888">${item.notes||''}</td>
         </tr>`;
     }
@@ -1370,11 +1386,12 @@ function renderBOM(data) {
             <td></td>
             <td style="text-align:right">$${(bldg.total_material_cost||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
             <td></td>
+            <td></td>
           </tr>
           ${bldg.labor_sell_price > 0 ? `
           <tr style="background:#EEF5FF!important">
             <td colspan="4" style="color:var(--tf-blue);font-weight:700">
-              FABRICATION LABOR
+              FABRICATION LABOR (included in sell)
               <span style="font-size:10px;font-weight:400;margin-left:8px;color:#666">
                 ${(bldg.geometry.labor||{}).total_fab_days||0} shop days ·
                 ${(bldg.geometry.labor||{}).days_columns||0}d columns +
@@ -1387,10 +1404,11 @@ function renderBOM(data) {
             </td>
             <td></td><td></td>
             <td style="text-align:right;color:var(--tf-blue);font-weight:700">$${bldg.labor_raw_cost.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+            <td></td>
             <td style="font-size:10px;color:#888">raw (before markup)</td>
           </tr>` : ''}
           <tr class="sell-row">
-            <td colspan="6" style="text-align:right">SELL PRICE (materials + labor)</td>
+            <td colspan="7" style="text-align:right">SELL PRICE (materials + labor)</td>
             <td style="text-align:right">$${((bldg.total_sell_price||0)+(bldg.labor_sell_price||0)).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
             <td></td>
           </tr>
@@ -1625,6 +1643,25 @@ function renderPricingTab() {
   </div>`;
 
   el.innerHTML = html;
+}
+
+// BOM tab inline override — enter a price directly in the BOM and it highlights as override
+function bomOverrideCost(bi, li, val) {
+  if (val === '' || val === null || isNaN(parseFloat(val))) {
+    // Clear override — reset to calculated
+    if (priceOverrides[bi]) {
+      delete priceOverrides[bi][li];
+      if (Object.keys(priceOverrides[bi]).length === 0) delete priceOverrides[bi];
+    }
+  } else {
+    if (!priceOverrides[bi]) priceOverrides[bi] = {};
+    const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
+    const cost = parseFloat(val);
+    priceOverrides[bi][li] = { cost: cost, sell: cost * (1 + markup) };
+  }
+  scheduleSave();
+  renderBOM(currentBOM);   // Re-render BOM to show highlight
+  renderPricingTab();       // Keep pricing tab in sync
 }
 
 function overrideCost(bi, li, val) {
@@ -2655,20 +2692,7 @@ async function addMillCert() {
   }
 }
 
-// ─────────────────────────────────────────────
-// GLOBAL CLICK HANDLER FOR BUTTONS
-// ─────────────────────────────────────────────
-document.addEventListener('click', function(e) {
-  var btn = e.target.closest('[onclick]');
-  if (btn && btn.getAttribute('onclick')) {
-    try {
-      e.stopPropagation();
-      new Function(btn.getAttribute('onclick')).call(btn);
-    } catch(err) {
-      console.error('onclick handler error:', err);
-    }
-  }
-}, true);
+// Global click handler removed — native onclick attributes handle all button actions
 </script>
 
 <!-- Global Search Overlay -->

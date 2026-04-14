@@ -800,6 +800,7 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     hide_old = """
 .tf-topbar { display: none !important; }
 .topbar { display: none !important; }
+#topbar { display: none !important; }
 .navbar { display: none !important; }
 .ws-topbar { display: none !important; }
 #globalSearchOverlay { display: none !important; }

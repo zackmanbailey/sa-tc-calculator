@@ -75,6 +75,9 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
 @media(max-width:768px){#main{flex-direction:column}#sidebar{width:100%}}
+/* When wrapped by shared_nav inject_nav(), adjust layout */
+.tf-main #main{height:calc(100vh - 84px)}
+.tf-main #topbar{display:none}
 </style>
 </head>
 <body>
