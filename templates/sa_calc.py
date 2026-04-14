@@ -486,8 +486,6 @@ function addBuilding() {
     embedment_ft: 4.333,
     column_buffer_ft: 0.5,
     reinforced: true,
-    above_grade_ft: 8.0,
-    cut_allowance_in: 6.0,
     rebar_col_size: 'auto',
     rebar_beam_size: 'auto',
     straps_per_rafter: 4,
@@ -655,11 +653,12 @@ function buildingFormHTML(b) {
       <!-- Row 1: Type, Pitch, Width, Clear Height -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
-          <label>Column Type</label>
+          <label>Frame Type</label>
           <select onchange="updateBldg('${b.id}','type',this.value)">
             <option value="2post" ${b.type==='2post'?'selected':''}>2-Post</option>
             <option value="tee" ${b.type==='tee'?'selected':''}>Tee (Center Col)</option>
           </select>
+          <div style="font-size:10px;color:#888;margin-top:2px">Legacy. See Rafter Config for column placement.</div>
         </div>
         <div class="form-group">
           <label>Roof Pitch</label>
@@ -820,25 +819,11 @@ function buildingFormHTML(b) {
             </select>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
-          <div class="form-group">
-            <label>Above Grade (ft)</label>
-            <input type="number" value="${b.above_grade_ft||8.0}" min="0" max="20" step="0.5"
-              onchange="updateBldg('${b.id}','above_grade_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Rebar extension above grade (reinforced)</div>
-          </div>
-          <div class="form-group">
-            <label>Cut Allowance (in)</label>
-            <input type="number" value="${b.cut_allowance_in||6.0}" min="0" max="12" step="0.5"
-              onchange="updateBldg('${b.id}','cut_allowance_in',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Bandsaw vise allowance</div>
-          </div>
-        </div>
         <div style="margin-top:8px">
           <label class="check-label">
             <input type="checkbox" ${(b.reinforced!==false)?'checked':''}
               onchange="updateBldg('${b.id}','reinforced',this.checked)"/>
-            Reinforce Columns (rebar = depth + above grade)
+            Reinforce Columns (rebar = depth + 8') — default
           </label>
           <div style="font-size:10px;color:#888;margin-top:2px;margin-left:20px">
             Unchecked = standard (rebar = depth − embedment)
@@ -915,6 +900,99 @@ function buildingFormHTML(b) {
         </div>
       </details>`;
       })()}
+
+      <!-- Row 4b: Rafter Configuration (Column Placement, Angled Purlins, Rebar Config) -->
+      <details style="margin-bottom:8px" ${(b.angled_purlins||b.column_mode!=='auto')?'open':''}>
+        <summary style="cursor:pointer;font-size:12px;color:var(--tf-blue-m);font-weight:600;padding:4px 0">
+          ▸ Rafter Configuration
+        </summary>
+        <div style="font-size:10px;color:#888;margin-bottom:8px;margin-top:6px">
+          Column placement on rafter, angled purlin mode, and rebar stick layout.
+        </div>
+
+        <!-- Column Mode -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Column Mode</label>
+            <select onchange="updateBldg('${b.id}','column_mode',this.value);renderBuildingForms()">
+              <option value="auto" ${(b.column_mode||'auto')==='auto'?'selected':''}>Auto (Quarter-Point)</option>
+              <option value="spacing" ${b.column_mode==='spacing'?'selected':''}>Spacing</option>
+              <option value="manual" ${b.column_mode==='manual'?'selected':''}>Manual</option>
+            </select>
+            <div style="font-size:10px;color:#888;margin-top:2px">
+              Auto: ≤45' = 1 col, >45' = max(2, ceil(W/60))
+            </div>
+          </div>
+          ${b.column_mode==='spacing' ? `
+          <div class="form-group">
+            <label>Column Spacing (ft)</label>
+            <input type="number" value="${b.column_spacing_ft||25}" min="5" max="100" step="0.5"
+              onchange="updateBldg('${b.id}','column_spacing_ft',parseFloat(this.value))"/>
+          </div>` : b.column_mode==='manual' ? `
+          <div class="form-group">
+            <label>Column Count</label>
+            <input type="number" value="${b.column_count_manual||1}" min="1" max="10" step="1"
+              onchange="updateBldg('${b.id}','column_count_manual',parseInt(this.value))"/>
+          </div>
+          <div class="form-group">
+            <label>Positions (ft, comma-sep)</label>
+            <input type="text" value="${b.column_positions_manual||''}" placeholder="e.g. 10,30"
+              onchange="updateBldg('${b.id}','column_positions_manual',this.value)"/>
+          </div>` : '<div></div><div></div>'}
+        </div>
+
+        ${b.include_back_wall ? `
+        <div class="form-group" style="max-width:220px;margin-bottom:10px">
+          <label>Front Column Position (ft from left end)</label>
+          <input type="number" value="${b.front_col_position_ft||0}" min="0" max="100" step="0.5"
+            onchange="updateBldg('${b.id}','front_col_position_ft',parseFloat(this.value))"/>
+          <div style="font-size:10px;color:#888;margin-top:2px">Back col fixed at 19" from right end when back wall enabled</div>
+        </div>` : ''}
+
+        <!-- Angled Purlins -->
+        <div style="display:flex;gap:20px;margin-bottom:10px;align-items:center">
+          <label class="check-label">
+            <input type="checkbox" ${b.angled_purlins?'checked':''}
+              onchange="updateBldg('${b.id}','angled_purlins',this.checked);renderBuildingForms()"/>
+            Angled Purlins
+          </label>
+          ${b.angled_purlins ? `
+          <div class="form-group" style="margin-bottom:0;max-width:160px">
+            <label>Purlin Angle (deg)</label>
+            <input type="number" value="${b.purlin_angle_deg||15}" min="5" max="45" step="0.5"
+              onchange="updateBldg('${b.id}','purlin_angle_deg',parseFloat(this.value))"/>
+          </div>
+          <div style="font-size:10px;color:#f08c00;background:#fff8e1;padding:4px 8px;border-radius:4px;max-width:280px">
+            ⚠ P6 end plates (9"×15") will replace P2 end caps (9"×24"). All clips same angle, no mirroring.
+          </div>` : ''}
+        </div>
+
+        <!-- Rebar stick config -->
+        ${b.include_rafter_rebar ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;max-width:440px">
+          <div class="form-group">
+            <label>Max Rebar Stick (ft)</label>
+            <input type="number" value="${b.rebar_max_stick_ft||20}" min="5" max="40" step="1"
+              onchange="updateBldg('${b.id}','rebar_max_stick_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Default: 20'</div>
+          </div>
+          <div class="form-group">
+            <label>End Gap (ft)</label>
+            <input type="number" value="${b.rebar_end_gap_ft||5}" min="0" max="20" step="0.5"
+              onchange="updateBldg('${b.id}','rebar_end_gap_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Gap from rafter end to first rebar</div>
+          </div>
+        </div>` : ''}
+
+        <!-- Splice override -->
+        <div class="form-group" style="max-width:220px;margin-bottom:6px">
+          <label>Splice Location Override (ft)</label>
+          <input type="number" value="${b.splice_location_ft||0}" min="0" max="100" step="0.5"
+            onchange="updateBldg('${b.id}','splice_location_ft',parseFloat(this.value))"/>
+          <div style="font-size:10px;color:#888;margin-top:2px">0 = auto-calculate</div>
+        </div>
+
+      </details>
 
       <!-- Row 5: Hardware & Connections -->
       <details style="margin-bottom:8px">
@@ -1162,7 +1240,7 @@ function renderBOM(data) {
           ${geo.n_frames || '—'} frames · ${geo.n_bays || '—'} bays · bay=${geo.bay_size_ft || '—'}' &nbsp;|&nbsp;
           ${geo.n_struct_cols || '—'} cols · ${geo.n_rafters || '—'} rafters &nbsp;|&nbsp;
           Purlin: ${geo.purlin_spacing_ft || '—'}' OC × ${geo.n_purlin_lines || '—'} lines${purlinAuto} &nbsp;|&nbsp;
-          Col: long ${geo.col_long_in || geo.col_ht_in || '—'}" / short ${geo.col_short_in || '—'}" / cut ${geo.col_cut_in || '—'}" · Pitch: ${geo.slope_deg || '—'}°
+          Col Ht: ${geo.col_ht_ft || '—'}' · Pitch: ${geo.slope_deg || '—'}°
         </span>
       </div>
       <div class="card-body" style="padding:0">

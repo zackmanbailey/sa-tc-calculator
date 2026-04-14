@@ -45,11 +45,8 @@ def _calc_manifest(cfg: ShopDrawingConfig) -> List[Dict]:
     Calculate shipping manifest line items in the standard shipping order.
     Returns list of dicts with: category, items (list of pieces), total_weight.
     """
-    # Force all config values to correct numeric types
-    cfg.ensure_numeric()
-
     manifest = []
-    n_frames = int(cfg.n_frames)
+    n_frames = cfg.n_frames
     n_struct_cols = n_frames if cfg.frame_type == "tee" else n_frames * 2
 
     # Coil weights
@@ -59,9 +56,9 @@ def _calc_manifest(cfg: ShopDrawingConfig) -> List[Dict]:
     lbs_lft_strap = 0.706
     lbs_lft_panel = 2.81
 
-    slope_deg = float(cfg.roof_pitch_deg)
+    slope_deg = cfg.roof_pitch_deg
     tan_slope = math.tan(math.radians(slope_deg))
-    dist = float(cfg.building_width_ft) / (2 if cfg.frame_type == "tee" else 3)
+    dist = cfg.building_width_ft / (2 if cfg.frame_type == "tee" else 3)
 
     # ── 1. Columns ──
     col_len_ft = (cfg.clear_height_ft + dist * tan_slope

@@ -59,9 +59,7 @@ class BuildingConfig:
     purlin_spacing_override: Optional[float] = None   # None = auto-calc
     embedment_ft: float = 4.333     # 4'-4" default
     column_buffer_ft: float = 0.5   # 6" buffer
-    reinforced: bool = True         # True: rebar = depth+ag'; False: depth-embedment
-    above_grade_ft: float = 8.0     # above-grade rebar extension (reinforced)
-    cut_allowance_in: float = 6.0   # bandsaw vise cut allowance in inches
+    reinforced: bool = True         # True: rebar = depth+8'; False: depth-embedment
     rebar_col_size: Optional[str] = None   # None = auto; "#5" through "#11"
     rebar_beam_size: Optional[str] = None
     # Column placement mode
@@ -78,6 +76,18 @@ class BuildingConfig:
     # Rafter rebar
     include_rafter_rebar: bool = False
     rebar_rafter_size: Optional[str] = "#9"
+    rebar_max_stick_ft: float = 20.0       # max rebar stick length in rafter
+    rebar_end_gap_ft: float = 5.0          # gap from rafter end to first rebar
+    # Angled purlins
+    angled_purlins: bool = False            # master toggle for angled purlin mode
+    purlin_angle_deg: float = 15.0          # angle from perpendicular (5–45°)
+    # Column placement on rafter
+    column_mode: str = "auto"               # "auto", "spacing", or "manual"
+    column_spacing_ft: float = 25.0         # used when column_mode == "spacing"
+    column_count_manual: int = 1            # used when column_mode == "manual"
+    column_positions_manual: str = ""       # comma-separated ft positions for manual mode
+    front_col_position_ft: float = 0.0      # front column position when back wall enabled
+    splice_location_ft: float = 0.0         # user-specified splice (0 = auto)
     # Misc
     include_trim: bool = False
     welding_cost_per_5000sqft: float = 300.0
@@ -243,7 +253,7 @@ def calc_rafter_slope_length(width_ft: float, slope_deg: float) -> float:
 def calc_column_height(clear_height_ft, width_ft, col_type, slope_deg,
                         embedment_ft, buffer_ft) -> float:
     """
-    Physical column length: clear_height + angle_addition + embedment + buffer
+    Physical cut length: clear_height + angle_addition + embedment + buffer
     TEE: column at center (width/2 from eave)
     2-post: columns at 1/3 span from each eave
     """
@@ -252,26 +262,113 @@ def calc_column_height(clear_height_ft, width_ft, col_type, slope_deg,
     return clear_height_ft + dist * tan_s + embedment_ft + buffer_ft
 
 
-def calc_column_sides(total_length_ft, col_width_in, slope_deg):
+def calc_column_height_at(clear_height_ft, dist_from_eave_ft, slope_deg,
+                           embedment_ft, buffer_ft) -> float:
     """
-    Calculate long side and short side of column for angled cap cut.
-    The pitch creates a slope across the column width.
-    Returns (long_side_ft, short_side_ft).
+    Column height at a specific distance from the eave.
+    Uses the actual distance from the eave rather than frame-type shortcuts.
     """
     tan_s = math.tan(math.radians(slope_deg))
-    half_col_ft = (col_width_in / 2.0) / 12.0
-    angle_diff_ft = half_col_ft * tan_s
-    long_side_ft = total_length_ft + angle_diff_ft
-    short_side_ft = total_length_ft - angle_diff_ft
-    return long_side_ft, short_side_ft
+    return clear_height_ft + dist_from_eave_ft * tan_s + embedment_ft + buffer_ft
 
 
-def calc_column_cut_length(long_side_ft, cut_allowance_in):
+def calc_rafter_columns(width_ft, column_mode="auto", column_spacing_ft=25.0,
+                         column_count_manual=1, column_positions_manual="",
+                         include_back_wall=False, front_col_position_ft=0.0):
     """
-    Cut length = long side + cut allowance (for bandsaw vise).
-    Returns cut length in feet.
+    Calculate structural column count and positions on a rafter.
+
+    Returns (count, positions_in) where positions_in is a list of column
+    positions in inches measured from the left end of the rafter.
+
+    Modes:
+      auto    — width <= 45' → 1 col at L/2
+                width > 45'  → max(2, ceil(width/60)) at quarter-points
+      spacing — columns evenly placed at user-specified spacing, centered
+      manual  — user specifies count and optional explicit positions
+
+    Back wall mode adds a rear column at 19" from the right end and a
+    configurable front column position.
+
+    All modes enforce P3 constraint: center >= 13" from rafter ends.
     """
-    return long_side_ft + (cut_allowance_in / 12.0)
+    rafter_in = width_ft * 12.0
+    p3_edge = 13.0   # P3 center minimum from end
+    positions_in = []
+
+    if column_mode == "manual":
+        # User-specified positions
+        if column_positions_manual and column_positions_manual.strip():
+            for s in column_positions_manual.split(","):
+                s = s.strip()
+                if s:
+                    try:
+                        pos_in = float(s) * 12.0
+                        positions_in.append(pos_in)
+                    except ValueError:
+                        pass
+        else:
+            # Manual count but no explicit positions — distribute evenly
+            n = max(1, column_count_manual)
+            spacing = rafter_in / (n + 1)
+            for i in range(1, n + 1):
+                positions_in.append(i * spacing)
+
+    elif column_mode == "spacing":
+        # Evenly spaced at user-defined interval, centered on rafter
+        sp_in = column_spacing_ft * 12.0
+        if sp_in <= 0:
+            sp_in = 25.0 * 12.0
+        n = max(1, math.floor(rafter_in / sp_in))
+        total_span = (n - 1) * sp_in if n > 1 else 0
+        start = (rafter_in - total_span) / 2.0
+        for i in range(n):
+            positions_in.append(start + i * sp_in)
+
+    else:
+        # Auto mode: width-based formula
+        if width_ft <= 45.0:
+            n_cols = 1
+        else:
+            n_cols = max(2, math.ceil(width_ft / 60.0))
+
+        if n_cols == 1:
+            positions_in = [rafter_in / 2.0]
+        elif n_cols == 2:
+            # Quarter-points: L/4 from each end
+            positions_in = [rafter_in / 4.0, 3.0 * rafter_in / 4.0]
+        else:
+            # Outermost at L/4, inner fill evenly in the middle half
+            left = rafter_in / 4.0
+            right = 3.0 * rafter_in / 4.0
+            inner = n_cols - 2
+            inner_span = right - left
+            inner_gap = inner_span / (inner + 1)
+            positions_in = [left]
+            for i in range(1, inner + 1):
+                positions_in.append(left + i * inner_gap)
+            positions_in.append(right)
+
+    # Back wall override: back col at 19" from right end, front at user position
+    if include_back_wall:
+        back_col_in = rafter_in - 19.0
+        if front_col_position_ft > 0:
+            front_col_in = front_col_position_ft * 12.0
+        else:
+            # Default: symmetric — 19" from left end
+            front_col_in = 19.0
+        positions_in = [front_col_in, back_col_in]
+
+    # Enforce P3 edge constraint
+    positions_in = [
+        max(p3_edge, min(rafter_in - p3_edge, p))
+        for p in positions_in
+    ]
+
+    # Sort and deduplicate
+    positions_in = sorted(set(round(p, 2) for p in positions_in))
+
+    return len(positions_in), positions_in
 
 
 def calc_purlin_lines(width_ft: float, spacing_ft: float) -> int:
@@ -345,21 +442,12 @@ class BOMCalculator:
         n_rafters = n_frames
         rafter_slope_ft = calc_rafter_slope_length(bldg.width_ft, slope_deg)
 
-        # Column height (center measurement)
+        # Column height
         col_ht_ft = calc_column_height(
             bldg.clear_height_ft, bldg.width_ft, bldg.type,
             slope_deg, bldg.embedment_ft, bldg.column_buffer_ft)
         col_ht_in = col_ht_ft * 12.0
         angle_add_in = (bldg.width_ft / (2 if bldg.type == "tee" else 3)) * tan_slope * 12
-
-        # Long/short side lengths (angled cap cut)
-        col_long_ft, col_short_ft = calc_column_sides(col_ht_ft, 14.0, slope_deg)
-        col_long_in = col_long_ft * 12.0
-        col_short_in = col_short_ft * 12.0
-
-        # Cut length = long side + cut allowance (for bandsaw vise)
-        col_cut_ft = calc_column_cut_length(col_long_ft, bldg.cut_allowance_in)
-        col_cut_in = col_cut_ft * 12.0
 
         # Purlin spacing
         if bldg.purlin_spacing_override:
@@ -399,6 +487,17 @@ class BOMCalculator:
         # Footing depth (needed for geometry dict and rebar calc below)
         footing_depth = self.project.footing_depth_ft
 
+        # ── Rafter column placement (structural columns per rafter) ──
+        raft_n_cols, raft_col_pos_in = calc_rafter_columns(
+            bldg.width_ft,
+            column_mode=bldg.column_mode,
+            column_spacing_ft=bldg.column_spacing_ft,
+            column_count_manual=bldg.column_count_manual,
+            column_positions_manual=bldg.column_positions_manual,
+            include_back_wall=bldg.include_back_wall,
+            front_col_position_ft=bldg.front_col_position_ft,
+        )
+
         # Save geometry for display
         result.geometry = {
             "n_frames": n_frames,
@@ -414,14 +513,6 @@ class BOMCalculator:
             "rafter_slope_ft": round(rafter_slope_ft, 2),
             "col_ht_ft": round(col_ht_ft, 2),
             "col_ht_in": round(col_ht_in, 1),
-            "col_long_ft": round(col_long_ft, 2),
-            "col_long_in": round(col_long_in, 1),
-            "col_short_ft": round(col_short_ft, 2),
-            "col_short_in": round(col_short_in, 1),
-            "col_cut_ft": round(col_cut_ft, 2),
-            "col_cut_in": round(col_cut_in, 1),
-            "cut_allowance_in": bldg.cut_allowance_in,
-            "above_grade_ft": bldg.above_grade_ft,
             "angle_add_in": round(angle_add_in, 2),
             "slope_deg": round(slope_deg, 2),
             "purlin_spacing_ft": purlin_spacing,
@@ -441,14 +532,26 @@ class BOMCalculator:
             "concrete_cy": 0.0,          # filled in after concrete calc below
             "concrete_n_piers": 0,       # filled after concrete calc
             "footing_depth_ft": round(footing_depth, 2),
+            # Rafter column placement
+            "raft_n_cols": raft_n_cols,
+            "raft_col_positions_in": [round(p, 2) for p in raft_col_pos_in],
+            "column_mode": bldg.column_mode,
+            "angled_purlins": bldg.angled_purlins,
+            "purlin_angle_deg": bldg.purlin_angle_deg,
+            # Per-position column heights (for variable height due to slope)
+            "raft_col_heights_ft": [
+                round(calc_column_height_at(
+                    bldg.clear_height_ft, p / 12.0, slope_deg,
+                    bldg.embedment_ft, bldg.column_buffer_ft), 2)
+                for p in raft_col_pos_in
+            ],
         }
 
         wf = WASTE_FACTORS["10GA"]
         # ── COIL 1: Columns ──────────────────────────────────────────────
-        # Use cut length (long side + cut allowance) for material calculation
         coil = COILS["c_section_23"]
         ppb = coil_price("c_section_23", cp)
-        col_net = n_struct_cols * col_cut_ft * 2
+        col_net = n_struct_cols * col_ht_ft * 2
         col_raw = col_net * (1 + wf)
         col_wt = col_raw * coil["lbs_per_lft"]
         col_cost_v = col_wt * ppb
@@ -456,18 +559,18 @@ class BOMCalculator:
             category="Structural Steel - Coil 1",
             item_id="c_section_columns",
             description=(f"23\" 10GA C-Section — Columns "
-                         f"({n_struct_cols} pcs, cut {col_cut_in:.1f}\" ea)"),
+                         f"({n_struct_cols} pcs, {col_ht_ft:.2f}' ea)"),
             qty=round(col_raw, 2), unit="LFT (coil)",
             unit_weight_lbs=coil["lbs_per_lft"],
             total_weight_lbs=round(col_wt, 1),
             unit_cost=ppb, total_cost=round(col_cost_v, 2),
             waste_factor=wf,
-            notes=(f"{n_struct_cols} cols — long: {col_long_in:.1f}\", "
-                   f"short: {col_short_in:.1f}\", "
-                   f"cut: {col_cut_in:.1f}\" (+{bldg.cut_allowance_in}\" allow) "
-                   f"x 2 C-sections"),
+            notes=(f"{n_struct_cols} cols x {col_ht_ft:.2f}' "
+                   f"({bldg.clear_height_ft}'clr + {angle_add_in:.2f}\"ang + "
+                   f"{bldg.embedment_ft*12:.0f}\"emb + {bldg.column_buffer_ft*12:.0f}\"buf)"
+                   f" x 2 C-sections"),
             piece_count=n_struct_cols,
-            piece_length_in=round(col_cut_in, 1),
+            piece_length_in=round(col_ht_in, 1),
         ))
 
         # ── COIL 1: Rafters ──────────────────────────────────────────────
@@ -764,7 +867,7 @@ class BOMCalculator:
 
         if rebar_col_key and rebar_col_key in REBAR["sizes"]:
             rb = REBAR["sizes"][rebar_col_key]
-            col_rebar_len = (footing_depth + bldg.above_grade_ft if bldg.reinforced
+            col_rebar_len = (footing_depth + 8.0 if bldg.reinforced
                              else footing_depth - bldg.embedment_ft)
             sticks_per_col = math.ceil(col_rebar_len / stick_ft)
             # 4 sticks per column — one per corner of the C-section box (reinforced or not)
@@ -827,29 +930,111 @@ class BOMCalculator:
                                 else "#9")
             if rebar_rafter_key in REBAR["sizes"]:
                 rb = REBAR["sizes"][rebar_rafter_key]
-                # 4 corners × ceil((rafter_slope_ft - 10') / 20') sticks per rafter
-                sticks_per_side = max(1, math.ceil(max(0.0, rafter_slope_ft - 10.0) / 20.0))
-                sticks_per_rafter = 4 * sticks_per_side
+                # New configurable stick layout:
+                #   available = rafter_slope_ft - 2 * end_gap
+                #   sticks = ceil(available / max_stick_length)
+                #   actual_stick = available / sticks
+                max_stick = bldg.rebar_max_stick_ft   # default 20'
+                end_gap = bldg.rebar_end_gap_ft       # default 5'
+                available_ft = max(1.0, rafter_slope_ft - 2.0 * end_gap)
+                sticks_per_side = max(1, math.ceil(available_ft / max_stick))
+                actual_stick_ft = available_ft / sticks_per_side
+                sticks_per_rafter = 4 * sticks_per_side   # 4 corners
                 n_rafter_rebar_sticks = n_rafters * sticks_per_rafter
-                rafter_rebar_lbs = (n_rafter_rebar_sticks * stick_ft
+                rafter_rebar_lbs = (n_rafter_rebar_sticks * actual_stick_ft
                                     * rb["lbs_per_lft"] * (1 + rebar_wf))
                 rafter_rebar_cost = rafter_rebar_lbs * rebar_ppb
                 items.append(BOMLineItem(
                     category="Rebar",
                     item_id=f"rebar_rafter_{rebar_rafter_key.replace('#','')}",
-                    description=(f"A706 {rebar_rafter_key} Rafter Rebar, 40' Sticks "
+                    description=(f"A706 {rebar_rafter_key} Rafter Rebar, "
+                                 f"{actual_stick_ft:.1f}' Sticks "
                                  f"({n_rafter_rebar_sticks} sticks)"),
                     qty=n_rafter_rebar_sticks, unit="EA (sticks)",
-                    unit_weight_lbs=stick_ft * rb["lbs_per_lft"],
+                    unit_weight_lbs=actual_stick_ft * rb["lbs_per_lft"],
                     total_weight_lbs=round(rafter_rebar_lbs, 1),
-                    unit_cost=stick_ft * rb["lbs_per_lft"] * rebar_ppb,
+                    unit_cost=actual_stick_ft * rb["lbs_per_lft"] * rebar_ppb,
                     total_cost=round(rafter_rebar_cost, 2),
                     waste_factor=rebar_wf,
                     notes=(f"{rebar_rafter_key} @ {rb['lbs_per_lft']} LBS/LFT | "
-                           f"{n_rafters} rafters × 4 corners × {sticks_per_side} stick(s)/corner = "
-                           f"{n_rafter_rebar_sticks} sticks | "
-                           f"ceil(({rafter_slope_ft:.1f}' - 10') / 20') = {sticks_per_side}/corner"),
+                           f"avail={available_ft:.1f}' ({rafter_slope_ft:.1f}' - 2×{end_gap:.0f}' gap) | "
+                           f"{sticks_per_side} stick(s)/corner × {actual_stick_ft:.1f}' ea | "
+                           f"{n_rafters} rafters × 4 corners = "
+                           f"{n_rafter_rebar_sticks} sticks"),
                 ))
+
+        # ── RAFTER CLIPS & PLATES (P1, P2/P6, P3) ─────────────────────────
+        # P1 interior purlin clips: qty = (purlin_lines - 2) per rafter
+        n_p1_per_rafter = max(0, n_purlin_lines - 2)
+        n_p1_total = n_p1_per_rafter * n_rafters
+        p1_w_in = 6.0
+        p1_l_in = 10.0
+        p1_thk_in = 0.135   # 10GA
+        p1_wt_each = p1_w_in * p1_l_in * p1_thk_in * 0.2836  # steel lb/in³
+        items.append(BOMLineItem(
+            category="Rafter Clips & Plates",
+            item_id="p1_clips",
+            description=f"P1 Interior Purlin Clips 6\"×10\"×10GA ({n_p1_total} pcs)",
+            qty=n_p1_total, unit="EA",
+            unit_weight_lbs=round(p1_wt_each, 2),
+            total_weight_lbs=round(n_p1_total * p1_wt_each, 1),
+            unit_cost=0.0, total_cost=0.0,  # Fabricated in-house, costed via coil
+            notes=f"{n_p1_per_rafter} per rafter × {n_rafters} rafters",
+            piece_count=n_p1_total,
+        ))
+
+        # P2 end caps OR P6 end plates (2 per rafter)
+        if bldg.angled_purlins:
+            # P6: 9"×15"×10GA, ~5.06 lbs each, no purlin holes
+            n_p6_total = 2 * n_rafters
+            p6_wt = 5.06
+            items.append(BOMLineItem(
+                category="Rafter Clips & Plates",
+                item_id="p6_end_plates",
+                description=f"P6 End Plates 9\"×15\"×10GA ({n_p6_total} pcs)",
+                qty=n_p6_total, unit="EA",
+                unit_weight_lbs=p6_wt,
+                total_weight_lbs=round(n_p6_total * p6_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=f"Angled purlin mode — replaces P2. No purlin holes. "
+                      f"2 per rafter × {n_rafters} rafters",
+                piece_count=n_p6_total,
+            ))
+        else:
+            # P2: 9"×24"×10GA
+            n_p2_total = 2 * n_rafters
+            p2_w_in = 9.0
+            p2_l_in = 24.0
+            p2_wt_each = p2_w_in * p2_l_in * p1_thk_in * 0.2836
+            items.append(BOMLineItem(
+                category="Rafter Clips & Plates",
+                item_id="p2_end_caps",
+                description=f"P2 End Caps 9\"×24\"×10GA ({n_p2_total} pcs)",
+                qty=n_p2_total, unit="EA",
+                unit_weight_lbs=round(p2_wt_each, 2),
+                total_weight_lbs=round(n_p2_total * p2_wt_each, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=f"8 purlin holes per cap. 2 per rafter × {n_rafters} rafters",
+                piece_count=n_p2_total,
+            ))
+
+        # P3 connection plates (one per rafter column position)
+        n_p3_per_rafter = raft_n_cols
+        n_p3_total = n_p3_per_rafter * n_rafters
+        p3_wt_each = 14.0 * 26.0 * 0.75 * 0.2836  # ¾"×14"×26" steel
+        items.append(BOMLineItem(
+            category="Rafter Clips & Plates",
+            item_id="p3_connection_plates",
+            description=f"P3 Connection Plates 3/4\"×14\"×26\" ({n_p3_total} pcs)",
+            qty=n_p3_total, unit="EA",
+            unit_weight_lbs=round(p3_wt_each, 2),
+            total_weight_lbs=round(n_p3_total * p3_wt_each, 1),
+            unit_cost=PURCHASED_ITEMS["cap_plate"]["price_each"],
+            total_cost=round(n_p3_total * PURCHASED_ITEMS["cap_plate"]["price_each"], 2),
+            notes=f"{n_p3_per_rafter} per rafter × {n_rafters} rafters | "
+                  f"A572 Gr 50, 4 bolt holes at 15/16\"",
+            piece_count=n_p3_total,
+        ))
 
         # ── WALL PANELS & GIRTS ───────────────────────────────────────────
         # Wall panel height = clear_height + (14" rafter + 12" purlin - 6" clearance)/12

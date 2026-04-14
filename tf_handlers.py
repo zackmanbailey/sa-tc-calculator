@@ -4,7 +4,7 @@ Complete rewrite of handler classes for the steel fabrication shop management sy
 Includes: Auth (4-tier roles), Calculation, Inventory, Projects, Documents, Status tracking.
 """
 
-import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time, shutil
+import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time
 import tornado.ioloop
 import tornado.web
 from tornado.escape import json_decode, json_encode
@@ -752,28 +752,6 @@ class DashboardHandler(BaseHandler):
         self.render_with_nav(html, active_page="dashboard")
 
 
-class GettingStartedHandler(BaseHandler):
-    """GET /getting-started — Role-based onboarding guide."""
-    def get(self):
-        from templates.getting_started import GETTING_STARTED_HTML
-        user = self.get_current_user() or "local"
-        users_db = load_users()
-        role = users_db.get(user, {}).get("role", "shop") if user != "local" else "admin"
-        html = GETTING_STARTED_HTML.replace("{{USER_ROLE}}", role)
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
-
-
-class HelpBundleHandler(BaseHandler):
-    """GET /api/help-bundle — Returns tooltip CSS+JS+glossary for injection into any page."""
-    def get(self):
-        from templates.help_tooltips import get_tooltip_bundle
-        from templates.error_handling import get_error_bundle
-        bundle = get_tooltip_bundle() + "\n" + get_error_bundle()
-        self.set_header("Content-Type", "text/html")
-        self.write(bundle)
-
-
 class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
@@ -1278,88 +1256,6 @@ class CoilDetailHandler(BaseHandler):
 
         self.set_header("Content-Type", "text/html")
         self.write(html)
-
-
-# ─────────────────────────────────────────────
-# INVENTORY & TRACEABILITY PAGE HANDLERS
-# ─────────────────────────────────────────────
-
-class InventoryPageHandler(BaseHandler):
-    """GET /inventory — Coil Inventory page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from templates.tc_quote import TC_QUOTE_HTML
-        self.render_with_nav(TC_QUOTE_HTML, active_page="inventory")
-
-
-class TraceabilityPageHandler(BaseHandler):
-    """GET /inventory/traceability — Material Traceability page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        # Render a traceability-focused view of inventory data
-        html = """
-        <div style="padding:24px;max-width:1200px;margin:0 auto">
-          <h1 style="color:#F6AE2D;margin-bottom:8px">Material Traceability</h1>
-          <p style="color:#94A3B8;margin-bottom:24px">Track material heat numbers, mill certifications, and coil assignments across all jobs.</p>
-          <div id="traceApp" style="color:#CBD5E1">
-            <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-              <input type="text" id="traceSearch" placeholder="Search by heat #, coil ID, or job code..."
-                style="flex:1;min-width:250px;padding:10px 14px;background:#1E293B;border:1px solid #334155;
-                border-radius:8px;color:#F1F5F9;font-size:14px" oninput="filterTrace()">
-              <button onclick="loadTraceData()" style="padding:10px 20px;background:#1E40AF;color:#FFF;
-                border:none;border-radius:8px;font-weight:600;cursor:pointer">Refresh</button>
-            </div>
-            <div id="traceTable" style="background:#1E293B;border-radius:12px;overflow:hidden">
-              <div style="padding:40px;text-align:center;color:#64748B">Loading traceability data...</div>
-            </div>
-          </div>
-        </div>
-        <script>
-        var traceData = [];
-        function loadTraceData() {
-          tfFetch('/api/traceability').then(function(d) {
-            traceData = d.entries || [];
-            renderTrace(traceData);
-          });
-        }
-        function filterTrace() {
-          var q = document.getElementById('traceSearch').value.toLowerCase();
-          var filtered = traceData.filter(function(e) {
-            return (e.heat_num||'').toLowerCase().indexOf(q)>=0
-              || (e.coil_id||'').toLowerCase().indexOf(q)>=0
-              || (e.job_code||'').toLowerCase().indexOf(q)>=0;
-          });
-          renderTrace(filtered);
-        }
-        function renderTrace(entries) {
-          if (!entries.length) {
-            document.getElementById('traceTable').innerHTML =
-              '<div style="padding:40px;text-align:center;color:#64748B">No traceability records found.</div>';
-            return;
-          }
-          var h = '<table style="width:100%;border-collapse:collapse;font-size:14px">'
-            + '<tr style="background:#0F172A;color:#94A3B8;text-align:left">'
-            + '<th style="padding:12px">Heat #</th><th style="padding:12px">Coil ID</th>'
-            + '<th style="padding:12px">Job Code</th><th style="padding:12px">Ship Mark</th>'
-            + '<th style="padding:12px">Date</th></tr>';
-          entries.forEach(function(e) {
-            h += '<tr style="border-top:1px solid #334155">'
-              + '<td style="padding:10px 12px;color:#F6AE2D;font-weight:600">' + (e.heat_num||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.coil_id||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.job_code||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.ship_mark||'—') + '</td>'
-              + '<td style="padding:10px 12px;color:#64748B">' + (e.date||'—') + '</td>'
-              + '</tr>';
-          });
-          h += '</table>';
-          document.getElementById('traceTable').innerHTML = h;
-        }
-        loadTraceData();
-        </script>
-        """
-        self.render_with_nav(html, active_page="traceability")
 
 
 # ─────────────────────────────────────────────
@@ -2071,88 +1967,6 @@ class ProjectCreateHandler(BaseHandler):
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "job_code": job_code, "metadata": metadata}))
-
-        except Exception as e:
-            import traceback
-            self.set_status(500)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
-
-
-class ProjectDeleteHandler(BaseHandler):
-    """POST /api/project/delete — Delete a project permanently. Admin only.
-
-    Requires:
-      - Admin role
-      - job_code in request body
-      - confirm: true flag (safety check)
-
-    Deletes the entire project directory including all documents,
-    shop drawings, work orders, and metadata.
-    """
-    required_roles = ["admin"]
-
-    def post(self):
-        try:
-            body = json_decode(self.request.body)
-            job_code = body.get("job_code", "").strip()
-            confirm = body.get("confirm", False)
-
-            if not job_code:
-                self.set_header("Content-Type", "application/json")
-                self.write(json_encode({"ok": False, "error": "Job code is required"}))
-                return
-
-            if not confirm:
-                self.set_header("Content-Type", "application/json")
-                self.write(json_encode({
-                    "ok": False,
-                    "error": "Deletion requires confirm: true. This action is permanent.",
-                }))
-                return
-
-            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
-
-            if not os.path.isdir(proj_dir):
-                # Also check for legacy single-file project
-                legacy_path = os.path.join(PROJECTS_DIR, f"{safe_name}.json")
-                if os.path.isfile(legacy_path):
-                    os.remove(legacy_path)
-                    self.set_header("Content-Type", "application/json")
-                    self.write(json_encode({
-                        "ok": True,
-                        "deleted": job_code,
-                        "deleted_by": self.get_current_user() or "unknown",
-                    }))
-                    return
-                self.set_header("Content-Type", "application/json")
-                self.write(json_encode({"ok": False, "error": f"Project '{job_code}' not found"}))
-                return
-
-            # Safety: verify the path is actually under PROJECTS_DIR
-            real_proj = os.path.realpath(proj_dir)
-            real_base = os.path.realpath(PROJECTS_DIR)
-            if not real_proj.startswith(real_base):
-                self.set_status(403)
-                self.set_header("Content-Type", "application/json")
-                self.write(json_encode({"ok": False, "error": "Invalid project path"}))
-                return
-
-            # Log the deletion before removing
-            deleted_by = self.get_current_user() or "unknown"
-            deleted_at = datetime.datetime.now().isoformat()
-
-            # Remove the entire project directory
-            shutil.rmtree(proj_dir)
-
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({
-                "ok": True,
-                "deleted": job_code,
-                "deleted_by": deleted_by,
-                "deleted_at": deleted_at,
-            }))
 
         except Exception as e:
             import traceback
@@ -3466,441 +3280,6 @@ class TraceabilityReportHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": "Provide job_code or heat_number"}))
 
 
-# ─────────────────────────────────────────────
-# QA / QC HUB & DOCUMENTATION HANDLERS
-# ─────────────────────────────────────────────
-
-class QAHubHandler(BaseHandler):
-    """GET /qa — QA/QC Hub landing page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from templates.qa_hub import QA_HUB_HTML
-        self.render_with_nav(QA_HUB_HTML, active_page="qa")
-
-
-class QAStatsHandler(BaseHandler):
-    """GET /api/qa/stats — Aggregated QA statistics for the hub dashboard."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.qa_system import get_qa_stats
-            stats = get_qa_stats(SHOP_DRAWINGS_DIR if 'SHOP_DRAWINGS_DIR' in dir() else
-                                  os.path.join(BASE_DIR, "data", "shop_drawings"))
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode(stats))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class WPSLibraryHandler(BaseHandler):
-    """GET /api/qa/wps — List all WPS. POST to save/update a WPS."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.qa_system import get_wps_library
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            wps = get_wps_library(sd_dir)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "wps": wps}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-    def post(self):
-        try:
-            from shop_drawings.qa_system import save_wps
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            body = json_decode(self.request.body)
-            wps_id = body.get("wps_id", "")
-            if not wps_id:
-                self.write(json_encode({"ok": False, "error": "Missing wps_id"}))
-                return
-            save_wps(sd_dir, wps_id, body)
-            self.write(json_encode({"ok": True, "saved": wps_id}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class WPSPageHandler(BaseHandler):
-    """GET /qa/wps — WPS Library page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        # Serve a simple page that loads WPS data via API
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">WPS Library</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Welding Procedure Specifications per AWS D1.1. Each WPS defines the qualified parameters
-          for a specific joint type used in production.
-        </p>
-        <div id="wpsCards" style="display:grid;grid-template-columns:1fr;gap:16px;"></div>
-        </div>
-        <script>
-        fetch('/api/qa/wps').then(r=>r.json()).then(function(d){
-          if(!d.ok) return;
-          var html='';
-          Object.values(d.wps).forEach(function(w){
-            html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;">'
-              +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-              +'<h3 style="font-size:18px;font-weight:700;color:#C89A2E;">'+w.wps_id+' — '+w.title+'</h3>'
-              +'<span style="padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600;'
-              +(w.status==='active'?'background:#14532D;color:#10B981':'background:#7F1D1D;color:#DC2626')
-              +'">'+w.status.toUpperCase()+'</span></div>'
-              +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px;">';
-            var fields=[
-              ['Standard',w.standard],['Process',w.process],['Joint Type',w.joint_type],
-              ['Filler Metal',w.filler_metal],['Shielding Gas',w.shielding_gas],['Base Metal',w.base_metal],
-              ['Thickness',w.thickness_range],['Position',w.position],['Preheat',w.preheat],
-              ['Voltage',w.voltage],['Amperage',w.amperage],['Wire Speed',w.wire_speed],
-              ['Travel Speed',w.travel_speed],['Weld Size',w.weld_size],['Pattern',w.stitch_pattern],
-            ];
-            fields.forEach(function(f){
-              html+='<div style="background:#0F172A;padding:10px 12px;border-radius:8px;">'
-                +'<div style="font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">'+f[0]+'</div>'
-                +'<div style="color:#E2E8F0;font-weight:600;margin-top:2px;">'+f[1]+'</div></div>';
-            });
-            html+='</div>';
-            html+='<div style="margin-top:12px;padding:12px;background:#0F172A;border-radius:8px;font-size:13px;">'
-              +'<strong style="color:#64748B;">Acceptance: </strong><span style="color:#CBD5E1;">'+w.acceptance_criteria+'</span></div>';
-            if(w.notes) html+='<div style="margin-top:8px;font-size:12px;color:#94A3B8;font-style:italic;">'+w.notes+'</div>';
-            html+='<div style="margin-top:12px;font-size:11px;color:#475569;">PQR: '+w.pqr_ref+' | Approved: '+w.approved_by+' ('+w.approved_date+')</div>';
-            html+='</div>';
-          });
-          document.getElementById('wpsCards').innerHTML=html;
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="wps")
-
-
-class WelderCertsPageHandler(BaseHandler):
-    """GET /qa/welder-certs — Welder Certifications page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Welder Certifications</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
-          Welder qualification records per AWS D1.1 §4.19. Tracks test dates, qualified positions,
-          welding process, expiration, and 6-month continuity.
-        </p>
-        <div style="margin-bottom:16px;">
-          <button onclick="showAddForm()" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Welder</button>
-        </div>
-        <div id="welderList"></div>
-        <div id="addForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
-          <h3 style="color:#FFF;margin-bottom:12px;">Add Welder Certification</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div><label style="font-size:12px;color:#64748B;">Welder Name</label><input id="fName" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Employee ID</label><input id="fEmpId" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Process</label><select id="fProcess" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;">
-              <option value="GMAW">GMAW (MIG)</option><option value="FCAW">FCAW (Flux Core)</option><option value="SMAW">SMAW (Stick)</option></select></div>
-            <div><label style="font-size:12px;color:#64748B;">Positions Qualified</label><input id="fPositions" placeholder="1G, 2G, 3G" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Test Date</label><input id="fTestDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Expiration Date</label><input id="fExpDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px;">
-            <button onclick="saveWelder()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
-            <button onclick="document.getElementById('addForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-          </div>
-        </div>
-        </div>
-        <script>
-        function showAddForm(){ document.getElementById('addForm').style.display='block'; }
-        function saveWelder(){
-          var cert={welder_name:document.getElementById('fName').value,employee_id:document.getElementById('fEmpId').value,
-            process:document.getElementById('fProcess').value,positions:document.getElementById('fPositions').value,
-            test_date:document.getElementById('fTestDate').value,expiration_date:document.getElementById('fExpDate').value,status:'active'};
-          fetch('/api/qa/welder-certs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cert)})
-            .then(r=>r.json()).then(function(d){ if(d.ok){ loadWelders(); document.getElementById('addForm').style.display='none'; }});
-        }
-        function loadWelders(){
-          fetch('/api/qa/welder-certs').then(r=>r.json()).then(function(d){
-            if(!d.ok) return;
-            var html='';
-            d.welders.forEach(function(w){
-              var expColor='#10B981'; var expText='Valid';
-              if(w.days_left!==undefined && w.days_left<=0){ expColor='#DC2626'; expText='EXPIRED'; }
-              else if(w.days_left!==undefined && w.days_left<=30){ expColor='#F59E0B'; expText='Expiring'; }
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">'
-                +'<div style="width:48px;height:48px;border-radius:10px;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:20px;">&#128119;</div>'
-                +'<div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#FFF;">'+w.welder_name+'</div>'
-                +'<div style="font-size:12px;color:#94A3B8;">'+w.process+' | Positions: '+w.positions+' | ID: '+(w.employee_id||'—')+'</div></div>'
-                +'<div style="text-align:right;"><div style="font-size:12px;color:#64748B;">Expires</div>'
-                +'<div style="font-size:14px;font-weight:600;color:'+expColor+';">'+w.expiration_date+'</div></div>'
-                +'</div>';
-            });
-            document.getElementById('welderList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No welder certifications yet. Click + Add Welder to get started.</div>';
-          });
-        }
-        loadWelders();
-        </script>"""
-        self.render_with_nav(html, active_page="weldercerts")
-
-
-class WelderCertsAPIHandler(BaseHandler):
-    """GET/POST /api/qa/welder-certs — CRUD for welder certifications."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.qa_system import get_welder_certs, check_welder_expirations
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            welders = get_welder_certs(sd_dir)
-            alerts = {a.get("cert_id"): a for a in check_welder_expirations(sd_dir)}
-            for w in welders:
-                if w.get("cert_id") in alerts:
-                    w["days_left"] = alerts[w["cert_id"]].get("days_left")
-                    w["alert"] = alerts[w["cert_id"]].get("alert")
-            self.write(json_encode({"ok": True, "welders": welders}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-    def post(self):
-        try:
-            from shop_drawings.qa_system import save_welder_cert
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            body = json_decode(self.request.body)
-            cert = save_welder_cert(sd_dir, body)
-            self.write(json_encode({"ok": True, "cert": cert}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class ProceduresPageHandler(BaseHandler):
-    """GET /qa/procedures — Procedures & Quality Manual page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Procedures & Quality Manual</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Standard Operating Procedures (SOPs) covering all fabrication, inspection, and quality management processes.
-          Required by AISC Chapter M and the company Quality Manual.
-        </p>
-        <div id="procList"></div>
-        </div>
-        <script>
-        fetch('/api/qa/procedures').then(r=>r.json()).then(function(d){
-          if(!d.ok) return;
-          var cats={quality_manual:'Quality Management',inspection:'Inspection',welding:'Welding',fabrication:'Fabrication',calibration:'Calibration'};
-          var groups={};
-          d.procedures.forEach(function(p){
-            var c=p.category||'other';
-            if(!groups[c]) groups[c]=[];
-            groups[c].push(p);
-          });
-          var html='';
-          Object.keys(cats).forEach(function(k){
-            var procs=groups[k]||[];
-            if(!procs.length) return;
-            html+='<div style="margin-bottom:24px;">'
-              +'<h3 style="font-size:14px;color:#64748B;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">'+cats[k]+'</h3>';
-            procs.forEach(function(p){
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;">'
-                +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-                +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+p.proc_id+' — '+p.title+'</div>'
-                +'<div style="font-size:13px;color:#94A3B8;margin-top:4px;line-height:1.5;">'+p.description+'</div></div>'
-                +'<div style="text-align:right;flex-shrink:0;margin-left:16px;">'
-                +'<div style="padding:3px 10px;background:#14532D;color:#10B981;border-radius:10px;font-size:11px;font-weight:600;">Rev '+p.revision+'</div>'
-                +'<div style="font-size:11px;color:#475569;margin-top:4px;">'+p.standard_ref+'</div></div></div></div>';
-            });
-            html+='</div>';
-          });
-          document.getElementById('procList').innerHTML=html;
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="procedures")
-
-
-class ProceduresAPIHandler(BaseHandler):
-    """GET/POST /api/qa/procedures — CRUD for procedures."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.qa_system import get_procedures
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            procs = get_procedures(sd_dir)
-            self.write(json_encode({"ok": True, "procedures": procs}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-    def post(self):
-        try:
-            from shop_drawings.qa_system import save_procedure
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            body = json_decode(self.request.body)
-            proc = save_procedure(sd_dir, body)
-            self.write(json_encode({"ok": True, "procedure": proc}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class CalibrationPageHandler(BaseHandler):
-    """GET /qa/calibration — Calibration Log page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Calibration Log</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
-          Equipment calibration records per AISC QM §7.6. Tracks all measuring and testing tools,
-          calibration dates, due dates, and certificates. Tools out of calibration cannot be used for QC inspections.
-        </p>
-        <div style="margin-bottom:16px;">
-          <button onclick="document.getElementById('calForm').style.display='block'" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Tool</button>
-        </div>
-        <div id="calForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
-          <h3 style="color:#FFF;margin-bottom:12px;">Add Calibration Record</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div><label style="font-size:12px;color:#64748B;">Tool Name</label><input id="cName" placeholder="e.g. Fillet Gauge Set #1" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Serial Number</label><input id="cSerial" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Last Cal Date</label><input id="cLastDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Next Cal Due</label><input id="cNextDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px;">
-            <button onclick="saveCal()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
-            <button onclick="document.getElementById('calForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-          </div>
-        </div>
-        <div id="calList"></div>
-        </div>
-        <script>
-        function saveCal(){
-          var rec={tool_name:document.getElementById('cName').value,serial_number:document.getElementById('cSerial').value,
-            last_cal_date:document.getElementById('cLastDate').value,next_cal_date:document.getElementById('cNextDate').value,status:'active'};
-          fetch('/api/qa/calibration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rec)})
-            .then(r=>r.json()).then(function(d){ if(d.ok){ loadCal(); document.getElementById('calForm').style.display='none'; }});
-        }
-        function loadCal(){
-          fetch('/api/qa/calibration').then(r=>r.json()).then(function(d){
-            if(!d.ok) return;
-            var html='';
-            d.tools.forEach(function(t){
-              var color='#10B981', label='In Cal';
-              if(t.alert==='OVERDUE'){color='#DC2626';label='OVERDUE';}
-              else if(t.alert==='DUE_SOON'){color='#F59E0B';label='Due Soon';}
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;display:flex;align-items:center;gap:16px;">'
-                +'<div style="width:44px;height:44px;border-radius:10px;background:#3B0764;display:flex;align-items:center;justify-content:center;font-size:18px;">&#128295;</div>'
-                +'<div style="flex:1;"><div style="font-size:15px;font-weight:700;color:#FFF;">'+t.tool_name+'</div>'
-                +'<div style="font-size:12px;color:#94A3B8;">S/N: '+(t.serial_number||'—')+' | Last Cal: '+(t.last_cal_date||'—')+'</div></div>'
-                +'<div style="text-align:right;"><div style="font-size:11px;color:#64748B;">Next Cal</div>'
-                +'<div style="font-size:14px;font-weight:600;color:'+color+';">'+(t.next_cal_date||'—')+'</div>'
-                +'<div style="font-size:11px;font-weight:600;color:'+color+';">'+label+'</div></div></div>';
-            });
-            document.getElementById('calList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No calibration records yet. Click + Add Tool to get started.</div>';
-          });
-        }
-        loadCal();
-        </script>"""
-        self.render_with_nav(html, active_page="calibration")
-
-
-class CalibrationAPIHandler(BaseHandler):
-    """GET/POST /api/qa/calibration — CRUD for calibration records."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.qa_system import get_calibration_log, check_calibration_due
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            tools = get_calibration_log(sd_dir)
-            alerts = {a.get("tool_id"): a for a in check_calibration_due(sd_dir)}
-            for t in tools:
-                if t.get("tool_id") in alerts:
-                    t["alert"] = alerts[t["tool_id"]].get("alert")
-                    t["days_left"] = alerts[t["tool_id"]].get("days_left")
-            self.write(json_encode({"ok": True, "tools": tools}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-    def post(self):
-        try:
-            from shop_drawings.qa_system import save_calibration_record
-            sd_dir = os.path.join(BASE_DIR, "data", "shop_drawings")
-            body = json_decode(self.request.body)
-            rec = save_calibration_record(sd_dir, body)
-            self.write(json_encode({"ok": True, "record": rec}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class NCRLogPageHandler(BaseHandler):
-    """GET /qa/ncr-log — Global NCR log across all projects."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">NCR Log</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Non-Conformance Reports across all projects. Tracks quality deviations, root cause analysis,
-          corrective actions, and closure. Required for AISC audit trail (QM §8.3).
-        </p>
-        <div id="ncrList"><div style="color:#475569;padding:40px;text-align:center;">Loading NCRs...</div></div>
-        </div>
-        <script>
-        // Load NCRs from all project QC files
-        fetch('/api/qa/ncr-log').then(r=>r.json()).then(function(d){
-          if(!d.ok){document.getElementById('ncrList').innerHTML='<div style="color:#DC2626;">Error loading NCRs</div>';return;}
-          var html='';
-          var sevColors={critical:'#DC2626',major:'#F59E0B',minor:'#3B82F6'};
-          var statColors={open:'#DC2626',under_review:'#F59E0B',corrective_action:'#3B82F6',closed:'#10B981',voided:'#475569'};
-          d.ncrs.forEach(function(n){
-            var sc=sevColors[n.severity]||'#64748B';
-            var stc=statColors[n.status]||'#64748B';
-            html+='<div style="background:#111827;border:1px solid #1E293B;border-left:3px solid '+sc+';border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px;">'
-              +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-              +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+(n.ncr_id||'—')+' — '+(n.title||'Untitled')+'</div>'
-              +'<div style="font-size:12px;color:#94A3B8;margin-top:4px;">Job: '+(n.job_code||'—')+' | Reported: '+(n.created_at||'—').slice(0,10)+'</div></div>'
-              +'<div style="display:flex;gap:6px;">'
-              +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+sc+'22;color:'+sc+';">'+(n.severity||'—').toUpperCase()+'</span>'
-              +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+stc+'22;color:'+stc+';">'+(n.status||'—').replace('_',' ').toUpperCase()+'</span>'
-              +'</div></div>';
-            if(n.description) html+='<div style="font-size:13px;color:#94A3B8;margin-top:8px;">'+n.description+'</div>';
-            html+='</div>';
-          });
-          document.getElementById('ncrList').innerHTML=html||'<div style="color:#475569;padding:40px;text-align:center;">No NCRs found. That\\'s a good thing!</div>';
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="ncrlog")
-
-
-class NCRLogAPIHandler(BaseHandler):
-    """GET /api/qa/ncr-log — All NCRs across all projects."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            qc_dir = os.path.join(BASE_DIR, "data", "qc")
-            all_ncrs = []
-            if os.path.isdir(qc_dir):
-                for fname in os.listdir(qc_dir):
-                    if not fname.endswith(".json"):
-                        continue
-                    job = fname.replace(".json", "")
-                    with open(os.path.join(qc_dir, fname)) as f:
-                        data = json.load(f)
-                    for ncr in data.get("ncrs", []):
-                        ncr["job_code"] = job
-                        all_ncrs.append(ncr)
-            all_ncrs.sort(key=lambda n: n.get("created_at", ""), reverse=True)
-            self.write(json_encode({"ok": True, "ncrs": all_ncrs}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
 class QCPageHandler(BaseHandler):
     """GET /qc/{job_code} — QC Dashboard page for a project."""
     def get(self, job_code):
@@ -4024,47 +3403,22 @@ def _derive_bom_config(job_code):
         try:
             with open(os.path.join(versions_dir, vf)) as f:
                 data = json.load(f)
-            # SA Calculator saves as "bom_data", older versions may use "bom_result" or "results"
-            bom_result = data.get("bom_data") or data.get("bom_result") or data.get("results", {})
-            if not bom_result:
-                continue
-
-            # Geometry may be at top level OR nested inside buildings[0]
-            geo = bom_result.get("geometry")
-            buildings_list = bom_result.get("buildings", [])
-            if not geo and buildings_list:
-                # Pull geometry from first building
-                geo = buildings_list[0].get("geometry", {})
-
-            if not geo:
-                continue
-
-            # Build a flat bom_result with geometry at top level for from_bom_data()
-            flat_bom = dict(bom_result)
-            flat_bom["geometry"] = geo
-
-            # Also pull building-level fields (reinforced, rebar) into geometry
-            if buildings_list:
-                b0 = buildings_list[0]
-                if "reinforced" in b0 and "col_reinforced" not in geo:
-                    geo["col_reinforced"] = b0.get("reinforced", True)
-                if "rebar_col_size" in b0 and "rebar_col" not in geo:
-                    geo["rebar_col"] = b0.get("rebar_col_size", "#9")
-
-            # Load project metadata for project_info
-            meta_path = os.path.join(proj_dir, "metadata.json")
-            project_info = {}
-            if os.path.isfile(meta_path):
-                with open(meta_path) as mf:
-                    meta = json.load(mf)
-                project_info = {
-                    "job_code": job_code,
-                    "project_name": meta.get("project_name", ""),
-                    "customer_name": meta.get("customer_name", ""),
-                    "location": meta.get("location", ""),
-                }
-            cfg = ShopDrawingConfig.from_bom_data(flat_bom, project_info)
-            return cfg.to_dict()
+            bom_result = data.get("bom_result") or data.get("results", {})
+            if bom_result and "geometry" in bom_result:
+                # Load project metadata for project_info
+                meta_path = os.path.join(proj_dir, "metadata.json")
+                project_info = {}
+                if os.path.isfile(meta_path):
+                    with open(meta_path) as mf:
+                        meta = json.load(mf)
+                    project_info = {
+                        "job_code": job_code,
+                        "project_name": meta.get("project_name", ""),
+                        "customer_name": meta.get("customer_name", ""),
+                        "location": meta.get("location", ""),
+                    }
+                cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
+                return cfg.to_dict()
         except Exception:
             continue
 
@@ -4088,8 +3442,12 @@ class ShopDrawingsPageHandler(BaseHandler):
         self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
-class ColumnDrawingPageHandler(BaseHandler):
-    """GET /column-drawing/{job_code} — Interactive Column Shop Drawing page."""
+class RafterDrawingHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/rafter — Interactive Rafter Shop Drawing.
+
+    Serves the full SVG-based interactive rafter drawing pre-filled with
+    project data from BOM/config.  Supports browser Print→PDF.
+    """
     def get(self, job_code):
         role = self.get_user_role() or "viewer"
         display = "User"
@@ -4098,149 +3456,57 @@ class ColumnDrawingPageHandler(BaseHandler):
             users_db = load_users()
             display = users_db.get(user, {}).get("display_name", user or "User")
 
-        html = COLUMN_DRAWING_HTML
+        # Build config JSON for the drawing from saved config or BOM
+        rafter_cfg = {}
+        saved = _load_shop_config(job_code)
+        if saved:
+            rafter_cfg = self._extract_rafter_config(saved, job_code)
+        else:
+            bom_cfg = _derive_bom_config(job_code)
+            if bom_cfg:
+                rafter_cfg = self._extract_rafter_config(bom_cfg, job_code)
+
+        # If no config at all, serve with null (standalone defaults)
+        cfg_json = json.dumps(rafter_cfg) if rafter_cfg else "null"
+
+        html = RAFTER_DRAWING_HTML
+        html = html.replace("{{RAFTER_CONFIG_JSON}}", cfg_json)
         html = html.replace("{{JOB_CODE}}", job_code)
-        html = html.replace("{{USER_ROLE}}", role)
-        html = html.replace("{{USER_NAME}}", display)
         self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
-
-class ProjectSyncFromDrawingHandler(BaseHandler):
-    """POST /api/project/sync-from-drawing — Push column drawing changes back to project.
-
-    When a user edits inputs in the interactive column shop drawing,
-    this endpoint updates the project's saved buildings array so the
-    SA Calculator reflects those changes on next load.
-
-    Mapping: drawing config field → buildings array field
-        roof_pitch_deg  → pitch_key (converted to nearest standard pitch)
-        clear_height_ft → clear_height_ft
-        building_width_ft → width_ft
-        footing_depth_ft → (project-level footing_depth_ft)
-        col_rebar_size  → rebar_col_size
-        above_grade_ft  → above_grade_ft
-        cut_allowance_in → cut_allowance_in
-        col_reinforced  → reinforced
-    """
-
-    # Map pitch degrees back to the SA Calculator's pitch_key format
-    _PITCH_DEG_TO_KEY = {
-        0.0: "flat",
-        1.19: "1/4:12", 1.2: "1/4:12",
-        2.39: "1/2:12", 2.4: "1/2:12",
-        3.58: "3/4:12", 3.6: "3/4:12",
-        4.76: "1:12", 4.8: "1:12",
-        5.0: "5deg",
-        7.5: "7.5deg",
-        9.46: "2:12", 9.5: "2:12",
-        10.0: "10deg",
-        14.04: "3:12", 14.0: "3:12",
-        15.0: "15deg",
-    }
-
-    def _deg_to_pitch_key(self, deg):
-        """Find the closest matching pitch_key for a given degree value."""
-        if deg in self._PITCH_DEG_TO_KEY:
-            return self._PITCH_DEG_TO_KEY[deg]
-        # Find nearest
-        closest_deg = min(self._PITCH_DEG_TO_KEY.keys(), key=lambda d: abs(d - deg))
-        if abs(closest_deg - deg) < 0.5:
-            return self._PITCH_DEG_TO_KEY[closest_deg]
-        # If no close match, use degree format
-        return f"{deg}deg"
-
-    def post(self):
-        try:
-            body = json_decode(self.request.body)
-            job_code = body.get("job_code", "").strip()
-            drawing_config = body.get("drawing_config", {})
-            if not job_code or not drawing_config:
-                self.write(json_encode({"ok": False, "error": "Missing job_code or drawing_config"}))
-                return
-
-            safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            proj_dir = os.path.join(PROJECTS_DIR, safe)
-
-            # Load current.json (the latest saved project state)
-            current_path = os.path.join(proj_dir, "current.json")
-            if not os.path.isfile(current_path):
-                self.write(json_encode({"ok": False, "error": "No saved project found"}))
-                return
-
-            with open(current_path) as f:
-                project_data = json.load(f)
-
-            buildings = project_data.get("buildings", [])
-            if not buildings:
-                self.write(json_encode({"ok": False, "error": "No buildings in project"}))
-                return
-
-            # Update first building with drawing config values
-            b = buildings[0]
-            changed_fields = []
-
-            # Pitch: convert degrees back to pitch_key
-            if "roof_pitch_deg" in drawing_config:
-                new_key = self._deg_to_pitch_key(float(drawing_config["roof_pitch_deg"]))
-                if b.get("pitch_key") != new_key:
-                    b["pitch_key"] = new_key
-                    changed_fields.append("pitch_key")
-
-            # Direct float mappings: drawing config name → building field name
-            float_mappings = {
-                "clear_height_ft": "clear_height_ft",
-                "building_width_ft": "width_ft",
-                "above_grade_ft": "above_grade_ft",
-                "cut_allowance_in": "cut_allowance_in",
-            }
-            for cfg_key, bldg_key in float_mappings.items():
-                if cfg_key in drawing_config:
-                    new_val = float(drawing_config[cfg_key])
-                    if b.get(bldg_key) != new_val:
-                        b[bldg_key] = new_val
-                        changed_fields.append(bldg_key)
-
-            # Rebar size
-            if "col_rebar_size" in drawing_config:
-                new_rebar = drawing_config["col_rebar_size"]
-                if b.get("rebar_col_size") != new_rebar:
-                    b["rebar_col_size"] = new_rebar
-                    changed_fields.append("rebar_col_size")
-
-            # Reinforced toggle
-            if "col_reinforced" in drawing_config:
-                new_reinforced = bool(drawing_config["col_reinforced"])
-                if b.get("reinforced") != new_reinforced:
-                    b["reinforced"] = new_reinforced
-                    changed_fields.append("reinforced")
-
-            # Footing depth is project-level
-            if "footing_depth_ft" in drawing_config:
-                new_footing = float(drawing_config["footing_depth_ft"])
-                proj = project_data.get("project", {})
-                if proj.get("footing_depth_ft") != new_footing:
-                    proj["footing_depth_ft"] = new_footing
-                    project_data["project"] = proj
-                    changed_fields.append("footing_depth_ft")
-
-            if changed_fields:
-                project_data["buildings"] = buildings
-                project_data["_drawing_sync"] = {
-                    "synced_at": datetime.datetime.now().isoformat(),
-                    "changed_fields": changed_fields,
-                    "source": "column_drawing",
-                }
-                with open(current_path, "w") as f:
-                    json.dump(project_data, f, indent=2)
-
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({
-                "ok": True,
-                "changed_fields": changed_fields,
-            }))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
+    @staticmethod
+    def _extract_rafter_config(cfg_dict, job_code):
+        """Extract rafter-relevant fields from a ShopDrawingConfig dict
+        into the format expected by the HTML drawing's applyServerConfig()."""
+        rc = {}
+        # Building dimensions
+        rc["width_ft"] = cfg_dict.get("raft_width_ft") or cfg_dict.get("width_ft", 0)
+        rc["purlin_spacing_ft"] = cfg_dict.get("raft_purlin_spacing_ft") or cfg_dict.get("purlin_spacing", 5)
+        rc["overhang_ft"] = cfg_dict.get("raft_overhang_ft") or cfg_dict.get("overhang", 1)
+        rc["purlin_type"] = cfg_dict.get("raft_purlin_type") or cfg_dict.get("purlin_type", "Z")
+        # Angled purlins
+        rc["angled_purlins"] = cfg_dict.get("raft_angled_purlins", False)
+        rc["purlin_angle_deg"] = cfg_dict.get("raft_purlin_angle_deg", 15)
+        # Column settings
+        rc["column_mode"] = cfg_dict.get("raft_column_mode", "auto")
+        rc["column_spacing_ft"] = cfg_dict.get("raft_column_spacing_ft", 25)
+        rc["column_count_manual"] = cfg_dict.get("raft_column_count_manual", 1)
+        rc["column_positions_manual"] = cfg_dict.get("raft_column_positions_manual", "")
+        rc["front_col_position_ft"] = cfg_dict.get("raft_front_col_position_ft", 0)
+        # Rebar
+        rc["rebar_size"] = cfg_dict.get("raft_rebar_size", "#9")
+        rc["rebar_max_stick_ft"] = cfg_dict.get("raft_rebar_max_stick_ft", 20)
+        rc["rebar_end_gap_ft"] = cfg_dict.get("raft_rebar_end_gap_ft", 5)
+        # Splice
+        rc["splice_location_ft"] = cfg_dict.get("raft_splice_location_ft", 0)
+        # Back wall
+        rc["back_wall"] = cfg_dict.get("include_back_wall", False)
+        # Project info
+        rc["job_code"] = job_code
+        rc["project_name"] = cfg_dict.get("project_name", "")
+        rc["customer"] = cfg_dict.get("customer_name", "")
+        rc["rafter_mark"] = cfg_dict.get("rafter_mark", "B1")
+        return rc
 
 
 class ShopDrawingsConfigHandler(BaseHandler):
@@ -4422,8 +3688,7 @@ class ShopDrawingsDiffHandler(BaseHandler):
                 "roof_pitch_deg", "n_frames", "frame_type", "overhang_ft",
                 "embedment_ft", "footing_depth_ft", "column_buffer_ft",
                 "purlin_spacing_ft", "has_back_wall", "has_side_walls",
-                "col_reinforced", "col_rebar_size", "raft_reinforced",
-                "above_grade_ft", "cut_allowance_in",
+                "col_reinforced", "raft_reinforced",
             ]
 
             diffs = []
@@ -4488,10 +3753,8 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             cfg_dict["job_code"] = job_code
             _save_shop_config(job_code, cfg_dict)
 
-            # Build ShopDrawingConfig (from_dict handles string→number coercion)
+            # Build ShopDrawingConfig
             cfg = ShopDrawingConfig.from_dict(cfg_dict)
-            # Belt-and-suspenders: force all numeric fields to correct types
-            cfg.ensure_numeric()
 
             # Determine revision
             revisions = _load_revisions(job_code)
@@ -4561,7 +3824,7 @@ class ShopDrawingsGenerateHandler(BaseHandler):
 
 
 class ShopDrawingsFileHandler(BaseHandler):
-    """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a PDF or HTML drawing."""
+    """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a single PDF."""
     def get(self):
         try:
             job_code = self.get_query_argument("job_code", "").strip()
@@ -4583,15 +3846,7 @@ class ShopDrawingsFileHandler(BaseHandler):
                 self.write("File not found")
                 return
 
-            # Determine content type based on file extension
-            if filename.lower().endswith(".html"):
-                content_type = "text/html"
-            elif filename.lower().endswith(".pdf"):
-                content_type = "application/pdf"
-            else:
-                content_type = "application/octet-stream"
-
-            self.set_header("Content-Type", content_type)
+            self.set_header("Content-Type", "application/pdf")
             if download:
                 self.set_header("Content-Disposition",
                                 f'attachment; filename="{filename}"')
@@ -4897,20 +4152,6 @@ class WorkOrderQRScanHandler(BaseHandler):
                 result = qr_scan_start(SHOP_DRAWINGS_DIR, job_code, item_id, scanned_by)
             elif action == "finish":
                 result = qr_scan_finish(SHOP_DRAWINGS_DIR, job_code, item_id, scanned_by)
-                # ── Record completion in gamification engine ──
-                if result.get("ok"):
-                    try:
-                        from shop_drawings.gamification import record_completion
-                        dur = result.get("duration_minutes", 0)
-                        machine = result.get("machine", "")
-                        comp_type = result.get("component_type", "")
-                        gam = record_completion(
-                            SHOP_DRAWINGS_DIR, scanned_by, dur,
-                            machine=machine, component_type=comp_type
-                        )
-                        result["gamification"] = gam
-                    except Exception:
-                        pass  # Don't break the scan if gamification fails
             else:
                 self.write(json_encode({"ok": False, "error": f"Unknown action: {action}. Use 'start' or 'finish'."}))
                 return
@@ -5099,162 +4340,6 @@ class WorkOrderSingleStickerHandler(BaseHandler):
 # ─────────────────────────────────────────────
 # SHOP FLOOR DASHBOARD HANDLERS
 # ─────────────────────────────────────────────
-
-# ─────────────────────────────────────────────
-# GAMIFICATION, SMART QUEUE & TV DASHBOARD
-# ─────────────────────────────────────────────
-
-class TVDashboardPageHandler(BaseHandler):
-    """GET /tv-dashboard — Full-screen live production dashboard for shop floor TVs."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from templates.tv_dashboard import TV_DASHBOARD_HTML
-        self.set_header("Content-Type", "text/html")
-        self.write(TV_DASHBOARD_HTML)
-
-
-class GamificationLeaderboardHandler(BaseHandler):
-    """GET /api/gamification/leaderboard — Worker leaderboard."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.gamification import get_leaderboard
-            period = self.get_argument("period", "today")
-            lb = get_leaderboard(SHOP_DRAWINGS_DIR, period)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "leaderboard": lb, "period": period}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class GamificationStatsHandler(BaseHandler):
-    """GET /api/gamification/stats — Worker's own stats + badges."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.gamification import get_worker_stats
-            worker = self.get_argument("worker", self.get_current_user() or "shop")
-            stats = get_worker_stats(SHOP_DRAWINGS_DIR, worker)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, **stats}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class GamificationTargetsHandler(BaseHandler):
-    """GET /api/gamification/targets — Daily production targets."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.gamification import get_daily_targets
-            targets = get_daily_targets(SHOP_DRAWINGS_DIR)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, **targets}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
-class SmartQueueHandler(BaseHandler):
-    """GET /api/smart-queue — Priority-sorted items for a job."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.smart_queue import prioritize_queue
-            from shop_drawings.config import MACHINES
-
-            job_code = self.get_argument("job_code", "").strip()
-            due_date = self.get_argument("due_date", None)
-
-            if not job_code:
-                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
-                return
-
-            wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
-            all_items = []
-            for wo in wos:
-                for it in (wo.items if hasattr(wo, 'items') else []):
-                    d = it.to_dict() if hasattr(it, 'to_dict') else it
-                    d["work_order_id"] = wo.work_order_id if hasattr(wo, 'work_order_id') else wo.get("work_order_id", "")
-                    all_items.append(d)
-
-            machine_status = {}
-            for mid, mconf in MACHINES.items():
-                machine_status[mid] = {"in_progress": 0, "queued": 0, "name": mconf.get("name", mid)}
-            for it in all_items:
-                m = it.get("machine", "")
-                if m in machine_status:
-                    if it.get("status") == "in_progress":
-                        machine_status[m]["in_progress"] += 1
-                    elif it.get("status") in ("queued", "approved", "stickers_printed"):
-                        machine_status[m]["queued"] += 1
-
-            prioritized = prioritize_queue(all_items, due_date, machine_status)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "items": prioritized, "total": len(prioritized)}))
-        except Exception as e:
-            import traceback
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
-
-
-class AlertsHandler(BaseHandler):
-    """GET /api/alerts — Active shop floor alerts. POST to dismiss."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            from shop_drawings.smart_queue import generate_alerts
-            from shop_drawings.config import MACHINES
-            from shop_drawings.gamification import get_daily_targets
-
-            wos = list_work_orders(SHOP_DRAWINGS_DIR, "*")
-            all_items = []
-            for wo in wos:
-                for it in (wo.items if hasattr(wo, 'items') else []):
-                    d = it.to_dict() if hasattr(it, 'to_dict') else it
-                    all_items.append(d)
-
-            machines = {}
-            for mid, mconf in MACHINES.items():
-                machines[mid] = {"in_progress": 0, "queued": 0, "name": mconf.get("name", mid)}
-            for it in all_items:
-                m = it.get("machine", "")
-                if m in machines:
-                    if it.get("status") == "in_progress":
-                        machines[m]["in_progress"] += 1
-                    elif it.get("status") in ("queued", "approved", "stickers_printed"):
-                        machines[m]["queued"] += 1
-
-            targets = get_daily_targets(SHOP_DRAWINGS_DIR)
-            alerts = generate_alerts(
-                SHOP_DRAWINGS_DIR, machines, all_items,
-                targets.get("shop_target", 15), targets.get("shop_completed", 0)
-            )
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "alerts": alerts}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-    def post(self):
-        try:
-            from shop_drawings.smart_queue import dismiss_alert
-            body = json_decode(self.request.body)
-            idx = body.get("index", -1)
-            ok = dismiss_alert(SHOP_DRAWINGS_DIR, idx)
-            self.write(json_encode({"ok": ok}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
 
 class ShopFloorPageHandler(BaseHandler):
     """GET /shop-floor — Shop floor fabrication dashboard."""
@@ -5538,55 +4623,6 @@ class WorkStationStepOverrideHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
-class QRScannerPageHandler(BaseHandler):
-    """GET /scan/{job_code} — Mobile-optimized QR scanner page for shop floor."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self, job_code):
-        from templates.qr_scanner import QR_SCANNER_HTML
-        user = self.get_current_user() or "shop"
-        html = (QR_SCANNER_HTML
-                .replace("{{JOB_CODE}}", job_code)
-                .replace("{{USER_NAME}}", user))
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
-
-
-class WorkOrderItemDetailHandler(BaseHandler):
-    """GET /api/work-orders/detail — Look up a single item by item_id for the scanner."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        try:
-            job_code = self.get_argument("job_code", "").strip()
-            item_id = self.get_argument("item_id", "").strip()
-
-            if not job_code or not item_id:
-                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
-                return
-
-            wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
-            for wo in wos:
-                for it in (wo.items if hasattr(wo, 'items') else []):
-                    it_dict = it.to_dict() if hasattr(it, 'to_dict') else it
-                    if it_dict.get("item_id") == item_id:
-                        wo_dict = wo.to_dict() if hasattr(wo, 'to_dict') else wo
-                        self.write(json_encode({
-                            "ok": True,
-                            "item": it_dict,
-                            "work_order": {
-                                "work_order_id": wo_dict.get("work_order_id", ""),
-                                "status": wo_dict.get("status", ""),
-                            }
-                        }))
-                        return
-
-            self.write(json_encode({"ok": False, "error": f"Item '{item_id}' not found in job {job_code}"}))
-        except Exception as e:
-            self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e)}))
-
-
 class WorkOrderPacketPDFHandler(BaseHandler):
     """GET /api/work-orders/packet/pdf — Generate printable work order packet PDF."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5632,284 +4668,6 @@ class WorkOrderPacketPDFHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
-# SHIPPING DOCUMENT HANDLERS
-# ─────────────────────────────────────────────
-
-class ShippingPageHandler(BaseHandler):
-    """GET /shipping/{job_code} — Shipping Hub page."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self, job_code):
-        from templates.shipping_page import SHIPPING_PAGE_HTML
-        html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
-        self.render_with_nav(html, active_page="shipping")
-
-
-class ShippingPackingListHandler(BaseHandler):
-    """POST /api/shipping/packing-list — Generate a packing list."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def post(self):
-        from shop_drawings.shipping_docs import generate_packing_list, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        wo_dict = body.get("work_order", {})
-        result = generate_packing_list(
-            job_code, wo_dict,
-            items_filter=body.get("items_filter"),
-            ship_date=body.get("ship_date"),
-            truck_info=body.get("truck_info")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "packing_list", result)
-        self.write(json_encode({"ok": True, "data": result}))
-
-    def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "packing_list")
-        self.write(json_encode({"ok": True, "docs": docs}))
-
-
-class ShippingBOLHandler(BaseHandler):
-    """POST /api/shipping/bol — Generate a Bill of Lading."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def post(self):
-        from shop_drawings.shipping_docs import generate_bill_of_lading, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        result = generate_bill_of_lading(
-            job_code, body.get("work_order", {}),
-            carrier_info=body.get("carrier_info"),
-            consignee=body.get("consignee")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "bol", result)
-        self.write(json_encode({"ok": True, "data": result}))
-
-    def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "bol")
-        self.write(json_encode({"ok": True, "docs": docs}))
-
-
-class ShippingManifestHandler(BaseHandler):
-    """POST /api/shipping/manifest — Generate a shipping manifest."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def post(self):
-        from shop_drawings.shipping_docs import generate_shipping_manifest, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        result = generate_shipping_manifest(job_code, loads=body.get("loads"))
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "manifest", result)
-        self.write(json_encode({"ok": True, "data": result}))
-
-    def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "manifest")
-        self.write(json_encode({"ok": True, "docs": docs}))
-
-
-class ShippingPurchaseOrderHandler(BaseHandler):
-    """POST /api/shipping/purchase-order — Generate a purchase order."""
-    required_roles = ["admin", "estimator"]
-
-    def post(self):
-        from shop_drawings.shipping_docs import generate_purchase_order, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "general")
-        result = generate_purchase_order(
-            po_number=body.get("po_number"),
-            vendor=body.get("vendor"),
-            line_items=body.get("line_items", []),
-            delivery_date=body.get("delivery_date"),
-            notes=body.get("notes")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "purchase_order", result)
-        self.write(json_encode({"ok": True, "data": result}))
-
-    def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "general")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "purchase_order")
-        self.write(json_encode({"ok": True, "docs": docs}))
-
-
-class ShippingReorderHandler(BaseHandler):
-    """GET /api/shipping/reorder-alerts — Check inventory reorder points."""
-    required_roles = ["admin", "estimator"]
-
-    def get(self):
-        from shop_drawings.shipping_docs import check_reorder_points
-        inv = load_inventory()
-        alerts = check_reorder_points(inv)
-        self.write(json_encode({"ok": True, "alerts": alerts}))
-
-
-class ShippingDocsListHandler(BaseHandler):
-    """GET /api/shipping/docs — List all shipping docs for a job."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        doc_type = self.get_argument("type", None)
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, doc_type)
-        self.write(json_encode({"ok": True, "docs": docs}))
-
-
-# ─────────────────────────────────────────────
-# QC PHOTO HANDLERS
-# ─────────────────────────────────────────────
-
-class QCPhotoUploadHandler(BaseHandler):
-    """POST /api/qc/photos/upload — Upload photo to QC inspection or NCR."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def post(self):
-        from shop_drawings.qc_photos import save_qc_photo
-        job_code = self.get_argument("job_code", "")
-        record_type = self.get_argument("record_type", "")
-        record_id = self.get_argument("record_id", "")
-        caption = self.get_argument("caption", "")
-
-        if not job_code or not record_type or not record_id:
-            self.write(json_encode({"ok": False, "error": "job_code, record_type, record_id required"}))
-            return
-
-        if "photo" not in self.request.files:
-            self.write(json_encode({"ok": False, "error": "No photo file uploaded"}))
-            return
-
-        file_info = self.request.files["photo"][0]
-        user = self.get_current_user() or "local"
-        result = save_qc_photo(
-            QC_DIR, job_code, record_type, record_id,
-            file_info["body"], file_info["filename"],
-            caption=caption, uploaded_by=user
-        )
-        self.write(json_encode({"ok": True, "photo": result}))
-
-
-class QCPhotoListHandler(BaseHandler):
-    """GET /api/qc/photos — List photos for a QC record."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from shop_drawings.qc_photos import list_qc_photos
-        job_code = self.get_argument("job_code", "")
-        record_type = self.get_argument("record_type", None)
-        record_id = self.get_argument("record_id", None)
-        photos = list_qc_photos(QC_DIR, job_code, record_type, record_id)
-        self.write(json_encode({"ok": True, "photos": photos}))
-
-
-class QCPhotoDeleteHandler(BaseHandler):
-    """POST /api/qc/photos/delete — Delete a QC photo."""
-    required_roles = ["admin", "estimator"]
-
-    def post(self):
-        from shop_drawings.qc_photos import delete_qc_photo
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        photo_id = body.get("photo_id", "")
-        ok = delete_qc_photo(QC_DIR, job_code, photo_id)
-        self.write(json_encode({"ok": ok}))
-
-
-class QCPhotoServeHandler(BaseHandler):
-    """GET /qc-photos/{job_code}/{record_id}/{filename} — Serve a QC photo file."""
-
-    def get(self, job_code, record_id, filename):
-        from shop_drawings.qc_photos import get_photo_path
-        import mimetypes
-        path = get_photo_path(QC_DIR, job_code, record_id, filename)
-        if not path or not os.path.isfile(path):
-            self.set_status(404)
-            self.write("Photo not found")
-            return
-        content_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
-        self.set_header("Content-Type", content_type)
-        self.set_header("Cache-Control", "public, max-age=86400")
-        with open(path, "rb") as f:
-            self.write(f.read())
-
-
-# ─────────────────────────────────────────────
-# GANTT / SCHEDULING HANDLERS
-# ─────────────────────────────────────────────
-
-class GanttPageHandler(BaseHandler):
-    """GET /schedule — Production schedule / Gantt view."""
-    required_roles = ["admin", "estimator"]
-
-    def get(self):
-        from templates.gantt_view import GANTT_VIEW_HTML
-        self.render_with_nav(GANTT_VIEW_HTML, active_page="schedule")
-
-
-class GanttDataHandler(BaseHandler):
-    """GET /api/gantt/data — Gantt chart data for all active jobs."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from shop_drawings.scheduling import get_gantt_data
-        data = get_gantt_data(SHOP_DRAWINGS_DIR, PROJECTS_DIR)
-        self.write(json_encode({"ok": True, "data": data}))
-
-
-class MachineUtilizationHandler(BaseHandler):
-    """GET /api/gantt/machines — Machine utilization data."""
-    required_roles = ["admin", "estimator", "shop"]
-
-    def get(self):
-        from shop_drawings.scheduling import get_machine_utilization
-        days = int(self.get_argument("days", "14"))
-        data = get_machine_utilization(SHOP_DRAWINGS_DIR, days_ahead=days)
-        self.write(json_encode({"ok": True, "data": data}))
-
-
-# ─────────────────────────────────────────────
-# PWA SUPPORT HANDLERS
-# ─────────────────────────────────────────────
-
-class PWAManifestHandler(tornado.web.RequestHandler):
-    """GET /static/manifest.json — PWA web app manifest."""
-    def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "application/manifest+json")
-        self.write(bundle["manifest_json_str"])
-
-
-class PWAServiceWorkerHandler(tornado.web.RequestHandler):
-    """GET /static/service-worker.js — PWA service worker."""
-    def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "application/javascript")
-        self.set_header("Service-Worker-Allowed", "/")
-        self.write(bundle["service_worker_js"])
-
-
-class PWAOfflineHandler(tornado.web.RequestHandler):
-    """GET /offline — Offline fallback page."""
-    def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "text/html")
-        self.write(bundle["offline_html"])
-
-
-# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -5929,8 +4687,6 @@ def get_routes():
         (r"/",                      DashboardHandler),
         (r"/sa",                    SACalcHandler),
         (r"/tc",                    TCQuoteHandler),
-        (r"/getting-started",       GettingStartedHandler),
-        (r"/api/help-bundle",       HelpBundleHandler),
 
         # ── API - Calculation & Export ─────────────────────────
         (r"/api/calculate",         CalculateHandler),
@@ -5956,7 +4712,6 @@ def get_routes():
         # ── API - Projects (versioned system) ───────────────────
         (r"/api/project/save",           ProjectSaveHandler),
         (r"/api/project/load",           ProjectLoadHandler),
-        (r"/api/project/sync-from-drawing", ProjectSyncFromDrawingHandler),
         (r"/api/project/revisions",      ProjectRevisionsHandler),
         (r"/api/project/compare",        ProjectCompareHandler),
         (r"/api/projects",               ProjectListHandler),
@@ -5975,7 +4730,6 @@ def get_routes():
         # ── API - Enhanced Project System ─────────────────────
         (r"/api/project/next-code",      ProjectNextCodeHandler),
         (r"/api/project/create",         ProjectCreateHandler),
-        (r"/api/project/delete",         ProjectDeleteHandler),
         (r"/api/project/metadata",       ProjectMetadataHandler),
         (r"/api/project/checklist",      ProjectChecklistHandler),
         (r"/api/project/next-steps",     ProjectNextStepsHandler),
@@ -5985,8 +4739,8 @@ def get_routes():
         (r"/project/([^/]+)",            ProjectPageHandler),
 
         # ── Shop Drawings ─────────────────────────────────────
+        (r"/shop-drawings/([^/]+)/rafter",       RafterDrawingHandler),
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
-        (r"/column-drawing/([^/]+)",             ColumnDrawingPageHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
         (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),
@@ -6019,20 +4773,6 @@ def get_routes():
         (r"/api/work-station/steps",             WorkStationStepsHandler),
         (r"/api/work-station/steps/override",    WorkStationStepOverrideHandler),
         (r"/api/work-orders/packet/pdf",         WorkOrderPacketPDFHandler),
-
-        # ── Mobile QR Scanner ─────────────────────────────────
-        (r"/scan/([^/]+)",                       QRScannerPageHandler),
-        (r"/api/work-orders/detail",             WorkOrderItemDetailHandler),
-
-        # ── TV Dashboard & Gamification ───────────────────────
-        (r"/tv-dashboard",                       TVDashboardPageHandler),
-        (r"/api/gamification/leaderboard",       GamificationLeaderboardHandler),
-        (r"/api/gamification/stats",             GamificationStatsHandler),
-        (r"/api/gamification/targets",           GamificationTargetsHandler),
-
-        # ── Smart Queue & Alerts ──────────────────────────────
-        (r"/api/smart-queue",                    SmartQueueHandler),
-        (r"/api/alerts",                         AlertsHandler),
 
         # ── Customer Database ─────────────────────────────────
         (r"/customers",                      CustomerPageHandler),
@@ -6068,49 +4808,6 @@ def get_routes():
         (r"/api/traceability/assign",        TraceabilityAssignHandler),
         (r"/api/traceability/report",        TraceabilityReportHandler),
 
-        # ── QA/QC Hub & AISC Documentation ───────────────────
-        (r"/qa",                         QAHubHandler),
-        (r"/api/qa/stats",               QAStatsHandler),
-        (r"/qa/wps",                     WPSPageHandler),
-        (r"/api/qa/wps",                 WPSLibraryHandler),
-        (r"/qa/welder-certs",            WelderCertsPageHandler),
-        (r"/api/qa/welder-certs",        WelderCertsAPIHandler),
-        (r"/qa/procedures",              ProceduresPageHandler),
-        (r"/api/qa/procedures",          ProceduresAPIHandler),
-        (r"/qa/calibration",             CalibrationPageHandler),
-        (r"/api/qa/calibration",         CalibrationAPIHandler),
-        (r"/qa/ncr-log",                 NCRLogPageHandler),
-        (r"/api/qa/ncr-log",             NCRLogAPIHandler),
-
-        # ── Inventory Page ────────────────────────────────────
-        (r"/inventory",                  InventoryPageHandler),
-        (r"/inventory/traceability",     TraceabilityPageHandler),
-
-        # ── Shipping Documents ────────────────────────────────
-        (r"/shipping/([^/]+)",                   ShippingPageHandler),
-        (r"/api/shipping/packing-list",          ShippingPackingListHandler),
-        (r"/api/shipping/bol",                   ShippingBOLHandler),
-        (r"/api/shipping/manifest",              ShippingManifestHandler),
-        (r"/api/shipping/purchase-order",        ShippingPurchaseOrderHandler),
-        (r"/api/shipping/reorder-alerts",        ShippingReorderHandler),
-        (r"/api/shipping/docs",                  ShippingDocsListHandler),
-
-        # ── QC Photos ─────────────────────────────────────────
-        (r"/api/qc/photos/upload",               QCPhotoUploadHandler),
-        (r"/api/qc/photos",                      QCPhotoListHandler),
-        (r"/api/qc/photos/delete",               QCPhotoDeleteHandler),
-        (r"/qc-photos/([^/]+)/([^/]+)/([^/]+)",  QCPhotoServeHandler),
-
-        # ── Production Schedule / Gantt ───────────────────────
-        (r"/schedule",                           GanttPageHandler),
-        (r"/api/gantt/data",                     GanttDataHandler),
-        (r"/api/gantt/machines",                 MachineUtilizationHandler),
-
-        # ── PWA Support ───────────────────────────────────────
-        (r"/static/manifest.json",               PWAManifestHandler),
-        (r"/static/service-worker.js",           PWAServiceWorkerHandler),
-        (r"/offline",                            PWAOfflineHandler),
-
         # ── TC Export ──────────────────────────────────────────
         (r"/tc/export/pdf",              TCExportPDFHandler),
         (r"/tc/export/excel",            TCExportExcelHandler),
@@ -6134,7 +4831,7 @@ from templates.customers import CUSTOMERS_HTML
 from templates.quote_editor import QUOTE_EDITOR_HTML
 from templates.qc_page import QC_PAGE_HTML
 from templates.shop_drawings import SHOP_DRAWINGS_HTML
-from templates.column_drawing import COLUMN_DRAWING_HTML
+from templates.rafter_drawing import RAFTER_DRAWING_HTML
 from templates.work_orders import WORK_ORDERS_HTML
 from templates.shop_floor import SHOP_FLOOR_HTML
 from templates.work_station import WORK_STATION_HTML

@@ -536,70 +536,6 @@ NAV_HTML = """
                 <span class="tf-nav-icon">&#128196;</span>
                 <span class="tf-nav-label">Quote Editor</span>
             </a>
-            <a href="#" class="tf-nav-item {{ACTIVE_shipping}}" id="navShippingLink2">
-                <span class="tf-nav-icon">&#128666;</span>
-                <span class="tf-nav-label">Shipping</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Shipping</div>
-            <a href="#" class="tf-nav-item {{ACTIVE_shipping}}" id="navShippingLink" onclick="var jc=localStorage.getItem('tf_current_job');if(jc)location.href='/shipping/'+jc;else alert('Open a project first');return false;">
-                <span class="tf-nav-icon">&#128666;</span>
-                <span class="tf-nav-label">Shipping Hub</span>
-            </a>
-            <a href="/schedule" class="tf-nav-item {{ACTIVE_schedule}}">
-                <span class="tf-nav-icon">&#128197;</span>
-                <span class="tf-nav-label">Production Schedule</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Inventory</div>
-            <a href="/inventory" class="tf-nav-item {{ACTIVE_inventory}}">
-                <span class="tf-nav-icon">&#128230;</span>
-                <span class="tf-nav-label">Coil Inventory</span>
-            </a>
-            <a href="/inventory/traceability" class="tf-nav-item {{ACTIVE_traceability}}">
-                <span class="tf-nav-icon">&#128279;</span>
-                <span class="tf-nav-label">Traceability</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">QA / QC</div>
-            <a href="/qa" class="tf-nav-item {{ACTIVE_qa}}">
-                <span class="tf-nav-icon">&#128203;</span>
-                <span class="tf-nav-label">QA/QC Hub</span>
-            </a>
-            <a href="/qa/wps" class="tf-nav-item {{ACTIVE_wps}}">
-                <span class="tf-nav-icon">&#128293;</span>
-                <span class="tf-nav-label">WPS Library</span>
-            </a>
-            <a href="/qa/welder-certs" class="tf-nav-item {{ACTIVE_weldercerts}}">
-                <span class="tf-nav-icon">&#127891;</span>
-                <span class="tf-nav-label">Welder Certs</span>
-            </a>
-            <a href="/qa/procedures" class="tf-nav-item {{ACTIVE_procedures}}">
-                <span class="tf-nav-icon">&#128220;</span>
-                <span class="tf-nav-label">Procedures</span>
-            </a>
-            <a href="/qa/ncr-log" class="tf-nav-item {{ACTIVE_ncrlog}}">
-                <span class="tf-nav-icon">&#9888;</span>
-                <span class="tf-nav-label">NCR Log</span>
-            </a>
-            <a href="/qa/calibration" class="tf-nav-item {{ACTIVE_calibration}}">
-                <span class="tf-nav-icon">&#128295;</span>
-                <span class="tf-nav-label">Calibration Log</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Help</div>
-            <a href="/getting-started" class="tf-nav-item {{ACTIVE_gettingstarted}}">
-                <span class="tf-nav-icon">&#128218;</span>
-                <span class="tf-nav-label">Getting Started</span>
-            </a>
         </div>
 
         <div class="tf-sidebar-section">
@@ -607,10 +543,6 @@ NAV_HTML = """
             <a href="/admin" class="tf-nav-item {{ACTIVE_admin}}">
                 <span class="tf-nav-icon">&#128274;</span>
                 <span class="tf-nav-label">User Management</span>
-            </a>
-            <a href="/tv-dashboard" class="tf-nav-item {{ACTIVE_tvdash}}">
-                <span class="tf-nav-icon">&#128250;</span>
-                <span class="tf-nav-label">TV Dashboard</span>
             </a>
         </div>
     </nav>
@@ -702,7 +634,6 @@ function setProjectContext(jobCode) {
     setLink('navWorkStationLink', '/work-station/' + encodeURIComponent(jobCode));
     setLink('navQCLink', '/qc/' + encodeURIComponent(jobCode));
     setLink('navQuoteLink', '/quote/' + encodeURIComponent(jobCode));
-    setLink('navShippingLink2', '/shipping/' + encodeURIComponent(jobCode));
 }
 
 // ── Global Search ──
@@ -843,18 +774,12 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     nav = build_nav(active_page, job_code, user_name, user_role)
 
     # Prepend CSS to hide old nav elements across all templates
-    # Also ensure --tf-navy is defined (some pages only define --tf-dark)
     hide_old = """
-:root { --tf-navy: #0F172A; --tf-navy-light: #1E293B; }
 .tf-topbar { display: none !important; }
 .topbar { display: none !important; }
 .navbar { display: none !important; }
 .ws-topbar { display: none !important; }
-#topbar { display: none !important; }
-#tabs { display: none !important; }
 #globalSearchOverlay { display: none !important; }
-/* Fix layout height when old topbar/tabs are hidden */
-#main { height: calc(100vh - 48px) !important; margin-top: 0 !important; }
 """
     nav['css'] = hide_old + nav['css']
 
@@ -908,11 +833,7 @@ def build_nav(active_page: str = "", job_code: str = "",
     # Set active classes
     html = NAV_HTML
     pages = ["dashboard", "shopfloor", "customers", "sa", "tc",
-             "project", "shopdrw", "workorders", "workstation", "qc", "quote",
-             "shipping", "schedule",
-             "inventory", "traceability",
-             "qa", "wps", "weldercerts", "procedures", "ncrlog", "calibration",
-             "gettingstarted", "tvdash", "admin"]
+             "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
     for p in pages:
         placeholder = "{{ACTIVE_" + p + "}}"
         html = html.replace(placeholder, "active" if p == active_page else "")

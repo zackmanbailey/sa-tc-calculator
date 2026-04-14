@@ -88,13 +88,10 @@ def calc_purlin_groups(cfg: ShopDrawingConfig) -> List[Dict]:
       Middle = bay_size_ft (exact bay span)
       Can span up to 3 rafters if total < 53'
     """
-    # Force all config values to correct numeric types
-    cfg.ensure_numeric()
-
     groups = []
     use_z = cfg.purlin_type == "z"
-    overhang_ft = float(cfg.purlin_overhang_ft) if use_z else 0.0
-    end_ext_in = float(cfg.purlin_end_extension_in)  # 4"
+    overhang_ft = cfg.purlin_overhang_ft if use_z else 0.0
+    end_ext_in = cfg.purlin_end_extension_in  # 4"
     end_ext_ft = end_ext_in / 12.0
     max_length_ft = PURLIN_DEFAULTS["max_length_ft"]  # 53'
     bay_sizes = cfg.bay_sizes if cfg.bay_sizes else [30.0]

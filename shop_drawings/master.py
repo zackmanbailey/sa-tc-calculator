@@ -11,7 +11,6 @@ from typing import Dict, List, Optional
 
 from shop_drawings.config import ShopDrawingConfig
 from shop_drawings.column_gen import generate_column_drawing, generate_all_column_drawings
-from shop_drawings.column_html_gen import generate_column_html, generate_all_column_html
 from shop_drawings.rafter_gen import generate_rafter_drawing, generate_all_rafter_drawings
 from shop_drawings.purlin_gen import generate_purlin_drawing
 from shop_drawings.cutlist_gen import generate_cutlist_drawing
@@ -44,18 +43,15 @@ def generate_all_shop_drawings(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Ensure all numeric fields are proper types (safety net for JSON data)
-    cfg.ensure_numeric()
-
     files = []
     errors = []
     total_bytes = 0
 
     job = cfg.job_code or "DRAFT"
 
-    # ── 1. Column Drawings (Interactive HTML) ──
+    # ── 1. Column Drawings ──
     try:
-        col_paths = generate_all_column_html(cfg, output_dir, revision)
+        col_paths = generate_all_column_drawings(cfg, output_dir, revision)
         for p in col_paths:
             size = os.path.getsize(p)
             total_bytes += size
@@ -63,7 +59,7 @@ def generate_all_shop_drawings(
                 "path": p,
                 "filename": os.path.basename(p),
                 "type": "column",
-                "description": f"Column Shop Drawing (Interactive)",
+                "description": f"Column Shop Drawing",
                 "size_bytes": size,
             })
     except Exception as e:

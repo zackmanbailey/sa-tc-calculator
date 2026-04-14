@@ -1337,28 +1337,9 @@ SHOP_DRAWINGS_HTML = r"""
 
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
-                const isHtml = d.filename && d.filename.endsWith('.html');
-                let actionButtons = '';
-
-                if (isHtml && d.type === 'column') {
-                    // Interactive HTML column drawing — open as interactive preview
-                    actionButtons = `
-                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})" style="flex-grow:1;">
-                            &#9998; Open Interactive Drawing
-                        </button>
-                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
-                            Download
-                        </button>`;
-                } else {
-                    actionButtons = `
-                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
-                            View PDF
-                        </button>
-                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
-                            Download
-                        </button>`;
-                }
-
+                const interactiveBtn = d.type === 'rafter'
+                    ? `<button class="tf-btn tf-btn-sm" style="background:#F6AE2D;color:#0F172A;font-weight:700;" onclick="window.open('/shop-drawings/' + JOB_CODE + '/rafter', '_blank')">Interactive View</button>`
+                    : '';
                 card.innerHTML = `
                     <div class="dc-preview">
                         <div class="dc-icon">${typeInfo.icon}</div>
@@ -1372,7 +1353,13 @@ SHOP_DRAWINGS_HTML = r"""
                         </div>
                     </div>
                     <div class="dc-actions">
-                        ${actionButtons}
+                        ${interactiveBtn}
+                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
+                            View PDF
+                        </button>
+                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
+                            Download
+                        </button>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1400,10 +1387,6 @@ SHOP_DRAWINGS_HTML = r"""
 
         window.downloadAllZip = function() {
             window.location.href = '/api/shop-drawings/zip?job_code=' + JOB_CODE;
-        };
-
-        window.openInteractivePreview = function() {
-            window.location.href = '/column-drawing/' + JOB_CODE;
         };
 
         // ── Revision History ──
