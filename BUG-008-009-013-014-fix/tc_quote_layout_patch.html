@@ -1,0 +1,54 @@
+<!--
+  BUG-008 FIX — TC Estimator Card Reorganization
+  ================================================
+
+  INSTRUCTIONS:
+  In templates/tc_quote.py, reorganize the cards in the #tab-quote section.
+  Currently the order is: Concrete, Labor, Equipment, Drilling, Shipping, Fuel, Hotels, Per Diem, Transport, Misc.
+
+  NEW ORDER with section headers:
+
+  1. Add section divider comments/headers between card groups
+  2. Reorder the cards as shown below
+
+  REPLACE the entire card sequence (from card-concrete through the misc card) with:
+  - Section: "Site Work" — Concrete, Labor, Equipment, Drilling
+  - Section: "Logistics & Travel" — Shipping, Fuel, Hotels, Per Diem, Transport
+  - Section: "Additional" — Misc Items
+
+  ADD these section dividers between the groups:
+-->
+
+<!-- ===== SECTION: SITE WORK ===== -->
+<div style="margin:20px 0 12px;padding:8px 16px;background:linear-gradient(135deg,#1E3A5F,#2C5282);border-radius:8px;display:flex;align-items:center;gap:8px">
+  <span style="font-size:1.1rem">&#127959;</span>
+  <span style="color:white;font-weight:700;font-size:0.9rem;letter-spacing:0.5px">SITE WORK</span>
+  <span style="color:rgba(255,255,255,0.6);font-size:0.75rem;margin-left:auto">Concrete, Labor, Equipment, Drilling</span>
+</div>
+
+<!-- [Concrete card goes here - already exists] -->
+<!-- [Labor card goes here - already exists] -->
+<!-- [Equipment card goes here - already exists] -->
+<!-- [Drilling card goes here - already exists] -->
+
+<!-- ===== SECTION: LOGISTICS & TRAVEL ===== -->
+<div style="margin:20px 0 12px;padding:8px 16px;background:linear-gradient(135deg,#F59E0B,#D97706);border-radius:8px;display:flex;align-items:center;gap:8px">
+  <span style="font-size:1.1rem">&#128666;</span>
+  <span style="color:white;font-weight:700;font-size:0.9rem;letter-spacing:0.5px">LOGISTICS &amp; TRAVEL</span>
+  <span style="color:rgba(255,255,255,0.6);font-size:0.75rem;margin-left:auto">Shipping, Fuel, Hotels, Per Diem, Transportation</span>
+</div>
+
+<!-- [Shipping card goes here - already exists] -->
+<!-- [Fuel card goes here - already exists] -->
+<!-- [Hotels card goes here - already exists] -->
+<!-- [Per Diem card goes here - already exists] -->
+<!-- [Transport card goes here - already exists] -->
+
+<!-- ===== SECTION: ADDITIONAL COSTS ===== -->
+<div style="margin:20px 0 12px;padding:8px 16px;background:linear-gradient(135deg,#6366F1,#4F46E5);border-radius:8px;display:flex;align-items:center;gap:8px">
+  <span style="font-size:1.1rem">&#128203;</span>
+  <span style="color:white;font-weight:700;font-size:0.9rem;letter-spacing:0.5px">ADDITIONAL COSTS</span>
+  <span style="color:rgba(255,255,255,0.6);font-size:0.75rem;margin-left:auto">Miscellaneous &amp; Permits</span>
+</div>
+
+<!-- [Misc card goes here - with BUG-009 enhancements below] -->

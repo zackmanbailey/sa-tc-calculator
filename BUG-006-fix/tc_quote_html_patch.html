@@ -1,0 +1,56 @@
+<!--
+  BUG-006 FIX — Replacement HTML for the Concrete card in tc_quote.py
+
+  INSTRUCTIONS:
+  In templates/tc_quote.py, find the existing concrete card (lines 248-281):
+
+    <div class="card" id="card-concrete">
+      ... (everything through the closing </div></div> for card-body and card)
+    </div>
+
+  REPLACE the entire card with the HTML below.
+-->
+
+      <!-- Concrete — Per-Building Breakdown (BUG-006 FIX) -->
+      <div class="card" id="card-concrete">
+        <div class="card-hdr gray" style="display:flex;justify-content:space-between;align-items:center">
+          <div><span>&#129704;</span>Concrete — Pier Footings</div>
+          <span id="conc_bldg_count" style="font-size:11px;font-weight:500;background:rgba(255,255,255,0.3);padding:2px 8px;border-radius:10px">0 building(s)</span>
+        </div>
+        <div class="card-body">
+
+          <!-- Global controls -->
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <div class="form-group" style="margin:0">
+              <label style="font-size:11px">Default $/CY</label>
+              <input type="number" id="conc_global_price_cy" value="165" min="0" step="5"
+                onchange="applyGlobalPriceCY()" style="width:80px"/>
+            </div>
+            <button class="btn-sm blue" onclick="syncConcreteFromSA()" title="Load per-building data from saved SA BOM">
+              &#8635; Sync from SA BOM
+            </button>
+            <button class="btn-sm outline" onclick="addConcreteBuilding()" title="Add building manually">
+              + Add Building
+            </button>
+          </div>
+
+          <!-- Per-building table (dynamically rendered) -->
+          <div id="conc_buildings_table" style="overflow-x:auto">
+            <p style="color:#888;text-align:center;padding:12px">Loading...</p>
+          </div>
+
+          <!-- Totals summary bar -->
+          <div style="background:#F0F4FA;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap;margin-top:8px">
+            <div><span style="font-size:11px;color:#888">Total Cubic Yards (w/10% waste):</span>
+              <span id="conc_qty_display" style="font-weight:700;color:var(--tf-blue);margin-left:6px">&#8212;</span></div>
+            <div><span style="font-size:11px;color:#888">Total Material Cost:</span>
+              <span id="conc_cost_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">&#8212;</span></div>
+          </div>
+
+          <!-- Keep hidden inputs for backward compatibility with old save/load -->
+          <input type="hidden" id="conc_n_piers" value="0"/>
+          <input type="hidden" id="conc_dia_in" value="24"/>
+          <input type="hidden" id="conc_depth_ft" value="10"/>
+          <input type="hidden" id="conc_price_cy" value="165"/>
+        </div>
+      </div>

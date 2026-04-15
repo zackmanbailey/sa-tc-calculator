@@ -1,0 +1,47 @@
+/*
+ * BUG-015 FIX — Sidebar Navigation Click Fix
+ * ============================================
+ *
+ * INSTRUCTIONS:
+ * In templates/shared_nav.py, add this CSS to the NAV_CSS string (after the existing .tf-nav-item rules).
+ *
+ * Root cause: The .tf-nav-item has padding but the click target doesn't cover the full row.
+ * Also, the .tf-sidebar-toggle button overlaps nav items at certain scroll positions,
+ * and the .tf-sidebar-section-label can intercept clicks near the top of sections.
+ *
+ * Fix: Ensure nav items are fully clickable, z-index the links above overlapping elements,
+ * and make the entire row the click target.
+ */
+
+/* BUG-015: Ensure nav items are fully clickable */
+.tf-nav-item {
+    z-index: 2;           /* Above section labels and any overlapping elements */
+    min-height: 36px;     /* Minimum clickable height */
+    user-select: none;    /* Prevent text selection on rapid clicks */
+}
+
+/* BUG-015: Section labels should not intercept clicks */
+.tf-sidebar-section-label {
+    pointer-events: none;  /* Labels are decorative, never clickable */
+}
+
+/* BUG-015: Ensure sidebar toggle doesn't overlap nav items */
+.tf-sidebar-toggle {
+    z-index: 205;  /* Above sidebar content but scoped to its position */
+}
+
+/* BUG-015: Prevent dead zones between nav items */
+.tf-sidebar-nav .tf-sidebar-section {
+    position: relative;   /* Establish stacking context */
+}
+
+/* BUG-015: Make icon + label fill the entire link area */
+.tf-nav-item .tf-nav-icon,
+.tf-nav-item .tf-nav-label {
+    pointer-events: none;  /* Let clicks pass through to the <a> parent */
+}
+
+/* BUG-015: Badge should not intercept clicks */
+.tf-nav-badge {
+    pointer-events: none;
+}
