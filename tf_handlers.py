@@ -831,7 +831,7 @@ class BaseHandler(AuthMixin, tornado.web.RequestHandler):
         role = self.get_user_role() or "god_mode"
         users_db = load_users()
         user_data = users_db.get(user, {})
-        display = user_data.get("display_name", user) if user != "local" else "Admin"
+        display = (user_data.get("display_name") or user or "Admin").strip() if user != "local" else "Admin"
         # Pass full roles list for multi-role support
         user_roles = user_data.get("roles", [role]) if user != "local" else ["god_mode"]
 
@@ -1339,7 +1339,7 @@ class DashboardHandler(BaseHandler):
         user = self.get_current_user() or "local"
         users_db = load_users()
         user_data = users_db.get(user, {})
-        display = user_data.get("display_name", user) if user != "local" else "Admin"
+        display = (user_data.get("display_name") or user or "Admin").strip() if user != "local" else "Admin"
 
         # Get role info for template
         roles = self.user_roles
@@ -2918,6 +2918,9 @@ class ProjectPageHandler(BaseHandler):
         html = html.replace("{{STAGES_JSON}}", json.dumps(PROJECT_STAGES))
         html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
         html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
+        # Fix double-escaped Unicode sequences (\\u2014 → actual em-dash, \\u2713 → checkmark)
+        html = html.replace("\\\\u2014", "\u2014")
+        html = html.replace("\\\\u2713", "\u2713")
 
         self.render_with_nav(html, active_page="project", job_code=job_code)
 
@@ -3293,14 +3296,39 @@ class GlobalSearchHandler(BaseHandler):
             self.write(json_encode({"ok": True, "results": []}))
             return
         results = []
-        # Search projects
+        # Search projects (metadata.json and legacy current.json fallback)
         os.makedirs(PROJECTS_DIR, exist_ok=True)
         for d in os.listdir(PROJECTS_DIR):
-            mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
+            dpath = os.path.join(PROJECTS_DIR, d)
+            if not os.path.isdir(dpath):
+                continue
+            mpath = os.path.join(dpath, "metadata.json")
+            cpath = os.path.join(dpath, "current.json")
+            meta = None
             if os.path.isfile(mpath):
                 try:
                     with open(mpath) as f:
                         meta = json.load(f)
+                except Exception:
+                    pass
+            elif os.path.isfile(cpath):
+                # Legacy SA-created project without metadata.json
+                try:
+                    with open(cpath) as f:
+                        data = json.load(f)
+                    proj = data.get("project", {})
+                    meta = {
+                        "job_code": data.get("job_code", d),
+                        "project_name": proj.get("name", ""),
+                        "customer": {"name": proj.get("customer_name", "")},
+                        "location": {"city": proj.get("city", ""), "state": proj.get("state", "")},
+                        "stage": "quote",
+                        "notes": "",
+                    }
+                except Exception:
+                    pass
+            if meta:
+                try:
                     searchable = " ".join([
                         meta.get("job_code", ""),
                         meta.get("project_name", ""),
@@ -3314,7 +3342,7 @@ class GlobalSearchHandler(BaseHandler):
                         results.append({
                             "type": "project",
                             "title": meta.get("project_name", d),
-                            "subtitle": f'{meta.get("job_code","")} — {meta.get("customer",{}).get("name","")}',
+                            "subtitle": f'{meta.get("job_code","")} \u2014 {meta.get("customer",{}).get("name","")}',
                             "stage": meta.get("stage", ""),
                             "url": f'/project/{meta.get("job_code", d)}',
                             "icon": "project",
@@ -7678,8 +7706,7 @@ class DocumentManagementPageHandler(BaseHandler):
     required_permission = "view_shop_drawings"
     def get(self):
         from templates.document_management_page import DOCUMENT_MANAGEMENT_PAGE_HTML
-        self.set_header("Content-Type", "text/html")
-        self.write(DOCUMENT_MANAGEMENT_PAGE_HTML)
+        self.render_with_nav(DOCUMENT_MANAGEMENT_PAGE_HTML, active_page="documents")
 
 
 # ── Drawing Revisions ─────────────────────────────────────────────────

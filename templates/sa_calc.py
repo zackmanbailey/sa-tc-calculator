@@ -43,7 +43,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-
 input[type=checkbox]{width:auto;margin-right:6px}
 .check-label{display:flex;align-items:center;font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer}
 /* Buttons */
-.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px;position:relative;z-index:2}
 .btn-primary{background:var(--tf-blue);color:#fff}.btn-primary:hover{background:var(--tf-blue-m)}
 .btn-red{background:var(--tf-red);color:#fff}.btn-red:hover{opacity:.9}
 .btn-green{background:var(--tf-green);color:#fff}.btn-green:hover{opacity:.9}
@@ -142,11 +142,11 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
 <!-- Tabs -->
 <div id="tabs">
-  <div class="tab active" onclick="showTab('calc', this)">⚙️ Calculator</div>
-  <div class="tab" onclick="showTab('bom', this)">📋 Bill of Materials</div>
-  <div class="tab" onclick="showTab('pricing', this)">💰 Price Overrides</div>
-  <div class="tab" onclick="showTab('labels', this)">🏷️ Shop Labels</div>
-  <div class="tab" onclick="showTab('inventory', this)">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
+  <div class="tab active" data-tab="calc" onclick="showTab('calc', this)">⚙️ Calculator</div>
+  <div class="tab" data-tab="bom" onclick="showTab('bom', this)">📋 Bill of Materials</div>
+  <div class="tab" data-tab="pricing" onclick="showTab('pricing', this)">💰 Price Overrides</div>
+  <div class="tab" data-tab="labels" onclick="showTab('labels', this)">🏷️ Shop Labels</div>
+  <div class="tab" data-tab="inventory" onclick="showTab('inventory', this)">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
 </div>
 
 <!-- Main -->
@@ -461,16 +461,14 @@ async function checkInventoryAlerts() {
 // ─────────────────────────────────────────────
 function showTab(name, clickedEl) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
-  const tabs = document.querySelectorAll('.tab');
-  tabs.forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#tabs .tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.remove('hidden');
-  // Highlight the correct tab — use clicked element if available, else find by tab name
+  // Highlight the correct tab — use data-tab attribute for reliable matching
   if (clickedEl) {
     clickedEl.classList.add('active');
   } else {
-    const tabNames = ['calc', 'bom', 'pricing', 'labels', 'inventory'];
-    const idx = tabNames.indexOf(name);
-    if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+    const matchTab = document.querySelector('#tabs .tab[data-tab="' + name + '"]');
+    if (matchTab) matchTab.classList.add('active');
   }
   if (name === 'inventory') loadInventory();
   if (name === 'pricing') renderPricingTab();
@@ -489,7 +487,17 @@ function updateJobCode() {
 function onStateChange() {
   const st = document.getElementById('proj_state').value;
   if (WIND_BY_STATE[st]) document.getElementById('proj_wind').value = WIND_BY_STATE[st];
-  if (FOOTING_BY_STATE[st]) document.getElementById('proj_footing').value = FOOTING_BY_STATE[st];
+  // proj_footing was removed (footing is per-building now) — update all buildings instead
+  const footingEl = document.getElementById('proj_footing');
+  if (footingEl && FOOTING_BY_STATE[st]) {
+    footingEl.value = FOOTING_BY_STATE[st];
+  } else if (FOOTING_BY_STATE[st]) {
+    buildings.forEach(b => {
+      b.footing_depth_ft = FOOTING_BY_STATE[st];
+      const el = document.getElementById(`footing_${b.id}`);
+      if (el) el.value = FOOTING_BY_STATE[st];
+    });
+  }
   updateJobCode();
 }
 

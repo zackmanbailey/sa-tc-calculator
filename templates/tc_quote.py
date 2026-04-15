@@ -347,7 +347,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
             <div class="form-group">
               <label>Drilling Method</label>
               <select id="drill_method" onchange="calcDrilling();renderSummary()">
-                <option value="per_hole">Per Hole ($/hole)</option>
+                <option value="per_hole" selected>Per Hole ($/hole)</option>
                 <option value="rental">Rig Rental + Operator</option>
               </select>
             </div>
