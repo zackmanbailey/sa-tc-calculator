@@ -666,25 +666,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     <div class="wo-tabs">
         <button class="wo-tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
         <button class="wo-tab" data-tab="items" onclick="switchTab('items')">Items</button>
-        <button class="wo-tab" data-tab="qc" onclick="switchTab('qc')">QC Queue <span id="qcBadge" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:0.7rem;font-weight:700;background:var(--tf-blue-light);color:var(--tf-blue);margin-left:4px;">0</span></button>
         <button class="wo-tab" data-tab="scan" onclick="switchTab('scan')">QR Scan</button>
-    </div>
-
-    <!-- Filter bar for overview -->
-    <div id="overviewFilters" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-        <input type="text" id="woSearchInput" placeholder="Search work orders..."
-               style="flex:1;padding:8px 12px;border:1px solid var(--tf-border);border-radius:8px;font-size:0.85rem;font-family:var(--tf-font);"
-               oninput="renderOverview()">
-        <select id="woStatusFilter" onchange="renderOverview()"
-                style="padding:8px 12px;border:1px solid var(--tf-border);border-radius:8px;font-size:0.85rem;font-family:var(--tf-font);">
-            <option value="">All Statuses</option>
-            <option value="queued">Queued</option>
-            <option value="approved">Approved</option>
-            <option value="stickers_printed">Stickers Printed</option>
-            <option value="in_progress">In Progress</option>
-            <option value="on_hold">On Hold</option>
-            <option value="complete">Complete</option>
-        </select>
     </div>
 
     <!-- TAB 1: OVERVIEW -->
@@ -695,17 +677,6 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
                 <h3>No Work Orders Yet</h3>
                 <p>Generate shop drawings first, then create a work order to track fabrication.</p>
                 <button class="btn-wo primary" onclick="createWorkOrder()">Create Work Order</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- TAB: QC QUEUE -->
-    <div class="wo-tab-content" id="tab-qc">
-        <div id="qc-queue-area">
-            <div class="empty-state">
-                <div class="empty-icon">&#9989;</div>
-                <h3>QC Queue Empty</h3>
-                <p>Items will appear here after fabrication is complete.</p>
             </div>
         </div>
     </div>
@@ -747,23 +718,6 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     </div>
 </div>
 
-<!-- QC Decision Modal -->
-<div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:500;display:none;align-items:center;justify-content:center;" id="qcModal" onclick="if(event.target===this)closeQCModal()">
-    <div style="background:white;border-radius:12px;padding:28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
-        <h3 style="margin:0 0 12px;font-size:1.1rem;color:var(--tf-navy);" id="qcModalTitle">QC Decision</h3>
-        <div style="font-size:0.85rem;color:var(--tf-slate);margin-bottom:12px;">
-            <strong id="qcItemLabel"></strong>
-        </div>
-        <label style="font-size:0.85rem;font-weight:600;color:var(--tf-navy);display:block;margin-bottom:6px;">Inspector Notes</label>
-        <textarea id="qcNotesInput" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--tf-border);border-radius:8px;font-family:var(--tf-font);font-size:0.85rem;resize:vertical;" placeholder="Inspection notes, defects, or approval remarks..."></textarea>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
-            <button class="btn-wo outline" onclick="closeQCModal()">Cancel</button>
-            <button class="btn-wo danger" id="qcRejectBtn" onclick="submitQC('qc_rejected')">Reject</button>
-            <button class="btn-wo success" id="qcApproveBtn" onclick="submitQC('qc_approved')">Approve</button>
-        </div>
-    </div>
-</div>
-
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -772,21 +726,15 @@ const JOB_CODE = '{{JOB_CODE}}';
 let workOrders = [];
 let currentWO = null;
 let scanHistory = [];
-let qcTarget = null;
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof setProjectContext === 'function') {
-        setProjectContext(JOB_CODE);
-    }
     refreshAll();
 });
 
 async function refreshAll() {
     await loadWorkOrders();
     renderOverview();
-    renderQCQueue();
-    updateQCBadge();
 }
 
 // ── API CALLS ──
@@ -929,15 +877,9 @@ function switchTab(tab) {
 
 function renderOverview() {
     const area = document.getElementById('wo-list-area');
-    const search = (document.getElementById('woSearchInput')?.value || '').toLowerCase().trim();
-    const statusF = document.getElementById('woStatusFilter')?.value || '';
+    const emptyState = document.getElementById('empty-state');
 
-    let filtered = workOrders;
-    if (statusF) filtered = filtered.filter(wo => wo.status === statusF);
-    if (search) filtered = filtered.filter(wo =>
-        `${wo.work_order_id} ${wo.status} ${wo.status_label || ''}`.toLowerCase().includes(search));
-
-    if (filtered.length === 0 && workOrders.length === 0) {
+    if (workOrders.length === 0) {
         area.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">📋</div>
@@ -948,13 +890,8 @@ function renderOverview() {
         return;
     }
 
-    if (filtered.length === 0) {
-        area.innerHTML = `<div class="empty-state"><h3>No matching work orders</h3><p>Try adjusting your search or filters.</p></div>`;
-        return;
-    }
-
     let html = '';
-    filtered.forEach(wo => {
+    workOrders.forEach(wo => {
         const statusClass = wo.status.replace(/ /g, '_');
         html += `
         <div class="wo-card" style="cursor:pointer" onclick="loadWODetail('${wo.work_order_id}')">
@@ -1047,28 +984,18 @@ function renderDetail() {
         actionsHtml = stickerBtns;
     }
 
-    // Helper: build shop drawing URL for an item
-    function shopDrawingUrl(item) {
-        const comp = (item.component_type || '').toLowerCase();
-        const base = '/shop-drawings/' + encodeURIComponent(JOB_CODE);
-        if (comp === 'column') return base + '/column';
-        if (comp === 'rafter') return base + '/rafter';
-        if (item.drawing_ref) return '/api/shop-drawings/file?job_code=' + encodeURIComponent(JOB_CODE) + '&filename=' + encodeURIComponent(item.drawing_ref);
-        return base;
-    }
-
-    // Items table — clear "what are we making" focus
+    // Items table
     let itemsHtml = `
     <table class="items-table">
     <thead>
         <tr>
-            <th>Part</th>
-            <th>What to Fabricate</th>
+            <th>Ship Mark</th>
+            <th>Type</th>
+            <th>Description</th>
             <th>Qty</th>
             <th>Machine</th>
             <th>Status</th>
             <th>Duration</th>
-            <th>Drawing</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -1078,49 +1005,24 @@ function renderDetail() {
         const iStatus = item.status || 'queued';
         const iStatusClass = iStatus.replace(/ /g, '_');
         const canStart = (wo.status === 'stickers_printed' || wo.status === 'in_progress')
-                         && !['in_progress', 'complete', 'fabricated', 'qc_pending', 'qc_approved', 'ready_to_ship', 'shipped', 'delivered', 'installed'].includes(iStatus);
+                         && iStatus !== 'in_progress' && iStatus !== 'complete';
         const canFinish = iStatus === 'in_progress';
-        const canQC = iStatus === 'fabricated' || iStatus === 'qc_pending';
         const dur = item.duration_minutes > 0 ? `${item.duration_minutes.toFixed(1)} min` : '-';
-
-        const statusLabels = {
-            'queued': 'Queued', 'approved': 'Approved', 'stickers_printed': 'Ready',
-            'staged': 'Staged', 'in_progress': 'In Progress', 'fabricated': 'Fabricated',
-            'qc_pending': 'QC Pending', 'qc_approved': 'QC Approved', 'qc_rejected': 'QC Rejected',
-            'ready_to_ship': 'Ready to Ship', 'shipped': 'Shipped', 'delivered': 'Delivered',
-            'installed': 'Installed', 'on_hold': 'On Hold', 'complete': 'Complete'
-        };
-
-        const qcInfo = item.qc_notes
-            ? `<div style="font-size:0.72rem;color:#9A3412;margin-top:2px;" title="${item.qc_notes}">QC: ${item.qc_notes.substring(0, 40)}${item.qc_notes.length > 40 ? '...' : ''}</div>`
-            : '';
-
-        const drawingLink = shopDrawingUrl(item);
 
         itemsHtml += `
         <tr>
-            <td>
-                <span class="ship-mark" style="font-size:1.05rem;">${item.ship_mark}</span>
-                <div><span class="component-type-badge ${item.component_type}" style="font-size:0.7rem;">${(item.component_type || '').toUpperCase().replace('_',' ')}</span></div>
-            </td>
-            <td style="max-width:280px;">
-                <div style="font-weight:700;font-size:0.92rem;color:var(--tf-navy);line-height:1.3;">${item.description}</div>
-                ${qcInfo}
-            </td>
-            <td style="font-weight:700;font-size:1.1rem;text-align:center;">${item.quantity}</td>
+            <td><span class="ship-mark">${item.ship_mark}</span></td>
+            <td><span class="component-type-badge ${item.component_type}">${item.component_type}</span></td>
+            <td>${item.description}</td>
+            <td>${item.quantity}</td>
             <td><span class="machine-badge">${item.machine}</span></td>
-            <td><span class="status-badge ${iStatusClass}">${statusLabels[iStatus] || iStatus}</span></td>
+            <td><span class="status-badge ${iStatusClass}">${item.status === 'in_progress' ? 'In Progress' : (item.status === 'stickers_printed' ? 'Ready' : item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
             <td class="duration-cell">${dur}</td>
-            <td style="text-align:center;">
-                <a href="${drawingLink}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:var(--tf-navy);color:white;border-radius:6px;font-size:0.75rem;font-weight:600;text-decoration:none;" title="View shop drawing for ${item.ship_mark}">
-                    &#128208; Drawing
-                </a>
-            </td>
             <td class="item-actions">
-                ${canStart ? `<button class="btn-item start" onclick="scanItem('${item.item_id}','start')">Start</button>` : ''}
-                ${canFinish ? `<button class="btn-item finish" onclick="scanItem('${item.item_id}','finish')">Finish</button>` : ''}
-                ${canQC ? `<button class="btn-item" style="background:var(--tf-green);color:white;" onclick="openQCModal('${item.item_id}','${item.ship_mark}','approve')">&#10003;</button>
-                           <button class="btn-item" style="background:#EF4444;color:white;" onclick="openQCModal('${item.item_id}','${item.ship_mark}','reject')">&#10007;</button>` : ''}
+                <button class="btn-item start" ${canStart ? '' : 'disabled'}
+                        onclick="scanItem('${item.item_id}','start')">Start</button>
+                <button class="btn-item finish" ${canFinish ? '' : 'disabled'}
+                        onclick="scanItem('${item.item_id}','finish')">Finish</button>
                 <button class="btn-item" style="background:var(--tf-navy);color:white;"
                         onclick="printSingleSticker('${item.item_id}')" title="Print sticker">QR</button>
             </td>
@@ -1202,129 +1104,6 @@ function renderScanHistory() {
     });
     html += '</tbody></table>';
     el.innerHTML = html;
-}
-
-// ── QC QUEUE ──
-function updateQCBadge() {
-    let count = 0;
-    workOrders.forEach(wo => {
-        count += (wo.qc_pending_items || 0);
-    });
-    const badge = document.getElementById('qcBadge');
-    if (badge) badge.textContent = count;
-}
-
-async function renderQCQueue() {
-    const area = document.getElementById('qc-queue-area');
-    if (!area) return;
-
-    // Find WOs that have pending QC items
-    const wosWithQC = workOrders.filter(wo => (wo.qc_pending_items || 0) > 0);
-    if (wosWithQC.length === 0) {
-        area.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9989;</div><h3>QC Queue Empty</h3><p>Items will appear here after fabrication is complete.</p></div>';
-        return;
-    }
-
-    // Fetch full details for WOs with QC items
-    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--tf-slate);">Loading QC queue...</div>';
-    let qcItems = [];
-    for (const wo of wosWithQC) {
-        const data = await apiCall(`/api/work-orders/detail?job_code=${JOB_CODE}&wo_id=${wo.work_order_id}`, 'GET');
-        if (data.ok && data.work_order) {
-            (data.work_order.items || []).forEach(item => {
-                if (['fabricated', 'qc_pending'].includes(item.status)) {
-                    qcItems.push({...item, wo_id: wo.work_order_id});
-                }
-            });
-        }
-    }
-
-    if (qcItems.length === 0) {
-        area.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9989;</div><h3>QC Queue Empty</h3><p>Items will appear here after fabrication is complete.</p></div>';
-        return;
-    }
-
-    let html = '';
-    qcItems.forEach(item => {
-        const stLabel = item.status === 'fabricated' ? 'Awaiting QC' : 'QC Pending';
-        html += `
-        <div class="wo-card" style="margin-bottom:12px;">
-            <div class="wo-card-header">
-                <div>
-                    <span class="ship-mark" style="font-size:1rem;">${item.ship_mark}</span>
-                    <span class="status-badge ${item.status}" style="margin-left:8px;">${stLabel}</span>
-                </div>
-                <span style="font-family:'SF Mono',monospace;font-size:0.82rem;color:var(--tf-slate);">${item.wo_id}</span>
-            </div>
-            <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--tf-slate);margin-bottom:12px;">
-                <span>Type: <strong>${item.component_type || '-'}</strong></span>
-                <span>Machine: <strong>${item.machine || '-'}</strong></span>
-                ${item.assigned_to ? '<span>Operator: <strong>' + item.assigned_to + '</strong></span>' : ''}
-                ${item.finished_at ? '<span>Finished: ' + new Date(item.finished_at).toLocaleString() + '</span>' : ''}
-                ${item.duration_minutes > 0 ? '<span>Fab Time: <strong>' + item.duration_minutes.toFixed(1) + ' min</strong></span>' : ''}
-            </div>
-            ${item.qc_notes ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 12px;font-size:0.82rem;margin-bottom:12px;color:#9A3412;">Previous notes: ' + item.qc_notes + '</div>' : ''}
-            <div style="display:flex;gap:8px;">
-                <button class="btn-wo success" onclick="openQCModal('${item.item_id}', '${item.ship_mark}', 'approve')">&#10003; Approve</button>
-                <button class="btn-wo danger" onclick="openQCModal('${item.item_id}', '${item.ship_mark}', 'reject')">&#10007; Reject</button>
-            </div>
-        </div>`;
-    });
-    area.innerHTML = html;
-}
-
-// QC Modal
-function openQCModal(itemId, label, mode) {
-    qcTarget = { itemId, mode };
-    document.getElementById('qcItemLabel').textContent = label;
-    document.getElementById('qcNotesInput').value = '';
-    document.getElementById('qcModalTitle').textContent =
-        mode === 'approve' ? 'Approve QC' : mode === 'reject' ? 'Reject QC' : 'QC Decision';
-    document.getElementById('qcApproveBtn').style.display = mode === 'reject' ? 'none' : '';
-    document.getElementById('qcRejectBtn').style.display = mode === 'approve' ? 'none' : '';
-    document.getElementById('qcModal').style.display = 'flex';
-    setTimeout(() => document.getElementById('qcNotesInput').focus(), 100);
-}
-
-function closeQCModal() {
-    document.getElementById('qcModal').style.display = 'none';
-    qcTarget = null;
-}
-
-async function submitQC(decision) {
-    if (!qcTarget) return;
-    const notes = document.getElementById('qcNotesInput').value.trim();
-    const itemId = qcTarget.itemId;
-
-    // Find item to check if it needs transition to qc_pending first
-    let needsPreTransition = false;
-    workOrders.forEach(wo => {
-        (wo.items || []).forEach(item => {
-            if (item.item_id === itemId && item.status === 'fabricated') {
-                needsPreTransition = true;
-            }
-        });
-    });
-
-    if (needsPreTransition) {
-        await apiCall('/api/work-orders/transition', 'POST', {
-            job_code: JOB_CODE, item_id: itemId, new_status: 'qc_pending', notes: ''
-        });
-    }
-
-    const data = await apiCall('/api/work-orders/transition', 'POST', {
-        job_code: JOB_CODE, item_id: itemId, new_status: decision, notes: notes
-    });
-
-    if (data.ok) {
-        showToast(decision === 'qc_approved' ? 'Item approved!' : 'Item rejected — returned to operator',
-                  decision === 'qc_approved' ? 'success' : 'info');
-        closeQCModal();
-        await refreshAll();
-        if (currentWO) await loadWODetail(currentWO.work_order_id);
-    } else {
-        showToast(data.error || 'Failed', 'error');
-    }
 }
 
 // ── TOAST ──

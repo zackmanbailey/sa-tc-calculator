@@ -27,7 +27,7 @@ from tf_handlers import get_routes, AUTH_ENABLED
 def make_app():
     """Build the Tornado application with all routes and config."""
     # Generate or load cookie secret
-    secret_path = os.path.join(BASE_DIR, "data", ".cookie_secret")
+    secret_path = os.path.join(tf_handlers.DATA_DIR, ".cookie_secret")
     if os.path.isfile(secret_path):
         with open(secret_path) as f:
             cookie_secret = f.read().strip()
@@ -71,9 +71,7 @@ if __name__ == "__main__":
         os.environ.get("AUTH_ENABLED", "").lower() in ("1", "true", "yes")
     )
 
-    # Ensure data directories exist
-    for d in ["data", "data/certs", "data/projects"]:
-        os.makedirs(os.path.join(BASE_DIR, d), exist_ok=True)
+    # Data directories are now created in tf_handlers.py using DATA_DIR
 
     app = make_app()
 

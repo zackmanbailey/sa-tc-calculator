@@ -216,33 +216,55 @@ PROJECT_PAGE_HTML = r"""
 
         .tool-card {
             background: var(--tf-surface);
-            border: 1px solid var(--tf-border);
+            border: 2px solid var(--tf-border);
             border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-4);
+            padding: var(--tf-sp-4) var(--tf-sp-3);
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: var(--tf-sp-2);
+            gap: 6px;
             cursor: pointer;
             transition: all 200ms var(--tf-ease);
             text-align: center;
             text-decoration: none;
+            position: relative;
+            min-height: 100px;
         }
 
         .tool-card:hover {
             box-shadow: var(--tf-shadow-md);
             transform: translateY(-2px);
-            border-color: var(--tf-blue);
         }
 
+        /* ── SAVED (solid fill with white text) ── */
+        .tool-card.saved { color: #fff; }
+        .tool-card.saved .tool-label,
+        .tool-card.saved .tool-status { color: #fff; }
+        .tool-card.saved .tool-icon { background: rgba(255,255,255,0.25); color: #fff; }
+        .tool-card.saved.tc-blue   { background: var(--tf-blue);  border-color: var(--tf-blue);  }
+        .tool-card.saved.tc-amber  { background: #D97706;         border-color: #D97706;         }
+        .tool-card.saved.tc-green  { background: #059669;         border-color: #059669;         }
+        .tool-card.saved.tc-teal   { background: #0D9488;         border-color: #0D9488;         }
+        .tool-card.saved.tc-purple { background: #7C3AED;         border-color: #7C3AED;         }
+        .tool-card.saved.tc-red    { background: var(--tf-red);   border-color: var(--tf-red);   }
+
+        /* ── UNSAVED (outline with colored border) ── */
+        .tool-card.unsaved { background: var(--tf-surface); }
+        .tool-card.unsaved.tc-blue   { border-color: var(--tf-blue);  }
+        .tool-card.unsaved.tc-amber  { border-color: #D97706;         }
+        .tool-card.unsaved.tc-green  { border-color: #059669;         }
+        .tool-card.unsaved.tc-teal   { border-color: #0D9488;         }
+        .tool-card.unsaved.tc-purple { border-color: #7C3AED;         }
+        .tool-card.unsaved.tc-red    { border-color: var(--tf-red);   }
+
         .tool-icon {
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: var(--tf-radius);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
         }
 
         .tool-icon.ti-blue   { background: var(--tf-blue-light); }
@@ -250,27 +272,24 @@ PROJECT_PAGE_HTML = r"""
         .tool-icon.ti-green  { background: var(--tf-success-bg); }
         .tool-icon.ti-purple { background: #EDE9FE; }
         .tool-icon.ti-teal   { background: #CCFBF1; }
+        .tool-icon.ti-red    { background: #FEE2E2; }
 
         .tool-label {
-            font-size: var(--tf-text-xs);
+            font-size: 11px;
             font-weight: 700;
             color: var(--tf-gray-800);
+            line-height: 1.2;
         }
+
         .tool-status {
             font-size: 10px;
             font-weight: 600;
-            margin-top: 4px;
-            min-height: 16px;
+            line-height: 1.2;
+            margin-top: 2px;
         }
-        .tool-status.linked {
-            color: #10B981;
-        }
-        .tool-status.not-linked {
-            color: #94A3B8;
-        }
-        .tool-card.has-dependency {
-            position: relative;
-        }
+        .tool-status.status-saved { color: #059669; }
+        .tool-status.status-missing { color: #DC2626; }
+        .tool-card.saved .tool-status { color: rgba(255,255,255,0.9); }
 
         /* Completion Bar (kept for backwards compat) */
         .completion-section { display: none; }
@@ -765,7 +784,38 @@ PROJECT_PAGE_HTML = r"""
             <div class="header-actions" style="display:flex;gap:var(--tf-sp-2);flex-wrap:wrap;">
                 <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="duplicateProject()">Duplicate</button>
                 <button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="archiveProject()" id="archiveBtn">Archive</button>
+                <button class="tf-btn tf-btn-sm" id="deleteProjectBtn"
+                  style="background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;display:none"
+                  onclick="showDeleteConfirm()">Delete</button>
             </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);
+          align-items:center;justify-content:center">
+          <div style="background:#1E293B;border:2px solid #991B1B;border-radius:16px;padding:32px;max-width:440px;
+            width:90%;text-align:center">
+            <div style="font-size:40px;margin-bottom:12px">&#9888;</div>
+            <h3 style="color:#FCA5A5;font-size:18px;margin-bottom:8px">Delete This Project?</h3>
+            <p style="color:#94A3B8;font-size:14px;line-height:1.6;margin-bottom:16px">
+              This will permanently delete <strong style="color:#F1F5F9" id="deleteJobLabel"></strong> including
+              all shop drawings, work orders, documents, and QC records. This cannot be undone.
+            </p>
+            <p style="color:#94A3B8;font-size:13px;margin-bottom:20px">
+              Type the job code to confirm:
+            </p>
+            <input type="text" id="deleteConfirmInput" placeholder="Enter job code..."
+              style="width:100%;padding:10px 14px;background:#0F172A;border:1px solid #334155;border-radius:8px;
+              color:#F1F5F9;font-size:15px;text-align:center;margin-bottom:16px;font-family:monospace"
+              oninput="checkDeleteInput()">
+            <div style="display:flex;gap:12px;justify-content:center">
+              <button onclick="hideDeleteConfirm()" style="padding:10px 24px;background:#334155;color:#CBD5E1;
+                border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+              <button id="deleteConfirmBtn" onclick="confirmDeleteProject()" disabled
+                style="padding:10px 24px;background:#7F1D1D;color:#FCA5A5;border:1px solid #991B1B;
+                border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;opacity:0.5">Delete Forever</button>
+            </div>
+          </div>
+        </div>
         </div>
 
         <!-- PIPELINE JOURNEY -->
@@ -780,58 +830,42 @@ PROJECT_PAGE_HTML = r"""
             </div>
         </div>
 
-        <!-- TOOLBOX -->
-        <div class="toolbox" id="projectToolbox">
-            <div class="tool-card" id="tool-sa" onclick="openInSACalc()">
+        <!-- TOOLBOX (dynamic — populated by loadProjectAssets()) -->
+        <div class="toolbox" id="toolbox">
+            <div class="tool-card unsaved tc-blue" id="card-sa" onclick="openInSACalc()">
                 <div class="tool-icon ti-blue">&#128208;</div>
                 <div class="tool-label">SA Estimator</div>
-                <div class="tool-status" id="status-sa"></div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
-            <div class="tool-card" id="tool-tc" onclick="handleTCClick()">
+            <div class="tool-card unsaved tc-red" id="card-bom" onclick="openBOM()">
+                <div class="tool-icon ti-red">&#128202;</div>
+                <div class="tool-label">Bill of Materials</div>
+                <div class="tool-status status-missing">Loading...</div>
+            </div>
+            <div class="tool-card unsaved tc-amber" id="card-tc" onclick="openInTCQuote()">
                 <div class="tool-icon ti-amber">&#128221;</div>
                 <div class="tool-label">TC Estimator</div>
-                <div class="tool-status" id="status-tc"></div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
-            <div class="tool-card" id="tool-bom" onclick="handleBOMClick()">
-                <div class="tool-icon ti-teal">&#128203;</div>
-                <div class="tool-label">Bill of Materials</div>
-                <div class="tool-status" id="status-bom"></div>
-            </div>
-            <div class="tool-card" id="tool-quote" onclick="openQuoteEditor()">
+            <div class="tool-card unsaved tc-green" id="card-quote" onclick="openQuoteEditor()">
                 <div class="tool-icon ti-green">&#128196;</div>
                 <div class="tool-label">Quote Editor</div>
-                <div class="tool-status" id="status-quote"></div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
-            <div class="tool-card" id="tool-shop" onclick="openShopDrawings()">
+            <div class="tool-card unsaved tc-blue" id="card-shop" onclick="openShopDrawings()">
                 <div class="tool-icon ti-blue">&#9998;</div>
                 <div class="tool-label">Shop Drawings</div>
-                <div class="tool-status" id="status-shop"></div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
-            <div class="tool-card" id="tool-wo" onclick="openWorkOrders()">
+            <div class="tool-card unsaved tc-teal" id="card-wo" onclick="openWorkOrders()">
                 <div class="tool-icon ti-teal">&#128203;</div>
                 <div class="tool-label">Work Orders</div>
-                <div class="tool-status" id="status-wo"></div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
-            <div class="tool-card" id="tool-qc" onclick="openQCDashboard()">
+            <div class="tool-card unsaved tc-purple" id="card-qc" onclick="openQCDashboard()">
                 <div class="tool-icon ti-purple">&#128203;</div>
                 <div class="tool-label">QC Dashboard</div>
-                <div class="tool-status" id="status-qc"></div>
-            </div>
-        </div>
-
-        <!-- "Not Linked" Modal -->
-        <div id="notLinkedModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">
-                <div style="font-size:2.5rem;margin-bottom:12px;">&#9888;</div>
-                <h3 style="margin:0 0 8px;color:#0F172A;" id="notLinkedTitle">SA Estimator Not Linked</h3>
-                <p style="color:#64748B;font-size:0.9rem;margin:0 0 24px;" id="notLinkedMsg">
-                    The SA Estimator hasn't been completed for this project yet.
-                    This module depends on SA Estimator data.
-                </p>
-                <div style="display:flex;gap:12px;justify-content:center;">
-                    <button onclick="openInSACalc()" style="padding:10px 24px;background:#1E40AF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.9rem;">Open SA Estimator</button>
-                    <button onclick="closeNotLinkedModal()" style="padding:10px 24px;background:#E2E8F0;color:#334155;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem;">Cancel</button>
-                </div>
+                <div class="tool-status status-missing">Loading...</div>
             </div>
         </div>
 
@@ -925,11 +959,7 @@ PROJECT_PAGE_HTML = r"""
 
         // ── Init ──────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', function() {
-            if (typeof setProjectContext === 'function') {
-                setProjectContext(JOB_CODE);
-            }
             initProjectPage();
-            loadEstimatorStatus();
         });
 
         var PJ_STAGES = ['quote', 'contract', 'engineering', 'shop_drawings', 'fabrication', 'shipping', 'install'];
@@ -973,6 +1003,9 @@ PROJECT_PAGE_HTML = r"""
             // Intelligence (try to load calc data)
             loadIntelligence();
 
+            // Load project assets status (tool card indicators)
+            loadProjectAssets();
+
             // Restrict actions by role
             if (USER_ROLE === 'viewer' || USER_ROLE === 'tc_limited') {
                 document.querySelectorAll('.header-actions .tf-btn').forEach(function(btn) {
@@ -980,6 +1013,12 @@ PROJECT_PAGE_HTML = r"""
                         btn.style.display = 'none';
                     }
                 });
+            }
+
+            // Show delete button for admins only
+            if (USER_ROLE === 'admin') {
+                var delBtn = document.getElementById('deleteProjectBtn');
+                if (delBtn) delBtn.style.display = 'inline-flex';
             }
         }
 
@@ -1569,93 +1608,18 @@ PROJECT_PAGE_HTML = r"""
             return s;
         }
 
-        // ── Estimator Status ──────────────────────────────
-        var estStatus = {};
-
-        async function loadEstimatorStatus() {
-            try {
-                const resp = await fetch('/api/project/estimator-status?job_code=' + encodeURIComponent(JOB_CODE));
-                const data = await resp.json();
-                if (!data.ok) return;
-                estStatus = data;
-
-                // Update tool card badges
-                setToolStatus('status-sa', data.sa_linked, data.sa_meta
-                    ? 'v' + (data.sa_meta.version || '?') : null);
-                setToolStatus('status-tc', data.tc_linked, data.tc_meta
-                    ? 'v' + (data.tc_meta.version || '?') : null);
-                setToolStatus('status-bom', data.bom_available, null);
-                setToolStatus('status-quote', data.quote_linked, null);
-                setToolStatus('status-shop', data.shop_linked, null);
-                setToolStatus('status-wo', data.wo_count > 0,
-                    data.wo_count > 0 ? data.wo_count + ' orders' : null);
-                setToolStatus('status-qc', data.qc_linked, null);
-            } catch(e) { /* silent */ }
-        }
-
-        function setToolStatus(elId, linked, detail) {
-            var el = document.getElementById(elId);
-            if (!el) return;
-            if (linked) {
-                el.className = 'tool-status linked';
-                el.textContent = detail ? '\\u2713 ' + detail : '\\u2713 Linked';
-            } else {
-                el.className = 'tool-status not-linked';
-                el.textContent = '\\u2014 Not linked';
-            }
-        }
-
-        function showNotLinkedModal(title, msg) {
-            document.getElementById('notLinkedTitle').textContent = title;
-            document.getElementById('notLinkedMsg').textContent = msg;
-            document.getElementById('notLinkedModal').style.display = 'flex';
-        }
-
-        function closeNotLinkedModal() {
-            document.getElementById('notLinkedModal').style.display = 'none';
-        }
-
-        // ── Quick Actions (with dependency checks) ───────
+        // ── Quick Actions ─────────────────────────────────
         function openInSACalc() {
-            closeNotLinkedModal();
+            window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE);
+        }
+
+        function openBOM() {
+            // BOM is generated from SA calc — navigate there with project context
             window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE);
         }
 
         function openInTCQuote() {
             window.location.href = '/tc?project=' + encodeURIComponent(JOB_CODE);
-        }
-
-        function handleTCClick() {
-            if (!estStatus.sa_linked) {
-                showNotLinkedModal(
-                    'SA Estimator Not Linked',
-                    'The TC Estimator depends on SA Estimator data (material costs, column count, footing depth). Complete the SA Estimator first.'
-                );
-                return;
-            }
-            openInTCQuote();
-        }
-
-        function handleBOMClick() {
-            if (!estStatus.sa_linked) {
-                showNotLinkedModal(
-                    'SA Estimator Not Linked',
-                    'The Bill of Materials is generated from the SA Estimator. Complete the SA Estimator and run Calculate BOM first.'
-                );
-                return;
-            }
-            if (!estStatus.bom_available) {
-                showNotLinkedModal(
-                    'BOM Not Calculated Yet',
-                    'The SA Estimator is linked but no BOM has been calculated yet. Open the SA Estimator and click Calculate BOM.'
-                );
-                return;
-            }
-            openBOM();
-        }
-
-        function openBOM() {
-            window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE) + '&tab=bom';
         }
 
         function openQuoteEditor() {
@@ -1672,6 +1636,63 @@ PROJECT_PAGE_HTML = r"""
 
         function openWorkOrders() {
             window.location.href = '/work-orders/' + encodeURIComponent(JOB_CODE);
+        }
+
+        // ── Project Assets Status (tool card indicators) ──────────
+        var PROJECT_ASSETS = null;
+
+        function loadProjectAssets() {
+            fetch('/api/project/assets?job_code=' + encodeURIComponent(JOB_CODE))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok && data.assets) {
+                    PROJECT_ASSETS = data.assets;
+                    renderToolCards(data.assets);
+                }
+            })
+            .catch(function() {
+                document.querySelectorAll('.tool-status').forEach(function(el) {
+                    el.textContent = '';
+                });
+            });
+        }
+
+        function renderToolCards(assets) {
+            var cards = [
+                { id: 'card-sa',    key: 'sa_estimator',  label: 'SA Estimator' },
+                { id: 'card-bom',   key: 'bom',           label: 'Bill of Materials' },
+                { id: 'card-tc',    key: 'tc_estimator',  label: 'TC Estimator' },
+                { id: 'card-quote', key: 'quote_editor',  label: 'Quote Editor' },
+                { id: 'card-shop',  key: 'shop_drawings', label: 'Shop Drawings' },
+                { id: 'card-wo',    key: 'work_orders',   label: 'Work Orders' },
+                { id: 'card-qc',    key: null,            label: 'QC Dashboard' }
+            ];
+
+            cards.forEach(function(c) {
+                var el = document.getElementById(c.id);
+                if (!el) return;
+                var asset = c.key ? (assets[c.key] || {}) : {};
+                var statusEl = el.querySelector('.tool-status');
+
+                if (asset.saved) {
+                    el.classList.remove('unsaved');
+                    el.classList.add('saved');
+                    var statusText = '\u2713 Saved';
+                    if (asset.version) statusText += ' (v' + asset.version + ')';
+                    if (asset.count) statusText += ' (' + asset.count + ' files)';
+                    if (statusEl) {
+                        statusEl.textContent = statusText;
+                        statusEl.className = 'tool-status status-saved';
+                    }
+                } else {
+                    el.classList.remove('saved');
+                    el.classList.add('unsaved');
+                    if (statusEl) {
+                        statusEl.textContent = '\u2717 Needs Completion';
+                        statusEl.className = 'tool-status status-missing';
+                    }
+                }
+            });
         }
 
         function duplicateProject() {
@@ -1726,6 +1747,55 @@ PROJECT_PAGE_HTML = r"""
                     alert('Project archived');
                     window.location.href = '/';
                 }
+            });
+        }
+
+        // ── Delete Project ────────────────────────────────
+        function showDeleteConfirm() {
+            document.getElementById('deleteJobLabel').textContent = JOB_CODE;
+            document.getElementById('deleteConfirmInput').value = '';
+            document.getElementById('deleteConfirmBtn').disabled = true;
+            document.getElementById('deleteConfirmBtn').style.opacity = '0.5';
+            document.getElementById('deleteModal').style.display = 'flex';
+        }
+
+        function hideDeleteConfirm() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        function checkDeleteInput() {
+            var val = document.getElementById('deleteConfirmInput').value.trim();
+            var btn = document.getElementById('deleteConfirmBtn');
+            if (val === JOB_CODE) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            }
+        }
+
+        function confirmDeleteProject() {
+            document.getElementById('deleteConfirmBtn').textContent = 'Deleting...';
+            document.getElementById('deleteConfirmBtn').disabled = true;
+
+            fetch('/api/project/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_code: JOB_CODE, confirm: true })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    window.location.href = '/?deleted=' + encodeURIComponent(JOB_CODE);
+                } else {
+                    alert('Delete failed: ' + (data.error || 'Unknown error'));
+                    hideDeleteConfirm();
+                }
+            })
+            .catch(function(err) {
+                alert('Error: ' + err.message);
+                hideDeleteConfirm();
             });
         }
 

@@ -43,7 +43,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-
 input[type=checkbox]{width:auto;margin-right:6px}
 .check-label{display:flex;align-items:center;font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer}
 /* Buttons */
-.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px;position:relative;z-index:2}
+.btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
 .btn-primary{background:var(--tf-blue);color:#fff}.btn-primary:hover{background:var(--tf-blue-m)}
 .btn-red{background:var(--tf-red);color:#fff}.btn-red:hover{opacity:.9}
 .btn-green{background:var(--tf-green);color:#fff}.btn-green:hover{opacity:.9}
@@ -60,8 +60,6 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .cat-row td{background:var(--tf-blue-l)!important;font-weight:700;color:var(--tf-blue);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .total-row td{background:var(--tf-green)!important;color:#fff!important;font-weight:700}
 .sell-row td{background:var(--tf-red)!important;color:#fff!important;font-weight:700;font-size:13px}
-.bom-override td{background:#FFF8E0!important}
-.bom-override-marker{color:#C89A2E;font-weight:700;font-size:14px}
 /* Summary stats */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
 .stat-card{background:#fff;border:1px solid var(--tf-border);border-radius:6px;padding:12px 14px;text-align:center}
@@ -96,23 +94,11 @@ input[type=checkbox]{width:auto;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Hidden */
 .hidden{display:none}
-/* When wrapped by shared_nav inject_nav(), adjust layout */
-.tf-main #main{height:calc(100vh - 84px)}
-.tf-main #topbar{display:none}
-.tf-main #tabs{border-radius:0}
-/* Toast Notifications */
-.toast-container{position:fixed;top:60px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-.toast{padding:12px 20px;border-radius:6px;color:#fff;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn .3s ease;max-width:400px;pointer-events:auto}
-.toast-success{background:#16A34A}.toast-error{background:#DC2626}.toast-info{background:#1E40AF}
-@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 /* Responsive tweaks */
 @media(max-width:768px){#main{flex-direction:column}#sidebar{width:100%;border-right:none;border-bottom:1px solid var(--tf-border)}}
 </style>
 </head>
 <body>
-
-<!-- Toast Container -->
-<div id="toast-container" class="toast-container"></div>
 
 <!-- Topbar -->
 <div id="topbar">
@@ -134,7 +120,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
 </div>
 
 <!-- Inventory Alert Banner (hidden by default, shown by JS) -->
-<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory')">
+<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab')[4].classList.add('active')">
   <span style="font-weight:700">⚠️ Inventory Alert:</span>
   <span id="inv-alert-text"></span>
   <span style="float:right;color:#666;font-size:11px">Click to view →</span>
@@ -142,11 +128,11 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
 <!-- Tabs -->
 <div id="tabs">
-  <div class="tab active" data-tab="calc" onclick="showTab('calc', this)">⚙️ Calculator</div>
-  <div class="tab" data-tab="bom" onclick="showTab('bom', this)">📋 Bill of Materials</div>
-  <div class="tab" data-tab="pricing" onclick="showTab('pricing', this)">💰 Price Overrides</div>
-  <div class="tab" data-tab="labels" onclick="showTab('labels', this)">🏷️ Shop Labels</div>
-  <div class="tab" data-tab="inventory" onclick="showTab('inventory', this)">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
+  <div class="tab active" onclick="showTab('calc')">⚙️ Calculator</div>
+  <div class="tab" onclick="showTab('bom')">📋 Bill of Materials</div>
+  <div class="tab" onclick="showTab('pricing')">💰 Price Overrides</div>
+  <div class="tab" onclick="showTab('labels')">🏷️ Shop Labels</div>
+  <div class="tab" onclick="showTab('inventory')">📦 Inventory <span id="inv-tab-badge" style="display:none;background:#C00000;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px"></span></div>
 </div>
 
 <!-- Main -->
@@ -220,9 +206,15 @@ input[type=checkbox]{width:auto;margin-right:6px}
           <label>Job Code</label>
           <input type="text" id="proj_jobcode" placeholder="e.g. BGATN-24"/>
         </div>
-        <div class="form-group">
-          <label>Wind Speed (MPH)</label>
-          <input type="number" id="proj_wind" value="115" min="90" max="200"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="form-group">
+            <label>Wind Speed (MPH)</label>
+            <input type="number" id="proj_wind" value="115" min="90" max="200"/>
+          </div>
+          <div class="form-group">
+            <label>Footing Depth (ft)</label>
+            <input type="number" id="proj_footing" value="10" min="4" max="25" step="0.5"/>
+          </div>
         </div>
         <div class="form-group">
           <label>Markup (%)</label>
@@ -248,8 +240,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
     </div>
 
     <!-- Calculate Button -->
-    <div style="margin-bottom:16px;position:sticky;bottom:0;background:#fff;padding-top:8px;z-index:5">
-      <button class="btn btn-red" style="width:100%;padding:12px;font-size:14px;position:relative;z-index:10" onclick="calculate()">
+    <div style="margin-bottom:16px">
+      <button class="btn btn-red" style="width:100%;padding:12px;font-size:14px" onclick="calculate()">
         ⚡ CALCULATE BOM
       </button>
     </div>
@@ -350,19 +342,6 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
 <script>
 // ─────────────────────────────────────────────
-// TOAST NOTIFICATIONS
-// ─────────────────────────────────────────────
-function showToast(msg, type='info', duration=3000) {
-  let c = document.getElementById('toast-container');
-  if (!c) { c = document.createElement('div'); c.id = 'toast-container'; c.className = 'toast-container'; document.body.appendChild(c); }
-  const t = document.createElement('div');
-  t.className = 'toast toast-' + type;
-  t.textContent = msg;
-  c.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, duration);
-}
-
-// ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
 let buildings = [];
@@ -397,11 +376,6 @@ window.onload = function() {
   const projectCode = urlParams.get('project');
   if (projectCode) {
     autoLoadFromProject(projectCode);
-  }
-  // Auto-switch tab from URL param ?tab=bom (or calc, pricing, labels, inventory)
-  const tabParam = urlParams.get('tab');
-  if (tabParam) {
-    showTab(tabParam);
   }
 };
 
@@ -459,17 +433,11 @@ async function checkInventoryAlerts() {
 // ─────────────────────────────────────────────
 // TABS
 // ─────────────────────────────────────────────
-function showTab(name, clickedEl) {
+function showTab(name) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
-  document.querySelectorAll('#tabs .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.remove('hidden');
-  // Highlight the correct tab — use data-tab attribute for reliable matching
-  if (clickedEl) {
-    clickedEl.classList.add('active');
-  } else {
-    const matchTab = document.querySelector('#tabs .tab[data-tab="' + name + '"]');
-    if (matchTab) matchTab.classList.add('active');
-  }
+  event.target.classList.add('active');
   if (name === 'inventory') loadInventory();
   if (name === 'pricing') renderPricingTab();
 }
@@ -487,17 +455,7 @@ function updateJobCode() {
 function onStateChange() {
   const st = document.getElementById('proj_state').value;
   if (WIND_BY_STATE[st]) document.getElementById('proj_wind').value = WIND_BY_STATE[st];
-  // proj_footing was removed (footing is per-building now) — update all buildings instead
-  const footingEl = document.getElementById('proj_footing');
-  if (footingEl && FOOTING_BY_STATE[st]) {
-    footingEl.value = FOOTING_BY_STATE[st];
-  } else if (FOOTING_BY_STATE[st]) {
-    buildings.forEach(b => {
-      b.footing_depth_ft = FOOTING_BY_STATE[st];
-      const el = document.getElementById(`footing_${b.id}`);
-      if (el) el.value = FOOTING_BY_STATE[st];
-    });
-  }
+  if (FOOTING_BY_STATE[st]) document.getElementById('proj_footing').value = FOOTING_BY_STATE[st];
   updateJobCode();
 }
 
@@ -540,28 +498,8 @@ function addBuilding() {
     rebar_rafter_size: '#9',
     include_trim: false,
     include_labor: true,
-    include_consumables: true,
     welding_cost_per_5000sqft: 300,
-    labor_daily_rate: 960,
     coil_prices: {},
-    // Per-building footing depth (default 10')
-    footing_depth_ft: 10,
-    // Rafter Configuration defaults (column placement, angled purlins, rebar, splice)
-    column_mode: 'auto',              // "auto" (quarter-point), "spacing", or "manual"
-    column_spacing_ft: 25,            // used when column_mode === 'spacing'
-    column_count_manual: 1,           // used when column_mode === 'manual'
-    column_positions_manual: '',      // comma-separated ft positions for manual mode
-    front_col_position_ft: 0,         // front column position when back wall enabled
-    angled_purlins: false,            // master toggle for angled purlin mode
-    purlin_angle_deg: 15,             // angle from perpendicular (5–45°)
-    rebar_max_stick_ft: 20,           // max rebar stick length in rafter
-    rebar_end_gap_ft: 5,              // gap from rafter end to first rebar
-    splice_location_ft: 0,            // 0 = auto-calculate splice point
-    // Rafter/Column drawing fields
-    purlin_type: 'Z',                 // Z or C channel purlins
-    roofing_overhang_ft: 0.5,         // panel overhang past eave purlin
-    above_grade_ft: 8,                // column height above finished grade
-    cut_allowance_in: 6,              // extra length for field cuts (inches)
   });
   renderBuildingList();
   renderBuildingForms();
@@ -585,7 +523,7 @@ function renderBuildingList() {
   el.innerHTML = buildings.map((b,i) => `
     <div class="bldg-item ${i===0?'active':''}" onclick="scrollToBldg('${b.id}')">
       <div class="bldg-name">${b.building_name || b.name || 'Building '+(i+1)}</div>
-      <div class="bldg-dims">${b.width_ft <= 45 ? 'TEE' : 'DBL-COL'} · ${b.width_ft}'×${b.length_ft}' · Ht:${b.clear_height_ft}'</div>
+      <div class="bldg-dims">${b.type.toUpperCase()} · ${b.width_ft}'×${b.length_ft}' · Ht:${b.clear_height_ft}'</div>
     </div>
   `).join('');
 }
@@ -715,11 +653,11 @@ function buildingFormHTML(b) {
       <!-- Row 1: Type, Pitch, Width, Clear Height -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
-          <label>Frame Type (Auto)</label>
-          <div id="${b.id}_frame_type" style="padding:7px 10px;background:#F0F7FF;border:1px solid var(--tf-border);border-radius:4px;font-size:13px;font-weight:600;color:var(--tf-blue)">
-            ${b.width_ft <= 45 ? 'Tee (1 col/rafter)' : 'Double Column (2+ cols/rafter)'}
-          </div>
-          <div style="font-size:10px;color:#888;margin-top:2px">Auto: ≤45' = Tee, >45' = multi-column</div>
+          <label>Column Type</label>
+          <select onchange="updateBldg('${b.id}','type',this.value)">
+            <option value="2post" ${b.type==='2post'?'selected':''}>2-Post</option>
+            <option value="tee" ${b.type==='tee'?'selected':''}>Tee (Center Col)</option>
+          </select>
         </div>
         <div class="form-group">
           <label>Roof Pitch</label>
@@ -779,7 +717,7 @@ function buildingFormHTML(b) {
         </div>
       </div>
 
-      <!-- Rafter Placement (Overhang + Space Width) -->
+      <!-- Column Placement (Overhang + Space Width) -->
       ${(() => {
         const sw = parseFloat(b.space_width_ft) || 0;
         const layout = previewColumnLayout(b);
@@ -787,7 +725,7 @@ function buildingFormHTML(b) {
         return `
       <div style="background:#F0F7FF;border:1px solid #BDD6EE;border-radius:6px;padding:10px;margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:var(--tf-blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">
-          Rafter Placement
+          Column Placement
         </div>
         <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
           <div class="form-group" style="margin-bottom:0">
@@ -819,13 +757,31 @@ function buildingFormHTML(b) {
       </div>`;
       })()}
 
-      <!-- Row 3: Purlin spacing (direct input) -->
+      <!-- Row 3: Purlin spacing (auto-calc with override) -->
       <div style="background:#F0F4FA;border:1px solid var(--tf-border);border-radius:6px;padding:10px;margin-bottom:10px">
-        <div class="form-group" style="margin-bottom:0">
-          <label>Purlin Spacing (ft)</label>
-          <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
-            onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
-          <div style="font-size:10px;color:#888;margin-top:2px">OC (on-center) spacing</div>
+        <div style="font-size:11px;font-weight:700;color:var(--tf-blue);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">
+          Purlin Spacing
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <span style="font-size:12px">Spacing: </span>
+            <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
+              style="width:70px;padding:4px 6px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px"
+              onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
+            <span style="font-size:11px;color:#888"> ft OC</span>
+            <span id="${b.id}_purlin_auto" style="font-size:10px;color:var(--tf-blue-m);margin-left:4px">${spacingLabel}</span>
+          </div>
+          <div>
+            <span style="font-size:12px">Rows: </span>
+            <input type="number" value="${rows}" min="1" max="50" step="1"
+              style="width:60px;padding:4px 6px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px"
+              onchange="(function(v){const sp=${b.width_ft}/(v-1||1);updateBldg('${b.id}','purlin_spacing_override',parseFloat(sp.toFixed(3)));refreshPurlinDisplay('${b.id}')})(parseInt(this.value))"/>
+            <span id="${b.id}_purlin_rows" style="font-size:10px;color:#888"> rows</span>
+          </div>
+          <button class="btn btn-sm btn-outline" style="font-size:10px;padding:3px 8px"
+            onclick="updateBldg('${b.id}','purlin_spacing_override',null);renderBuildingForms()">
+            Reset Auto
+          </button>
         </div>
       </div>
 
@@ -835,12 +791,6 @@ function buildingFormHTML(b) {
           ▸ Column Details
         </summary>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
-          <div class="form-group">
-            <label>Footing Depth (ft)</label>
-            <input type="number" value="${b.footing_depth_ft||10}" min="4" max="25" step="0.5"
-              onchange="updateBldg('${b.id}','footing_depth_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Default: 10 ft</div>
-          </div>
           <div class="form-group">
             <label>Embedment (ft)</label>
             <input type="number" value="${b.embedment_ft||4.333}" min="1" max="15" step="0.083"
@@ -950,129 +900,6 @@ function buildingFormHTML(b) {
       </details>`;
       })()}
 
-      <!-- Row 4b: Rafter Configuration (Column Placement, Angled Purlins, Rebar Config) -->
-      <details style="margin-bottom:8px" ${(b.angled_purlins||b.column_mode!=='auto')?'open':''}>
-        <summary style="cursor:pointer;font-size:12px;color:var(--tf-blue-m);font-weight:600;padding:4px 0">
-          ▸ Rafter Configuration
-        </summary>
-        <div style="font-size:10px;color:#888;margin-bottom:8px;margin-top:6px">
-          Column placement on rafter, angled purlin mode, and rebar stick layout.
-        </div>
-
-        <!-- Column Mode -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-          <div class="form-group">
-            <label>Column Mode</label>
-            <select onchange="updateBldg('${b.id}','column_mode',this.value);renderBuildingForms()">
-              <option value="auto" ${(b.column_mode||'auto')==='auto'?'selected':''}>Auto (Quarter-Point)</option>
-              <option value="spacing" ${b.column_mode==='spacing'?'selected':''}>Spacing</option>
-              <option value="manual" ${b.column_mode==='manual'?'selected':''}>Manual</option>
-            </select>
-            <div style="font-size:10px;color:#888;margin-top:2px">
-              Auto: ≤45' = 1 col, >45' = max(2, ceil(W/60))
-            </div>
-          </div>
-          ${b.column_mode==='spacing' ? `
-          <div class="form-group">
-            <label>Column Spacing (ft)</label>
-            <input type="number" value="${b.column_spacing_ft||25}" min="5" max="100" step="0.5"
-              onchange="updateBldg('${b.id}','column_spacing_ft',parseFloat(this.value))"/>
-          </div>` : b.column_mode==='manual' ? `
-          <div class="form-group">
-            <label>Column Count</label>
-            <input type="number" value="${b.column_count_manual||1}" min="1" max="10" step="1"
-              onchange="updateBldg('${b.id}','column_count_manual',parseInt(this.value))"/>
-          </div>
-          <div class="form-group">
-            <label>Positions (ft, comma-sep)</label>
-            <input type="text" value="${b.column_positions_manual||''}" placeholder="e.g. 10,30"
-              onchange="updateBldg('${b.id}','column_positions_manual',this.value)"/>
-          </div>` : '<div></div><div></div>'}
-        </div>
-
-        ${b.include_back_wall ? `
-        <div class="form-group" style="max-width:220px;margin-bottom:10px">
-          <label>Front Column Position (ft from left end)</label>
-          <input type="number" value="${b.front_col_position_ft||0}" min="0" max="100" step="0.5"
-            onchange="updateBldg('${b.id}','front_col_position_ft',parseFloat(this.value))"/>
-          <div style="font-size:10px;color:#888;margin-top:2px">Back col fixed at 19" from right end when back wall enabled</div>
-        </div>` : ''}
-
-        <!-- Angled Purlins -->
-        <div style="display:flex;gap:20px;margin-bottom:10px;align-items:center">
-          <label class="check-label">
-            <input type="checkbox" ${b.angled_purlins?'checked':''}
-              onchange="updateBldg('${b.id}','angled_purlins',this.checked);renderBuildingForms()"/>
-            Angled Purlins
-          </label>
-          ${b.angled_purlins ? `
-          <div class="form-group" style="margin-bottom:0;max-width:160px">
-            <label>Purlin Angle (deg)</label>
-            <input type="number" value="${b.purlin_angle_deg||15}" min="5" max="45" step="0.5"
-              onchange="updateBldg('${b.id}','purlin_angle_deg',parseFloat(this.value))"/>
-          </div>
-          <div style="font-size:10px;color:#f08c00;background:#fff8e1;padding:4px 8px;border-radius:4px;max-width:280px">
-            ⚠ P6 end plates (9"×15") will replace P2 end caps (9"×24"). All clips same angle, no mirroring.
-          </div>` : ''}
-        </div>
-
-        <!-- Rebar stick config -->
-        ${b.include_rafter_rebar ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;max-width:440px">
-          <div class="form-group">
-            <label>Max Rebar Stick (ft)</label>
-            <input type="number" value="${b.rebar_max_stick_ft||20}" min="5" max="40" step="1"
-              onchange="updateBldg('${b.id}','rebar_max_stick_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Default: 20'</div>
-          </div>
-          <div class="form-group">
-            <label>End Gap (ft)</label>
-            <input type="number" value="${b.rebar_end_gap_ft||5}" min="0" max="20" step="0.5"
-              onchange="updateBldg('${b.id}','rebar_end_gap_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Gap from rafter end to first rebar</div>
-          </div>
-        </div>` : ''}
-
-        <!-- Splice override -->
-        <div class="form-group" style="max-width:220px;margin-bottom:10px">
-          <label>Splice Location Override (ft)</label>
-          <input type="number" value="${b.splice_location_ft||0}" min="0" max="100" step="0.5"
-            onchange="updateBldg('${b.id}','splice_location_ft',parseFloat(this.value))"/>
-          <div style="font-size:10px;color:#888;margin-top:2px">0 = auto-calculate</div>
-        </div>
-
-        <!-- Purlin Type, Roofing Overhang, Above Grade, Cut Allowance -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-          <div class="form-group">
-            <label>Purlin Type</label>
-            <select onchange="updateBldg('${b.id}','purlin_type',this.value)">
-              <option value="Z" ${(b.purlin_type||'Z')==='Z'?'selected':''}>Z-Purlin</option>
-              <option value="C" ${b.purlin_type==='C'?'selected':''}>C-Purlin</option>
-            </select>
-            <div style="font-size:10px;color:#888;margin-top:2px">Z or C channel purlins</div>
-          </div>
-          <div class="form-group">
-            <label>Roofing Overhang (ft)</label>
-            <input type="number" value="${b.roofing_overhang_ft||0.5}" min="0" max="5" step="0.25"
-              onchange="updateBldg('${b.id}','roofing_overhang_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Panel overhang past eave purlin</div>
-          </div>
-          <div class="form-group">
-            <label>Above-Grade Height (ft)</label>
-            <input type="number" value="${b.above_grade_ft||8}" min="0" max="20" step="0.5"
-              onchange="updateBldg('${b.id}','above_grade_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Column height above finished grade</div>
-          </div>
-          <div class="form-group">
-            <label>Cut Allowance (in)</label>
-            <input type="number" value="${b.cut_allowance_in||6}" min="0" max="24" step="1"
-              onchange="updateBldg('${b.id}','cut_allowance_in',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Extra length for field cuts</div>
-          </div>
-        </div>
-
-      </details>
-
       <!-- Row 5: Hardware & Connections -->
       <details style="margin-bottom:8px">
         <summary style="cursor:pointer;font-size:12px;color:var(--tf-blue-m);font-weight:600;padding:4px 0">
@@ -1105,29 +932,10 @@ function buildingFormHTML(b) {
             Include Trim (J-Channel)
           </label>
           <label class="check-label">
-            <input type="checkbox" ${b.include_consumables?'checked':''}
-              onchange="updateBldg('${b.id}','include_consumables',this.checked)"/>
-            Include Consumables
-          </label>
-          <label class="check-label">
             <input type="checkbox" ${b.include_labor?'checked':''}
               onchange="updateBldg('${b.id}','include_labor',this.checked)"/>
             Include Fabrication Labor
           </label>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-          <div class="form-group">
-            <label>Consumables Rate ($/5,000 sqft)</label>
-            <input type="number" value="${b.welding_cost_per_5000sqft||300}" min="0" step="10"
-              onchange="updateBldg('${b.id}','welding_cost_per_5000sqft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Wire, gas, cold galvanize paint</div>
-          </div>
-          <div class="form-group">
-            <label>Labor Daily Rate ($)</label>
-            <input type="number" value="${b.labor_daily_rate||960}" min="100" step="10"
-              onchange="updateBldg('${b.id}','labor_daily_rate',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Default: $960/day</div>
-          </div>
         </div>
       </details>
 
@@ -1234,7 +1042,7 @@ async function calculate() {
     customer_name: document.getElementById('proj_customer').value || '',
     quote_date: document.getElementById('proj_date').value || '',
     wind_speed_mph: parseFloat(document.getElementById('proj_wind').value) || 115,
-    footing_depth_ft: (document.getElementById('proj_footing') ? parseFloat(document.getElementById('proj_footing').value) : (buildings[0] ? buildings[0].footing_depth_ft : 10)) || 10,
+    footing_depth_ft: parseFloat(document.getElementById('proj_footing').value) || 10,
     markup_pct: parseFloat(document.getElementById('proj_markup').value) || 35,
   };
 
@@ -1248,7 +1056,7 @@ async function calculate() {
     });
     const data = await res.json();
     if (data.error) {
-      showToast('Calculation error: ' + data.error);
+      alert('Calculation error: ' + data.error);
       return;
     }
     currentBOM = data;
@@ -1256,9 +1064,12 @@ async function calculate() {
     renderBOM(data);
     renderPricingTab();
     // Switch to BOM tab
-    showTab('bom');
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-bom').classList.remove('hidden');
+    document.querySelectorAll('.tab')[1].classList.add('active');
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
+    alert('Error: ' + e.message);
   }
 }
 
@@ -1349,40 +1160,30 @@ function renderBOM(data) {
               <th style="text-align:right">Wt (LBS)</th>
               <th style="text-align:right">Unit Cost</th>
               <th style="text-align:right">Total Cost</th>
-              <th style="text-align:right">Override $</th>
               <th>Notes</th>
             </tr>
           </thead>
           <tbody>`;
 
     let lastCat = null;
-    for (let li = 0; li < bldg.line_items.length; li++) {
-      const item = bldg.line_items[li];
+    for (const item of bldg.line_items) {
       if (item.category !== lastCat) {
         lastCat = item.category;
-        html += `<tr class="cat-row"><td colspan="9">${item.category}</td></tr>`;
+        html += `<tr class="cat-row"><td colspan="8">${item.category}</td></tr>`;
       }
       const qty = typeof item.qty === 'number' ? item.qty.toLocaleString('en-US',{maximumFractionDigits:2}) : item.qty;
       const wt = item.total_weight_lbs ? item.total_weight_lbs.toLocaleString('en-US',{maximumFractionDigits:1}) : '—';
       const uc = item.unit_cost ? '$' + item.unit_cost.toFixed(4) : '—';
       const tc = item.total_cost ? '$' + item.total_cost.toLocaleString('en-US',{minimumFractionDigits:2}) : '—';
-      const ov = (priceOverrides[bi] || {})[li];
-      const isEdited = ov && ov.cost !== undefined;
-      const ovVal = isEdited ? ov.cost.toFixed(2) : '';
-      const rowBg = isEdited ? 'background:#FFF8E0;' : '';
       html += `
-        <tr style="${rowBg}">
-          <td>${isEdited ? '<span title="Price Override" style="color:#C89A2E;font-weight:700;font-size:14px">⬥</span>' : ''}</td>
+        <tr>
+          <td></td>
           <td>${item.description}</td>
           <td style="text-align:right;font-weight:600">${qty}</td>
           <td>${item.unit}</td>
           <td style="text-align:right">${wt}</td>
-          <td style="text-align:right;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${uc}</td>
-          <td style="text-align:right;font-weight:600;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${tc}</td>
-          <td style="text-align:right">
-            <input type="number" value="${ovVal}" placeholder="—" step="0.01" style="width:90px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px;background:${isEdited?'#FFF8E0':'#fff'}"
-              onchange="bomOverrideCost(${bi},${li},this.value)" title="Enter override total cost"/>
-          </td>
+          <td style="text-align:right">${uc}</td>
+          <td style="text-align:right;font-weight:600">${tc}</td>
           <td style="font-size:10px;color:#888">${item.notes||''}</td>
         </tr>`;
     }
@@ -1394,12 +1195,11 @@ function renderBOM(data) {
             <td></td>
             <td style="text-align:right">$${(bldg.total_material_cost||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
             <td></td>
-            <td></td>
           </tr>
           ${bldg.labor_sell_price > 0 ? `
           <tr style="background:#EEF5FF!important">
             <td colspan="4" style="color:var(--tf-blue);font-weight:700">
-              FABRICATION LABOR (included in sell)
+              FABRICATION LABOR
               <span style="font-size:10px;font-weight:400;margin-left:8px;color:#666">
                 ${(bldg.geometry.labor||{}).total_fab_days||0} shop days ·
                 ${(bldg.geometry.labor||{}).days_columns||0}d columns +
@@ -1412,11 +1212,10 @@ function renderBOM(data) {
             </td>
             <td></td><td></td>
             <td style="text-align:right;color:var(--tf-blue);font-weight:700">$${bldg.labor_raw_cost.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-            <td></td>
             <td style="font-size:10px;color:#888">raw (before markup)</td>
           </tr>` : ''}
           <tr class="sell-row">
-            <td colspan="7" style="text-align:right">SELL PRICE (materials + labor)</td>
+            <td colspan="6" style="text-align:right">SELL PRICE (materials + labor)</td>
             <td style="text-align:right">$${((bldg.total_sell_price||0)+(bldg.labor_sell_price||0)).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
             <td></td>
           </tr>
@@ -1433,7 +1232,7 @@ function renderBOM(data) {
 // SEND TO TC QUOTE
 // ─────────────────────────────────────────────
 function sendToTCQuote() {
-  if (!currentBOM) { showToast('Please calculate BOM first.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate BOM first.'); return; }
   // Use adjusted totals if price overrides / manual items exist
   const totals = getAdjustedTotals();
   const sellPrice = (Object.keys(priceOverrides).length > 0 || manualItems.length > 0)
@@ -1653,25 +1452,6 @@ function renderPricingTab() {
   el.innerHTML = html;
 }
 
-// BOM tab inline override — enter a price directly in the BOM and it highlights as override
-function bomOverrideCost(bi, li, val) {
-  if (val === '' || val === null || isNaN(parseFloat(val))) {
-    // Clear override — reset to calculated
-    if (priceOverrides[bi]) {
-      delete priceOverrides[bi][li];
-      if (Object.keys(priceOverrides[bi]).length === 0) delete priceOverrides[bi];
-    }
-  } else {
-    if (!priceOverrides[bi]) priceOverrides[bi] = {};
-    const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
-    const cost = parseFloat(val);
-    priceOverrides[bi][li] = { cost: cost, sell: cost * (1 + markup) };
-  }
-  scheduleSave();
-  renderBOM(currentBOM);   // Re-render BOM to show highlight
-  renderPricingTab();       // Keep pricing tab in sync
-}
-
 function overrideCost(bi, li, val) {
   if (!priceOverrides[bi]) priceOverrides[bi] = {};
   const markup = (parseFloat(document.getElementById('proj_markup')?.value) || 35) / 100;
@@ -1759,11 +1539,11 @@ async function autoSaveProject() {
 }
 
 async function saveProjectManual() {
-  if (!currentBOM) { showToast('Please calculate BOM first.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate BOM first.'); return; }
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
-  if (!jobCode) { showToast('Please enter a Job Code first.', 'info'); return; }
+  if (!jobCode) { alert('Please enter a Job Code first.'); return; }
   await autoSaveProject();
-  showToast('Project saved as v' + currentVersion + ': ' + jobCode, 'success');
+  alert('Project saved as v' + currentVersion + ': ' + jobCode);
   loadRecentProjects();
 }
 
@@ -1803,7 +1583,7 @@ async function loadProject(jobCode, version) {
       body: JSON.stringify(payload),
     });
     const result = await resp.json();
-    if (!result.ok) { showToast('Load failed: ' + (result.error||'unknown'), 'error'); return; }
+    if (!result.ok) { alert('Load failed: ' + (result.error||'unknown')); return; }
     const d = result.data;
 
     // Restore project info fields
@@ -1843,13 +1623,13 @@ async function loadProject(jobCode, version) {
     updateVersionBadge();
     if (currentBOM) renderPricingTab();
 
-    showToast('Project loaded: ' + jobCode + ' (v' + currentVersion + ')', 'success');
-  } catch(e) { showToast('Load error: ' + e.message, 'error'); }
+    alert('Project loaded: ' + jobCode + ' (v' + currentVersion + ')');
+  } catch(e) { alert('Load error: ' + e.message); }
 }
 
 async function showRevisionHistory() {
   const jobCode = document.getElementById('proj_jobcode')?.value?.trim();
-  if (!jobCode) { showToast('Enter a Job Code or load a project first.', 'info'); return; }
+  if (!jobCode) { alert('Enter a Job Code or load a project first.'); return; }
   try {
     const resp = await fetch('/api/project/revisions', {
       method: 'POST',
@@ -1858,7 +1638,7 @@ async function showRevisionHistory() {
     });
     const result = await resp.json();
     if (!result.ok || !result.revisions.length) {
-      showToast('No revisions found for ' + jobCode, 'info');
+      alert('No revisions found for ' + jobCode);
       return;
     }
     // Render revision history in a modal-style overlay
@@ -1906,13 +1686,13 @@ async function showRevisionHistory() {
     html += '</table>';
     html += '</div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
-  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function compareVersions(jobCode) {
   const va = parseInt(document.getElementById('compare_va')?.value);
   const vb = parseInt(document.getElementById('compare_vb')?.value);
-  if (!va || !vb || va === vb) { showToast('Select two different versions.', 'info'); return; }
+  if (!va || !vb || va === vb) { alert('Select two different versions.'); return; }
   const el = document.getElementById('compare-results');
   if (el) el.innerHTML = '<div style="color:#888;font-size:12px">Loading comparison...</div>';
   try {
@@ -1965,7 +1745,7 @@ async function compareVersions(jobCode) {
 // DOWNLOADS
 // ─────────────────────────────────────────────
 async function downloadExcel() {
-  if (!currentBOM) { showToast('Please calculate first.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate first.'); return; }
   const res = await fetch('/api/excel', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -1980,7 +1760,7 @@ async function downloadExcel() {
 }
 
 async function downloadPDF() {
-  if (!currentBOM) { showToast('Please calculate first.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate first.'); return; }
   const res = await fetch('/api/pdf', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -1998,7 +1778,7 @@ async function downloadPDF() {
 // LABELS
 // ─────────────────────────────────────────────
 async function generateLabels() {
-  if (!currentBOM) { showToast('Please calculate a BOM first.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate a BOM first.'); return; }
   const payload = {
     bom: currentBOM,
     destination: document.getElementById('lbl_destination').value,
@@ -2017,7 +1797,7 @@ async function generateLabels() {
     body: JSON.stringify(payload),
   });
   const data = await res.json();
-  if (data.error) { showToast(data.error, 'error'); return; }
+  if (data.error) { alert(data.error); return; }
   currentLabels = data;
   document.getElementById('labels-preview').innerHTML = `
     <div class="alert alert-success">✅ Generated ${data.count} labels. ZPL file ready to print on Zebra ZT411.</div>
@@ -2026,7 +1806,7 @@ async function generateLabels() {
 }
 
 async function downloadZPL() {
-  if (!currentLabels || !currentLabels.zpl) { showToast('Please generate labels first.', 'info'); return; }
+  if (!currentLabels || !currentLabels.zpl) { alert('Please generate labels first.'); return; }
   const blob = new Blob([currentLabels.zpl], {type:'text/plain'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2036,14 +1816,14 @@ async function downloadZPL() {
 }
 
 async function downloadLabelsPDF() {
-  if (!currentBOM) { showToast('Please calculate BOM first, then generate labels.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate BOM first, then generate labels.'); return; }
   const payload = buildLabelsPayload();
   const res = await fetch('/api/labels/pdf', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
-  if (!res.ok) { showToast('PDF export failed: ' + await res.text(), 'error'); return; }
+  if (!res.ok) { alert('PDF export failed: ' + await res.text()); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2054,14 +1834,14 @@ async function downloadLabelsPDF() {
 }
 
 async function downloadLabelsCSV() {
-  if (!currentBOM) { showToast('Please calculate BOM first, then generate labels.', 'info'); return; }
+  if (!currentBOM) { alert('Please calculate BOM first, then generate labels.'); return; }
   const payload = buildLabelsPayload();
   const res = await fetch('/api/labels/csv', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload)
   });
-  if (!res.ok) { showToast('CSV export failed: ' + await res.text(), 'error'); return; }
+  if (!res.ok) { alert('CSV export failed: ' + await res.text()); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2467,9 +2247,9 @@ async function deleteCoil(coilId, coilName) {
     if (result.ok) {
       loadInventory();
     } else {
-      showToast('Delete failed: ' + (result.error || 'unknown error'), 'error');
+      alert('Delete failed: ' + (result.error || 'unknown error'));
     }
-  } catch(e) { showToast('Delete error: ' + e.message, 'error'); }
+  } catch(e) { alert('Delete error: ' + e.message); }
 }
 
 function generateCoilId() {
@@ -2500,7 +2280,7 @@ async function printCoilSticker(fmt) {
   const coilId    = existingId || (newIdEl?.value.trim() || '');
 
   if (!coilId) {
-    showToast('Please select an existing coil or enter a New Coil ID.', 'info');
+    alert('Please select an existing coil or enter a New Coil ID.');
     return;
   }
 
@@ -2528,7 +2308,7 @@ async function printCoilSticker(fmt) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ coil_id: coilId, format: fmt, coil: coilData }),
     });
-    if (!resp.ok) { showToast('Sticker error: ' + await resp.text(), 'error'); return; }
+    if (!resp.ok) { alert('Sticker error: ' + await resp.text()); return; }
     const blob = await resp.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2540,7 +2320,7 @@ async function printCoilSticker(fmt) {
     if (status) status.textContent = '✅ Downloaded!';
     if (createEntry) { setTimeout(loadInventory, 800); }
   } catch(e) {
-    showToast('Failed: ' + e, 'error');
+    alert('Failed: ' + e);
     if (status) status.textContent = '';
   }
 }
@@ -2584,7 +2364,7 @@ async function quickPrintSticker(coilId, coilName) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ coil_id: coilId, format: 'pdf', coil: {} }),
   });
-  if (!resp.ok) { showToast('Sticker error: ' + await resp.text(), 'error'); return; }
+  if (!resp.ok) { alert('Sticker error: ' + await resp.text()); return; }
   const blob = await resp.blob();
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -2597,7 +2377,7 @@ async function quickPrintSticker(coilId, coilName) {
 async function addNewCoil() {
   const coilId = document.getElementById('new_coil_id')?.value.trim();
   const name   = document.getElementById('new_coil_name')?.value.trim();
-  if (!coilId || !name) { showToast('Coil ID and Material Name are required.', 'info'); return; }
+  if (!coilId || !name) { alert('Coil ID and Material Name are required.'); return; }
 
   const statusEl = document.getElementById('new-coil-status');
   if (statusEl) statusEl.textContent = 'Adding...';
@@ -2619,7 +2399,7 @@ async function addNewCoil() {
     const invResp = await fetch('/api/inventory');
     const inv = await invResp.json();
     if (inv.coils && inv.coils[coilId]) {
-      showToast('Coil ID "' + coilId + '" already exists. Choose a different ID.', 'warning');
+      alert('Coil ID "' + coilId + '" already exists. Choose a different ID.');
       if (statusEl) statusEl.textContent = '';
       return;
     }
@@ -2665,7 +2445,7 @@ async function addMillCert() {
   const date    = document.getElementById('cert_date').value.trim();
   const pdfFile = document.getElementById('cert_pdf').files[0];
 
-  if (!heat) { showToast('Please enter a Heat Number.', 'info'); return; }
+  if (!heat) { alert('Please enter a Heat Number.'); return; }
 
   const statusEl = document.getElementById('cert-upload-status');
   statusEl.textContent = '⏳ Uploading...';
@@ -2699,8 +2479,6 @@ async function addMillCert() {
     statusEl.textContent = '❌ Upload failed: ' + e.message;
   }
 }
-
-// Global click handler removed — native onclick attributes handle all button actions
 </script>
 
 <!-- Global Search Overlay -->

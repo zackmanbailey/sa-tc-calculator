@@ -203,16 +203,19 @@ def _generate_sticker_data(cfg: ShopDrawingConfig) -> List[Dict]:
     Generate all sticker data for a project based on grouping rules.
     Returns list of dicts, one per sticker to print.
     """
+    # Force all config values to correct numeric types
+    cfg.ensure_numeric()
+
     stickers = []
     lbs_per_lft_cee = 10.83
-    n_frames = cfg.n_frames
+    n_frames = int(cfg.n_frames)
     n_struct_cols = n_frames if cfg.frame_type == "tee" else n_frames * 2
 
     # ── Column stickers (1 per column) ──
     import math as m
-    slope_deg = cfg.roof_pitch_deg
+    slope_deg = float(cfg.roof_pitch_deg)
     tan_slope = m.tan(m.radians(slope_deg))
-    dist = cfg.building_width_ft / (2 if cfg.frame_type == "tee" else 3)
+    dist = float(cfg.building_width_ft) / (2 if cfg.frame_type == "tee" else 3)
     col_len_ft = (cfg.clear_height_ft + dist * tan_slope
                   + cfg.embedment_ft + cfg.column_buffer_ft)
     col_weight = col_len_ft * 2 * lbs_per_lft_cee

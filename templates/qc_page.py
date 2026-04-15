@@ -341,12 +341,7 @@ let qcData = null;
 let inspTypes = {};
 let traceData = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (typeof setProjectContext === 'function') {
-        setProjectContext(JOB_CODE);
-    }
-    loadInspTypes(); loadQCData(); loadTraceability();
-});
+document.addEventListener('DOMContentLoaded', () => { loadInspTypes(); loadQCData(); loadTraceability(); });
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
     if (e.key==='Escape') { document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open')); _closeGS(); }

@@ -331,37 +331,6 @@ RAFTER_DEFAULTS = {
     "wall_side_overhang_limit_in": 3.5,    # Side with wall: only 3.5\" past rafter
     "no_wall_overhang_default_ft": 1.0,    # Side without wall: user input, default 1'
     "max_overhang_past_rafter_in": 32.5,   # 2'8.5\" absolute max, error if exceeded
-
-    # ── P6 End Plate (replaces P2 when angled purlins enabled) ──
-    "p6_plate": {
-        "thickness": "10GA",        # 0.135"
-        "width": 9,                 # inches
-        "length": 15,               # inches
-        "grade": "A572",
-        "weight_lbs": 5.06,         # each
-        "overhang_in": 0.5,         # ½" overhang all around 8"×14" beam
-        "purlin_holes": 0,          # no holes — purlins attach to P1 clips only
-        "machine": "P1",
-    },
-
-    # ── Angled purlin configuration ──
-    "angled_purlin_defaults": {
-        "enabled": False,
-        "default_angle_deg": 15,
-        "min_angle_deg": 5,
-        "max_angle_deg": 45,
-        "all_clips_same_direction": True,   # NO mirroring on last clip
-    },
-
-    # ── P1 / P3 clearance constraints ──
-    "p1_clearance_in": 0.5,                 # min P1 edge distance from rafter end
-    "p3_min_edge_distance_in": 13.0,        # P3 center min from rafter end (½ of 26")
-    "splice_p3_clearance_in": 14.0,         # min splice center to P3 center distance
-
-    # ── Rebar stick layout (configurable) ──
-    "rebar_max_stick_ft": 20.0,             # max individual stick length
-    "rebar_end_gap_ft": 5.0,                # gap from rafter end to first rebar
-    "rebar_bars_per_position": 4,           # 1 per corner
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -803,12 +772,6 @@ class ShopDrawingConfig:
     col_rebar_size: str = "#9"
     col_reinforced: bool = True
     col_connection_bolts: int = 4
-    col_pitch_deg: float = 1.19
-    col_clear_height_ft: float = 14.0
-    col_width_ft: float = 40.0
-    col_footing_ft: float = 10.0
-    col_above_grade_ft: float = 8.0
-    col_cut_allowance_in: float = 6.0
 
     # Rafter config
     raft_material_grade: str = "G90 80 KSI"
@@ -820,17 +783,7 @@ class ShopDrawingConfig:
     raft_p2_length_in: float = 24.0
     raft_reinforced: bool = True
     raft_rebar_size: str = "#9"
-    raft_rebar_max_stick_ft: float = 20.0
-    raft_rebar_end_gap_ft: float = 5.0
     raft_show_purlin_facing: bool = False
-    raft_angled_purlins: bool = False
-    raft_purlin_angle_deg: float = 15.0
-    raft_column_mode: str = "auto"          # "auto", "spacing", "manual"
-    raft_column_spacing_ft: float = 25.0
-    raft_column_count_manual: int = 1
-    raft_column_positions_manual: str = ""
-    raft_front_col_position_ft: float = 0.0
-    raft_splice_location_ft: float = 0.0
 
     # Purlin config
     purlin_type: str = "z"
@@ -857,6 +810,63 @@ class ShopDrawingConfig:
     # Solar toggle (future)
     is_solar: bool = False
 
+    # Explicit field type maps — hardcoded to avoid any Python version issues
+    # with dataclass type introspection
+    _FLOAT_FIELDS = {
+        'building_width_ft', 'building_length_ft', 'clear_height_ft',
+        'roof_pitch_deg', 'overhang_ft', 'embedment_ft', 'footing_depth_ft',
+        'column_buffer_ft', 'col_cap_plate_width_in', 'col_cap_plate_length_in',
+        'col_gusset_leg_in', 'raft_roofing_overhang_ft', 'raft_p1_width_in',
+        'raft_p1_length_in', 'raft_p2_width_in', 'raft_p2_length_in',
+        'purlin_spacing_ft', 'purlin_overhang_ft', 'purlin_splice_overlap_in',
+        'purlin_splice_location_ft', 'purlin_splice_piece_length_in',
+        'purlin_end_extension_in', 'wall_girt_spacing_ft',
+        'wall_panel_ground_clearance_in', 'roofing_overlap_in',
+    }
+    _INT_FIELDS = {'n_frames', 'col_connection_bolts'}
+    _BOOL_FIELDS = {
+        'col_reinforced', 'raft_reinforced', 'raft_show_purlin_facing',
+        'has_back_wall', 'has_side_walls', 'wall_girt_endcaps',
+        'roofing_split_at_center', 'is_solar',
+    }
+    _LIST_FLOAT_FIELDS = {'bay_sizes'}
+
+    def ensure_numeric(self):
+        """Force all numeric fields to their correct types.
+        Call this as a safety net before any calculations.
+        Uses hardcoded field lists (not type introspection) for reliability."""
+        for name in self._FLOAT_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and not isinstance(val, (int, float)):
+                try:
+                    setattr(self, name, float(val))
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(val, int) and not isinstance(val, bool):
+                setattr(self, name, float(val))
+
+        for name in self._INT_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and (not isinstance(val, int) or isinstance(val, bool)):
+                try:
+                    setattr(self, name, int(float(val)))
+                except (ValueError, TypeError):
+                    pass
+
+        for name in self._BOOL_FIELDS:
+            val = getattr(self, name, None)
+            if val is not None and isinstance(val, str):
+                setattr(self, name, val.lower() in ('true', '1', 'yes'))
+
+        for name in self._LIST_FLOAT_FIELDS:
+            val = getattr(self, name, None)
+            if isinstance(val, list):
+                setattr(self, name, [
+                    float(x) if not isinstance(x, float) else x
+                    for x in val
+                ])
+        return self
+
     def to_dict(self) -> dict:
         """Serialize to JSON-safe dictionary."""
         d = {}
@@ -869,11 +879,46 @@ class ShopDrawingConfig:
 
     @classmethod
     def from_dict(cls, data: dict) -> "ShopDrawingConfig":
-        """Deserialize from dictionary."""
+        """Deserialize from dictionary with automatic type coercion.
+        Handles JSON data where numbers may arrive as strings from web forms.
+        Uses hardcoded field type maps for reliability across Python versions."""
         cfg = cls()
+
         for k, v in data.items():
-            if hasattr(cfg, k):
+            if not hasattr(cfg, k):
+                continue
+            if v is None:
                 setattr(cfg, k, v)
+                continue
+
+            # Coerce based on hardcoded field type maps
+            if k in cls._FLOAT_FIELDS:
+                try:
+                    v = float(v)
+                except (ValueError, TypeError):
+                    pass
+
+            elif k in cls._INT_FIELDS:
+                try:
+                    v = int(float(v))
+                except (ValueError, TypeError):
+                    pass
+
+            elif k in cls._BOOL_FIELDS:
+                if isinstance(v, str):
+                    v = v.lower() in ("true", "1", "yes")
+
+            elif k in cls._LIST_FLOAT_FIELDS:
+                if isinstance(v, list):
+                    coerced = []
+                    for item in v:
+                        try:
+                            coerced.append(float(item))
+                        except (ValueError, TypeError):
+                            coerced.append(item)
+                    v = coerced
+
+            setattr(cfg, k, v)
         return cfg
 
     @classmethod
@@ -887,33 +932,11 @@ class ShopDrawingConfig:
             cfg.clear_height_ft = geo.get("clear_height_ft", 14.0)
             cfg.roof_pitch_deg = geo.get("slope_deg", 1.19)
             cfg.n_frames = geo.get("n_frames", 5)
-            cfg.n_struct_cols = geo.get("n_struct_cols", 0)
             cfg.overhang_ft = geo.get("overhang_ft", 0.0)
             cfg.embedment_ft = geo.get("embedment_ft", 4.333)
             cfg.footing_depth_ft = geo.get("footing_depth_ft", 0.0)
             cfg.purlin_spacing_ft = geo.get("purlin_spacing_ft", 5.0)
             cfg.frame_type = geo.get("frame_type", "tee")
-            cfg.raft_purlin_type = geo.get("purlin_type", "z").lower()
-            cfg.purlin_type = cfg.raft_purlin_type
-            cfg.raft_roofing_overhang_ft = geo.get("roofing_overhang_ft", 1.0)
-            cfg.col_above_grade_ft = geo.get("above_grade_ft", 8.0)
-            cfg.col_cut_allowance_in = geo.get("cut_allowance_in", 6.0)
-            cfg.raft_angled_purlins = geo.get("angled_purlins", False)
-            cfg.raft_purlin_angle_deg = geo.get("purlin_angle_deg", 15.0)
-            cfg.raft_column_mode = geo.get("column_mode", "auto")
-            # Column drawing fields
-            cfg.col_pitch_deg = geo.get("slope_deg", 1.19)
-            cfg.col_clear_height_ft = geo.get("clear_height_ft", 14.0)
-            cfg.col_width_ft = geo.get("width_ft", 40.0)
-            cfg.col_footing_ft = geo.get("footing_depth_ft", 10.0)
-            cfg.col_rebar_size = geo.get("rebar_col", "#9")
-            cfg.col_reinforced = geo.get("reinforced", True) if "reinforced" in geo else True
-            # Rafter rebar and splice fields
-            cfg.raft_rebar_size = geo.get("rebar_rafter_size", "#9")
-            cfg.raft_rebar_max_stick_ft = geo.get("rebar_max_stick_ft", 20.0)
-            cfg.raft_rebar_end_gap_ft = geo.get("rebar_end_gap_ft", 5.0)
-            cfg.raft_splice_location_ft = geo.get("splice_location_ft", 0.0)
-            cfg.raft_reinforced = geo.get("reinforced", True) if "reinforced" in geo else True
 
             col_positions = geo.get("col_positions", [])
             if col_positions:

@@ -28,7 +28,6 @@ from reportlab.lib.colors import (
 )
 from reportlab.pdfgen import canvas
 
-from calc.bom import calc_rafter_columns, calc_column_height_at
 from shop_drawings.config import (
     RAFTER_DEFAULTS, COLUMN_DEFAULTS, WPS_CODES, STANDARD_NOTES,
     TITLE_BLOCK, ABBREVIATIONS, DRAWING_OUTPUT,
@@ -46,24 +45,6 @@ from shop_drawings.column_gen import (
 )
 
 
-def _fmt_print_scale(px_per_real_in):
-    """
-    Format a drawing scale label as if printed on 8.5"×11" paper.
-    PDF page is 11" wide (landscape), so 1 paper inch ≈ page_width / 11.
-    """
-    paper_inch_px = PAGE_W / 11.0
-    real_in_per_paper_in = paper_inch_px / px_per_real_in if px_per_real_in > 0 else 1
-    real_ft = real_in_per_paper_in / 12.0
-    rounded = round(real_ft * 2) / 2  # Round to nearest half-foot
-    if rounded < 1:
-        return f'1" = {round(real_in_per_paper_in)}"'
-    ft = int(rounded)
-    frac = rounded - ft
-    if frac >= 0.4:
-        return f'1" = {ft}\'-6"'
-    return f'1" = {ft}\'-0"'
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # RAFTER CALCULATION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -71,14 +52,15 @@ def _fmt_print_scale(px_per_real_in):
 def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
     """
     Calculate all rafter dimensions and properties.
-    Updated to support: angled purlins, P6 end plates, configurable rebar
-    stick layout, width-based column placement, splice-on-P3 constraint,
-    and P1 half-inch end clearance.
     """
-    slope_deg = cfg.roof_pitch_deg
+    # Force all config values to correct numeric types
+    cfg.ensure_numeric()
+
+    slope_deg = float(cfg.roof_pitch_deg)
     use_z = cfg.raft_purlin_type == "z"
 
-    # ── Rafter cut length ────────────────────────────────────────────────
+    # Rafter cut length:
+    # width - 2*roofing_overhang - 7" (if z-purlins, 3.5" per side)
     rafter_length_ft = calc_rafter_length(
         cfg.building_width_ft,
         cfg.raft_roofing_overhang_ft,
@@ -91,49 +73,18 @@ def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
     rise = half_w * math.tan(math.radians(slope_deg))
     slope_length_ft = 2.0 * math.sqrt(half_w**2 + rise**2)
 
-    # ── Column placement on rafter (structural columns) ──────────────────
-    raft_n_cols, raft_col_pos_in = calc_rafter_columns(
-        cfg.building_width_ft,
-        column_mode=getattr(cfg, 'raft_column_mode', 'auto'),
-        column_spacing_ft=getattr(cfg, 'raft_column_spacing_ft', 25.0),
-        column_count_manual=getattr(cfg, 'raft_column_count_manual', 1),
-        column_positions_manual=getattr(cfg, 'raft_column_positions_manual', ''),
-        include_back_wall=cfg.has_back_wall,
-        front_col_position_ft=getattr(cfg, 'raft_front_col_position_ft', 0.0),
-    )
-
-    # P3 connection plate positions (same as column positions)
-    p3_positions_in = list(raft_col_pos_in)
-
-    # ── Splice check ─────────────────────────────────────────────────────
-    p3_min_edge = RAFTER_DEFAULTS.get("p3_min_edge_distance_in", 13.0)
-    splice_p3_clearance = RAFTER_DEFAULTS.get("splice_p3_clearance_in", 14.0)
-
+    # Splice check
     needs_splice = rafter_length_ft > 53.0
     splice_pieces = []
-    splice_loc_in = 0.0
-
     if needs_splice:
-        # User-specified or auto splice location
-        user_splice_ft = getattr(cfg, 'raft_splice_location_ft', 0.0)
-        if user_splice_ft > 0:
-            splice_loc_in = user_splice_ft * 12.0
-        else:
-            # Default: midpoint of rafter
-            splice_loc_in = rafter_length_in / 2.0
-
-        # Enforce splice-on-P3 constraint: if splice is within clearance
-        # distance of any P3 center, nudge it away
-        for p3_pos in p3_positions_in:
-            if abs(splice_loc_in - p3_pos) < splice_p3_clearance:
-                # Nudge splice away from P3
-                if splice_loc_in < p3_pos:
-                    splice_loc_in = p3_pos - splice_p3_clearance
-                else:
-                    splice_loc_in = p3_pos + splice_p3_clearance
-
-        # Clamp to valid range
-        splice_loc_in = max(12.0, min(rafter_length_in - 12.0, splice_loc_in))
+        # Splice must be within 10' of nearest column
+        # For simplicity: split at midpoint or nearest allowed point
+        mid = rafter_length_in / 2.0
+        # Splice location: 6' from nearest rafter (column line) in mid-span
+        splice_from_end_ft = min(rafter_length_ft / 2.0,
+                                 RAFTER_DEFAULTS["splice_max_distance_from_column_ft"]
+                                 + max(cfg.bay_sizes) / 2.0)
+        splice_loc_in = splice_from_end_ft * 12.0
 
         piece_a = splice_loc_in
         piece_b = rafter_length_in - splice_loc_in
@@ -146,69 +97,47 @@ def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
             {"label": "B1", "length_in": rafter_length_in},
         ]
 
-    # ── Angled purlin settings ───────────────────────────────────────────
-    angled_purlins = getattr(cfg, 'raft_angled_purlins', False)
-    purlin_angle_deg = getattr(cfg, 'raft_purlin_angle_deg', 15.0)
-    purlin_angle_rad = math.radians(purlin_angle_deg) if angled_purlins else 0.0
-    p1_footprint_in = 6.0 * math.sin(purlin_angle_rad) if angled_purlins else 0.0
-
-    # End clip type: P6 if angled, P2 if standard
-    end_clip_type = "p6" if angled_purlins else "p2"
-    end_clip_label = "P6 PLATE" if angled_purlins else "P2 CAP"
-
-    # ── Purlin clip layout ───────────────────────────────────────────────
-    p1_clearance_in = RAFTER_DEFAULTS.get("p1_clearance_in", 0.5)
+    # Purlin clip layout
+    # P2 cap at each end (welded all around), P1 interior clips evenly spaced
     purlin_spacing_in = cfg.purlin_spacing_ft * 12.0
     n_clips_total = max(2, math.floor(rafter_length_in / purlin_spacing_in) + 1)
 
+    # Clip positions measured from left end
     clip_positions = []
-    # First clip: end cap/plate at position 0
-    clip_positions.append({
-        "pos_in": 0, "type": end_clip_type, "label": end_clip_label
-    })
+    # First clip = P2 cap at position 0 (left end)
+    clip_positions.append({"pos_in": 0, "type": "p2", "label": "P2 CAP"})
 
-    # Interior P1 clips with half-inch clearance from ends
+    # Interior P1 clips evenly spaced
     if n_clips_total > 2:
         actual_spacing = rafter_length_in / (n_clips_total - 1)
         for i in range(1, n_clips_total - 1):
             pos = i * actual_spacing
-            # Enforce P1 half-inch clearance from each rafter end
-            # (accounting for angled clip footprint)
-            near_edge = pos - (p1_footprint_in / 2.0 if angled_purlins else 3.0)
-            far_edge = pos + (p1_footprint_in / 2.0 if angled_purlins else 3.0)
-            if near_edge < p1_clearance_in:
-                pos = p1_clearance_in + (p1_footprint_in / 2.0 if angled_purlins else 3.0)
-            if far_edge > rafter_length_in - p1_clearance_in:
-                pos = rafter_length_in - p1_clearance_in - (p1_footprint_in / 2.0 if angled_purlins else 3.0)
-            clip_positions.append({
-                "pos_in": pos, "type": "p1", "label": "P1",
-                "angle_deg": purlin_angle_deg if angled_purlins else 0.0,
-            })
+            clip_positions.append({"pos_in": pos, "type": "p1", "label": "P1"})
 
-    # Last clip: end cap/plate at rafter end
+    # Last clip = P2 cap at end
     clip_positions.append({
-        "pos_in": rafter_length_in, "type": end_clip_type, "label": end_clip_label
+        "pos_in": rafter_length_in, "type": "p2", "label": "P2 CAP"
     })
 
-    # ── Rebar (only if reinforced) ───────────────────────────────────────
+    # Rebar (only if reinforced)
     rebar_data = None
     if cfg.raft_reinforced:
-        max_stick = getattr(cfg, 'raft_rebar_max_stick_ft', 20.0)
-        end_gap = getattr(cfg, 'raft_rebar_end_gap_ft', 5.0)
-        available_ft = max(1.0, rafter_length_ft - 2.0 * end_gap)
-        sticks_per_side = max(1, math.ceil(available_ft / max_stick))
-        actual_stick_ft = available_ft / sticks_per_side
+        # 4 rebars at corners, placement:
+        # 20' above each column, 20' between, within 5' of eave
+        stick_ft = 40.0  # 40' rebar sticks
+        sticks_per_side = max(1, math.ceil(
+            max(0.0, rafter_length_ft - 10.0) / 20.0))
         sticks_per_rafter = 4 * sticks_per_side
         rebar_data = {
             "size": cfg.raft_rebar_size,
             "qty": sticks_per_rafter,
             "sticks_per_corner": sticks_per_side,
-            "stick_length_ft": round(actual_stick_ft, 2),
-            "end_gap_ft": end_gap,
+            "stick_length_ft": stick_ft,
         }
 
-    # ── Weight ───────────────────────────────────────────────────────────
-    lbs_per_lft = 10.83   # box beam weight per linear foot
+    # Connection plate (same as column cap plate)
+    # Weight
+    lbs_per_lft = 10.83
     weight_lbs = rafter_length_ft * 2 * lbs_per_lft
 
     mark = f"B{rafter_index + 1}"
@@ -228,19 +157,12 @@ def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
         "box_depth": 8.0,
         "needs_splice": needs_splice,
         "splice_pieces": splice_pieces,
-        "splice_loc_in": splice_loc_in,
         "splice_plate": RAFTER_DEFAULTS["splice_plate"] if needs_splice else None,
         "n_clips": n_clips_total,
         "clip_positions": clip_positions,
         "purlin_spacing_in": purlin_spacing_in,
         "p1_clip": RAFTER_DEFAULTS["p1_clip"],
         "p2_clip": RAFTER_DEFAULTS["p2_clip"],
-        "p6_plate": RAFTER_DEFAULTS.get("p6_plate", {}),
-        "angled_purlins": angled_purlins,
-        "purlin_angle_deg": purlin_angle_deg,
-        "purlin_angle_rad": purlin_angle_rad,
-        "p1_footprint_in": p1_footprint_in,
-        "end_clip_type": end_clip_type,
         "rebar": rebar_data,
         "reinforced": cfg.raft_reinforced,
         "stitch_weld": COLUMN_DEFAULTS["stitch_weld"],
@@ -250,8 +172,6 @@ def _calc_rafter_data(cfg: ShopDrawingConfig, rafter_index: int = 0) -> Dict:
             "length": 26.0,
         },
         "connection_bolts": cfg.col_connection_bolts,
-        "p3_positions_in": p3_positions_in,
-        "raft_n_cols": raft_n_cols,
         "weight_lbs": weight_lbs,
         "slope_deg": cfg.roof_pitch_deg,
         "frame_type": cfg.frame_type,
@@ -299,27 +219,9 @@ def _draw_top_view(c, data: Dict, ox: float, oy: float,
     clip_h_p2 = data["p2_clip"]["length"] * scale    # 24" long
     clip_w_p2 = data["p2_clip"]["width"] * scale     # 9" wide
 
-    # P6 dimensions (if applicable)
-    angled = data.get("angled_purlins", False)
-    p6_data = data.get("p6_plate", {})
-    clip_h_p6 = p6_data.get("length", 15) * scale  # 15" long
-    clip_w_p6 = p6_data.get("width", 9) * scale     # 9" wide
-
     for clip in data["clip_positions"]:
         pos_x = rx + clip["pos_in"] * scale
-        if clip["type"] == "p6":
-            # P6 end plate — compact, shown in purple
-            cw = clip_w_p6
-            ch = clip_h_p6
-            c.setStrokeColor(HexColor("#6633AA"))
-            c.setFillColor(HexColor("#E8D5F5"))
-            c.setLineWidth(MEDIUM)
-            c.rect(pos_x - cw / 2, ry + rh / 2 - ch / 2, cw, ch, fill=1)
-            c.setFont("Helvetica", 3.5)
-            c.setFillColor(CLR_WELD)
-            c.drawCentredString(pos_x, ry + rh / 2 - ch / 2 - 5,
-                                "P6 WELD ALL AROUND")
-        elif clip["type"] == "p2":
+        if clip["type"] == "p2":
             # P2 cap — wider, shown in orange
             cw = clip_w_p2
             ch = clip_h_p2
@@ -327,27 +229,19 @@ def _draw_top_view(c, data: Dict, ox: float, oy: float,
             c.setFillColor(HexColor("#FFDDAA"))
             c.setLineWidth(MEDIUM)
             c.rect(pos_x - cw / 2, ry + rh / 2 - ch / 2, cw, ch, fill=1)
+            # "WELD ALL AROUND" for P2
             c.setFont("Helvetica", 3.5)
             c.setFillColor(CLR_WELD)
             c.drawCentredString(pos_x, ry + rh / 2 - ch / 2 - 5,
                                 "WELD ALL AROUND")
         else:
-            # P1 interior clip (may be angled)
+            # P1 interior clip
             cw = clip_w_p1
             ch = clip_h_p1
-            clip_angle = clip.get("angle_deg", 0)
             c.setStrokeColor(CLR_OBJECT)
             c.setFillColor(HexColor("#E8E8F0"))
             c.setLineWidth(MEDIUM)
-            if clip_angle > 0:
-                # Draw angled clip as rotated rectangle
-                c.saveState()
-                c.translate(pos_x, ry + rh / 2)
-                c.rotate(clip_angle)
-                c.rect(-cw / 2, -ch / 2, cw, ch, fill=1)
-                c.restoreState()
-            else:
-                c.rect(pos_x - cw / 2, ry + rh / 2 - ch / 2, cw, ch, fill=1)
+            c.rect(pos_x - cw / 2, ry + rh / 2 - ch / 2, cw, ch, fill=1)
 
     # ── Purlin facing arrows (when toggled on) ──
     if data.get("show_purlin_facing") and data.get("purlin_type") == "z":
@@ -461,14 +355,10 @@ def _draw_top_view(c, data: Dict, ox: float, oy: float,
     # ── Clip count callout ──
     n_p1 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p1")
     n_p2 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p2")
-    n_p6 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p6")
     c.setFont("Helvetica", 5)
     c.setFillColor(CLR_DIM)
-    end_label = (f'{n_p6}x P6 PLATES (9"x15" WELDED)' if n_p6 > 0
-                 else f'{n_p2}x P2 CAPS (9"x24" WELDED)')
-    angle_note = f' @ {data.get("purlin_angle_deg", 0)}\u00b0' if data.get("angled_purlins") else ''
     c.drawString(rx, ry - 20 - (10 if data["needs_splice"] else 0),
-                 f'{end_label} + {n_p1}x P1 CLIPS (6"x10" TEK){angle_note}')
+                 f'{n_p2}x P2 CAPS (9"x24" WELDED) + {n_p1}x P1 CLIPS (6"x10" TEK)')
 
     # ── Material callout (center of rafter) ──
     c.setFont("Helvetica-Bold", 5.5)
@@ -495,12 +385,10 @@ def _draw_top_view(c, data: Dict, ox: float, oy: float,
     c.drawString(rx + 62, arrow_y - 2,
                  "START MEASUREMENTS FROM THIS SIDE")
 
-    # View label with scale
-    scale_label = _fmt_print_scale(scale)
+    # View label
     c.setFont("Helvetica-Bold", 7)
     c.setFillColor(black)
-    c.drawCentredString(ox + view_w / 2, oy + 5,
-                        f'TOP VIEW — PURLIN LAYOUT  ({scale_label})')
+    c.drawCentredString(ox + view_w / 2, oy + 5, "TOP VIEW — PURLIN LAYOUT")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -531,45 +419,22 @@ def _draw_rafter_side_view(c, data: Dict, ox: float, oy: float,
     c.setLineWidth(THICK)
     c.rect(rx, ry, rw, rd)
 
-    # End plates (P2 caps or P6 plates depending on angled purlin mode)
-    end_type = data.get("end_clip_type", "p2")
-    if end_type == "p6":
-        # P6: compact 9"×15" plate — ½" overhang all around beam
-        plate_w = 3 * scale
-        p6_h = 15 * scale  # 15" total height
-        c.setFillColor(HexColor("#E8D5F5"))
-        c.setStrokeColor(HexColor("#6633AA"))
-        c.setLineWidth(MEDIUM)
-        # Center P6 on beam cross-section
-        p6_oy = ry + rd / 2 - p6_h / 2
-        c.rect(rx - plate_w, p6_oy, plate_w, p6_h, fill=1)
-        c.rect(rx + rw, p6_oy, plate_w, p6_h, fill=1)
-        # P6 label
-        c.setFont("Helvetica", 3.5)
-        c.setFillColor(HexColor("#6633AA"))
-        c.drawCentredString(rx - plate_w / 2, p6_oy - 5, "P6")
-        c.drawCentredString(rx + rw + plate_w / 2, p6_oy - 5, "P6")
-        c.setFillColor(black)
-    else:
-        # P2: standard 9"×24" end cap with purlin holes
-        plate_w = 3 * scale
-        p2_h = 24 * scale  # 24" tall
-        c.setFillColor(HexColor("#FFDDAA"))
-        c.setStrokeColor(HexColor("#DD6600"))
-        c.setLineWidth(MEDIUM)
-        p2_oy = ry + rd / 2 - p2_h / 2
-        c.rect(rx - plate_w, p2_oy, plate_w, p2_h, fill=1)
-        c.rect(rx + rw, p2_oy, plate_w, p2_h, fill=1)
-        c.setFillColor(black)
+    # End plates (connection plates at both ends)
+    plate_w = 3 * scale
+    c.setFillColor(HexColor("#E0E0E0"))
+    c.setStrokeColor(CLR_OBJECT)
+    c.setLineWidth(MEDIUM)
+    # Left end plate
+    c.rect(rx - plate_w, ry - 2, plate_w, rd + 4, fill=1)
+    # Right end plate
+    c.rect(rx + rw, ry - 2, plate_w, rd + 4, fill=1)
+    c.setFillColor(black)
 
-        # Purlin bolt holes on P2 end caps (4×2 pattern = 8 holes)
-        c.setFillColor(white)
-        for px in [rx - plate_w / 2, rx + rw + plate_w / 2]:
-            # 4 vertical × 2 horizontal
-            for row in range(4):
-                row_y = p2_oy + p2_h * 0.2 + row * (p2_h * 0.6 / 3)
-                for col_off in [-1.5, 1.5]:
-                    c.circle(px + col_off, row_y, 1.0, fill=1, stroke=1)
+    # Bolt holes on end plates
+    c.setFillColor(white)
+    for px in [rx - plate_w / 2, rx + rw + plate_w / 2]:
+        for by_off in [-rd * 0.25, rd * 0.25]:
+            c.circle(px, ry + rd / 2 + by_off, 1.5, fill=1, stroke=1)
 
     # ── Rebar (if reinforced) ──
     if data["rebar"]:
@@ -660,12 +525,10 @@ def _draw_rafter_side_view(c, data: Dict, ox: float, oy: float,
     draw_section_marker(c, aa_x, ry - 15, "A", size=7)
     draw_section_marker(c, aa_x, ry + rd + 15, "A", size=7)
 
-    # View label with scale
-    side_scale_label = _fmt_print_scale(scale)
+    # View label
     c.setFont("Helvetica-Bold", 7)
     c.setFillColor(black)
-    c.drawCentredString(ox + view_w / 2, oy + 5,
-                        f'SIDE VIEW  ({side_scale_label})')
+    c.drawCentredString(ox + view_w / 2, oy + 5, "SIDE VIEW")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -869,18 +732,11 @@ def _draw_rafter_bom(c, data: Dict, ox: float, oy: float, w: float, h: float):
          "A572 Gr 50"],
     ]
 
-    # End clips: P2 or P6
+    # P2 clips
     n_p2 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p2")
-    n_p6 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p6")
-    if n_p6 > 0:
-        p6 = data.get("p6_plate", {})
-        rows_data.append([data["mark"], str(n_p6), "P6 End Plate",
-                          f'{p6.get("thickness","10GA")} x {p6.get("width",9)}" x {p6.get("length",15)}"',
-                          p6.get("grade", "A572")])
-    elif n_p2 > 0:
-        rows_data.append([data["mark"], str(n_p2), "P2 Cap Clip",
-                          f'1/8" x {data["p2_clip"]["width"]}" x {data["p2_clip"]["length"]}"',
-                          "A572"])
+    rows_data.append([data["mark"], str(n_p2), "P2 Cap Clip",
+                      f'1/8" x {data["p2_clip"]["width"]}" x {data["p2_clip"]["length"]}"',
+                      "A572"])
 
     # P1 clips
     n_p1 = sum(1 for cl in data["clip_positions"] if cl["type"] == "p1")
@@ -892,10 +748,9 @@ def _draw_rafter_bom(c, data: Dict, ox: float, oy: float, w: float, h: float):
     # Rebar (if reinforced)
     if data["rebar"]:
         rb = data["rebar"]
-        stick_len = rb.get("stick_length_ft", 40)
         rows_data.append([data["mark"], str(rb["qty"]),
                           f'Rebar ({rb["sticks_per_corner"]}/corner)',
-                          f'{rb["size"]} x {stick_len:.1f}\'', "A706"])
+                          f'{rb["size"]} x 40\'', "A706"])
 
     # Splice plates
     if data["needs_splice"]:

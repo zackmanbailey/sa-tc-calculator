@@ -1,637 +1,1447 @@
 """
-TitanForge v4 — Shipping Dashboard
-====================================
-Overview of all loads: active shipments, delivery tracking,
-status pipeline, weight/piece metrics, recent activity.
-"""
-from templates.shared_styles import DESIGN_SYSTEM_CSS
+TitanForge — Shipping Hub Template
+===================================
+Full HTML page for managing shipping documents: packing lists, bills of lading,
+shipping manifests, purchase orders, and inventory reorder alerts.
 
-SHIPPING_PAGE_HTML = r"""
+Provides tabbed interface for document generation, viewing, and printing.
+Dark theme with print-friendly CSS for physical document output.
+"""
+
+SHIPPING_PAGE_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TitanForge — Shipping Dashboard</title>
+    <title>Shipping Hub — {{JOB_CODE}} | TitanForge</title>
     <style>
-""" + DESIGN_SYSTEM_CSS + r"""
+        /* ============================================================
+           TitanForge Design System — Shipping Hub
+           ============================================================ */
 
-        .container { max-width: 1400px; margin: 0 auto; padding: var(--tf-sp-6) var(--tf-sp-8); }
+        :root {
+            /* Brand Colors */
+            --tf-navy:       #0F172A;
+            --tf-navy-light: #1E293B;
+            --tf-blue:       #1E40AF;
+            --tf-blue-mid:   #2563EB;
+            --tf-blue-light: #DBEAFE;
+            --tf-amber:      #F59E0B;
+            --tf-gold:       #F6AE2D;
+            --tf-amber-light:#FEF3C7;
 
-        /* Top actions bar */
-        .top-bar {
-            display: flex; justify-content: space-between; align-items: center;
+            /* Semantic Colors */
+            --tf-success:    #059669;
+            --tf-success-bg: #ECFDF5;
+            --tf-warning:    #D97706;
+            --tf-warning-bg: #FFFBEB;
+            --tf-danger:     #DC2626;
+            --tf-danger-bg:  #FEF2F2;
+            --tf-info:       #0284C7;
+            --tf-info-bg:    #F0F9FF;
+
+            /* Neutrals */
+            --tf-gray-50:    #F8FAFC;
+            --tf-gray-100:   #F1F5F9;
+            --tf-gray-200:   #E2E8F0;
+            --tf-gray-300:   #CBD5E1;
+            --tf-gray-400:   #94A3B8;
+            --tf-gray-500:   #64748B;
+            --tf-gray-600:   #475569;
+            --tf-gray-700:   #334155;
+            --tf-gray-800:   #1E293B;
+            --tf-gray-900:   #0F172A;
+
+            /* Surfaces — Dark Theme */
+            --tf-bg:         #0F172A;
+            --tf-surface:    #1E293B;
+            --tf-border:     #334155;
+            --tf-text:       #F1F5F9;
+            --tf-text-muted: #94A3B8;
+
+            /* Typography */
+            --tf-font:       'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --tf-font-mono:  'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+            /* Type Scale */
+            --tf-text-xs:    0.75rem;
+            --tf-text-sm:    0.8125rem;
+            --tf-text-base:  0.875rem;
+            --tf-text-md:    1rem;
+            --tf-text-lg:    1.125rem;
+            --tf-text-xl:    1.25rem;
+            --tf-text-2xl:   1.5rem;
+
+            /* Spacing */
+            --tf-sp-2:  0.5rem;
+            --tf-sp-3:  0.75rem;
+            --tf-sp-4:  1rem;
+            --tf-sp-6:  1.5rem;
+            --tf-sp-8:  2rem;
+
+            /* Radii & Shadows */
+            --tf-radius:    8px;
+            --tf-shadow:    0 1px 3px rgba(0,0,0,0.3);
+            --tf-shadow-lg: 0 10px 15px rgba(0,0,0,0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--tf-font);
+            background-color: var(--tf-bg);
+            color: var(--tf-text);
+            line-height: 1.6;
+        }
+
+        /* ── Containers ────────────────────────────────────────────── */
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--tf-sp-6);
+        }
+
+        .page-header {
+            margin-bottom: var(--tf-sp-8);
+        }
+
+        .page-title {
+            font-size: var(--tf-text-2xl);
+            font-weight: 700;
+            color: var(--tf-gold);
+            margin-bottom: var(--tf-sp-4);
+        }
+
+        .page-subtitle {
+            font-size: var(--tf-text-base);
+            color: var(--tf-text-muted);
+        }
+
+        /* ── Tabs ──────────────────────────────────────────────────── */
+
+        .tabs {
+            display: flex;
+            gap: var(--tf-sp-2);
+            margin-bottom: var(--tf-sp-6);
+            border-bottom: 2px solid var(--tf-border);
+            overflow-x: auto;
+        }
+
+        .tab-button {
+            padding: var(--tf-sp-3) var(--tf-sp-6);
+            background: none;
+            border: none;
+            color: var(--tf-text-muted);
+            font-size: var(--tf-text-base);
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 150ms ease;
+            white-space: nowrap;
+        }
+
+        .tab-button:hover {
+            color: var(--tf-gold);
+        }
+
+        .tab-button.active {
+            color: var(--tf-gold);
+            border-bottom-color: var(--tf-gold);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* ── Cards ────────────────────────────────────────────────── */
+
+        .card {
+            background-color: var(--tf-surface);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            padding: var(--tf-sp-6);
+            margin-bottom: var(--tf-sp-6);
+            box-shadow: var(--tf-shadow);
+        }
+
+        .card-header {
+            font-size: var(--tf-text-lg);
+            font-weight: 600;
+            color: var(--tf-text);
+            margin-bottom: var(--tf-sp-4);
+            border-bottom: 1px solid var(--tf-border);
+            padding-bottom: var(--tf-sp-4);
+        }
+
+        /* ── Forms ────────────────────────────────────────────────── */
+
+        .form-group {
             margin-bottom: var(--tf-sp-6);
         }
-        .top-bar h1 { font-size: var(--tf-text-xl); font-weight: 800; color: var(--tf-gray-900); margin: 0; }
-        .top-bar .actions { display: flex; gap: var(--tf-sp-3); }
 
-        /* Metric cards row */
-        .metric-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--tf-sp-4); margin-bottom: var(--tf-sp-6); }
-        .metric-card {
-            background: var(--tf-surface); border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-lg); padding: var(--tf-sp-5);
-            text-align: center;
-        }
-        .metric-card .value { font-size: var(--tf-text-2xl); font-weight: 800; color: var(--tf-gray-900); }
-        .metric-card .label {
-            font-size: var(--tf-text-xs); color: var(--tf-gray-500);
-            text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px;
-        }
-        .metric-card .sublabel { font-size: 11px; color: var(--tf-gray-400); margin-top: 4px; }
-        .metric-card.building { border-left: 4px solid var(--tf-amber); }
-        .metric-card.ready { border-left: 4px solid var(--tf-blue); }
-        .metric-card.transit { border-left: 4px solid #8b5cf6; }
-        .metric-card.delivered { border-left: 4px solid var(--tf-success); }
-        .metric-card.total { border-left: 4px solid var(--tf-gray-600); }
-
-        /* Pipeline bar */
-        .pipeline-section { margin-bottom: var(--tf-sp-6); }
-        .pipeline-bar {
-            display: flex; height: 32px; border-radius: var(--tf-radius-md); overflow: hidden;
-            background: var(--tf-gray-100);
-        }
-        .pipeline-bar .segment {
-            display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: 700; color: white;
-            min-width: 40px; transition: width 0.4s ease;
-        }
-        .pipeline-bar .seg-building { background: var(--tf-amber); }
-        .pipeline-bar .seg-ready { background: var(--tf-blue); }
-        .pipeline-bar .seg-transit { background: #8b5cf6; }
-        .pipeline-bar .seg-delivered { background: var(--tf-success); }
-        .pipeline-bar .seg-complete { background: var(--tf-gray-400); }
-        .pipeline-legend {
-            display: flex; gap: var(--tf-sp-5); margin-top: var(--tf-sp-2);
-            font-size: var(--tf-text-xs); color: var(--tf-gray-500);
-        }
-        .pipeline-legend .dot {
-            display: inline-block; width: 10px; height: 10px;
-            border-radius: 50%; margin-right: 4px; vertical-align: middle;
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: var(--tf-text);
+            margin-bottom: var(--tf-sp-2);
+            font-size: var(--tf-text-sm);
         }
 
-        /* Filter bar */
-        .filter-bar {
-            display: flex; gap: var(--tf-sp-3); margin-bottom: var(--tf-sp-4);
-            align-items: center;
-        }
-        .filter-bar select, .filter-bar input {
-            padding: var(--tf-sp-2) var(--tf-sp-3); border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-md); font-size: var(--tf-text-sm);
-            background: var(--tf-surface);
-        }
-
-        /* Loads table */
-        .panel {
-            background: var(--tf-surface); border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-lg); overflow: hidden; margin-bottom: var(--tf-sp-6);
-        }
-        .panel-header {
-            padding: var(--tf-sp-4) var(--tf-sp-5); border-bottom: 1px solid var(--tf-border);
-            font-weight: 700; font-size: var(--tf-text-md); color: var(--tf-gray-900);
-            display: flex; justify-content: space-between; align-items: center;
-            background: var(--tf-gray-50);
-        }
-        .panel-body { padding: 0; }
-
-        .loads-table { width: 100%; border-collapse: collapse; }
-        .loads-table th {
-            padding: var(--tf-sp-3) var(--tf-sp-4); text-align: left;
-            font-size: var(--tf-text-xs); font-weight: 600; color: var(--tf-gray-500);
-            text-transform: uppercase; letter-spacing: 0.04em;
-            border-bottom: 1px solid var(--tf-border); background: var(--tf-gray-50);
-        }
-        .loads-table td {
-            padding: var(--tf-sp-3) var(--tf-sp-4); font-size: var(--tf-text-sm);
-            border-bottom: 1px solid var(--tf-border); color: var(--tf-gray-700);
-        }
-        .loads-table tr:hover { background: var(--tf-gray-50); cursor: pointer; }
-        .loads-table .load-number { font-weight: 700; color: var(--tf-blue); }
-
-        /* Status pill */
-        .status-pill {
-            display: inline-block; padding: 2px 10px; border-radius: 999px;
-            font-size: 11px; font-weight: 600; text-transform: capitalize;
-        }
-        .status-pill.building { background: #fef3c7; color: #92400e; }
-        .status-pill.ready { background: #dbeafe; color: #1e40af; }
-        .status-pill.in_transit { background: #ede9fe; color: #5b21b6; }
-        .status-pill.delivered { background: #d1fae5; color: #065f46; }
-        .status-pill.complete { background: var(--tf-gray-100); color: var(--tf-gray-600); }
-
-        /* Load detail modal */
-        .modal-backdrop {
-            display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,0.4); z-index: 1000;
-            justify-content: center; align-items: center;
-        }
-        .modal-backdrop.active { display: flex; }
-        .modal {
-            background: var(--tf-surface); border-radius: var(--tf-radius-lg);
-            width: 720px; max-height: 85vh; overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-        }
-        .modal-header {
-            padding: var(--tf-sp-5) var(--tf-sp-6);
-            border-bottom: 1px solid var(--tf-border);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .modal-header h2 { font-size: var(--tf-text-lg); font-weight: 700; margin: 0; }
-        .modal-body { padding: var(--tf-sp-5) var(--tf-sp-6); }
-        .modal-footer {
-            padding: var(--tf-sp-4) var(--tf-sp-6);
-            border-top: 1px solid var(--tf-border);
-            display: flex; justify-content: flex-end; gap: var(--tf-sp-3);
+        .form-input,
+        .form-textarea,
+        .form-select {
+            width: 100%;
+            padding: var(--tf-sp-3);
+            background-color: var(--tf-navy);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            color: var(--tf-text);
+            font-family: var(--tf-font);
+            font-size: var(--tf-text-base);
         }
 
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--tf-sp-3); margin-bottom: var(--tf-sp-4); }
-        .detail-item label { display: block; font-size: 11px; color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-        .detail-item span { font-size: var(--tf-text-sm); color: var(--tf-gray-800); font-weight: 500; }
+        .form-input:focus,
+        .form-textarea:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--tf-gold);
+            box-shadow: 0 0 0 3px rgba(246, 174, 45, 0.1);
+        }
 
-        .item-list-table { width: 100%; border-collapse: collapse; margin-top: var(--tf-sp-3); }
-        .item-list-table th {
-            padding: 6px 10px; font-size: 11px; font-weight: 600; color: var(--tf-gray-500);
-            text-transform: uppercase; border-bottom: 1px solid var(--tf-border);
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--tf-sp-6);
+        }
+
+        .form-row.thirds {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        /* ── Line Items Table ──────────────────────────────────────── */
+
+        .line-items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--tf-sp-6) 0;
+        }
+
+        .line-items-table th {
+            background-color: var(--tf-navy);
+            color: var(--tf-text);
+            font-weight: 600;
+            padding: var(--tf-sp-3);
             text-align: left;
-        }
-        .item-list-table td {
-            padding: 6px 10px; font-size: var(--tf-text-sm); color: var(--tf-gray-700);
-            border-bottom: 1px solid var(--tf-gray-100);
+            border: 1px solid var(--tf-border);
+            font-size: var(--tf-text-sm);
         }
 
-        /* Dashboard grid (bottom section) */
-        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--tf-sp-6); }
-
-        /* Delivery notes */
-        .delivery-card {
-            padding: var(--tf-sp-4); border-bottom: 1px solid var(--tf-gray-100);
+        .line-items-table td {
+            padding: var(--tf-sp-3);
+            border: 1px solid var(--tf-border);
+            font-size: var(--tf-text-sm);
         }
-        .delivery-card:last-child { border-bottom: none; }
-        .delivery-card .load-ref { font-weight: 700; color: var(--tf-blue); font-size: var(--tf-text-sm); }
-        .delivery-card .timestamp { font-size: 11px; color: var(--tf-gray-400); margin-left: 8px; }
-        .delivery-card .dest { font-size: var(--tf-text-sm); color: var(--tf-gray-600); margin-top: 2px; }
 
-        /* Weight chart bars */
-        .weight-bar-chart { display: flex; flex-direction: column; gap: 6px; padding: var(--tf-sp-4); }
-        .weight-row { display: flex; align-items: center; gap: 10px; }
-        .weight-row .project-label { width: 100px; font-size: 12px; font-weight: 600; color: var(--tf-gray-600); text-align: right; }
-        .weight-row .bar-track { flex: 1; height: 20px; background: var(--tf-gray-100); border-radius: var(--tf-radius-sm); overflow: hidden; }
-        .weight-row .bar-fill { height: 100%; background: var(--tf-blue); border-radius: var(--tf-radius-sm); transition: width 0.4s ease; display: flex; align-items: center; padding-left: 6px; }
-        .weight-row .bar-fill span { font-size: 10px; font-weight: 700; color: white; white-space: nowrap; }
-        .weight-row .weight-val { width: 80px; font-size: 12px; color: var(--tf-gray-500); }
-
-        /* Toast */
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--tf-gray-900); color: white; padding: 12px 20px; border-radius: var(--tf-radius-md); font-size: var(--tf-text-sm); z-index: 2000; display: none; }
-        .toast.success { background: var(--tf-success); }
-        .toast.error { background: var(--tf-danger); }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center; padding: var(--tf-sp-8) var(--tf-sp-4);
-            color: var(--tf-gray-400);
+        .line-items-table tr:nth-child(even) {
+            background-color: var(--tf-navy);
         }
-        .empty-state .icon { font-size: 48px; margin-bottom: var(--tf-sp-3); }
-        .empty-state p { font-size: var(--tf-text-sm); }
 
-        @media (max-width: 900px) {
-            .metric-row { grid-template-columns: repeat(3, 1fr); }
-            .dashboard-grid { grid-template-columns: 1fr; }
+        .line-items-table .numeric {
+            text-align: right;
+            font-family: var(--tf-font-mono);
+        }
+
+        .line-item-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: var(--tf-sp-4);
+            align-items: center;
+            margin-bottom: var(--tf-sp-4);
+            padding: var(--tf-sp-4);
+            background-color: var(--tf-navy);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+        }
+
+        .line-item-row input {
+            width: 100%;
+            padding: var(--tf-sp-2);
+            background-color: var(--tf-surface);
+            border: 1px solid var(--tf-border);
+            border-radius: 4px;
+            color: var(--tf-text);
+        }
+
+        /* ── Buttons ───────────────────────────────────────────────── */
+
+        .btn {
+            display: inline-block;
+            padding: var(--tf-sp-3) var(--tf-sp-6);
+            background-color: var(--tf-blue-mid);
+            color: white;
+            border: none;
+            border-radius: var(--tf-radius);
+            font-weight: 600;
+            cursor: pointer;
+            font-size: var(--tf-text-base);
+            transition: all 150ms ease;
+        }
+
+        .btn:hover {
+            background-color: var(--tf-blue);
+        }
+
+        .btn-gold {
+            background-color: var(--tf-gold);
+            color: var(--tf-navy);
+        }
+
+        .btn-gold:hover {
+            background-color: #FFB84D;
+        }
+
+        .btn-success {
+            background-color: var(--tf-success);
+        }
+
+        .btn-success:hover {
+            background-color: #047857;
+        }
+
+        .btn-danger {
+            background-color: var(--tf-danger);
+        }
+
+        .btn-danger:hover {
+            background-color: #B91C1C;
+        }
+
+        .btn-small {
+            padding: var(--tf-sp-2) var(--tf-sp-4);
+            font-size: var(--tf-text-sm);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: var(--tf-sp-4);
+            margin-top: var(--tf-sp-6);
+        }
+
+        /* ── Checkboxes ────────────────────────────────────────────– */
+
+        .checkbox-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--tf-sp-4);
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: var(--tf-sp-3);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--tf-gold);
+        }
+
+        .checkbox-item label {
+            cursor: pointer;
+            flex: 1;
+        }
+
+        /* ── Data Display ──────────────────────────────────────────– */
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--tf-sp-6);
+            margin-bottom: var(--tf-sp-6);
+        }
+
+        .info-item {
+            background-color: var(--tf-navy);
+            padding: var(--tf-sp-4);
+            border-radius: var(--tf-radius);
+            border: 1px solid var(--tf-border);
+        }
+
+        .info-label {
+            font-size: var(--tf-text-xs);
+            color: var(--tf-text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: var(--tf-sp-2);
+        }
+
+        .info-value {
+            font-size: var(--tf-text-lg);
+            color: var(--tf-text);
+            font-weight: 600;
+        }
+
+        /* ── Table Styles ──────────────────────────────────────────– */
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th {
+            background-color: var(--tf-navy);
+            color: var(--tf-text);
+            padding: var(--tf-sp-4);
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--tf-border);
+        }
+
+        .data-table td {
+            padding: var(--tf-sp-4);
+            border-bottom: 1px solid var(--tf-border);
+        }
+
+        .data-table tr:hover {
+            background-color: var(--tf-navy);
+        }
+
+        .data-table .numeric {
+            text-align: right;
+            font-family: var(--tf-font-mono);
+        }
+
+        /* ── Alerts ────────────────────────────────────────────────– */
+
+        .alert {
+            padding: var(--tf-sp-4);
+            border-radius: var(--tf-radius);
+            margin-bottom: var(--tf-sp-6);
+            font-size: var(--tf-text-sm);
+        }
+
+        .alert-info {
+            background-color: var(--tf-info-bg);
+            border: 1px solid var(--tf-info);
+            color: var(--tf-info);
+        }
+
+        .alert-warning {
+            background-color: var(--tf-warning-bg);
+            border: 1px solid var(--tf-warning);
+            color: var(--tf-warning);
+        }
+
+        .alert-danger {
+            background-color: var(--tf-danger-bg);
+            border: 1px solid var(--tf-danger);
+            color: var(--tf-danger);
+        }
+
+        .alert-success {
+            background-color: var(--tf-success-bg);
+            border: 1px solid var(--tf-success);
+            color: var(--tf-success);
+        }
+
+        /* ── Status Badge ──────────────────────────────────────────– */
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background-color: var(--tf-success-bg);
+            color: var(--tf-success);
+        }
+
+        .badge-warning {
+            background-color: var(--tf-warning-bg);
+            color: var(--tf-warning);
+        }
+
+        .badge-danger {
+            background-color: var(--tf-danger-bg);
+            color: var(--tf-danger);
+        }
+
+        /* ── Print Styles ──────────────────────────────────────────– */
+
+        @media print {
+            body {
+                background-color: white;
+                color: #000;
+            }
+
+            .container {
+                max-width: 100%;
+                padding: 0;
+            }
+
+            .tf-sidebar, .tf-contextbar {
+                display: none !important;
+            }
+
+            .tabs, .tab-button, .btn-group, .btn {
+                display: none !important;
+            }
+
+            .page-header {
+                margin-bottom: 20px;
+            }
+
+            .card {
+                background-color: white;
+                border: 1px solid #000;
+                box-shadow: none;
+                page-break-inside: avoid;
+            }
+
+            .card-header {
+                border-bottom: 2px solid #000;
+                font-weight: bold;
+            }
+
+            .line-items-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+
+            .line-items-table th,
+            .line-items-table td {
+                border: 1px solid #000;
+                padding: 8px;
+                text-align: left;
+            }
+
+            .data-table th {
+                background-color: #f0f0f0;
+                color: #000;
+            }
+
+            .data-table td {
+                border-bottom: 1px solid #000;
+            }
+
+            .form-input, .form-select, .form-textarea {
+                border: 1px solid #000;
+                background-color: white;
+                color: #000;
+            }
+
+            .info-item {
+                background-color: white;
+                border: 1px solid #000;
+            }
+
+            .alert {
+                border: 1px solid #000;
+            }
+        }
+
+        /* ── Loading State ─────────────────────────────────────────– */
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--tf-border);
+            border-top: 3px solid var(--tf-gold);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
         }
     </style>
 </head>
 <body>
+
     <div class="container">
-        <!-- Top bar -->
-        <div class="top-bar">
-            <h1>Shipping Dashboard</h1>
-            <div class="actions">
-                <a href="/shipping/load-builder" class="btn btn-primary">Open Load Builder</a>
-                <button onclick="refreshDashboard()" class="btn btn-secondary">Refresh</button>
-            </div>
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1 class="page-title">Shipping Hub</h1>
+            <p class="page-subtitle">Job Code: <strong>{{JOB_CODE}}</strong></p>
         </div>
 
-        <!-- Metric cards -->
-        <div class="metric-row" id="metricRow">
-            <div class="metric-card building">
-                <div class="value" id="metBuilding">—</div>
-                <div class="label">Building</div>
-            </div>
-            <div class="metric-card ready">
-                <div class="value" id="metReady">—</div>
-                <div class="label">Ready to Ship</div>
-            </div>
-            <div class="metric-card transit">
-                <div class="value" id="metTransit">—</div>
-                <div class="label">In Transit</div>
-            </div>
-            <div class="metric-card delivered">
-                <div class="value" id="metDelivered">—</div>
-                <div class="label">Delivered</div>
-            </div>
-            <div class="metric-card total">
-                <div class="value" id="metTotal">—</div>
-                <div class="label">Total Loads</div>
-                <div class="sublabel" id="metWeight">—</div>
-            </div>
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-button active" data-tab="packing-lists">
+                📦 Packing Lists
+            </button>
+            <button class="tab-button" data-tab="bills-of-lading">
+                📄 Bills of Lading
+            </button>
+            <button class="tab-button" data-tab="manifests">
+                🚚 Shipping Manifest
+            </button>
+            <button class="tab-button" data-tab="purchase-orders">
+                💳 Purchase Orders
+            </button>
+            <button class="tab-button" data-tab="reorder-alerts">
+                ⚠️ Reorder Alerts
+            </button>
         </div>
 
-        <!-- Pipeline bar -->
-        <div class="pipeline-section">
-            <div class="pipeline-bar" id="pipelineBar"></div>
-            <div class="pipeline-legend">
-                <span><span class="dot" style="background:var(--tf-amber)"></span> Building</span>
-                <span><span class="dot" style="background:var(--tf-blue)"></span> Ready</span>
-                <span><span class="dot" style="background:#8b5cf6"></span> In Transit</span>
-                <span><span class="dot" style="background:var(--tf-success)"></span> Delivered</span>
-                <span><span class="dot" style="background:var(--tf-gray-400)"></span> Complete</span>
-            </div>
-        </div>
+        <!-- ================================================================
+             TAB 1: PACKING LISTS
+             ================================================================ -->
+        <div id="packing-lists" class="tab-content active">
+            <div class="card">
+                <div class="card-header">Create Packing List</div>
 
-        <!-- Filter bar -->
-        <div class="filter-bar">
-            <select id="filterStatus" onchange="applyFilters()">
-                <option value="">All Statuses</option>
-                <option value="building">Building</option>
-                <option value="ready">Ready to Ship</option>
-                <option value="in_transit">In Transit</option>
-                <option value="delivered">Delivered</option>
-                <option value="complete">Complete</option>
-            </select>
-            <select id="filterProject" onchange="applyFilters()">
-                <option value="">All Projects</option>
-            </select>
-            <input type="text" id="searchInput" placeholder="Search loads..." oninput="applyFilters()">
-        </div>
+                <div class="form-group">
+                    <label class="form-label">Select Items to Pack</label>
+                    <div class="checkbox-list" id="packing-items-list">
+                        <!-- Populated by JavaScript from work order -->
+                    </div>
+                </div>
 
-        <!-- Loads table -->
-        <div class="panel">
-            <div class="panel-header">
-                <span>All Loads <span id="loadCount" style="font-weight:400;color:var(--tf-gray-400);margin-left:8px;"></span></span>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Ship Date</label>
+                        <input type="date" class="form-input" id="pack-ship-date">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Truck Number</label>
+                        <input type="text" class="form-input" id="pack-truck-number" placeholder="e.g., T001">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Trailer Number</label>
+                        <input type="text" class="form-input" id="pack-trailer-number" placeholder="e.g., TR001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Driver Name</label>
+                        <input type="text" class="form-input" id="pack-driver-name">
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-gold" onclick="generatePackingList()">
+                        Generate Packing List
+                    </button>
+                    <button class="btn" onclick="printPackingList()">
+                        🖨️ Print
+                    </button>
+                </div>
             </div>
-            <div class="panel-body">
-                <table class="loads-table">
-                    <thead>
-                        <tr>
-                            <th>Load #</th>
-                            <th>Status</th>
-                            <th>Project</th>
-                            <th>Destination</th>
-                            <th>Items</th>
-                            <th>Weight (lbs)</th>
-                            <th>Carrier</th>
-                            <th>Created</th>
-                            <th>Shipped</th>
-                        </tr>
-                    </thead>
-                    <tbody id="loadsBody"></tbody>
-                </table>
-                <div class="empty-state" id="emptyState" style="display:none;">
-                    <div class="icon">&#128666;</div>
-                    <p>No loads yet. Open the <a href="/shipping/load-builder">Load Builder</a> to create your first load.</p>
+
+            <div class="card">
+                <div class="card-header">Previous Packing Lists</div>
+                <div id="packing-lists-history">
+                    <p style="color: var(--tf-text-muted);">No packing lists yet.</p>
                 </div>
             </div>
         </div>
 
-        <!-- Bottom dashboard grid -->
-        <div class="dashboard-grid">
-            <!-- Recent deliveries -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span>Recent Deliveries</span>
+        <!-- ================================================================
+             TAB 2: BILLS OF LADING
+             ================================================================ -->
+        <div id="bills-of-lading" class="tab-content">
+            <div class="card">
+                <div class="card-header">Create Bill of Lading</div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Carrier Name</label>
+                        <input type="text" class="form-input" id="bol-carrier-name" placeholder="e.g., XYZ Trucking">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Driver Name</label>
+                        <input type="text" class="form-input" id="bol-driver-name">
+                    </div>
                 </div>
-                <div class="panel-body" id="recentDeliveries" style="padding:0;max-height:320px;overflow-y:auto;">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Truck Number</label>
+                        <input type="text" class="form-input" id="bol-truck-number">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Trailer Number</label>
+                        <input type="text" class="form-input" id="bol-trailer-number">
+                    </div>
+                </div>
+
+                <fieldset>
+                    <legend style="color: var(--tf-text); margin-bottom: var(--tf-sp-4); font-weight: 600;">
+                        Consignee (Destination)
+                    </legend>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Company Name</label>
+                            <input type="text" class="form-input" id="bol-consignee-company">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Contact Person</label>
+                            <input type="text" class="form-input" id="bol-consignee-contact">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Address</label>
+                        <input type="text" class="form-input" id="bol-consignee-address">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">City</label>
+                            <input type="text" class="form-input" id="bol-consignee-city">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">State</label>
+                            <input type="text" class="form-input" id="bol-consignee-state" style="max-width: 80px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ZIP</label>
+                            <input type="text" class="form-input" id="bol-consignee-zip" style="max-width: 120px;">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="text" class="form-input" id="bol-consignee-phone">
+                    </div>
+                </fieldset>
+
+                <div class="btn-group">
+                    <button class="btn btn-gold" onclick="generateBOL()">
+                        Generate Bill of Lading
+                    </button>
+                    <button class="btn" onclick="printBOL()">
+                        🖨️ Print
+                    </button>
                 </div>
             </div>
 
-            <!-- Weight by project -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span>Shipped Weight by Project</span>
+            <div class="card">
+                <div class="card-header">Previous Bills of Lading</div>
+                <div id="bol-history">
+                    <p style="color: var(--tf-text-muted);">No BOLs yet.</p>
                 </div>
-                <div class="panel-body" id="weightByProject" style="padding:0;">
+            </div>
+        </div>
+
+        <!-- ================================================================
+             TAB 3: SHIPPING MANIFEST
+             ================================================================ -->
+        <div id="manifests" class="tab-content">
+            <div class="card">
+                <div class="card-header">Shipping Manifest</div>
+                <p style="margin-bottom: var(--tf-sp-4); color: var(--tf-text-muted);">
+                    Consolidated view of all truck loads for this job. Items are sorted by weight (heaviest first).
+                </p>
+
+                <div id="manifest-display">
+                    <p style="color: var(--tf-text-muted);">Load data will appear here.</p>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-gold" onclick="generateManifest()">
+                        Generate Manifest
+                    </button>
+                    <button class="btn" onclick="printManifest()">
+                        🖨️ Print
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================
+             TAB 4: PURCHASE ORDERS
+             ================================================================ -->
+        <div id="purchase-orders" class="tab-content">
+            <div class="card">
+                <div class="card-header">Create Purchase Order</div>
+
+                <div class="form-group">
+                    <label class="form-label">PO Number (auto-generated if blank)</label>
+                    <input type="text" class="form-input" id="po-number" placeholder="Leave blank for auto">
+                </div>
+
+                <fieldset>
+                    <legend style="color: var(--tf-text); margin-bottom: var(--tf-sp-4); font-weight: 600;">
+                        Vendor Information
+                    </legend>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Vendor Name</label>
+                            <input type="text" class="form-input" id="po-vendor-name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Contact</label>
+                            <input type="text" class="form-input" id="po-vendor-contact">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Address</label>
+                        <input type="text" class="form-input" id="po-vendor-address">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">City</label>
+                            <input type="text" class="form-input" id="po-vendor-city">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">State</label>
+                            <input type="text" class="form-input" id="po-vendor-state" style="max-width: 80px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">ZIP</label>
+                            <input type="text" class="form-input" id="po-vendor-zip" style="max-width: 120px;">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="text" class="form-input" id="po-vendor-phone">
+                    </div>
+                </fieldset>
+
+                <div class="form-group">
+                    <label class="form-label">Requested Delivery Date</label>
+                    <input type="date" class="form-input" id="po-delivery-date">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Notes / Special Instructions</label>
+                    <textarea class="form-textarea" id="po-notes" rows="3"></textarea>
+                </div>
+
+                <div class="card" style="margin-top: var(--tf-sp-6); background-color: var(--tf-navy);">
+                    <div class="card-header">Line Items</div>
+
+                    <div id="po-line-items-editor">
+                        <!-- Dynamically populated -->
+                    </div>
+
+                    <button class="btn btn-small" onclick="addPOLineItem()" style="margin-top: var(--tf-sp-4);">
+                        + Add Line Item
+                    </button>
+                </div>
+
+                <div class="info-grid" style="margin-top: var(--tf-sp-6);">
+                    <div class="info-item">
+                        <div class="info-label">Subtotal</div>
+                        <div class="info-value" id="po-subtotal">$0.00</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Tax (8.25%)</div>
+                        <div class="info-value" id="po-tax">$0.00</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Total</div>
+                        <div class="info-value" id="po-total">$0.00</div>
+                    </div>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-gold" onclick="generatePO()">
+                        Generate Purchase Order
+                    </button>
+                    <button class="btn" onclick="printPO()">
+                        🖨️ Print
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Previous Purchase Orders</div>
+                <div id="po-history">
+                    <p style="color: var(--tf-text-muted);">No POs yet.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================================================================
+             TAB 5: REORDER ALERTS
+             ================================================================ -->
+        <div id="reorder-alerts" class="tab-content">
+            <div class="card">
+                <div class="card-header">Inventory Below Reorder Point</div>
+
+                <div id="reorder-alerts-display">
+                    <p style="color: var(--tf-text-muted);">Loading inventory data...</p>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-gold" onclick="refreshReorderAlerts()">
+                        🔄 Refresh
+                    </button>
+                    <button class="btn btn-success" onclick="createPOFromAlerts()">
+                        ✓ Create PO from Selected
+                    </button>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Load detail modal -->
-    <div class="modal-backdrop" id="detailModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h2 id="detailTitle">Load Details</h2>
-                <button onclick="closeModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--tf-gray-400);">&#10005;</button>
-            </div>
-            <div class="modal-body" id="detailBody"></div>
-            <div class="modal-footer" id="detailFooter"></div>
-        </div>
-    </div>
-
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
 
     <script>
-    let allLoads = [];
-    let summaryData = {};
+        // ================================================================
+        // TAB MANAGEMENT
+        // ================================================================
 
-    async function refreshDashboard() {
-        try {
-            const [summaryRes, loadsRes] = await Promise.all([
-                fetch('/api/shipping/summary'),
-                fetch('/api/shipping/loads')
-            ]);
-            summaryData = await summaryRes.json();
-            const loadsData = await loadsRes.json();
-            allLoads = loadsData.loads || [];
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', function() {
+                const tabName = this.getAttribute('data-tab');
 
-            renderMetrics();
-            renderPipeline();
-            populateProjectFilter();
-            applyFilters();
-            renderRecentDeliveries();
-            renderWeightByProject();
-        } catch (err) {
-            showToast('Failed to load shipping data', 'error');
-        }
-    }
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                });
 
-    function renderMetrics() {
-        const s = summaryData;
-        document.getElementById('metBuilding').textContent = s.building || 0;
-        document.getElementById('metReady').textContent = s.ready || 0;
-        document.getElementById('metTransit').textContent = s.in_transit || 0;
-        document.getElementById('metDelivered').textContent = s.delivered || 0;
-        document.getElementById('metTotal').textContent = s.total_loads || 0;
-        const w = s.total_weight_shipped || 0;
-        document.getElementById('metWeight').textContent = w > 0
-            ? `${w.toLocaleString()} lbs shipped`
-            : 'No weight data';
-    }
+                // Deactivate all buttons
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
 
-    function renderPipeline() {
-        const s = summaryData;
-        const total = s.total_loads || 1;
-        const bar = document.getElementById('pipelineBar');
-
-        const segments = [
-            { cls: 'seg-building', count: s.building || 0 },
-            { cls: 'seg-ready', count: s.ready || 0 },
-            { cls: 'seg-transit', count: s.in_transit || 0 },
-            { cls: 'seg-delivered', count: s.delivered || 0 },
-            { cls: 'seg-complete', count: s.complete || 0 },
-        ];
-
-        bar.innerHTML = segments
-            .filter(seg => seg.count > 0)
-            .map(seg => {
-                const pct = Math.max((seg.count / total) * 100, 5);
-                return `<div class="segment ${seg.cls}" style="width:${pct}%">${seg.count}</div>`;
-            }).join('');
-
-        if (total <= 1 && !s.total_loads) {
-            bar.innerHTML = '<div style="width:100%;text-align:center;color:var(--tf-gray-400);font-size:12px;line-height:32px;">No loads</div>';
-        }
-    }
-
-    function populateProjectFilter() {
-        const projects = new Set();
-        allLoads.forEach(l => {
-            if (l.job_code) projects.add(l.job_code);
-        });
-        const sel = document.getElementById('filterProject');
-        const current = sel.value;
-        sel.innerHTML = '<option value="">All Projects</option>';
-        [...projects].sort().forEach(p => {
-            sel.innerHTML += `<option value="${p}">${p}</option>`;
-        });
-        sel.value = current;
-    }
-
-    function applyFilters() {
-        const statusFilter = document.getElementById('filterStatus').value;
-        const projectFilter = document.getElementById('filterProject').value;
-        const search = document.getElementById('searchInput').value.toLowerCase();
-
-        let filtered = allLoads;
-        if (statusFilter) filtered = filtered.filter(l => l.status === statusFilter);
-        if (projectFilter) filtered = filtered.filter(l => l.job_code === projectFilter);
-        if (search) {
-            filtered = filtered.filter(l =>
-                (l.load_id || '').toLowerCase().includes(search) ||
-                (l.destination || '').toLowerCase().includes(search) ||
-                (l.carrier || '').toLowerCase().includes(search) ||
-                (l.job_code || '').toLowerCase().includes(search) ||
-                String(l.load_number || '').includes(search)
-            );
-        }
-
-        renderLoadsTable(filtered);
-    }
-
-    function renderLoadsTable(loads) {
-        const body = document.getElementById('loadsBody');
-        const empty = document.getElementById('emptyState');
-        const countEl = document.getElementById('loadCount');
-
-        if (!loads || loads.length === 0) {
-            body.innerHTML = '';
-            empty.style.display = 'block';
-            countEl.textContent = '';
-            return;
-        }
-
-        empty.style.display = 'none';
-        countEl.textContent = `(${loads.length})`;
-
-        body.innerHTML = loads.map(l => {
-            const statusCls = (l.status || '').replace(/ /g, '_');
-            const statusLabel = {
-                building: 'Building', ready: 'Ready to Ship',
-                in_transit: 'In Transit', delivered: 'Delivered', complete: 'Complete'
-            }[l.status] || l.status;
-            const created = l.created_at ? new Date(l.created_at).toLocaleDateString() : '—';
-            const shipped = l.shipped_at ? new Date(l.shipped_at).toLocaleDateString() : '—';
-            return `<tr onclick="showLoadDetail('${l.load_id}')">
-                <td class="load-number">L-${String(l.load_number).padStart(3,'0')}</td>
-                <td><span class="status-pill ${statusCls}">${statusLabel}</span></td>
-                <td>${l.job_code || '—'}</td>
-                <td>${l.destination || '—'}</td>
-                <td>${l.total_items || 0}</td>
-                <td>${(l.total_weight || 0).toLocaleString()}</td>
-                <td>${l.carrier || '—'}</td>
-                <td>${created}</td>
-                <td>${shipped}</td>
-            </tr>`;
-        }).join('');
-    }
-
-    function renderRecentDeliveries() {
-        const container = document.getElementById('recentDeliveries');
-        const delivered = allLoads.filter(l =>
-            l.status === 'delivered' || l.status === 'complete'
-        ).slice(0, 10);
-
-        if (delivered.length === 0) {
-            container.innerHTML = '<div class="empty-state"><p>No deliveries yet</p></div>';
-            return;
-        }
-
-        container.innerHTML = delivered.map(l => {
-            const dt = l.delivered_at ? new Date(l.delivered_at).toLocaleString() : 'Pending';
-            return `<div class="delivery-card">
-                <span class="load-ref">L-${String(l.load_number).padStart(3,'0')}</span>
-                <span class="timestamp">${dt}</span>
-                <div class="dest">${l.destination || l.job_code || '—'} &mdash; ${l.total_items || 0} items, ${((l.total_weight || 0)).toLocaleString()} lbs</div>
-            </div>`;
-        }).join('');
-    }
-
-    function renderWeightByProject() {
-        const container = document.getElementById('weightByProject');
-        const shipped = allLoads.filter(l =>
-            ['in_transit', 'delivered', 'complete'].includes(l.status)
-        );
-
-        const byProject = {};
-        shipped.forEach(l => {
-            const key = l.job_code || 'Unknown';
-            byProject[key] = (byProject[key] || 0) + (l.total_weight || 0);
-        });
-
-        const entries = Object.entries(byProject).sort((a, b) => b[1] - a[1]);
-        if (entries.length === 0) {
-            container.innerHTML = '<div class="empty-state"><p>No shipped weight data</p></div>';
-            return;
-        }
-
-        const maxWeight = entries[0][1] || 1;
-        container.innerHTML = '<div class="weight-bar-chart">' + entries.map(([proj, weight]) => {
-            const pct = Math.max((weight / maxWeight) * 100, 3);
-            return `<div class="weight-row">
-                <span class="project-label">${proj}</span>
-                <div class="bar-track"><div class="bar-fill" style="width:${pct}%"><span>${weight.toLocaleString()}</span></div></div>
-                <span class="weight-val">${weight.toLocaleString()} lbs</span>
-            </div>`;
-        }).join('') + '</div>';
-    }
-
-    async function showLoadDetail(loadId) {
-        try {
-            const res = await fetch(`/api/shipping/loads/${loadId}`);
-            const load = await res.json();
-            renderDetailModal(load);
-        } catch (err) {
-            showToast('Failed to load detail', 'error');
-        }
-    }
-
-    function renderDetailModal(load) {
-        const statusLabel = {
-            building: 'Building', ready: 'Ready to Ship',
-            in_transit: 'In Transit', delivered: 'Delivered', complete: 'Complete'
-        }[load.status] || load.status;
-        const statusCls = (load.status || '').replace(/ /g, '_');
-
-        document.getElementById('detailTitle').innerHTML =
-            `Load L-${String(load.load_number).padStart(3,'0')} <span class="status-pill ${statusCls}" style="margin-left:12px;vertical-align:middle;">${statusLabel}</span>`;
-
-        let bodyHtml = `<div class="detail-grid">
-            <div class="detail-item"><label>Project</label><span>${load.job_code || '—'}</span></div>
-            <div class="detail-item"><label>Destination</label><span>${load.destination || '—'}</span></div>
-            <div class="detail-item"><label>Carrier</label><span>${load.carrier || '—'}</span></div>
-            <div class="detail-item"><label>Trailer</label><span>${load.trailer_type || '—'}</span></div>
-            <div class="detail-item"><label>Driver</label><span>${load.driver_name || '—'} ${load.driver_phone ? '(' + load.driver_phone + ')' : ''}</span></div>
-            <div class="detail-item"><label>BOL</label><span>${load.bol_number || 'Not generated'}</span></div>
-            <div class="detail-item"><label>Created</label><span>${load.created_at ? new Date(load.created_at).toLocaleString() : '—'}</span></div>
-            <div class="detail-item"><label>Shipped</label><span>${load.shipped_at ? new Date(load.shipped_at).toLocaleString() : '—'}</span></div>
-        </div>`;
-
-        if (load.special_instructions) {
-            bodyHtml += `<div style="margin-bottom:var(--tf-sp-4);padding:var(--tf-sp-3);background:var(--tf-amber-50,#fffbeb);border:1px solid var(--tf-amber);border-radius:var(--tf-radius-md);font-size:var(--tf-text-sm);">
-                <strong>Special Instructions:</strong> ${load.special_instructions}
-            </div>`;
-        }
-
-        if (load.delivery_notes) {
-            bodyHtml += `<div style="margin-bottom:var(--tf-sp-4);padding:var(--tf-sp-3);background:#f0fdf4;border:1px solid var(--tf-success);border-radius:var(--tf-radius-md);font-size:var(--tf-text-sm);">
-                <strong>Delivery Notes:</strong> ${load.delivery_notes}
-            </div>`;
-        }
-
-        const items = load.items || [];
-        if (items.length > 0) {
-            bodyHtml += `<h3 style="font-size:var(--tf-text-sm);font-weight:700;margin-bottom:var(--tf-sp-2);color:var(--tf-gray-700);">Items (${items.length})</h3>`;
-            bodyHtml += `<table class="item-list-table">
-                <thead><tr><th>Ship Mark</th><th>Description</th><th>Qty</th><th>Weight</th><th>Length</th><th>Bundle</th></tr></thead>
-                <tbody>${items.map(i => `<tr>
-                    <td style="font-weight:600;">${i.ship_mark || i.item_id}</td>
-                    <td>${i.description || '—'}</td>
-                    <td>${i.quantity || 1}</td>
-                    <td>${i.weight_lbs ? i.weight_lbs.toLocaleString() + ' lbs' : '—'}</td>
-                    <td>${i.length_ft ? i.length_ft + "'" : '—'}</td>
-                    <td>${i.bundle_tag || '—'}</td>
-                </tr>`).join('')}</tbody>
-            </table>`;
-        } else {
-            bodyHtml += '<p style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);">No items on this load.</p>';
-        }
-
-        document.getElementById('detailBody').innerHTML = bodyHtml;
-
-        // Footer actions
-        let footerHtml = '<button onclick="closeModal()" class="btn btn-secondary">Close</button>';
-        if (load.status === 'building') {
-            footerHtml = `<button onclick="window.location='/shipping/load-builder'" class="btn btn-primary">Open in Load Builder</button>` + footerHtml;
-        }
-        if (['ready', 'in_transit'].includes(load.status)) {
-            const nextStatus = load.status === 'ready' ? 'in_transit' : 'delivered';
-            const nextLabel = load.status === 'ready' ? 'Mark Shipped' : 'Mark Delivered';
-            footerHtml = `<button onclick="transitionLoad('${load.load_id}','${nextStatus}')" class="btn btn-primary">${nextLabel}</button>` + footerHtml;
-        }
-        document.getElementById('detailFooter').innerHTML = footerHtml;
-
-        document.getElementById('detailModal').classList.add('active');
-    }
-
-    function closeModal() {
-        document.getElementById('detailModal').classList.remove('active');
-    }
-
-    async function transitionLoad(loadId, newStatus) {
-        try {
-            const res = await fetch(`/api/shipping/loads/${loadId}/transition`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ new_status: newStatus })
+                // Show selected tab
+                document.getElementById(tabName).classList.add('active');
+                this.classList.add('active');
             });
-            const result = await res.json();
-            if (result.ok) {
-                showToast('Load status updated', 'success');
-                closeModal();
-                refreshDashboard();
-            } else {
-                showToast(result.error || 'Transition failed', 'error');
+        });
+
+        // ================================================================
+        // JOB CODE & API HELPERS
+        // ================================================================
+
+        const JOB_CODE = '{{JOB_CODE}}';
+
+        function apiCall(endpoint, method = 'GET', data = null) {
+            const opts = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+
+            if (data) {
+                opts.body = JSON.stringify(data);
             }
-        } catch (err) {
-            showToast('Failed to update load', 'error');
+
+            return fetch(endpoint, opts)
+                .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.json();
+                })
+                .catch(err => {
+                    console.error('API error:', err);
+                    alert('Error: ' + err.message);
+                    throw err;
+                });
         }
-    }
 
-    function showToast(msg, type) {
-        const t = document.getElementById('toast');
-        t.textContent = msg;
-        t.className = 'toast ' + (type || '');
-        t.style.display = 'block';
-        setTimeout(() => { t.style.display = 'none'; }, 3500);
-    }
+        // ================================================================
+        // PACKING LIST TAB
+        // ================================================================
 
-    // ESC to close modal
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeModal();
-    });
+        var allWOItems = []; // Store all items for packing list generation
 
-    // Initial load + auto-refresh
-    refreshDashboard();
-    setInterval(refreshDashboard, 45000);
+        function loadPackingItemsList() {
+            apiCall(`/api/work-orders/list?job_code=${JOB_CODE}`)
+                .then(data => {
+                    const wos = data.work_orders || [];
+                    if (wos.length === 0) {
+                        document.getElementById('packing-items-list').innerHTML =
+                            '<p style="color: var(--tf-text-muted);">No work orders found for this job.</p>';
+                        return;
+                    }
+                    // Load detail for each WO to get items
+                    const promises = wos.map(wo =>
+                        apiCall(`/api/work-orders/detail?job_code=${JOB_CODE}&wo_id=${wo.work_order_id}`)
+                            .catch(() => ({ ok: false }))
+                    );
+                    return Promise.all(promises);
+                })
+                .then(results => {
+                    if (!results) return;
+                    allWOItems = [];
+                    results.forEach(r => {
+                        if (r && r.ok && r.work_order && r.work_order.items) {
+                            r.work_order.items.forEach(item => allWOItems.push(item));
+                        }
+                    });
+                    const completedItems = allWOItems.filter(i => i.status === 'complete');
+
+                    const html = completedItems.map(item => `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="item-${item.item_id}" value="${item.item_id}" checked>
+                            <label for="item-${item.item_id}">
+                                <strong>${item.ship_mark || item.item_id}</strong> — ${item.description || item.component_type || ''}
+                                <span style="color: var(--tf-text-muted); font-size: var(--tf-text-sm);">
+                                    (Qty: ${item.quantity || 1})
+                                </span>
+                            </label>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('packing-items-list').innerHTML = html ||
+                        '<p style="color: var(--tf-text-muted);">No completed items ready for shipping.</p>';
+                })
+                .catch(() => {
+                    document.getElementById('packing-items-list').innerHTML =
+                        '<p style="color: var(--tf-text-muted);">No work orders found for this job.</p>';
+                });
+        }
+
+        function generatePackingList() {
+            const selectedItems = Array.from(document.querySelectorAll('#packing-items-list input:checked'))
+                .map(cb => cb.value);
+
+            if (selectedItems.length === 0) {
+                alert('Please select at least one item.');
+                return;
+            }
+
+            const shipDate = document.getElementById('pack-ship-date').value;
+            const truckNumber = document.getElementById('pack-truck-number').value;
+            const trailerNumber = document.getElementById('pack-trailer-number').value;
+            const driverName = document.getElementById('pack-driver-name').value;
+
+            // Build work_order dict from loaded items
+            const selectedWOItems = allWOItems.filter(i => selectedItems.includes(i.item_id));
+            const payload = {
+                job_code: JOB_CODE,
+                work_order: {
+                    work_order_id: 'shipping',
+                    job_code: JOB_CODE,
+                    items: selectedWOItems,
+                },
+                items_filter: selectedItems,
+                ship_date: shipDate,
+                truck_info: {
+                    truck_number: truckNumber,
+                    trailer_number: trailerNumber,
+                    driver_name: driverName,
+                },
+            };
+
+            apiCall(`/api/shipping/packing-list`, 'POST', payload)
+                .then(resp => {
+                    var pl = resp.data || resp;
+                    alert('Packing list generated: ' + (pl.packing_list_id || 'OK'));
+                    loadPackingListHistory();
+                });
+        }
+
+        function loadPackingListHistory() {
+            apiCall(`/api/shipping/packing-list?job_code=${JOB_CODE}`)
+                .then(data => {
+                    const docs = data.docs || [];
+                    if (docs.length === 0) {
+                        document.getElementById('packing-lists-history').innerHTML =
+                            '<p style="color: var(--tf-text-muted);">No packing lists yet.</p>';
+                        return;
+                    }
+
+                    const html = docs.map(doc => `
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                            <p><strong>${doc.packing_list_id}</strong> — ${doc.ship_date}</p>
+                            <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
+                                ${doc.totals.total_pieces} pieces, ${doc.totals.total_weight_lbs} lbs
+                            </p>
+                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.packing_list_id}', 'packing_list')">
+                                View & Print
+                            </button>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('packing-lists-history').innerHTML = html;
+                });
+        }
+
+        function printPackingList() {
+            alert('Print functionality: packing list preview will open in print dialog.');
+            window.print();
+        }
+
+        // ================================================================
+        // BILL OF LADING TAB
+        // ================================================================
+
+        function generateBOL() {
+            const carrierName = document.getElementById('bol-carrier-name').value;
+            const driverName = document.getElementById('bol-driver-name').value;
+            const truckNumber = document.getElementById('bol-truck-number').value;
+            const trailerNumber = document.getElementById('bol-trailer-number').value;
+
+            const consignee = {
+                company: document.getElementById('bol-consignee-company').value,
+                contact: document.getElementById('bol-consignee-contact').value,
+                address: document.getElementById('bol-consignee-address').value,
+                city: document.getElementById('bol-consignee-city').value,
+                state: document.getElementById('bol-consignee-state').value,
+                zip: document.getElementById('bol-consignee-zip').value,
+                phone: document.getElementById('bol-consignee-phone').value,
+            };
+
+            const payload = {
+                job_code: JOB_CODE,
+                work_order: { work_order_id: 'shipping', job_code: JOB_CODE, items: allWOItems.filter(i => i.status === 'complete') },
+                carrier_info: {
+                    name: carrierName,
+                    driver: driverName,
+                    truck_number: truckNumber,
+                    trailer_number: trailerNumber,
+                },
+                consignee: consignee,
+            };
+
+            apiCall(`/api/shipping/bol`, 'POST', payload)
+                .then(resp => {
+                    var bol = resp.data || resp;
+                    alert('Bill of Lading generated: ' + (bol.bol_number || bol.bol_id || 'OK'));
+                    loadBOLHistory();
+                });
+        }
+
+        function loadBOLHistory() {
+            apiCall(`/api/shipping/bol?job_code=${JOB_CODE}`)
+                .then(data => {
+                    const docs = data.docs || [];
+                    if (docs.length === 0) {
+                        document.getElementById('bol-history').innerHTML =
+                            '<p style="color: var(--tf-text-muted);">No BOLs yet.</p>';
+                        return;
+                    }
+
+                    const html = docs.map(doc => `
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                            <p><strong>${doc.bol_number}</strong> — ${doc.bol_date}</p>
+                            <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
+                                Carrier: ${doc.carrier.name} | Weight: ${doc.totals.total_weight_lbs} lbs
+                            </p>
+                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.bol_number}', 'bill_of_lading')">
+                                View & Print
+                            </button>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('bol-history').innerHTML = html;
+                });
+        }
+
+        function printBOL() {
+            window.print();
+        }
+
+        // ================================================================
+        // MANIFEST TAB
+        // ================================================================
+
+        function generateManifest() {
+            apiCall(`/api/shipping/manifest`, 'POST', {job_code: JOB_CODE})
+                .then(manifest => {
+                    displayManifest(manifest);
+                });
+        }
+
+        function displayManifest(manifest) {
+            const loads = manifest.loads || [];
+            if (loads.length === 0) {
+                document.getElementById('manifest-display').innerHTML =
+                    '<p style="color: var(--tf-text-muted);">No loads yet.</p>';
+                return;
+            }
+
+            const html = `
+                <p style="margin-bottom: var(--tf-sp-6);">
+                    <strong>Manifest ID:</strong> ${manifest.manifest_id}<br>
+                    <strong>Date:</strong> ${manifest.manifest_date}<br>
+                    <strong>Total Loads:</strong> ${manifest.totals.total_loads}
+                    | <strong>Total Weight:</strong> ${manifest.totals.total_weight_lbs} lbs
+                    | <strong>Total Pieces:</strong> ${manifest.totals.total_pieces}
+                </p>
+
+                ${loads.map((load, idx) => `
+                    <div style="margin-bottom: var(--tf-sp-6); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                        <h4 style="color: var(--tf-gold); margin-bottom: var(--tf-sp-3);">Load #${load.load_number}</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <div class="info-label">Truck</div>
+                                <div class="info-value">${load.truck_number}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Trailer</div>
+                                <div class="info-value">${load.trailer_number}</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Weight</div>
+                                <div class="info-value">${load.weight_lbs} lbs</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Pieces</div>
+                                <div class="info-value">${load.piece_count}</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+
+            document.getElementById('manifest-display').innerHTML = html;
+        }
+
+        function printManifest() {
+            window.print();
+        }
+
+        // ================================================================
+        // PURCHASE ORDER TAB
+        // ================================================================
+
+        function addPOLineItem() {
+            const container = document.getElementById('po-line-items-editor');
+            const rowCount = container.querySelectorAll('.line-item-row').length;
+
+            const row = document.createElement('div');
+            row.className = 'line-item-row';
+            row.innerHTML = `
+                <input type="text" placeholder="Description" class="po-item-description">
+                <input type="text" placeholder="Gauge" class="po-item-gauge" style="width: 80px;">
+                <input type="text" placeholder="Width" class="po-item-width" style="width: 80px;">
+                <input type="number" placeholder="Weight (lbs)" class="po-item-weight" step="0.01">
+                <input type="number" placeholder="Unit Price" class="po-item-price" step="0.0001" class="po-item-price">
+                <button class="btn btn-danger btn-small" onclick="this.parentElement.remove(); recalculatePO();">
+                    Remove
+                </button>
+            `;
+
+            container.appendChild(row);
+        }
+
+        function recalculatePO() {
+            const rows = document.querySelectorAll('.line-item-row');
+            let subtotal = 0;
+
+            rows.forEach(row => {
+                const weight = parseFloat(row.querySelector('.po-item-weight').value) || 0;
+                const price = parseFloat(row.querySelector('.po-item-price').value) || 0;
+                subtotal += weight * price;
+            });
+
+            const tax = subtotal * 0.0825;
+            const total = subtotal + tax;
+
+            document.getElementById('po-subtotal').textContent = '$' + subtotal.toFixed(2);
+            document.getElementById('po-tax').textContent = '$' + tax.toFixed(2);
+            document.getElementById('po-total').textContent = '$' + total.toFixed(2);
+        }
+
+        function generatePO() {
+            const poNumber = document.getElementById('po-number').value || null;
+            const vendor = {
+                name: document.getElementById('po-vendor-name').value,
+                contact: document.getElementById('po-vendor-contact').value,
+                address: document.getElementById('po-vendor-address').value,
+                city: document.getElementById('po-vendor-city').value,
+                state: document.getElementById('po-vendor-state').value,
+                zip: document.getElementById('po-vendor-zip').value,
+                phone: document.getElementById('po-vendor-phone').value,
+            };
+
+            const deliveryDate = document.getElementById('po-delivery-date').value;
+            const notes = document.getElementById('po-notes').value;
+
+            const lineItems = Array.from(document.querySelectorAll('.line-item-row')).map(row => ({
+                description: row.querySelector('.po-item-description').value,
+                gauge: row.querySelector('.po-item-gauge').value,
+                width: row.querySelector('.po-item-width').value,
+                weight_lbs: parseFloat(row.querySelector('.po-item-weight').value) || 0,
+                unit_price: parseFloat(row.querySelector('.po-item-price').value) || 0,
+            }));
+
+            if (lineItems.length === 0) {
+                alert('Please add at least one line item.');
+                return;
+            }
+
+            const payload = {
+                po_number: poNumber,
+                vendor: vendor,
+                line_items: lineItems,
+                delivery_date: deliveryDate,
+                notes: notes,
+            };
+
+            apiCall(`/api/shipping/purchase-order`, 'POST', Object.assign(payload, {job_code: JOB_CODE}))
+                .then(resp => {
+                    var po = resp.data || resp;
+                    alert('Purchase Order generated: ' + (po.po_number || 'OK'));
+                    loadPOHistory();
+                });
+        }
+
+        function loadPOHistory() {
+            apiCall(`/api/shipping/purchase-order?job_code=${JOB_CODE}`)
+                .then(data => {
+                    const docs = data.docs || [];
+                    if (docs.length === 0) {
+                        document.getElementById('po-history').innerHTML =
+                            '<p style="color: var(--tf-text-muted);">No POs yet.</p>';
+                        return;
+                    }
+
+                    const html = docs.map(doc => `
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                            <p><strong>${doc.po_number}</strong> — ${doc.po_date}</p>
+                            <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
+                                Vendor: ${doc.vendor.name} | Total: $${doc.financial.total.toFixed(2)}
+                            </p>
+                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.po_number}', 'purchase_order')">
+                                View & Print
+                            </button>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('po-history').innerHTML = html;
+                });
+        }
+
+        function printPO() {
+            window.print();
+        }
+
+        // ================================================================
+        // REORDER ALERTS TAB
+        // ================================================================
+
+        function refreshReorderAlerts() {
+            apiCall(`/api/shipping/reorder-alerts`)
+                .then(data => {
+                    displayReorderAlerts(data.alerts || []);
+                });
+        }
+
+        function displayReorderAlerts(alerts) {
+            const container = document.getElementById('reorder-alerts-display');
+
+            if (alerts.length === 0) {
+                container.innerHTML =
+                    '<div class="alert alert-success">✓ All inventory levels are healthy!</div>';
+                return;
+            }
+
+            const html = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Coil ID</th>
+                            <th>Description</th>
+                            <th class="numeric">Stock (lbs)</th>
+                            <th class="numeric">Available (lbs)</th>
+                            <th class="numeric">Reorder Point</th>
+                            <th class="numeric">Suggested Order</th>
+                            <th class="numeric">Est. Cost</th>
+                            <th>Lead Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${alerts.map((alert, idx) => `
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="reorder-item-checkbox" value="${alert.coil_id}">
+                                </td>
+                                <td><strong>${alert.coil_id}</strong></td>
+                                <td>${alert.name}</td>
+                                <td class="numeric">${alert.current_stock_lbs}</td>
+                                <td class="numeric">${alert.available_lbs}</td>
+                                <td class="numeric">${alert.reorder_point_lbs}</td>
+                                <td class="numeric">${alert.suggested_order_qty}</td>
+                                <td class="numeric">$${alert.estimated_cost.toFixed(2)}</td>
+                                <td>${alert.lead_time_weeks}w</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function createPOFromAlerts() {
+            const selectedCoils = Array.from(document.querySelectorAll('.reorder-item-checkbox:checked'))
+                .map(cb => cb.value);
+
+            if (selectedCoils.length === 0) {
+                alert('Please select at least one coil.');
+                return;
+            }
+
+            apiCall(`/api/shipping/purchase-order`, 'POST', {
+                job_code: JOB_CODE,
+                coil_ids: selectedCoils,
+            })
+                .then(resp => {
+                    var po = resp.data || resp;
+                    alert('Purchase Order generated from reorder alerts: ' + (po.po_number || 'OK'));
+                    loadPOHistory();
+                });
+        }
+
+        // ================================================================
+        // INITIALIZATION
+        // ================================================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set today's date as default
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('pack-ship-date').value = today;
+            document.getElementById('po-delivery-date').value = today;
+
+            // Load initial data
+            loadPackingItemsList();
+            loadPackingListHistory();
+            loadBOLHistory();
+            loadPOHistory();
+            refreshReorderAlerts();
+
+            // Add change listeners to PO line items for auto-calculation
+            document.addEventListener('change', function(e) {
+                if (e.target.matches('.po-item-weight, .po-item-price')) {
+                    recalculatePO();
+                }
+            });
+
+            // Add initial line item row
+            addPOLineItem();
+        });
+
+        // Helper: Print document preview
+        function printDocumentPreview(docId, docType) {
+            // In a real implementation, this would fetch the document and display it
+            alert(`Print preview for ${docId} (${docType}) — opening print dialog...`);
+            window.print();
+        }
     </script>
 </body>
 </html>

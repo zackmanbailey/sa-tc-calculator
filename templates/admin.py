@@ -330,136 +330,6 @@ ADMIN_HTML = r"""
             width: fit-content;
         }
 
-        .role-select {
-            background: rgba(255,255,255,0.08);
-            color: #F59E0B;
-            border: 1px solid rgba(245, 158, 11, 0.4);
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            cursor: pointer;
-            min-width: 160px;
-        }
-        .role-select:hover { border-color: #F59E0B; }
-        .role-select:disabled { opacity: 0.5; cursor: not-allowed; }
-        .role-select option { background: #1a1a2e; color: #e2e8f0; }
-
-        /* Multi-role chips */
-        .role-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            align-items: center;
-        }
-        .role-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            background: rgba(245, 158, 11, 0.15);
-            color: #F59E0B;
-            border: 1px solid rgba(245, 158, 11, 0.3);
-        }
-        .role-chip.primary {
-            background: rgba(30, 64, 175, 0.3);
-            color: #60a5fa;
-            border-color: rgba(96, 165, 250, 0.4);
-        }
-        .edit-roles-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            background: rgba(255,255,255,0.06);
-            color: rgba(255,255,255,0.5);
-            border: 1px dashed rgba(255,255,255,0.2);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .edit-roles-btn:hover {
-            background: rgba(245, 158, 11, 0.1);
-            color: #F59E0B;
-            border-color: rgba(245, 158, 11, 0.4);
-        }
-
-        /* Role picker modal */
-        .role-modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7);
-            z-index: 9999;
-            align-items: center;
-            justify-content: center;
-        }
-        .role-modal-overlay.show { display: flex; }
-        .role-modal {
-            background: #1e293b;
-            border: 1px solid #1E40AF;
-            border-radius: 12px;
-            padding: 28px;
-            width: 480px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-        }
-        .role-modal h3 {
-            font-size: 18px;
-            color: #f3f4f6;
-            margin-bottom: 4px;
-        }
-        .role-modal .modal-subtitle {
-            font-size: 13px;
-            color: #9ca3af;
-            margin-bottom: 20px;
-        }
-        .role-checkbox-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 24px;
-        }
-        .role-checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #374151;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .role-checkbox-item:hover { background: rgba(245, 158, 11, 0.08); border-color: #4b5563; }
-        .role-checkbox-item.checked { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); }
-        .role-checkbox-item input[type="checkbox"] {
-            accent-color: #F59E0B;
-            width: 16px;
-            height: 16px;
-        }
-        .role-checkbox-item label {
-            font-size: 12px;
-            font-weight: 500;
-            color: #d1d5db;
-            cursor: pointer;
-            text-transform: capitalize;
-        }
-        .role-modal-actions {
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-        }
-        .role-modal-actions .btn { padding: 10px 20px; font-size: 13px; }
-
         .role-admin {
             background: rgba(245, 158, 11, 0.2);
             color: #F59E0B;
@@ -627,10 +497,15 @@ ADMIN_HTML = r"""
                             >
                         </div>
                         <div class="form-group">
-                            <label>Roles (select one or more)</label>
-                            <div id="newRoleCheckboxes" class="role-checkbox-grid">
-                                <!-- filled by JS -->
-                            </div>
+                            <label for="newRole">Role</label>
+                            <select id="newRole" required>
+                                <option value="">Select a role</option>
+                                <option value="admin">Admin</option>
+                                <option value="estimator">Estimator</option>
+                                <option value="shop">Shop</option>
+                                <option value="viewer">Viewer</option>
+                                <option value="tc_limited">TC Limited</option>
+                            </select>
                         </div>
                     </div>
 
@@ -650,7 +525,7 @@ ADMIN_HTML = r"""
                         <tr>
                             <th>Username</th>
                             <th>Display Name</th>
-                            <th>Roles</th>
+                            <th>Role</th>
                             <th>Created Date</th>
                             <th>Actions</th>
                         </tr>
@@ -666,130 +541,23 @@ ADMIN_HTML = r"""
                 </table>
             </div>
         </div>
-
-        <!-- Pending Registrations Section -->
-        <div class="section">
-            <h2 class="section-title">Pending Access Requests <span id="pendingCount" style="background:#F59E0B;color:#0F172A;padding:2px 8px;border-radius:10px;font-size:13px;margin-left:8px;display:none;">0</span></h2>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Username</th>
-                            <th>Email / Phone</th>
-                            <th>Company Role</th>
-                            <th>Submitted</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pendingTableBody">
-                        <tr><td colspan="6" class="empty-state">
-                            <div class="empty-state-text">Loading...</div>
-                        </td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Approve Modal -->
-    <div class="role-modal-overlay" id="approveModalOverlay" onclick="if(event.target===this)closeApproveModal()">
-        <div class="role-modal">
-            <h3 id="approveModalTitle">Approve Registration</h3>
-            <div class="modal-subtitle">Select roles to assign to this user</div>
-            <div class="role-checkbox-grid" id="approveRoleCheckboxes"></div>
-            <div class="form-group" style="margin-bottom:20px;">
-                <label style="font-size:12px;font-weight:600;color:#d1d5db;margin-bottom:6px;display:block;">Notes (optional)</label>
-                <input type="text" id="approveNotes" placeholder="Approval notes..." style="width:100%;padding:8px 12px;border:1px solid #374151;border-radius:6px;background:rgba(15,23,42,0.8);color:#f3f4f6;font-size:13px;">
-            </div>
-            <div class="role-modal-actions">
-                <button class="btn btn-secondary" onclick="closeApproveModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="confirmApprove()">Approve</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Role Picker Modal -->
-    <div class="role-modal-overlay" id="roleModalOverlay" onclick="if(event.target===this)closeRoleModal()">
-        <div class="role-modal">
-            <h3 id="roleModalTitle">Edit Roles</h3>
-            <div class="modal-subtitle" id="roleModalSubtitle">Select one or more roles for this user</div>
-            <div class="role-checkbox-grid" id="roleModalCheckboxes"></div>
-            <div class="role-modal-actions">
-                <button class="btn btn-secondary" onclick="closeRoleModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveRoles()">Save Roles</button>
-            </div>
-        </div>
     </div>
 
     <script>
-        const ALL_ROLES = [
-            { id: 'god_mode', label: 'God Mode' },
-            { id: 'admin', label: 'Admin' },
-            { id: 'project_manager', label: 'Project Manager' },
-            { id: 'estimator', label: 'Estimator' },
-            { id: 'sales', label: 'Sales / Business Dev' },
-            { id: 'purchasing', label: 'Purchasing' },
-            { id: 'inventory_manager', label: 'Inventory Manager' },
-            { id: 'accounting', label: 'Accounting' },
-            { id: 'shop_foreman', label: 'Shop Foreman' },
-            { id: 'qc_inspector', label: 'QA/QC Inspector' },
-            { id: 'engineer', label: 'Engineer / Detailer' },
-            { id: 'roll_forming_operator', label: 'Roll Forming Operator' },
-            { id: 'welder', label: 'Welder' },
-            { id: 'shipping_coordinator', label: 'Shipping Coordinator' },
-            { id: 'laborer', label: 'Laborer' },
-            { id: 'field_crew', label: 'Field Crew' },
-            { id: 'safety_officer', label: 'Safety Officer' },
-            { id: 'customer', label: 'Customer' },
-        ];
-
-        let editingUsername = null;
-        let approvingRequestId = null;
-        let currentUsername = null;
-
-        // ── Init ──
+        // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
-            // Get current user's username for self-delete protection
-            fetch('/api/profile').then(r => r.json()).then(d => {
-                if (d.ok) currentUsername = d.profile.username;
-            }).catch(() => {});
             loadUsers();
-            loadPendingRegistrations();
             setupFormHandlers();
-            buildNewUserRoleCheckboxes();
         });
 
         function setupFormHandlers() {
-            document.getElementById('addUserForm').addEventListener('submit', function(e) {
+            const addUserForm = document.getElementById('addUserForm');
+            addUserForm.addEventListener('submit', function(e) {
                 e.preventDefault();
                 addUser();
             });
         }
 
-        // ── Build role checkboxes for the Add User form ──
-        function buildNewUserRoleCheckboxes() {
-            const container = document.getElementById('newRoleCheckboxes');
-            container.innerHTML = ALL_ROLES.map(r => `
-                <div class="role-checkbox-item" onclick="toggleCheckbox(this)">
-                    <input type="checkbox" id="newRole_${r.id}" value="${r.id}">
-                    <label for="newRole_${r.id}">${r.label}</label>
-                </div>
-            `).join('');
-        }
-
-        function toggleCheckbox(item) {
-            const cb = item.querySelector('input[type="checkbox"]');
-            cb.checked = !cb.checked;
-            item.classList.toggle('checked', cb.checked);
-        }
-
-        function getCheckedNewRoles() {
-            const checks = document.querySelectorAll('#newRoleCheckboxes input[type="checkbox"]:checked');
-            return Array.from(checks).map(c => c.value);
-        }
-
-        // ── Load & Render Users ──
         function loadUsers() {
             fetch('/auth/users')
                 .then(response => {
@@ -797,113 +565,64 @@ ADMIN_HTML = r"""
                     return response.json();
                 })
                 .then(data => {
-                    renderUsersTable(data.users || []);
+                    const users = data.users || [];
+                    renderUsersTable(users);
                 })
                 .catch(error => {
                     console.error('Error loading users:', error);
-                    document.getElementById('usersTableBody').innerHTML = `
-                        <tr><td colspan="5" class="empty-state">
-                            <div class="empty-state-icon">&#9888;&#65039;</div>
-                            <div class="empty-state-text">Failed to load users</div>
-                        </td></tr>`;
+                    const tbody = document.getElementById('usersTableBody');
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="empty-state">
+                                <div class="empty-state-icon">⚠️</div>
+                                <div class="empty-state-text">Failed to load users</div>
+                            </td>
+                        </tr>
+                    `;
                 });
         }
 
         function renderUsersTable(users) {
             const tbody = document.getElementById('usersTableBody');
+
             if (users.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="empty-state">
-                    <div class="empty-state-icon">&#128101;</div>
-                    <div class="empty-state-text">No users yet. Add one to get started!</div>
-                </td></tr>`;
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div class="empty-state-text">No users yet. Add one to get started!</div>
+                        </td>
+                    </tr>
+                `;
                 return;
             }
 
-            tbody.innerHTML = users.map(user => {
-                const roles = user.roles || [user.role || 'viewer'];
-                const chips = roles.map((r, i) =>
-                    `<span class="role-chip ${i === 0 ? 'primary' : ''}">${r.replace(/_/g, ' ')}</span>`
-                ).join('');
-                return `<tr>
+            tbody.innerHTML = users.map(user => `
+                <tr>
                     <td><strong>${escapeHtml(user.username)}</strong></td>
                     <td>${escapeHtml(user.display_name || '-')}</td>
-                    <td>
-                        <div class="role-chips">
-                            ${chips}
-                            <button class="edit-roles-btn" onclick='openRoleModal("${escapeHtml(user.username)}", ${JSON.stringify(JSON.stringify(roles))})'>&#9998; Edit</button>
-                        </div>
-                    </td>
+                    <td><span class="role-badge role-${user.role}">${escapeHtml(user.role)}</span></td>
                     <td>${formatDate(user.created_at)}</td>
                     <td>
-                        <button class="btn btn-danger" onclick="deleteUser('${escapeHtml(user.username)}')" ${user.username === currentUsername ? 'disabled title="Cannot delete yourself"' : ''}>Delete</button>
+                        <button class="btn btn-danger" onclick="deleteUser('${escapeHtml(user.username)}')">Delete</button>
                     </td>
-                </tr>`;
-            }).join('');
+                </tr>
+            `).join('');
         }
 
-        // ── Role Modal (edit existing user) ──
-        function openRoleModal(username, rolesJson) {
-            editingUsername = username;
-            const currentRoles = JSON.parse(rolesJson);
-            document.getElementById('roleModalTitle').textContent = 'Edit Roles: ' + username;
-            const container = document.getElementById('roleModalCheckboxes');
-            container.innerHTML = ALL_ROLES.map(r => {
-                const checked = currentRoles.includes(r.id);
-                return `<div class="role-checkbox-item ${checked ? 'checked' : ''}" onclick="toggleCheckbox(this)">
-                    <input type="checkbox" value="${r.id}" ${checked ? 'checked' : ''}>
-                    <label>${r.label}</label>
-                </div>`;
-            }).join('');
-            document.getElementById('roleModalOverlay').classList.add('show');
-        }
-
-        function closeRoleModal() {
-            document.getElementById('roleModalOverlay').classList.remove('show');
-            editingUsername = null;
-        }
-
-        function saveRoles() {
-            if (!editingUsername) return;
-            const checks = document.querySelectorAll('#roleModalCheckboxes input[type="checkbox"]:checked');
-            const roles = Array.from(checks).map(c => c.value);
-            if (roles.length === 0) {
-                alert('Please select at least one role.');
-                return;
-            }
-            fetch('/auth/users/update-role', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: editingUsername, roles: roles })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (!data.ok) {
-                    alert('Error: ' + (data.error || 'Unknown error'));
-                }
-                closeRoleModal();
-                loadUsers();
-            })
-            .catch(err => {
-                alert('Error: ' + err.message);
-                closeRoleModal();
-                loadUsers();
-            });
-        }
-
-        // ── Add User ──
         function addUser() {
             const username = document.getElementById('newUsername').value.trim();
             const displayName = document.getElementById('newDisplayName').value.trim();
             const password = document.getElementById('newPassword').value;
-            const roles = getCheckedNewRoles();
+            const role = document.getElementById('newRole').value;
 
             const errorDiv = document.getElementById('addUserError');
             const successDiv = document.getElementById('addUserSuccess');
             errorDiv.classList.remove('show');
             successDiv.classList.remove('show');
 
-            if (!username || !displayName || !password || roles.length === 0) {
-                errorDiv.textContent = 'Please fill in all fields and select at least one role';
+            if (!username || !displayName || !password || !role) {
+                errorDiv.textContent = 'Please fill in all fields';
                 errorDiv.classList.add('show');
                 return;
             }
@@ -914,29 +633,31 @@ ADMIN_HTML = r"""
 
             fetch('/auth/users/add', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
                     username: username,
                     display_name: displayName,
                     password: password,
-                    roles: roles,
-                    role: roles[0]
+                    role: role
                 })
             })
             .then(response => {
-                if (!response.ok) return response.json().then(d => { throw new Error(d.error || 'Failed'); });
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to add user');
+                    });
+                }
                 return response.json();
             })
             .then(data => {
                 successDiv.textContent = 'User added successfully!';
                 successDiv.classList.add('show');
                 document.getElementById('addUserForm').reset();
-                // Uncheck all role checkboxes
-                document.querySelectorAll('#newRoleCheckboxes .role-checkbox-item').forEach(item => {
-                    item.classList.remove('checked');
-                    item.querySelector('input').checked = false;
-                });
-                setTimeout(() => successDiv.classList.remove('show'), 3000);
+                setTimeout(() => {
+                    successDiv.classList.remove('show');
+                }, 3000);
                 loadUsers();
             })
             .catch(error => {
@@ -949,133 +670,44 @@ ADMIN_HTML = r"""
             });
         }
 
-        // ── Delete User ──
         function deleteUser(username) {
-            if (!confirm('Are you sure you want to delete user "' + username + '"? This cannot be undone.')) return;
-            fetch('/auth/users/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: username })
+            if (!confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            fetch(`/auth/users/${encodeURIComponent(username)}`, {
+                method: 'DELETE'
             })
-            .then(r => {
-                if (!r.ok) {
-                    return r.text().then(t => {
-                        try { const d = JSON.parse(t); throw new Error(d.error || 'Failed'); }
-                        catch(e) { if (e.message !== 'Failed') throw e; throw new Error('HTTP ' + r.status); }
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to delete user');
                     });
                 }
-                return r.json();
+                return response.json();
             })
             .then(data => {
-                if (!data.ok) alert('Error: ' + (data.error || 'Failed'));
-                else loadUsers();
-            })
-            .catch(err => alert('Error deleting user: ' + err.message));
-        }
-
-        // ── Pending Registrations ──
-        function loadPendingRegistrations() {
-            fetch('/auth/registrations/pending')
-                .then(r => r.json())
-                .then(data => {
-                    const regs = data.registrations || [];
-                    const tbody = document.getElementById('pendingTableBody');
-                    const badge = document.getElementById('pendingCount');
-                    if (regs.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div class="empty-state-text">No pending requests</div></td></tr>';
-                        badge.style.display = 'none';
-                        return;
-                    }
-                    badge.textContent = regs.length;
-                    badge.style.display = 'inline';
-                    tbody.innerHTML = regs.map(r => `<tr>
-                        <td><strong>${escapeHtml(r.display_name)}</strong></td>
-                        <td>${escapeHtml(r.username)}</td>
-                        <td>${escapeHtml(r.email || '-')}<br><small style="color:#9ca3af">${escapeHtml(r.phone || '')}</small></td>
-                        <td>${escapeHtml(r.company_role || '-')}</td>
-                        <td>${formatDate(r.submitted_at)}</td>
-                        <td style="display:flex;gap:6px;">
-                            <button class="btn btn-primary" style="padding:6px 12px;font-size:11px;" onclick="openApproveModal('${escapeHtml(r.request_id)}', '${escapeHtml(r.display_name)}')">Approve</button>
-                            <button class="btn btn-danger" onclick="rejectRegistration('${escapeHtml(r.request_id)}', '${escapeHtml(r.display_name)}')">Reject</button>
-                        </td>
-                    </tr>`).join('');
-                })
-                .catch(() => {
-                    document.getElementById('pendingTableBody').innerHTML =
-                        '<tr><td colspan="6" class="empty-state"><div class="empty-state-text">Failed to load</div></td></tr>';
-                });
-        }
-
-        function openApproveModal(requestId, name) {
-            approvingRequestId = requestId;
-            document.getElementById('approveModalTitle').textContent = 'Approve: ' + name;
-            const container = document.getElementById('approveRoleCheckboxes');
-            container.innerHTML = ALL_ROLES.map(r => `
-                <div class="role-checkbox-item" onclick="toggleCheckbox(this)">
-                    <input type="checkbox" value="${r.id}" ${r.id === 'laborer' ? 'checked' : ''}>
-                    <label>${r.label}</label>
-                </div>`).join('');
-            // Pre-check laborer
-            container.querySelector('.role-checkbox-item').classList.add('checked');
-            document.getElementById('approveNotes').value = '';
-            document.getElementById('approveModalOverlay').classList.add('show');
-        }
-
-        function closeApproveModal() {
-            document.getElementById('approveModalOverlay').classList.remove('show');
-            approvingRequestId = null;
-        }
-
-        function confirmApprove() {
-            if (!approvingRequestId) return;
-            const checks = document.querySelectorAll('#approveRoleCheckboxes input[type="checkbox"]:checked');
-            const roles = Array.from(checks).map(c => c.value);
-            if (roles.length === 0) { alert('Select at least one role.'); return; }
-            const notes = document.getElementById('approveNotes').value;
-
-            fetch('/auth/registrations/approve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request_id: approvingRequestId, roles: roles, notes: notes })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (!data.ok) alert('Error: ' + (data.error || 'Failed'));
-                closeApproveModal();
-                loadPendingRegistrations();
                 loadUsers();
             })
-            .catch(err => { alert('Error: ' + err.message); closeApproveModal(); });
+            .catch(error => {
+                alert('Error deleting user: ' + (error.message || 'Unknown error'));
+            });
         }
 
-        function rejectRegistration(requestId, name) {
-            const notes = prompt('Reason for rejecting ' + name + '? (optional)');
-            if (notes === null) return; // cancelled
-            fetch('/auth/registrations/reject', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request_id: requestId, notes: notes })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (!data.ok) alert('Error: ' + (data.error || 'Failed'));
-                loadPendingRegistrations();
-            })
-            .catch(err => alert('Error: ' + err.message));
-        }
-
-        // ── Logout ──
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 window.location.href = '/auth/logout';
             }
         }
 
-        // ── Helpers ──
         function formatDate(dateString) {
             if (!dateString) return '-';
-            const d = new Date(dateString);
-            return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
         }
 
         function escapeHtml(text) {

@@ -535,14 +535,6 @@ SHOP_DRAWINGS_HTML = r"""
             </div>
         </div>
 
-        <!-- ── Interactive Drawing Links ──────────────────── -->
-        <div id="interactiveDrawingsBar" style="display:flex;gap:12px;align-items:center;padding:12px 16px;margin-bottom:16px;background:linear-gradient(135deg,#1E293B,#0F172A);border:2px solid #F6AE2D;border-radius:8px;">
-            <span style="color:#F6AE2D;font-weight:700;font-size:0.9rem;margin-right:8px;">Interactive Drawings:</span>
-            <a id="linkColumnDrawing" href="/shop-drawings/{{JOB_CODE}}/column" style="display:inline-block;padding:8px 20px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.85rem;border-radius:6px;text-decoration:none;cursor:pointer;" onclick="window.location.href=this.href;return false;">Column Shop Drawing</a>
-            <a id="linkRafterDrawing" href="/shop-drawings/{{JOB_CODE}}/rafter" style="display:inline-block;padding:8px 20px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.85rem;border-radius:6px;text-decoration:none;cursor:pointer;" onclick="window.location.href=this.href;return false;">Rafter Shop Drawing</a>
-            <span style="color:#94A3B8;font-size:0.75rem;margin-left:auto;">Opens full interactive SVG drawing with Print-to-PDF</span>
-        </div>
-
         <!-- ── BOM Sync Status ─────────────────────────────── -->
         <div class="sync-banner" id="syncBanner">
             <span id="syncIcon"></span>
@@ -1002,12 +994,6 @@ SHOP_DRAWINGS_HTML = r"""
 
         // ── State ──
         const JOB_CODE = '{{JOB_CODE}}';
-
-        // Set project context in sidebar
-        if (typeof setProjectContext === 'function') {
-            setProjectContext(JOB_CODE);
-        }
-
         let config = {};           // Current config (ShopDrawingConfig fields)
         let bomConfig = {};        // Config as last derived from BOM
         let drawings = [];         // Last generation result files
@@ -1351,37 +1337,27 @@ SHOP_DRAWINGS_HTML = r"""
 
                 const card = document.createElement('div');
                 card.className = 'drawing-card';
-                var interactiveRoute = d.type === 'rafter' ? '/rafter' : d.type === 'column' ? '/column' : '';
-                // For column/rafter: show Interactive View link + only show View PDF if generated from interactive
-                // For other types (purlin, cutlist, stickers, manifest): show View PDF normally
-                var isInteractive = (d.type === 'rafter' || d.type === 'column');
-                var hasInteractivePdf = d.source === 'interactive';
-                var interactiveBtn = interactiveRoute
-                    ? '<a href="/shop-drawings/' + JOB_CODE + interactiveRoute + '" style="display:inline-block;padding:6px 14px;background:#F6AE2D;color:#0F172A;font-weight:700;font-size:0.8rem;border-radius:6px;text-decoration:none;" onclick="window.location.href=this.href;return false;">Open Interactive Drawing</a>'
-                    : '';
-                var pdfBtn = '';
-                if (!isInteractive || hasInteractivePdf) {
-                    pdfBtn = '<button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(' + idx + ')">View PDF</button>' +
-                             '<button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(' + idx + ')">Download</button>';
-                } else {
-                    pdfBtn = '<span style="font-size:0.75rem;color:var(--tf-gray-500);font-style:italic;">Open interactive drawing to generate PDF</span>';
-                }
-                card.innerHTML =
-                    '<div class="dc-preview">' +
-                        '<div class="dc-icon">' + typeInfo.icon + '</div>' +
-                        '<div class="dc-type-badge ' + d.type + '">' + typeInfo.label + '</div>' +
-                    '</div>' +
-                    '<div class="dc-body">' +
-                        '<div class="dc-title">' + escHtml(d.filename || d.description || typeInfo.label) + '</div>' +
-                        '<div class="dc-meta">' +
-                            '<span>' + sizeStr + '</span>' +
-                            '<span>' + (d.description || '') + '</span>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="dc-actions">' +
-                        interactiveBtn +
-                        pdfBtn +
-                    '</div>';
+                card.innerHTML = `
+                    <div class="dc-preview">
+                        <div class="dc-icon">${typeInfo.icon}</div>
+                        <div class="dc-type-badge ${d.type}">${typeInfo.label}</div>
+                    </div>
+                    <div class="dc-body">
+                        <div class="dc-title">${escHtml(d.filename || d.description || typeInfo.label)}</div>
+                        <div class="dc-meta">
+                            <span>${sizeStr}</span>
+                            <span>${d.description || ''}</span>
+                        </div>
+                    </div>
+                    <div class="dc-actions">
+                        <button class="tf-btn tf-btn-sm tf-btn-primary" onclick="viewDrawing(${idx})">
+                            View PDF
+                        </button>
+                        <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
+                            Download
+                        </button>
+                    </div>
+                `;
                 grid.appendChild(card);
             });
         }
