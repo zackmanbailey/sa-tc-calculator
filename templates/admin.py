@@ -565,7 +565,15 @@ ADMIN_HTML = r"""
                     return response.json();
                 })
                 .then(data => {
-                    const users = data.users || [];
+                    const usersObj = data.users || {};
+                    // Backend returns {username: {display_name, role, created}} object
+                    const users = Array.isArray(usersObj) ? usersObj :
+                        Object.entries(usersObj).map(([username, info]) => ({
+                            username,
+                            display_name: info.display_name || '',
+                            role: info.role || 'viewer',
+                            created_at: info.created || ''
+                        }));
                     renderUsersTable(users);
                 })
                 .catch(error => {
@@ -675,8 +683,10 @@ ADMIN_HTML = r"""
                 return;
             }
 
-            fetch(`/auth/users/${encodeURIComponent(username)}`, {
-                method: 'DELETE'
+            fetch('/auth/users/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: username})
             })
             .then(response => {
                 if (!response.ok) {
