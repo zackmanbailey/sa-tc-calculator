@@ -25,7 +25,7 @@ NAV_CSS = """
     left: 0;
     bottom: 0;
     width: 240px;
-    background: var(--tf-navy);
+    background: var(--tf-navy, #0F172A);
     color: #fff;
     z-index: 200;
     display: flex;
@@ -250,6 +250,24 @@ NAV_CSS = """
     color: rgba(255,255,255,0.4);
     text-transform: capitalize;
 }
+.tf-logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.tf-logout-btn:hover {
+    background: rgba(220,38,38,0.2);
+    color: #f87171;
+}
+.tf-sidebar.collapsed .tf-logout-btn { display: none; }
 
 /* Toggle button */
 .tf-sidebar-toggle {
@@ -258,7 +276,7 @@ NAV_CSS = """
     right: -12px;
     width: 24px;
     height: 24px;
-    background: var(--tf-navy);
+    background: var(--tf-navy, #0F172A);
     border: 2px solid rgba(255,255,255,0.15);
     border-radius: 50%;
     color: rgba(255,255,255,0.6);
@@ -343,10 +361,9 @@ body.sidebar-collapsed .tf-main {
 .tf-search-overlay.show { display: flex; }
 
 .tf-search-box {
-    background: #1E293B;
-    border: 1px solid #334155;
+    background: #fff;
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     width: 560px;
     max-width: 95vw;
     overflow: hidden;
@@ -356,11 +373,11 @@ body.sidebar-collapsed .tf-main {
     display: flex;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--tf-border);
     gap: 10px;
 }
 
-.tf-search-input-wrap .search-icon { font-size: 1.1rem; color: #94A3B8; }
+.tf-search-input-wrap .search-icon { font-size: 1.1rem; color: var(--tf-gray-400); }
 
 .tf-search-input {
     flex: 1;
@@ -368,11 +385,10 @@ body.sidebar-collapsed .tf-main {
     outline: none;
     font-size: 1rem;
     font-family: var(--tf-font);
-    background: transparent;
-    color: #F1F5F9;
+    color: var(--tf-gray-800);
 }
 
-.tf-search-input::placeholder { color: #64748B; }
+.tf-search-input::placeholder { color: var(--tf-gray-400); }
 
 .tf-search-results {
     max-height: 360px;
@@ -392,7 +408,7 @@ body.sidebar-collapsed .tf-main {
     color: inherit;
 }
 
-.tf-search-item:hover, .tf-search-item.focused { background: #0F172A; }
+.tf-search-item:hover, .tf-search-item.focused { background: var(--tf-blue-light); }
 
 .tf-search-item .si-icon {
     width: 36px;
@@ -405,22 +421,21 @@ body.sidebar-collapsed .tf-main {
     flex-shrink: 0;
 }
 
-.tf-search-item .si-label { font-weight: 600; font-size: 0.85rem; color: #F1F5F9; }
-.tf-search-item .si-desc { font-size: 0.75rem; color: #94A3B8; }
+.tf-search-item .si-label { font-weight: 600; font-size: 0.85rem; color: var(--tf-gray-800); }
+.tf-search-item .si-desc { font-size: 0.75rem; color: var(--tf-gray-500); }
 .tf-search-item .si-kbd { margin-left: auto; font-size: 0.7rem; color: var(--tf-gray-400); }
 
 .tf-search-footer {
     padding: 10px 16px;
-    border-top: 1px solid #334155;
+    border-top: 1px solid var(--tf-border);
     font-size: 0.75rem;
-    color: #64748B;
+    color: var(--tf-gray-400);
     display: flex;
     gap: 16px;
 }
 
 .tf-search-footer kbd {
-    background: #0F172A;
-    color: #94A3B8;
+    background: var(--tf-gray-100);
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 10px;
@@ -491,6 +506,10 @@ NAV_HTML = """
                 <span class="tf-nav-icon">&#127968;</span>
                 <span class="tf-nav-label">Dashboard</span>
             </a>
+            <a href="/work-orders" class="tf-nav-item {{ACTIVE_workorders_global}}">
+                <span class="tf-nav-icon">&#128203;</span>
+                <span class="tf-nav-label">Work Orders</span>
+            </a>
             <a href="/shop-floor" class="tf-nav-item {{ACTIVE_shopfloor}}">
                 <span class="tf-nav-icon">&#9881;</span>
                 <span class="tf-nav-label">Shop Floor</span>
@@ -539,74 +558,6 @@ NAV_HTML = """
                 <span class="tf-nav-icon">&#128196;</span>
                 <span class="tf-nav-label">Quote Editor</span>
             </a>
-            <a href="#" class="tf-nav-item {{ACTIVE_shipping}}" id="navShippingLink2">
-                <span class="tf-nav-icon">&#128666;</span>
-                <span class="tf-nav-label">Shipping</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Shipping</div>
-            <a href="#" class="tf-nav-item {{ACTIVE_shipping}}" id="navShippingLink" onclick="var jc=localStorage.getItem('tf_current_job');if(jc)location.href='/shipping/'+jc;else alert('Open a project first');return false;">
-                <span class="tf-nav-icon">&#128666;</span>
-                <span class="tf-nav-label">Shipping Hub</span>
-            </a>
-            <a href="/load-builder" class="tf-nav-item {{ACTIVE_loadbuilder}}">
-                <span class="tf-nav-icon">&#128230;</span>
-                <span class="tf-nav-label">Load Builder</span>
-            </a>
-            <a href="/schedule" class="tf-nav-item {{ACTIVE_schedule}}">
-                <span class="tf-nav-icon">&#128197;</span>
-                <span class="tf-nav-label">Production Schedule</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Inventory</div>
-            <a href="/inventory" class="tf-nav-item {{ACTIVE_inventory}}">
-                <span class="tf-nav-icon">&#128230;</span>
-                <span class="tf-nav-label">Coil Inventory</span>
-            </a>
-            <a href="/inventory/traceability" class="tf-nav-item {{ACTIVE_traceability}}">
-                <span class="tf-nav-icon">&#128279;</span>
-                <span class="tf-nav-label">Traceability</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">QA / QC</div>
-            <a href="/qa" class="tf-nav-item {{ACTIVE_qa}}">
-                <span class="tf-nav-icon">&#128203;</span>
-                <span class="tf-nav-label">QA/QC Hub</span>
-            </a>
-            <a href="/qa/wps" class="tf-nav-item {{ACTIVE_wps}}">
-                <span class="tf-nav-icon">&#128293;</span>
-                <span class="tf-nav-label">WPS Library</span>
-            </a>
-            <a href="/qa/welder-certs" class="tf-nav-item {{ACTIVE_weldercerts}}">
-                <span class="tf-nav-icon">&#127891;</span>
-                <span class="tf-nav-label">Welder Certs</span>
-            </a>
-            <a href="/qa/procedures" class="tf-nav-item {{ACTIVE_procedures}}">
-                <span class="tf-nav-icon">&#128220;</span>
-                <span class="tf-nav-label">Procedures</span>
-            </a>
-            <a href="/qa/ncr-log" class="tf-nav-item {{ACTIVE_ncrlog}}">
-                <span class="tf-nav-icon">&#9888;</span>
-                <span class="tf-nav-label">NCR Log</span>
-            </a>
-            <a href="/qa/calibration" class="tf-nav-item {{ACTIVE_calibration}}">
-                <span class="tf-nav-icon">&#128295;</span>
-                <span class="tf-nav-label">Calibration Log</span>
-            </a>
-        </div>
-
-        <div class="tf-sidebar-section">
-            <div class="tf-sidebar-section-label">Help</div>
-            <a href="/getting-started" class="tf-nav-item {{ACTIVE_gettingstarted}}">
-                <span class="tf-nav-icon">&#128218;</span>
-                <span class="tf-nav-label">Getting Started</span>
-            </a>
         </div>
 
         <div class="tf-sidebar-section">
@@ -614,10 +565,6 @@ NAV_HTML = """
             <a href="/admin" class="tf-nav-item {{ACTIVE_admin}}">
                 <span class="tf-nav-icon">&#128274;</span>
                 <span class="tf-nav-label">User Management</span>
-            </a>
-            <a href="/tv-dashboard" class="tf-nav-item {{ACTIVE_tvdash}}">
-                <span class="tf-nav-icon">&#128250;</span>
-                <span class="tf-nav-label">TV Dashboard</span>
             </a>
         </div>
     </nav>
@@ -640,8 +587,8 @@ NAV_HTML = """
                    placeholder="Search projects, customers, tools..." autocomplete="off">
         </div>
         <div class="tf-search-results" id="searchResults">
-            <div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">
-                Type to search across projects, pages, and tools
+            <div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">
+                Type to search across projects, customers, and tools
             </div>
         </div>
         <div class="tf-search-footer">
@@ -709,7 +656,6 @@ function setProjectContext(jobCode) {
     setLink('navWorkStationLink', '/work-station/' + encodeURIComponent(jobCode));
     setLink('navQCLink', '/qc/' + encodeURIComponent(jobCode));
     setLink('navQuoteLink', '/quote/' + encodeURIComponent(jobCode));
-    setLink('navShippingLink2', '/shipping/' + encodeURIComponent(jobCode));
 }
 
 // ── Global Search ──
@@ -750,7 +696,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const q = input.value.trim();
         if (q.length < 2) {
             document.getElementById('searchResults').innerHTML =
-                '<div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">Type to search across projects, pages, and tools</div>';
+                '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">Type to search across projects, customers, and tools</div>';
             return;
         }
         debounce = setTimeout(() => runGlobalSearch(q), 250);
@@ -795,28 +741,18 @@ async function runGlobalSearch(query) {
 function quickNavResults(query) {
     const q = query.toLowerCase();
     const links = [
-        {label:'Dashboard', desc:'Home dashboard', icon:'&#127968;', href:'/', tags:'home main overview'},
-        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', tags:'fabrication production manufacturing'},
-        {label:'Shop Drawings', desc:'Drawing management & interactive builder', icon:'&#128209;', href:'/shop-floor', tags:'drawings column rafter purlin pdf builder'},
-        {label:'Inventory', desc:'Stock levels, coils, receiving', icon:'&#128230;', href:'/inventory', tags:'stock coils steel materials receiving allocations'},
-        {label:'Load Builder', desc:'Build and manage loads', icon:'&#128666;', href:'/load-builder', tags:'loads shipping trucks delivery'},
-        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', tags:'clients contacts accounts'},
-        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', tags:'estimate quote structures america'},
-        {label:'TC Estimator', desc:'Titan Carports calculator', icon:'&#128663;', href:'/tc', tags:'estimate quote titan carports'},
-        {label:'QA Hub', desc:'Quality assurance & inspections', icon:'&#128203;', href:'/qa', tags:'quality assurance inspections ncr weld'},
-        {label:'Gantt Chart', desc:'Project scheduling timeline', icon:'&#128197;', href:'/gantt', tags:'schedule timeline planning gantt'},
-        {label:'Shipping', desc:'Shipping & logistics', icon:'&#128230;', href:'/shipping', tags:'packing list bol manifest logistics'},
-        {label:'Admin', desc:'User management & settings', icon:'&#128274;', href:'/admin', tags:'users settings roles permissions'},
+        {label:'Dashboard', desc:'Home', icon:'&#127968;', href:'/', bg:'#EFF6FF;color:#1E40AF'},
+        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', bg:'#ECFDF5;color:#059669'},
+        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', bg:'#FEF3C7;color:#92400E'},
+        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', bg:'#EFF6FF;color:#1E40AF'},
+        {label:'TC Estimator', desc:'Titan Carports calculator', icon:'&#128663;', href:'/tc', bg:'#F0F9FF;color:#0284C7'},
+        {label:'Admin', desc:'User management', icon:'&#128274;', href:'/admin', bg:'#F1F5F9;color:#64748B'},
     ];
-    const filtered = links.filter(l =>
-        l.label.toLowerCase().includes(q) ||
-        l.desc.toLowerCase().includes(q) ||
-        (l.tags && l.tags.includes(q))
-    );
-    if (filtered.length === 0) return '<div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">No results for "' + escNavHtml(query) + '"</div>';
+    const filtered = links.filter(l => l.label.toLowerCase().includes(q) || l.desc.toLowerCase().includes(q));
+    if (filtered.length === 0) return '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">No results for "' + escNavHtml(query) + '"</div>';
     return filtered.map(l =>
         '<a class="tf-search-item" href="' + l.href + '">' +
-        '<div class="si-icon" style="background:#1E40AF;color:#93C5FD">' + l.icon + '</div>' +
+        '<div class="si-icon" style="background:' + l.bg + '">' + l.icon + '</div>' +
         '<div><div class="si-label">' + l.label + '</div><div class="si-desc">' + l.desc + '</div></div></a>'
     ).join('');
 }
@@ -844,7 +780,8 @@ function escNavHtml(s) {
 # ─────────────────────────────────────────────
 
 def inject_nav(html: str, active_page: str = "", job_code: str = "",
-               user_name: str = "User", user_role: str = "admin") -> str:
+               user_name: str = "User", user_role: str = "admin",
+               user_roles: list = None) -> str:
     """Inject sidebar navigation into an existing HTML page.
 
     This is the primary integration method. It:
@@ -857,21 +794,16 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     Works with any existing template — no template changes needed.
     """
     import re
-    nav = build_nav(active_page, job_code, user_name, user_role)
+    nav = build_nav(active_page, job_code, user_name, user_role, user_roles=user_roles)
 
     # Prepend CSS to hide old nav elements across all templates
-    # Also ensure --tf-navy is defined (some pages only define --tf-dark)
     hide_old = """
-:root { --tf-navy: #0F172A; --tf-navy-light: #1E293B; }
 .tf-topbar { display: none !important; }
 .topbar { display: none !important; }
+#topbar { display: none !important; }
 .navbar { display: none !important; }
 .ws-topbar { display: none !important; }
-#topbar { display: none !important; }
-#tabs { display: none !important; }
 #globalSearchOverlay { display: none !important; }
-/* Fix layout height when old topbar/tabs are hidden */
-#main { height: calc(100vh - 48px) !important; margin-top: 0 !important; }
 """
     nav['css'] = hide_old + nav['css']
 
@@ -909,7 +841,8 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
 
 
 def build_nav(active_page: str = "", job_code: str = "",
-              user_name: str = "User", user_role: str = "admin") -> dict:
+              user_name: str = "User", user_role: str = "admin",
+              user_roles: list = None) -> dict:
     """Build nav component strings for a specific page.
 
     Args:
@@ -917,25 +850,14 @@ def build_nav(active_page: str = "", job_code: str = "",
                      project, shopdrw, workorders, workstation, qc, quote, admin
         job_code: If set, shows the project section in sidebar
         user_name: Display name
-        user_role: User role
+        user_role: User role (primary)
+        user_roles: List of role IDs (new RBAC). Falls back to [user_role].
 
     Returns:
-        dict with keys: css, html, js, context_bar_html
+        dict with keys: css, html, js
     """
-    # Set active classes
-    html = NAV_HTML
-    pages = ["dashboard", "shopfloor", "customers", "sa", "tc",
-             "project", "shopdrw", "workorders", "workstation", "qc", "quote",
-             "shipping", "schedule",
-             "inventory", "traceability",
-             "qa", "wps", "weldercerts", "procedures", "ncrlog", "calibration",
-             "gettingstarted", "tvdash", "admin"]
-    for p in pages:
-        placeholder = "{{ACTIVE_" + p + "}}"
-        html = html.replace(placeholder, "active" if p == active_page else "")
-
-    html = html.replace("{{USER_NAME}}", user_name)
-    html = html.replace("{{USER_ROLE}}", user_role)
+    # Build role-aware sidebar if the auth package is available
+    sidebar_html = _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
     # Project context JS
     context_js = ""
@@ -944,6 +866,255 @@ def build_nav(active_page: str = "", job_code: str = "",
 
     return {
         "css": NAV_CSS,
-        "html": html,
+        "html": sidebar_html,
         "js": NAV_JS + context_js,
     }
+
+
+def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles):
+    """Build sidebar HTML from user's RBAC roles."""
+    # Try to use new auth system
+    perm = None
+    try:
+        from auth.permissions import merge_permissions
+        roles = user_roles or [user_role]
+        perm = merge_permissions(roles)
+    except ImportError:
+        perm = None
+
+    # If auth not available, fall back to static NAV_HTML
+    if not perm:
+        html = NAV_HTML
+        pages = ["dashboard", "workorders_global", "shopfloor", "customers", "sa", "tc",
+                 "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
+        for p in pages:
+            html = html.replace("{{ACTIVE_" + p + "}}", "active" if p == active_page else "")
+        html = html.replace("{{USER_NAME}}", user_name)
+        html = html.replace("{{USER_ROLE}}", user_role)
+        return html
+
+    # ── Build dynamic sidebar from permissions ──
+
+    # Map active_page to URL prefixes for highlighting
+    active_urls = {
+        "dashboard": "/", "workorders_global": "/work-orders",
+        "shopfloor": "/shop-floor", "customers": "/customers",
+        "sa": "/sa", "tc": "/tc", "project": "/project/", "shopdrw": "/shop-drawings/",
+        "workorders": "/work-orders/", "workstation": "/work-station/",
+        "qc": "/qc/", "quote": "/quote/", "admin": "/admin",
+    }
+    active_href = active_urls.get(active_page, "")
+
+    # Role display labels
+    role_labels = []
+    for r in (user_roles or [user_role]):
+        role_labels.append(r.replace("_", " ").title())
+    role_display = " + ".join(role_labels) if role_labels else user_role.replace("_", " ").title()
+
+    # Sidebar section definitions — each maps to permission checks
+    # This is the definitive sidebar order from RULES.md §12
+    sections = []
+
+    # Dashboard always visible
+    sections.append(("", [("/", "&#127968;", "Dashboard", "dashboard")]))
+
+    # Estimating — calculator access
+    if perm.can("run_calculator") or perm.can("view_calculator"):
+        items = [("/sa", "&#127959;", "SA Estimator", "sa")]
+        items.append(("/tc", "&#128663;", "TC Estimator", "tc"))
+        sections.append(("Estimating", items))
+
+    # Projects
+    if perm.can("view_projects"):
+        items = [("/", "&#128194;", "All Projects", "projects")]
+        sections.append(("Projects", items))
+
+    # Shop Floor
+    if perm.can("view_work_orders") or perm.can("view_own_work_items") or perm.can("create_work_orders"):
+        items = [("/shop-floor", "&#9881;", "Shop Floor", "shopfloor")]
+        if perm.can("view_work_orders"):
+            items.append(("/work-orders", "&#128203;", "Work Orders", "workorders_global"))
+        if perm.can("view_shop_drawings"):
+            items.append(("/documents", "&#128208;", "Shop Drawings", "shopdrw"))
+        sections.append(("Shop Floor", items))
+
+    # My Station (operator roles)
+    if perm.has_role("roll_forming_operator"):
+        sections.append(("My Station", [
+            ("/work-station/mine", "&#128190;", "My Machine", "workstation"),
+        ]))
+
+    # My Work (welder)
+    if perm.has_role("welder"):
+        sections.append(("My Work", [
+            ("/work-station/mine", "&#128293;", "My Queue", "workstation"),
+        ]))
+
+    # Quality
+    if perm.can("view_qc") or perm.can("perform_inspections"):
+        items = [("/qc-dashboard", "&#128737;", "Inspections", "qc")]
+        sections.append(("Quality", items))
+
+    # Inventory
+    if perm.can("view_inventory"):
+        sections.append(("Inventory", [
+            ("/inventory", "&#128230;", "Stock Levels", "inventory"),
+        ]))
+
+    # Customers
+    if perm.can("view_customer_info"):
+        sections.append(("", [("/customers", "&#128101;", "Customers", "customers")]))
+
+    # Shipping
+    if perm.can("view_shipping") or perm.can("build_loads"):
+        items = [("/shipping", "&#128666;", "Shipping", "shipping")]
+        sections.append(("Shipping", items))
+
+    # Field
+    if perm.can("submit_daily_report") or perm.can("view_field_reports"):
+        items = [("/field", "&#127959;", "Field Ops", "field")]
+        sections.append(("Field", items))
+
+    # Scheduling
+    if perm.can("view_schedule") or perm.can("manage_schedule"):
+        sections.append(("Planning", [
+            ("/schedule", "&#128197;", "Schedule", "schedule"),
+        ]))
+
+    # Document Management
+    if perm.can("view_shop_drawings"):
+        sections.append(("Documents", [
+            ("/documents", "&#128196;", "Doc Management", "documents"),
+        ]))
+
+    # Financial
+    if perm.has_financial_access() and perm.can("view_financials"):
+        sections.append(("Financial", [
+            ("/job-costing", "&#128176;", "Job Costing", "jobcosting"),
+            ("/reports/production", "&#128200;", "Reports", "reports"),
+        ]))
+
+    # Activity
+    sections.append(("", [
+        ("/activity", "&#128276;", "Activity Feed", "activity"),
+    ]))
+
+    # Admin
+    if perm.can_manage_users:
+        sections.append(("Admin", [
+            ("/admin", "&#128274;", "Users", "admin"),
+        ]))
+
+    # Current Project (context-aware — shown when in a project page)
+    project_section = """
+        <div class="tf-sidebar-section" id="projectNavSection" style="display:none;">
+            <div class="tf-sidebar-section-label">Current Project</div>
+            <a href="#" class="tf-nav-item" id="navProjectLink">
+                <span class="tf-nav-icon">&#128194;</span>
+                <span class="tf-nav-label" id="navProjectLabel">Project</span>
+            </a>"""
+    if perm.can("view_shop_drawings"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navShopDrwLink">
+                <span class="tf-nav-icon">&#128208;</span>
+                <span class="tf-nav-label">Shop Drawings</span>
+            </a>"""
+    if perm.can("view_work_orders") or perm.can("view_own_work_items"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navWorkOrdersLink">
+                <span class="tf-nav-icon">&#128203;</span>
+                <span class="tf-nav-label">Work Orders</span>
+            </a>
+            <a href="#" class="tf-nav-item" id="navWorkStationLink">
+                <span class="tf-nav-icon">&#128241;</span>
+                <span class="tf-nav-label">Work Station</span>
+            </a>"""
+    if perm.can("view_qc"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navQCLink">
+                <span class="tf-nav-icon">&#9989;</span>
+                <span class="tf-nav-label">QC Dashboard</span>
+            </a>"""
+    if perm.can("create_quotes") or perm.can("view_quotes"):
+        project_section += """
+            <a href="#" class="tf-nav-item" id="navQuoteLink">
+                <span class="tf-nav-icon">&#128196;</span>
+                <span class="tf-nav-label">Quote Editor</span>
+            </a>"""
+    project_section += "\n        </div>"
+
+    # ── Assemble the full sidebar HTML ──
+    nav_items_html = ""
+    for label, items in sections:
+        nav_items_html += '        <div class="tf-sidebar-section">\n'
+        if label:
+            nav_items_html += f'            <div class="tf-sidebar-section-label">{label}</div>\n'
+        for href, icon, text, page_id in items:
+            active_cls = " active" if page_id == active_page else ""
+            nav_items_html += f'            <a href="{href}" class="tf-nav-item{active_cls}">\n'
+            nav_items_html += f'                <span class="tf-nav-icon">{icon}</span>\n'
+            nav_items_html += f'                <span class="tf-nav-label">{text}</span>\n'
+            nav_items_html += f'            </a>\n'
+        nav_items_html += '        </div>\n'
+
+    nav_items_html += project_section
+
+    sidebar = f"""
+<!-- Mobile overlay -->
+<div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- Sidebar -->
+<aside class="tf-sidebar" id="tfSidebar">
+    <button class="tf-sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Collapse sidebar">&#10094;</button>
+
+    <a href="/" class="tf-sidebar-logo" style="text-decoration:none;color:#fff;">
+        <div class="logo-mark">TF</div>
+        <span class="logo-text">TitanForge</span>
+    </a>
+
+    <div class="tf-sidebar-search" onclick="openGlobalSearch()" title="Search (Ctrl+K)">
+        <span style="font-size:0.9rem;">&#128269;</span>
+        <span>Search...</span>
+        <kbd>Ctrl+K</kbd>
+    </div>
+
+    <nav class="tf-sidebar-nav">
+{nav_items_html}
+    </nav>
+
+    <div class="tf-sidebar-footer">
+        <a href="/profile" class="tf-footer-user" title="Edit Profile" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">
+            <div class="user-avatar" id="userAvatar">{user_name[0:1].upper()}</div>
+            <div class="user-info">
+                <div class="user-name" id="userName">{user_name}</div>
+                <div class="user-role" id="userRole">{role_display}</div>
+            </div>
+        </a>
+        <a href="/auth/logout" class="tf-logout-btn" title="Logout" onclick="return confirm('Are you sure you want to logout?')">
+            <span style="font-size:16px;">&#9211;</span>
+        </a>
+    </div>
+</aside>
+
+<!-- Global Search Modal -->
+<div class="tf-search-overlay" id="searchOverlay" onclick="if(event.target===this)closeGlobalSearch()">
+    <div class="tf-search-box">
+        <div class="tf-search-input-wrap">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" class="tf-search-input" id="globalSearchInput"
+                   placeholder="Search projects, customers, tools..." autocomplete="off">
+        </div>
+        <div class="tf-search-results" id="searchResults">
+            <div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">
+                Type to search across projects, customers, and tools
+            </div>
+        </div>
+        <div class="tf-search-footer">
+            <span><kbd>&#8593;&#8595;</kbd> Navigate</span>
+            <span><kbd>&#9166;</kbd> Open</span>
+            <span><kbd>Esc</kbd> Close</span>
+        </div>
+    </div>
+</div>
+"""
+    return sidebar

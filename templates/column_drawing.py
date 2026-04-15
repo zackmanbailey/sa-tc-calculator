@@ -1,9 +1,9 @@
 """
-TitanForge — Interactive Column Shop Drawing Template
-=====================================================
-Full-featured SVG-based column shop drawing served as an interactive page.
-Pre-fills with project data via window.COLUMN_CONFIG injection.
-Supports browser Print→PDF for clean shop-floor output.
+TitanForge v4.2 — Interactive Column Shop Drawing Template
+==============================================================
+Interactive SVG-based column drawing with parameter controls and
+AWS weld notation. Embeds the full ColumnShopDrawing_v9 application
+with TitanForge integration for fetching project configuration.
 """
 
 COLUMN_DRAWING_HTML = r"""
@@ -26,6 +26,17 @@ COLUMN_DRAWING_HTML = r"""
     flex-wrap: wrap; gap: 8px;
   }
   .top-bar h1 { font-size: 1rem; font-weight: 700; color: #F6AE2D; }
+  .top-bar .back-link {
+    padding: 6px 12px; background: #334155; color: #94A3B8; border: 1px solid #475569;
+    border-radius: 5px; text-decoration: none; font-size: 0.78rem; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .top-bar .back-link:hover {
+    background: #475569; color: #F1F5F9;
+  }
+  .top-bar .job-code-label {
+    font-size: 0.85rem; color: #94A3B8;
+  }
   .controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
   .ctrl-group { display: flex; align-items: center; gap: 6px; }
   .ctrl-group label { font-size: 0.75rem; color: #94A3B8; white-space: nowrap; }
@@ -190,73 +201,15 @@ COLUMN_DRAWING_HTML = r"""
     body { background: #fff; }
   }
 </style>
-<script>
-// ── Server-injected project config ──
-window.COLUMN_CONFIG = window.COLUMN_CONFIG || null;
-
-function applyServerConfig() {
-  var cfg = window.COLUMN_CONFIG;
-  if (!cfg) return;  // standalone mode
-
-  if (cfg.pitch_deg !== undefined) {
-    document.getElementById('inPitch').value = cfg.pitch_deg;
-    var vp = document.getElementById('vPitch');
-    if (vp) vp.textContent = cfg.pitch_deg + '°';
-  }
-  if (cfg.clear_height_ft) document.getElementById('inClearHt').value = cfg.clear_height_ft;
-  if (cfg.width_ft) document.getElementById('inWidth').value = cfg.width_ft;
-  if (cfg.footing_ft) document.getElementById('inFooting').value = cfg.footing_ft;
-  if (cfg.rebar_size) {
-    var sel = document.getElementById('inRebar');
-    if (sel) sel.value = cfg.rebar_size;
-  }
-  if (cfg.above_grade_ft) document.getElementById('inAboveGrade').value = cfg.above_grade_ft;
-  if (cfg.cut_allowance_in !== undefined) document.getElementById('inCutAllowance').value = cfg.cut_allowance_in;
-  if (cfg.reinforced === false) {
-    // Click the non-reinforced button
-    var btnR = document.getElementById('btnReinforced');
-    var btnNR = document.getElementById('btnNonReinforced');
-    if (btnR && btnNR) {
-      btnR.classList.remove('active');
-      btnNR.classList.add('active');
-    }
-  }
-  // Project info for title block
-  if (cfg.job_code) {
-    var lbl = document.querySelector('.top-bar h1');
-    if (lbl) lbl.textContent = 'TitanForge — Column Shop Drawing — ' + cfg.job_code;
-    var jn = document.getElementById('setJobNumber');
-    if (jn) jn.value = cfg.job_code;
-  }
-  if (cfg.project_name) {
-    var pn = document.getElementById('setProjectName');
-    if (pn) pn.value = cfg.project_name;
-  }
-  if (cfg.customer) {
-    var cu = document.getElementById('setCustomer');
-    if (cu) cu.value = cfg.customer;
-  }
-  // Frame data for column count
-  if (cfg.num_frames) C.nFrames = cfg.num_frames;
-  if (cfg.frame_type) {
-    var ft = cfg.frame_type.toLowerCase();
-    C.frameType = (ft === 'tee' || ft === 't-frame') ? 'tee' : '2-post';
-  }
-  if (cfg.num_columns && cfg.num_columns > 0) {
-    // Override nFrames to produce correct totalCols
-    // For tee: totalCols = nFrames * 2, for 2-post: nFrames * 3
-    var colsPerFrame = (C.frameType === 'tee') ? 2 : 3;
-    C.nFrames = Math.round(cfg.num_columns / colsPerFrame);
-  }
-}
-window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
 </head>
 <body>
 
 <div class="top-bar">
-  <h1>TitanForge — Column Shop Drawing</h1>
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <a href="/shop-drawings/{{JOB_CODE}}" class="back-link">← Back to Shop Drawings</a>
+    <h1>TitanForge — Column Shop Drawing</h1>
+    <span class="job-code-label" id="jobCodeDisplay">Job: {{JOB_CODE}}</span>
+  </div>
   <div class="controls">
     <div class="ctrl-group">
       <label>Pitch:</label>
@@ -307,10 +260,6 @@ window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
     <button class="btn-gold" id="btnWeldEdit" style="background:#0055AA;color:#FFF;" onclick="toggleWeldEditMode()">🔧 Edit Welds</button>
     <button class="btn-gold" id="btnWeldReset" style="background:#7C2D12;color:#FDBA74;display:none;" onclick="resetAllWeldOverrides()">↺ Reset Welds</button>
     <button class="btn-gold" id="btnExportLayout" style="background:#334155;color:#94A3B8;border:1px solid #475569;display:none;" onclick="exportLayout()">📋 Export Layout</button>
-    <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ PDF</button>
-    <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
-    <span id="savePdfStatus" style="font-size:0.75rem;color:#94A3B8;"></span>
-    <a style="padding:6px 12px;background:#334155;color:#94A3B8;border:1px solid #475569;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;" href="/shop-drawings/{{JOB_CODE}}">← Dashboard</a>
   </div>
 </div>
 
@@ -1581,9 +1530,8 @@ function toggleReinforced() {
   } else {
     b.classList.remove('active'); a.classList.add('active');
   }
-applyServerConfig();
-updateCheckBadge();
-draw();
+  draw();
+  scheduleConfigSync(); // sync reinforced toggle back to project
 }
 
 ['inPitch','inClearHt','inWidth','inFooting','inRebar','inAboveGrade','inCutAllowance'].forEach(id => {
@@ -1591,13 +1539,73 @@ draw();
     pushUndoDebounced(); // snapshot before change
     if (id === 'inPitch') document.getElementById('vPitch').textContent = document.getElementById('inPitch').value + '°';
     draw();
+    scheduleConfigSync(); // sync changes back to project
   });
 });
 
 ['setProjectName','setCustomer','setJobNumber','setDrawnBy','setColumnMark'].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => { pushUndoDebounced(); draw(); });
+  if (el) el.addEventListener('input', () => { pushUndoDebounced(); draw(); scheduleConfigSync(); });
 });
+
+// ════════════════════════
+// BIDIRECTIONAL SYNC — Save drawing input changes back to project
+// ════════════════════════
+let _syncTimer = null;
+let _lastSyncPayload = '';
+
+function scheduleConfigSync() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncConfigToProject, 1500); // debounce 1.5s
+}
+
+function collectDrawingConfig() {
+  return {
+    roof_pitch_deg: parseFloat(document.getElementById('inPitch').value) || 1.2,
+    clear_height_ft: parseFloat(document.getElementById('inClearHt').value) || 14,
+    building_width_ft: parseFloat(document.getElementById('inWidth').value) || 40,
+    footing_depth_ft: parseFloat(document.getElementById('inFooting').value) || 0,
+    col_rebar_size: document.getElementById('inRebar').value || '#9',
+    above_grade_ft: parseFloat(document.getElementById('inAboveGrade').value) || 8,
+    cut_allowance_in: parseFloat(document.getElementById('inCutAllowance').value) || 6,
+    col_reinforced: document.querySelector('.toggle-btn.active')?.textContent?.trim() === 'Reinforced',
+    project_name: document.getElementById('setProjectName')?.value || '',
+    customer_name: document.getElementById('setCustomer')?.value || '',
+    drawn_by: document.getElementById('setDrawnBy')?.value || '',
+  };
+}
+
+async function syncConfigToProject() {
+  const jobCode = window.location.pathname.match(/\/column-drawing\/([^\/]+)/)?.[1];
+  if (!jobCode) return;
+
+  const cfg = collectDrawingConfig();
+  const payload = JSON.stringify(cfg);
+
+  // Skip if nothing actually changed
+  if (payload === _lastSyncPayload) return;
+  _lastSyncPayload = payload;
+
+  try {
+    // 1. Save to shop drawing config
+    await fetch('/api/shop-drawings/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ job_code: jobCode, config: cfg }),
+    });
+
+    // 2. Push changes back to project buildings array (reverse sync)
+    await fetch('/api/project/sync-from-drawing', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ job_code: jobCode, drawing_config: cfg }),
+    });
+
+    console.log('[Sync] Drawing config saved for', jobCode);
+  } catch(e) {
+    console.warn('[Sync] Failed to save config:', e);
+  }
+}
 
 // ════════════════════════
 // DRAWING STATE — Approval, Revision, Annotations
@@ -2010,7 +2018,6 @@ function renderAnnotations(svg) {
   });
 }
 
-applyServerConfig();
 updateCheckBadge();
 draw();
 
@@ -2542,83 +2549,90 @@ window.addEventListener('keydown', function(e) {
   };
 })();
 
-// ═══════════════════════════════════════════════
-// SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
-// ═══════════════════════════════════════════════
-function savePdfToProject() {
-  var btn = document.getElementById('btnSavePdf');
-  var status = document.getElementById('savePdfStatus');
-  var jobCode = (window.COLUMN_CONFIG && window.COLUMN_CONFIG.job_code) || '{{JOB_CODE}}';
-  if (!jobCode || jobCode === 'null') {
-    alert('No project job code — open this drawing from a project to save.');
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = 'Generating...';
-  status.textContent = '';
+// ══════════════════════════════════════════════════════
+//  TITANFORGE INTEGRATION
+// ══════════════════════════════════════════════════════
 
-  try {
-    var svgEl = document.getElementById('svg');
-    var vb = svgEl.viewBox.baseVal;
-    var svgW = vb.width || 1100;
-    var svgH = vb.height || 850;
-
-    var pdf = new jspdf.jsPDF({
-      orientation: 'landscape',
-      unit: 'pt',
-      format: [svgW, svgH]
-    });
-
-    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
-      var pdfData = pdf.output('arraybuffer');
-      var blob = new Blob([pdfData], { type: 'application/pdf' });
-
-      var formData = new FormData();
-      formData.append('job_code', jobCode);
-      formData.append('drawing_type', 'column');
-      formData.append('source', 'interactive');
-      formData.append('pdf_file', blob, jobCode + '_COLUMN_INTERACTIVE.pdf');
-
-      fetch('/api/shop-drawings/save-interactive-pdf', {
-        method: 'POST',
-        body: formData
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          btn.textContent = 'Saved!';
-          btn.style.background = '#059669';
-          status.textContent = 'PDF saved to project';
-          status.style.color = '#10B981';
-          setTimeout(function() {
-            btn.textContent = 'Save PDF to Project';
-            btn.disabled = false;
-          }, 3000);
-        } else {
-          btn.textContent = 'Save PDF to Project';
-          btn.disabled = false;
-          status.textContent = 'Error: ' + (data.error || 'unknown');
-          status.style.color = '#EF4444';
+document.addEventListener('DOMContentLoaded', function() {
+  // Extract job code from URL
+  const jobCode = window.location.pathname.match(/\/column-drawing\/([^\/]+)/)?.[1];
+  if (jobCode) {
+    // Fetch project config from TitanForge API
+    fetch('/api/shop-drawings/config?job_code=' + encodeURIComponent(jobCode))
+      .then(resp => resp.json())
+      .then(data => {
+        if (data.ok && data.config) {
+          applyConfigToDrawing(data.config);
         }
       })
-      .catch(function(err) {
-        btn.textContent = 'Save PDF to Project';
-        btn.disabled = false;
-        status.textContent = 'Network error';
-        status.style.color = '#EF4444';
-      });
-    }).catch(function(err) {
-      btn.textContent = 'Save PDF to Project';
-      btn.disabled = false;
-      status.textContent = 'PDF render error: ' + err.message;
-      status.style.color = '#EF4444';
-    });
-  } catch(err) {
-    btn.textContent = 'Save PDF to Project';
-    btn.disabled = false;
-    status.textContent = 'Error: ' + err.message;
-    status.style.color = '#EF4444';
+      .catch(err => console.error('Failed to load project config:', err));
   }
+});
+
+// Map TitanForge ShopDrawingConfig fields to drawing input elements
+function applyConfigToDrawing(config) {
+  // Map config field names → [inputId, optional transform]
+  const mappings = [
+    ['roof_pitch_deg', 'inPitch'],
+    ['clear_height_ft', 'inClearHt'],
+    ['building_width_ft', 'inWidth'],
+    ['footing_depth_ft', 'inFooting'],
+    ['col_rebar_size', 'inRebar'],
+    // fallback aliases from older/derived configs
+    ['pitch', 'inPitch'],
+    ['clearHt', 'inClearHt'],
+    ['width', 'inWidth'],
+    ['footing', 'inFooting'],
+    ['rebar_size', 'inRebar'],
+    ['rebar', 'inRebar'],
+    ['above_grade_ft', 'inAboveGrade'],
+    ['above_grade', 'inAboveGrade'],
+    ['above_grade_depth', 'inAboveGrade'],
+    ['cut_allowance_in', 'inCutAllowance'],
+    ['cut_allowance', 'inCutAllowance'],
+    ['cut_allow', 'inCutAllowance'],
+  ];
+
+  for (const [cfgKey, inputId] of mappings) {
+    const value = config[cfgKey];
+    const inputEl = document.getElementById(inputId);
+    if (inputEl && value !== undefined && value !== null) {
+      inputEl.value = String(value);
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  // Project info fields
+  if (config.project_name) {
+    const el = document.getElementById('inProject');
+    if (el) { el.value = config.project_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.customer_name) {
+    const el = document.getElementById('inCustomer');
+    if (el) { el.value = config.customer_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.job_code) {
+    const el = document.getElementById('inJobNo');
+    if (el) { el.value = config.job_code; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+  if (config.drawn_by) {
+    const el = document.getElementById('inDrawnBy');
+    if (el) { el.value = config.drawn_by; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
+
+  // Handle reinforced/non-reinforced toggle
+  const reinforced = config.col_reinforced !== undefined ? config.col_reinforced : config.reinforced;
+  if (reinforced !== undefined) {
+    const isReinforced = reinforced === true || String(reinforced).toLowerCase() === 'true';
+    // The drawing defaults to reinforced — only toggle if non-reinforced
+    if (!isReinforced) {
+      toggleReinforced();
+    }
+  }
+
+  // Trigger full redraw after all fields are set
+  if (typeof draw === 'function') draw();
 }
 </script>
 </body>

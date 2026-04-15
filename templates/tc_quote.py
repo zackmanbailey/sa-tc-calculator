@@ -75,6 +75,9 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
 @media(max-width:768px){#main{flex-direction:column}#sidebar{width:100%}}
+/* When wrapped by shared_nav inject_nav(), adjust layout */
+.tf-main #main{height:calc(100vh - 84px)}
+.tf-main #topbar{display:none}
 </style>
 </head>
 <body>
@@ -236,6 +239,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
       <button class="btn btn-outline btn-sm" onclick="tcExportPDF()">⬇ PDF</button>
       <button class="btn btn-outline btn-sm" onclick="tcExportExcel()">⬇ Excel</button>
     </div>
+    <div class="btn-group" style="margin-top:6px">
+      <button class="btn btn-sm" style="background:#10B981;color:#fff;font-weight:700;" onclick="tcSaveProject()">&#128190; Save to Project</button>
+    </div>
+    <div id="tc-save-status" style="font-size:11px;color:#64748B;margin-top:4px;"></div>
 
   </div><!-- /sidebar -->
 
@@ -635,9 +642,13 @@ function prefillFromURL() {
   if (p.has('width')) document.getElementById('sa_width').value = p.get('width');
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
 
-  // Auto-load project metadata from ?project=JOB_CODE
+  // Auto-load project data from ?project=JOB_CODE
+  // First try to load saved TC data; if none exists, fall back to project metadata
   if (p.has('project')) {
-    autoLoadProjectMetadata(p.get('project'));
+    const projCode = p.get('project');
+    tcLoadFromProject(projCode).then(loaded => {
+      if (!loaded) autoLoadProjectMetadata(projCode);
+    });
   }
 }
 
@@ -665,28 +676,6 @@ async function autoLoadProjectMetadata(jobCode) {
       }
     }
   } catch(e) { /* silent */ }
-
-  // ── Auto-populate columns/piers from saved BOM data ──
-  try {
-    const assetsResp = await fetch('/api/project/assets?job_code=' + encodeURIComponent(jobCode));
-    const assetsData = await assetsResp.json();
-    if (assetsData.ok && assetsData.assets) {
-      const sa = assetsData.assets.sa_estimator || {};
-      const totalCols = sa.total_columns || 0;
-      if (totalCols > 0) {
-        const colsEl = document.getElementById('sa_n_cols');
-        if (colsEl && (numVal('sa_n_cols') === 0)) colsEl.value = totalCols;
-        const piersEl = document.getElementById('conc_n_piers');
-        if (piersEl && (numVal('conc_n_piers') === 0)) piersEl.value = totalCols;
-        const holesEl = document.getElementById('drill_n_holes');
-        if (holesEl && (numVal('drill_n_holes') === 0)) holesEl.value = totalCols;
-        if (typeof calcConcrete === 'function') calcConcrete();
-        if (typeof calcDrilling === 'function') calcDrilling();
-        if (typeof renderSummary === 'function') renderSummary();
-        console.log('[TC] Auto-populated ' + totalCols + ' columns/piers from BOM');
-      }
-    }
-  } catch(e) { console.warn('[TC] Could not load project assets:', e); }
 }
 
 // ─────────────────────────────────────────────
@@ -1090,6 +1079,148 @@ async function tcExportExcel() {
     a.download = (strVal('proj_code') || 'TC-Quote') + '.xlsx';
     a.click();
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ─────────────────────────────────────────────
+// TC SAVE / LOAD PER PROJECT
+// ─────────────────────────────────────────────
+async function tcSaveProject() {
+  const payload = buildPayload();
+  const jobCode = payload.project.job_code || '';
+  if (!jobCode) {
+    alert('Cannot save: no Job Code set. Fill in the Job Code field first.');
+    return;
+  }
+  // Strip TC- prefix if present for storage
+  payload.job_code = jobCode.replace(/^TC-/i, '');
+  const statusEl = document.getElementById('tc-save-status');
+  statusEl.textContent = 'Saving...';
+  try {
+    const resp = await fetch('/api/tc/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      statusEl.textContent = 'Saved v' + data.version + ' at ' + new Date().toLocaleTimeString();
+      statusEl.style.color = '#10B981';
+    } else {
+      statusEl.textContent = 'Save failed: ' + (data.error || 'Unknown error');
+      statusEl.style.color = '#EF4444';
+    }
+  } catch(e) {
+    statusEl.textContent = 'Save error: ' + e.message;
+    statusEl.style.color = '#EF4444';
+  }
+}
+
+async function tcLoadFromProject(jobCode) {
+  try {
+    const resp = await fetch('/api/tc/load', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ job_code: jobCode })
+    });
+    const result = await resp.json();
+    if (!result.ok || !result.data) return false;
+    const d = result.data;
+
+    // Populate project fields
+    if (d.project) {
+      const p = d.project;
+      if (p.job_code) document.getElementById('proj_code').value = p.job_code;
+      if (p.name) document.getElementById('proj_name').value = p.name;
+      if (p.customer_name) document.getElementById('proj_customer').value = p.customer_name;
+      if (p.address) document.getElementById('proj_address').value = p.address;
+      if (p.city) document.getElementById('proj_city').value = p.city;
+      if (p.state) document.getElementById('proj_state').value = p.state;
+      if (p.quote_date) document.getElementById('proj_date').value = p.quote_date;
+      if (p.markup_pct) document.getElementById('proj_markup').value = p.markup_pct;
+    }
+    // Populate salesperson
+    if (d.salesperson) {
+      const s = d.salesperson;
+      if (s.name) document.getElementById('sp_name').value = s.name;
+      if (s.title) document.getElementById('sp_title').value = s.title;
+      if (s.phone) document.getElementById('sp_phone').value = s.phone;
+      if (s.email) document.getElementById('sp_email').value = s.email;
+    }
+    // Populate SA import fields
+    if (d.sa) {
+      const sa = d.sa;
+      if (sa.quote_num) document.getElementById('sa_quote_num').value = sa.quote_num;
+      if (sa.materials_cost) document.getElementById('sa_materials_cost').value = sa.materials_cost;
+      if (sa.n_cols) { document.getElementById('sa_n_cols').value = sa.n_cols; document.getElementById('conc_n_piers').value = sa.n_cols; document.getElementById('drill_n_holes').value = sa.n_cols; }
+      if (sa.footing_depth) { document.getElementById('sa_footing_depth').value = sa.footing_depth; document.getElementById('conc_depth_ft').value = sa.footing_depth; }
+      if (sa.width_ft) document.getElementById('sa_width').value = sa.width_ft;
+      if (sa.length_ft) document.getElementById('sa_length').value = sa.length_ft;
+    }
+    // Populate cost fields
+    if (d.costs) {
+      const c = d.costs;
+      if (c.concrete) {
+        if (c.concrete.dia_in) document.getElementById('conc_dia_in').value = c.concrete.dia_in;
+        if (c.concrete.price_cy) document.getElementById('conc_price_cy').value = c.concrete.price_cy;
+      }
+      if (c.labor) {
+        if (c.labor.crew) document.getElementById('lab_crew').value = c.labor.crew;
+        if (c.labor.days) document.getElementById('lab_days').value = c.labor.days;
+        if (c.labor.rate_hr) document.getElementById('lab_rate_hr').value = c.labor.rate_hr;
+        if (c.labor.hrs_day) document.getElementById('lab_hrs_day').value = c.labor.hrs_day;
+        if (c.labor.notes) document.getElementById('lab_notes').value = c.labor.notes;
+      }
+      if (c.drilling) {
+        if (c.drilling.method) document.getElementById('drill_method').value = c.drilling.method;
+        if (c.drilling.rate) document.getElementById('drill_rate').value = c.drilling.rate;
+        if (c.drilling.rig_day) document.getElementById('drill_rig_day').value = c.drilling.rig_day;
+        if (c.drilling.op_day) document.getElementById('drill_op_day').value = c.drilling.op_day;
+        if (c.drilling.days) document.getElementById('drill_days').value = c.drilling.days;
+      }
+      if (c.shipping) {
+        if (c.shipping.method) document.getElementById('ship_method').value = c.shipping.method;
+        if (c.shipping.miles) document.getElementById('ship_miles').value = c.shipping.miles;
+        if (c.shipping.rate) document.getElementById('ship_rate').value = c.shipping.rate;
+        if (c.shipping.flat_amt) document.getElementById('ship_flat_amt').value = c.shipping.flat_amt;
+        if (c.shipping.loads) document.getElementById('ship_loads').value = c.shipping.loads;
+        if (c.shipping.notes) document.getElementById('ship_notes').value = c.shipping.notes;
+      }
+      if (c.fuel) {
+        if (c.fuel.vehicles) document.getElementById('fuel_vehicles').value = c.fuel.vehicles;
+        if (c.fuel.miles) document.getElementById('fuel_miles').value = c.fuel.miles;
+        if (c.fuel.mpg) document.getElementById('fuel_mpg').value = c.fuel.mpg;
+        if (c.fuel.price_gal) document.getElementById('fuel_price_gal').value = c.fuel.price_gal;
+      }
+      if (c.hotels) {
+        if (c.hotels.crew) document.getElementById('hotel_crew').value = c.hotels.crew;
+        if (c.hotels.nights) document.getElementById('hotel_nights').value = c.hotels.nights;
+        if (c.hotels.rate) document.getElementById('hotel_rate').value = c.hotels.rate;
+      }
+      if (c.per_diem) {
+        if (c.per_diem.crew) document.getElementById('pd_crew').value = c.per_diem.crew;
+        if (c.per_diem.days) document.getElementById('pd_days').value = c.per_diem.days;
+        if (c.per_diem.rate) document.getElementById('pd_rate').value = c.per_diem.rate;
+      }
+      if (c.transport) {
+        if (c.transport.vehicles) document.getElementById('trans_vehicles').value = c.transport.vehicles;
+        if (c.transport.miles) document.getElementById('trans_miles').value = c.transport.miles;
+        if (c.transport.rate) document.getElementById('trans_rate').value = c.transport.rate;
+        if (c.transport.trips) document.getElementById('trans_trips').value = c.transport.trips;
+        if (c.transport.notes) document.getElementById('trans_notes').value = c.transport.notes;
+      }
+    }
+    // Recalculate all after loading
+    calcConcrete(); calcLabor(); calcDrilling();
+    calcShipping(); calcFuel(); calcHotels();
+    calcPerDiem(); calcTransport(); renderSummary();
+
+    const statusEl = document.getElementById('tc-save-status');
+    if (statusEl) {
+      statusEl.textContent = 'Loaded v' + (d.version || '?') + ' (saved ' + (d.saved_at || '').substring(0, 10) + ')';
+      statusEl.style.color = '#1E40AF';
+    }
+    return true;
+  } catch(e) { return false; }
 }
 
 // ─────────────────────────────────────────────
