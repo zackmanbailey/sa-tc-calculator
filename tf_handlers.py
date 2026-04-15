@@ -4568,7 +4568,7 @@ class ColumnInteractiveHandler(BaseHandler):
         from templates.column_interactive import COLUMN_DRAWING_HTML
 
         # Load project config from saved BOM
-        config_dict = _load_shop_config_for_project(job_code)
+        config_dict = _load_shop_config(job_code)
         if not config_dict:
             config_dict = {"job_code": job_code}
         config_dict.setdefault("job_code", job_code)
@@ -4595,7 +4595,7 @@ class RafterInteractiveHandler(BaseHandler):
         # Placeholder — serve rafter drawing if template exists
         try:
             from templates.rafter_interactive import RAFTER_DRAWING_HTML
-            config_dict = _load_shop_config_for_project(job_code)
+            config_dict = _load_shop_config(job_code)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
@@ -4605,8 +4605,18 @@ class RafterInteractiveHandler(BaseHandler):
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except ImportError:
-            self.set_status(404)
-            self.write("Rafter interactive drawing not yet available")
+            # Rafter template not built yet — show placeholder
+            self.set_header("Content-Type", "text/html")
+            self.write(f"""<!DOCTYPE html><html><head><title>Rafter Drawing - {job_code}</title>
+            <style>body{{font-family:-apple-system,sans-serif;background:#0F172A;color:#E2E8F0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}}
+            .card{{background:#1E293B;border:1px solid #334155;border-radius:16px;padding:48px;text-align:center;max-width:500px;}}
+            h2{{color:#FFF;margin-bottom:12px;}} p{{color:#94A3B8;line-height:1.6;}}
+            a{{color:#60A5FA;text-decoration:none;font-weight:600;}}</style></head>
+            <body><div class="card"><div style="font-size:3rem;margin-bottom:16px;">&#9650;</div>
+            <h2>Rafter Interactive Builder</h2>
+            <p>The interactive rafter drawing builder is coming soon. For now, you can generate rafter drawings from the
+            <a href="/shop-drawings/{job_code}">Shop Drawings</a> Configuration tab.</p>
+            <br><a href="/shop-drawings/{job_code}">&larr; Back to Shop Drawings</a></div></body></html>""")
 
 
 class SaveInteractivePDFHandler(BaseHandler):
@@ -5952,7 +5962,7 @@ class QRScannerPageHandler(BaseHandler):
 
 
 class WorkOrderItemDetailHandler(BaseHandler):
-    """GET /api/work-orders/detail — Look up a single item by item_id for the scanner."""
+    """GET /api/work-orders/item-detail — Look up a single item by item_id for the scanner."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
@@ -6565,7 +6575,7 @@ def get_routes():
 
         # ── Mobile QR Scanner ─────────────────────────────────
         (r"/scan/([^/]+)",                       QRScannerPageHandler),
-        (r"/api/work-orders/detail",             WorkOrderItemDetailHandler),
+        (r"/api/work-orders/item-detail",        WorkOrderItemDetailHandler),
 
         # ── TV Dashboard & Gamification ───────────────────────
         (r"/tv-dashboard",                       TVDashboardPageHandler),

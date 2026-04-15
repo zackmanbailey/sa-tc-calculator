@@ -1006,18 +1006,21 @@ INVENTORY_PAGE_HTML = r'''
         async function loadSummary() {
             try {
                 const response = await fetch('/api/inventory/summary');
-                const data = await response.json();
-                $('stat-total-coils').textContent = data.total_coils;
-                $('stat-total-stock').textContent = `${data.total_stock.toFixed(0)} lbs`;
-                $('stat-committed').textContent = `${data.committed.toFixed(0)} lbs`;
-                $('stat-available').textContent = `${data.available.toFixed(0)} lbs`;
-                $('stat-low-stock').textContent = data.low_stock_count;
-                $('stat-total-value').textContent = `$${data.total_value.toFixed(2)}`;
+                if (!response.ok) { console.error('Summary API error:', response.status); return; }
+                const result = await response.json();
+                const data = result.summary || result;
+                $('stat-total-coils').textContent = data.total_coils || 0;
+                $('stat-total-stock').textContent = `${(data.total_stock_lbs || 0).toFixed(0)} lbs`;
+                $('stat-committed').textContent = `${(data.total_committed_lbs || 0).toFixed(0)} lbs`;
+                $('stat-available').textContent = `${(data.total_available_lbs || 0).toFixed(0)} lbs`;
+                $('stat-low-stock').textContent = data.low_stock_count || 0;
+                $('stat-total-value').textContent = `$${(data.total_value || 0).toFixed(2)}`;
 
-                $('status-available').textContent = data.available_count;
-                $('status-committed').textContent = data.committed_count;
-                $('status-pending').textContent = data.pending_count;
-                $('status-low').textContent = data.low_stock_count;
+                const byStatus = data.stock_by_status || {};
+                $('status-available').textContent = byStatus.active_count || 0;
+                $('status-committed').textContent = byStatus.depleted_count || 0;
+                $('status-pending').textContent = 0;
+                $('status-low').textContent = byStatus.low_stock_count || 0;
             } catch (err) {
                 console.error('Failed to load summary:', err);
             }
@@ -1027,14 +1030,16 @@ INVENTORY_PAGE_HTML = r'''
             const gauge = $('filter-gauge').value;
             const grade = $('filter-grade').value;
             const status = $('filter-status').value;
-            const url = `/api/inventory/coils?gauge=${gauge}&grade=${grade}&status=${status}`;
+            const url = `/api/inventory/coils?gauge=${encodeURIComponent(gauge)}&grade=${encodeURIComponent(grade)}&status=${encodeURIComponent(status)}`;
 
             try {
                 const response = await fetch(url);
-                const coils = await response.json();
+                if (!response.ok) throw new Error('API error ' + response.status);
+                const result = await response.json();
+                const coils = result.coils || [];
                 const tbody = $('coils-table');
 
-                if (!coils || coils.length === 0) {
+                if (coils.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><p>No coils found</p></td></tr>';
                     return;
                 }
@@ -1042,14 +1047,14 @@ INVENTORY_PAGE_HTML = r'''
                 tbody.innerHTML = coils.map(c => `
                     <tr>
                         <td>${c.coil_id}</td>
-                        <td>${c.name}</td>
-                        <td>${c.gauge}</td>
-                        <td>${c.grade}</td>
-                        <td>${c.supplier}</td>
-                        <td>${c.stock_lbs.toFixed(2)}</td>
-                        <td>${c.committed.toFixed(2)}</td>
-                        <td>${c.available.toFixed(2)}</td>
-                        <td><span class="badge badge-available">${c.status}</span></td>
+                        <td>${c.name || ''}</td>
+                        <td>${c.gauge || ''}</td>
+                        <td>${c.grade || ''}</td>
+                        <td>${c.supplier || ''}</td>
+                        <td>${(c.stock_lbs || 0).toFixed(2)}</td>
+                        <td>${(c.committed_lbs || 0).toFixed(2)}</td>
+                        <td>${(c.available_lbs || 0).toFixed(2)}</td>
+                        <td><span class="badge badge-available">${c.status || ''}</span></td>
                         <td>
                             <button class="btn btn-small btn-secondary" onclick="showCoilHistory('${c.coil_id}')">History</button>
                             <button class="btn btn-small btn-secondary" onclick="showReceiveModal()">Receive</button>
@@ -1066,28 +1071,30 @@ INVENTORY_PAGE_HTML = r'''
         async function loadTransactions() {
             const coilId = $('filter-coil-trans').value;
             const type = $('filter-type').value;
-            const url = `/api/inventory/transactions?coil_id=${coilId}&type=${type}`;
+            const url = `/api/inventory/transactions?coil_id=${encodeURIComponent(coilId)}&type=${encodeURIComponent(type)}`;
 
             try {
                 const response = await fetch(url);
-                const transactions = await response.json();
+                if (!response.ok) throw new Error('API error ' + response.status);
+                const result = await response.json();
+                const transactions = result.transactions || [];
                 const tbody = $('transactions-table');
 
-                if (!transactions || transactions.length === 0) {
+                if (transactions.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No transactions found</p></td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = transactions.map(t => `
                     <tr>
-                        <td>${t.transaction_id}</td>
-                        <td>${t.coil_id}</td>
-                        <td><span class="badge badge-pending">${t.type}</span></td>
-                        <td>${t.quantity.toFixed(2)}</td>
+                        <td>${t.transaction_id || ''}</td>
+                        <td>${t.coil_id || ''}</td>
+                        <td><span class="badge badge-pending">${t.type || ''}</span></td>
+                        <td>${(t.quantity_lbs || t.quantity || 0).toFixed(2)}</td>
                         <td>${t.job_code || '—'}</td>
                         <td>${t.reference || '—'}</td>
                         <td>${t.notes || '—'}</td>
-                        <td>${t.date}</td>
+                        <td>${t.date || ''}</td>
                     </tr>
                 `).join('');
             } catch (err) {
@@ -1099,26 +1106,32 @@ INVENTORY_PAGE_HTML = r'''
         async function loadAllocations() {
             try {
                 const response = await fetch('/api/inventory/allocations');
-                const allocations = await response.json();
+                if (!response.ok) throw new Error('API error ' + response.status);
+                const result = await response.json();
+                const allocations = result.allocations || [];
                 const tbody = $('allocations-table');
 
-                if (!allocations || allocations.length === 0) {
+                if (allocations.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No allocations found</p></td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = allocations.map(a => `
+                tbody.innerHTML = allocations.map(a => {
+                    const allocated = a.quantity_lbs || a.allocated || 0;
+                    const consumed = a.consumed_lbs || a.consumed || 0;
+                    const remaining = allocated - consumed;
+                    return `
                     <tr>
-                        <td>${a.allocation_id}</td>
-                        <td>${a.coil_id}</td>
-                        <td>${a.job_code}</td>
-                        <td>${a.allocated.toFixed(2)}</td>
-                        <td>${a.consumed.toFixed(2)}</td>
-                        <td>${a.remaining.toFixed(2)}</td>
-                        <td><span class="badge badge-committed">${a.status}</span></td>
+                        <td>${a.allocation_id || ''}</td>
+                        <td>${a.coil_id || ''}</td>
+                        <td>${a.job_code || ''}</td>
+                        <td>${allocated.toFixed(2)}</td>
+                        <td>${consumed.toFixed(2)}</td>
+                        <td>${remaining.toFixed(2)}</td>
+                        <td><span class="badge badge-committed">${a.status || ''}</span></td>
                         <td><button class="btn btn-small btn-danger" onclick="releaseAllocation('${a.allocation_id}')">Release</button></td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (err) {
                 console.error('Failed to load allocations:', err);
                 $('allocations-table').innerHTML = '<tr><td colspan="8" class="empty-state"><p>Error loading allocations</p></td></tr>';
@@ -1128,24 +1141,26 @@ INVENTORY_PAGE_HTML = r'''
         async function loadReceiving() {
             try {
                 const response = await fetch('/api/inventory/receiving');
-                const receiving = await response.json();
+                if (!response.ok) throw new Error('API error ' + response.status);
+                const result = await response.json();
+                const receiving = result.receiving || [];
                 const tbody = $('receiving-table');
 
-                if (!receiving || receiving.length === 0) {
+                if (receiving.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>No receiving records found</p></td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = receiving.map(r => `
                     <tr>
-                        <td>${r.receiving_id}</td>
-                        <td>${r.coil_id}</td>
-                        <td>${r.supplier}</td>
-                        <td>${r.quantity.toFixed(2)}</td>
+                        <td>${r.receiving_id || ''}</td>
+                        <td>${r.coil_id || ''}</td>
+                        <td>${r.supplier || ''}</td>
+                        <td>${(r.quantity_lbs || r.quantity || 0).toFixed(2)}</td>
                         <td>${r.po_number || '—'}</td>
                         <td>${r.bol_number || '—'}</td>
                         <td>${r.heat_number || '—'}</td>
-                        <td>${r.date}</td>
+                        <td>${r.date || ''}</td>
                     </tr>
                 `).join('');
             } catch (err) {
@@ -1157,10 +1172,12 @@ INVENTORY_PAGE_HTML = r'''
         async function loadAlerts() {
             try {
                 const response = await fetch('/api/inventory/alerts?acknowledged=false');
-                const alerts = await response.json();
+                if (!response.ok) throw new Error('API error ' + response.status);
+                const result = await response.json();
+                const alerts = result.alerts || [];
                 const tbody = $('alerts-table');
 
-                if (!alerts || alerts.length === 0) {
+                if (alerts.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No alerts</p></td></tr>';
                     return;
                 }

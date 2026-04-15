@@ -413,7 +413,7 @@ QR_SCANNER_HTML = """
   function lookupItem(jobCode, itemId) {
     setStatus('scanning', 'Looking up ' + itemId + '...');
 
-    fetch('/api/work-orders/detail?job_code=' + encodeURIComponent(jobCode) + '&item_id=' + encodeURIComponent(itemId))
+    fetch('/api/work-orders/item-detail?job_code=' + encodeURIComponent(jobCode) + '&item_id=' + encodeURIComponent(itemId))
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (!data.ok || !data.item) {

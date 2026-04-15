@@ -1005,7 +1005,7 @@ LOAD_BUILDER_HTML = r'''
 
             try {
                 const response = await fetch('/api/load-builder/delete', {
-                    method: 'DELETE',
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ load_id: loadId })
                 });
