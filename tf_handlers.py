@@ -738,6 +738,33 @@ class UserAddHandler(BaseHandler):
         self.write(json_encode({"ok": True}))
 
 
+class UserEditHandler(BaseHandler):
+    """POST /auth/users/edit — Edit a user's display_name, role, or password (admin only)."""
+    required_roles = ["admin"]
+
+    def post(self):
+        body = json_decode(self.request.body)
+        username = body.get("username", "").strip().lower()
+        if not username:
+            self.write(json_encode({"ok": False, "error": "Username required"}))
+            return
+
+        users = load_users()
+        if username not in users:
+            self.write(json_encode({"ok": False, "error": "User not found"}))
+            return
+
+        if "display_name" in body and body["display_name"].strip():
+            users[username]["display_name"] = body["display_name"].strip()
+        if "role" in body and body["role"] in ROLE_PERMISSIONS:
+            users[username]["role"] = body["role"]
+        if "password" in body and body["password"]:
+            users[username]["password"] = hash_password(body["password"])
+
+        save_users(users)
+        self.write(json_encode({"ok": True}))
+
+
 class UserDeleteHandler(BaseHandler):
     """POST /auth/users/delete — Delete a user (admin only)."""
     required_roles = ["admin"]
@@ -6424,6 +6451,7 @@ def get_routes():
         (r"/admin",              AdminPageHandler),
         (r"/auth/users",         UsersListHandler),
         (r"/auth/users/add",     UserAddHandler),
+        (r"/auth/users/edit",    UserEditHandler),
         (r"/auth/users/delete",  UserDeleteHandler),
 
         # ── App routes (Dashboard + Calculators) ────────────────

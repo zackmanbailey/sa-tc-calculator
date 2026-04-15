@@ -543,6 +543,42 @@ ADMIN_HTML = r"""
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div id="editUserModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:#1E293B;border:1px solid #334155;border-radius:12px;padding:28px;width:420px;max-width:90vw;">
+            <h3 style="color:#FFF;margin-bottom:16px;font-size:18px;">Edit User</h3>
+            <div id="editUserError" style="display:none;background:#7F1D1D;color:#FCA5A5;padding:10px;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+            <div id="editUserSuccess" style="display:none;background:#14532D;color:#6EE7B7;padding:10px;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+            <input type="hidden" id="editUsername">
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">Username</label>
+                <div id="editUsernameDisplay" style="padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#64748B;font-size:14px;"></div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">Display Name</label>
+                <input id="editDisplayName" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">Role</label>
+                <select id="editRole" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;">
+                    <option value="admin">Admin</option>
+                    <option value="estimator">Estimator</option>
+                    <option value="shop">Shop</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="tc_limited">TC Limited</option>
+                </select>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">New Password <span style="color:#64748B;">(leave blank to keep current)</span></label>
+                <input id="editPassword" type="password" placeholder="Enter new password" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;">
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="closeEditModal()" style="padding:8px 18px;background:#334155;color:#E2E8F0;border:none;border-radius:6px;cursor:pointer;font-size:14px;">Cancel</button>
+                <button id="saveEditBtn" onclick="saveEditUser()" style="padding:8px 18px;background:#1E40AF;color:#FFF;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -612,7 +648,8 @@ ADMIN_HTML = r"""
                     <td><span class="role-badge role-${user.role}">${escapeHtml(user.role)}</span></td>
                     <td>${formatDate(user.created_at)}</td>
                     <td>
-                        <button class="btn btn-danger" onclick="deleteUser('${escapeHtml(user.username)}')">Delete</button>
+                        <button class="btn btn-primary" style="margin-right:6px;padding:6px 14px;font-size:13px;" onclick="openEditUser('${escapeHtml(user.username)}','${escapeHtml(user.display_name)}','${escapeHtml(user.role)}')">Edit</button>
+                        <button class="btn btn-danger" style="padding:6px 14px;font-size:13px;" onclick="deleteUser('${escapeHtml(user.username)}')">Delete</button>
                     </td>
                 </tr>
             `).join('');
@@ -725,6 +762,77 @@ ADMIN_HTML = r"""
             div.textContent = text;
             return div.innerHTML;
         }
+
+        function openEditUser(username, displayName, role) {
+            document.getElementById('editUsername').value = username;
+            document.getElementById('editUsernameDisplay').textContent = username;
+            document.getElementById('editDisplayName').value = displayName;
+            document.getElementById('editRole').value = role;
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editUserError').style.display = 'none';
+            document.getElementById('editUserSuccess').style.display = 'none';
+            const modal = document.getElementById('editUserModal');
+            modal.style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editUserModal').style.display = 'none';
+        }
+
+        function saveEditUser() {
+            const username = document.getElementById('editUsername').value;
+            const displayName = document.getElementById('editDisplayName').value.trim();
+            const role = document.getElementById('editRole').value;
+            const password = document.getElementById('editPassword').value;
+            const errDiv = document.getElementById('editUserError');
+            const okDiv = document.getElementById('editUserSuccess');
+            errDiv.style.display = 'none';
+            okDiv.style.display = 'none';
+
+            if (!displayName) {
+                errDiv.textContent = 'Display name is required';
+                errDiv.style.display = 'block';
+                return;
+            }
+
+            const payload = { username, display_name: displayName, role };
+            if (password) payload.password = password;
+
+            const btn = document.getElementById('saveEditBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            fetch('/auth/users/edit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    okDiv.textContent = 'User updated successfully';
+                    okDiv.style.display = 'block';
+                    loadUsers();
+                    setTimeout(closeEditModal, 800);
+                } else {
+                    errDiv.textContent = data.error || 'Failed to update user';
+                    errDiv.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                errDiv.textContent = 'Network error: ' + err.message;
+                errDiv.style.display = 'block';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = 'Save Changes';
+            });
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('editUserModal').addEventListener('click', function(e) {
+            if (e.target === this) closeEditModal();
+        });
     </script>
 </body>
 </html>

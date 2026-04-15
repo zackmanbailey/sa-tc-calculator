@@ -579,6 +579,7 @@ SHOP_DRAWINGS_HTML = r"""
         <!-- ── Tab Bar ─────────────────────────────────────── -->
         <div class="tf-tabs">
             <button class="tf-tab active" onclick="showTab('drawings')">Drawings</button>
+            <button class="tf-tab" onclick="showTab('interactive')">Interactive Builder</button>
             <button class="tf-tab" onclick="showTab('config')">Configuration</button>
             <button class="tf-tab" onclick="showTab('history')">Revision History</button>
         </div>
@@ -596,6 +597,49 @@ SHOP_DRAWINGS_HTML = r"""
                 </button>
             </div>
             <div id="drawingsGrid" class="drawing-grid" style="display:none"></div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════ -->
+        <!--  TAB: INTERACTIVE BUILDER                         -->
+        <!-- ══════════════════════════════════════════════════ -->
+        <div class="tab-content" id="tab-interactive">
+            <div style="padding:8px 0;">
+                <h3 style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin-bottom:4px;">
+                    Interactive Shop Drawing Builder
+                </h3>
+                <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:20px;">
+                    Build detailed, dimensioned shop drawings in-browser. Adjust dimensions, add notes, and save directly as PDF.
+                </p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+
+                    <!-- Column Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#128295;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Column Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            Interactive column shop drawing with front, side, and top views. Configurable dimensions, base plates, bolt patterns, and cap plates.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/column"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Column Builder
+                        </a>
+                    </div>
+
+                    <!-- Rafter Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#9650;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Rafter Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            Interactive rafter shop drawing with pitch angles, purlin locations, splice points, and connection details.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/rafter"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Rafter Builder
+                        </a>
+                    </div>
+
+                </div>
+            </div>
         </div>
 
         <!-- ══════════════════════════════════════════════════ -->

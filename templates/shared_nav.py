@@ -343,9 +343,10 @@ body.sidebar-collapsed .tf-main {
 .tf-search-overlay.show { display: flex; }
 
 .tf-search-box {
-    background: #fff;
+    background: #1E293B;
+    border: 1px solid #334155;
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     width: 560px;
     max-width: 95vw;
     overflow: hidden;
@@ -355,11 +356,11 @@ body.sidebar-collapsed .tf-main {
     display: flex;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--tf-border);
+    border-bottom: 1px solid #334155;
     gap: 10px;
 }
 
-.tf-search-input-wrap .search-icon { font-size: 1.1rem; color: var(--tf-gray-400); }
+.tf-search-input-wrap .search-icon { font-size: 1.1rem; color: #94A3B8; }
 
 .tf-search-input {
     flex: 1;
@@ -367,10 +368,11 @@ body.sidebar-collapsed .tf-main {
     outline: none;
     font-size: 1rem;
     font-family: var(--tf-font);
-    color: var(--tf-gray-800);
+    background: transparent;
+    color: #F1F5F9;
 }
 
-.tf-search-input::placeholder { color: var(--tf-gray-400); }
+.tf-search-input::placeholder { color: #64748B; }
 
 .tf-search-results {
     max-height: 360px;
@@ -390,7 +392,7 @@ body.sidebar-collapsed .tf-main {
     color: inherit;
 }
 
-.tf-search-item:hover, .tf-search-item.focused { background: var(--tf-blue-light); }
+.tf-search-item:hover, .tf-search-item.focused { background: #0F172A; }
 
 .tf-search-item .si-icon {
     width: 36px;
@@ -403,21 +405,22 @@ body.sidebar-collapsed .tf-main {
     flex-shrink: 0;
 }
 
-.tf-search-item .si-label { font-weight: 600; font-size: 0.85rem; color: var(--tf-gray-800); }
-.tf-search-item .si-desc { font-size: 0.75rem; color: var(--tf-gray-500); }
+.tf-search-item .si-label { font-weight: 600; font-size: 0.85rem; color: #F1F5F9; }
+.tf-search-item .si-desc { font-size: 0.75rem; color: #94A3B8; }
 .tf-search-item .si-kbd { margin-left: auto; font-size: 0.7rem; color: var(--tf-gray-400); }
 
 .tf-search-footer {
     padding: 10px 16px;
-    border-top: 1px solid var(--tf-border);
+    border-top: 1px solid #334155;
     font-size: 0.75rem;
-    color: var(--tf-gray-400);
+    color: #64748B;
     display: flex;
     gap: 16px;
 }
 
 .tf-search-footer kbd {
-    background: var(--tf-gray-100);
+    background: #0F172A;
+    color: #94A3B8;
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 10px;
@@ -637,8 +640,8 @@ NAV_HTML = """
                    placeholder="Search projects, customers, tools..." autocomplete="off">
         </div>
         <div class="tf-search-results" id="searchResults">
-            <div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">
-                Type to search across projects, customers, and tools
+            <div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">
+                Type to search across projects, pages, and tools
             </div>
         </div>
         <div class="tf-search-footer">
@@ -747,7 +750,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const q = input.value.trim();
         if (q.length < 2) {
             document.getElementById('searchResults').innerHTML =
-                '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">Type to search across projects, customers, and tools</div>';
+                '<div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">Type to search across projects, pages, and tools</div>';
             return;
         }
         debounce = setTimeout(() => runGlobalSearch(q), 250);
@@ -792,18 +795,28 @@ async function runGlobalSearch(query) {
 function quickNavResults(query) {
     const q = query.toLowerCase();
     const links = [
-        {label:'Dashboard', desc:'Home', icon:'&#127968;', href:'/', bg:'#EFF6FF;color:#1E40AF'},
-        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', bg:'#ECFDF5;color:#059669'},
-        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', bg:'#FEF3C7;color:#92400E'},
-        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', bg:'#EFF6FF;color:#1E40AF'},
-        {label:'TC Estimator', desc:'Titan Carports calculator', icon:'&#128663;', href:'/tc', bg:'#F0F9FF;color:#0284C7'},
-        {label:'Admin', desc:'User management', icon:'&#128274;', href:'/admin', bg:'#F1F5F9;color:#64748B'},
+        {label:'Dashboard', desc:'Home dashboard', icon:'&#127968;', href:'/', tags:'home main overview'},
+        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', tags:'fabrication production manufacturing'},
+        {label:'Shop Drawings', desc:'Drawing management & interactive builder', icon:'&#128209;', href:'/shop-floor', tags:'drawings column rafter purlin pdf builder'},
+        {label:'Inventory', desc:'Stock levels, coils, receiving', icon:'&#128230;', href:'/inventory', tags:'stock coils steel materials receiving allocations'},
+        {label:'Load Builder', desc:'Build and manage loads', icon:'&#128666;', href:'/load-builder', tags:'loads shipping trucks delivery'},
+        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', tags:'clients contacts accounts'},
+        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', tags:'estimate quote structures america'},
+        {label:'TC Estimator', desc:'Titan Carports calculator', icon:'&#128663;', href:'/tc', tags:'estimate quote titan carports'},
+        {label:'QA Hub', desc:'Quality assurance & inspections', icon:'&#128203;', href:'/qa', tags:'quality assurance inspections ncr weld'},
+        {label:'Gantt Chart', desc:'Project scheduling timeline', icon:'&#128197;', href:'/gantt', tags:'schedule timeline planning gantt'},
+        {label:'Shipping', desc:'Shipping & logistics', icon:'&#128230;', href:'/shipping', tags:'packing list bol manifest logistics'},
+        {label:'Admin', desc:'User management & settings', icon:'&#128274;', href:'/admin', tags:'users settings roles permissions'},
     ];
-    const filtered = links.filter(l => l.label.toLowerCase().includes(q) || l.desc.toLowerCase().includes(q));
-    if (filtered.length === 0) return '<div style="padding:20px;text-align:center;color:var(--tf-gray-400);font-size:0.85rem;">No results for "' + escNavHtml(query) + '"</div>';
+    const filtered = links.filter(l =>
+        l.label.toLowerCase().includes(q) ||
+        l.desc.toLowerCase().includes(q) ||
+        (l.tags && l.tags.includes(q))
+    );
+    if (filtered.length === 0) return '<div style="padding:20px;text-align:center;color:#64748B;font-size:0.85rem;">No results for "' + escNavHtml(query) + '"</div>';
     return filtered.map(l =>
         '<a class="tf-search-item" href="' + l.href + '">' +
-        '<div class="si-icon" style="background:' + l.bg + '">' + l.icon + '</div>' +
+        '<div class="si-icon" style="background:#1E40AF;color:#93C5FD">' + l.icon + '</div>' +
         '<div><div class="si-label">' + l.label + '</div><div class="si-desc">' + l.desc + '</div></div></a>'
     ).join('');
 }
