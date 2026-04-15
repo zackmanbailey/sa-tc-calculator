@@ -667,7 +667,10 @@ async function fetchGanttData() {
     try {
         const response = await fetch('/api/gantt/data');
         if (!response.ok) throw new Error('Failed to fetch gantt data');
-        ganttData = await response.json();
+        const result = await response.json();
+        // API wraps data in {ok, data} envelope — unwrap it
+        ganttData = result.data || result;
+        if (result.warning) console.warn('[Schedule]', result.warning);
         renderGantt();
     } catch (error) {
         console.error('Error fetching gantt data:', error);

@@ -1323,7 +1323,7 @@ DASHBOARD_HTML = r"""
 
     function initializePage() {
         // Set hero name
-        var displayName = (USER_NAME && USER_NAME !== '{{USER_NAME}}') ? USER_NAME : 'there';
+        var displayName = (USER_NAME && USER_NAME.length > 0 && USER_NAME !== 'local') ? USER_NAME : 'there';
         document.getElementById('heroName').textContent = displayName;
 
         // Date subtitle

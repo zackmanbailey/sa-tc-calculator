@@ -1826,6 +1826,47 @@ class ProjectSaveHandler(BaseHandler):
             with open(cpath, "w") as f:
                 json.dump(body, f, indent=2)
 
+            # Auto-create metadata.json if it doesn't exist yet
+            # (ensures project shows on dashboard even if not created via + New Project)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if not os.path.isfile(meta_path):
+                proj_info = body.get("project", {})
+                metadata = {
+                    "job_code": job_code,
+                    "project_name": proj_info.get("name", ""),
+                    "customer": {
+                        "name": proj_info.get("customer_name", ""),
+                        "phone": proj_info.get("customer_phone", ""),
+                        "email": proj_info.get("customer_email", ""),
+                    },
+                    "location": {
+                        "city": proj_info.get("city", ""),
+                        "state": proj_info.get("state", ""),
+                    },
+                    "stage": "quote",
+                    "notes": "",
+                    "doc_categories": DEFAULT_DOC_CATEGORIES,
+                    "checklist": {},
+                    "created_at": body["saved_at"],
+                    "created_by": body["saved_by"],
+                    "updated_at": body["saved_at"],
+                    "archived": False,
+                }
+                # Create doc category folders
+                docs_dir = os.path.join(proj_dir, "docs")
+                for cat in DEFAULT_DOC_CATEGORIES:
+                    os.makedirs(os.path.join(docs_dir, cat["key"]), exist_ok=True)
+                with open(meta_path, "w") as f:
+                    json.dump(metadata, f, indent=2)
+                # Also create initial status
+                with open(os.path.join(proj_dir, "status.json"), "w") as f:
+                    json.dump({
+                        "job_code": job_code,
+                        "stage": "quote",
+                        "updated_at": body["saved_at"],
+                        "updated_by": body["saved_by"],
+                    }, f, indent=2)
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -6399,9 +6440,25 @@ class GanttDataHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from shop_drawings.scheduling import get_gantt_data
-        data = get_gantt_data(SHOP_DRAWINGS_DIR, PROJECTS_DIR)
-        self.write(json_encode({"ok": True, "data": data}))
+        try:
+            from shop_drawings.scheduling import get_gantt_data
+            data = get_gantt_data(SHOP_DRAWINGS_DIR, PROJECTS_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
+        except Exception as e:
+            import traceback
+            # Return valid JSON with today's date so the UI renders even if data fails
+            today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "data": {
+                    "today": today_str,
+                    "jobs": [],
+                    "machine_schedule": {},
+                },
+                "warning": f"Schedule data partially loaded: {str(e)}",
+            }))
 
 
 class MachineUtilizationHandler(BaseHandler):
@@ -6413,6 +6470,82 @@ class MachineUtilizationHandler(BaseHandler):
         days = int(self.get_argument("days", "14"))
         data = get_machine_utilization(SHOP_DRAWINGS_DIR, days_ahead=days)
         self.write(json_encode({"ok": True, "data": data}))
+
+
+# ─────────────────────────────────────────────
+# MISSING DASHBOARD PAGE HANDLERS
+# (These pages have templates but were missing route handlers)
+# ─────────────────────────────────────────────
+
+class QCDashboardPageHandler(BaseHandler):
+    """GET /qc-dashboard — Global QC metrics dashboard."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        from templates.qc_dashboard_page import QC_DASHBOARD_PAGE_HTML
+        self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc")
+
+
+class ShippingHubPageHandler(BaseHandler):
+    """GET /shipping — Global shipping hub (no specific project)."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        from templates.shipping_page import SHIPPING_PAGE_HTML
+        html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", "")
+        self.render_with_nav(html, active_page="shipping")
+
+
+class FieldOpsPageHandler(BaseHandler):
+    """GET /field-ops — Field operations dashboard."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        from templates.field_ops_page import FIELD_OPS_PAGE_HTML
+        self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field_ops")
+
+
+class DocumentManagementPageHandler(BaseHandler):
+    """GET /documents — Document management dashboard."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        from templates.document_management_page import DOCUMENT_MANAGEMENT_PAGE_HTML
+        self.render_with_nav(DOCUMENT_MANAGEMENT_PAGE_HTML, active_page="documents")
+
+
+class JobCostingPageHandler(BaseHandler):
+    """GET /job-costing — Job costing & financial tracking."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        from templates.job_costing_page import JOB_COSTING_PAGE_HTML
+        self.render_with_nav(JOB_COSTING_PAGE_HTML, active_page="job_costing")
+
+
+class ReportsPageHandler(BaseHandler):
+    """GET /reports — Production metrics & reports dashboard."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        from templates.production_metrics_page import PRODUCTION_METRICS_PAGE_HTML
+        self.render_with_nav(PRODUCTION_METRICS_PAGE_HTML, active_page="reports")
+
+
+class WorkOrdersGlobalPageHandler(BaseHandler):
+    """GET /work-orders — Global work orders list (all projects)."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        from templates.work_orders_global import WORK_ORDERS_GLOBAL_HTML
+        self.render_with_nav(WORK_ORDERS_GLOBAL_HTML, active_page="workorders_global")
+
+
+class ActivityFeedPageHandler(BaseHandler):
+    """GET /activity — Activity feed."""
+    def get(self):
+        from templates.activity_feed_page import ACTIVITY_FEED_PAGE_HTML
+        self.render_with_nav(ACTIVITY_FEED_PAGE_HTML, active_page="activity")
 
 
 # ─────────────────────────────────────────────
@@ -6548,6 +6681,7 @@ def get_routes():
         (r"/api/shop-drawings/zip",              ShopDrawingsZipHandler),
 
         # ── Work Orders ──────────────────────────────────────
+        (r"/work-orders",                        WorkOrdersGlobalPageHandler),
         (r"/work-orders/([^/]+)",                WorkOrderPageHandler),
         (r"/api/work-orders/create",             WorkOrderCreateHandler),
         (r"/api/work-orders/list",               WorkOrderListHandler),
@@ -6668,6 +6802,17 @@ def get_routes():
         (r"/schedule",                           GanttPageHandler),
         (r"/api/gantt/data",                     GanttDataHandler),
         (r"/api/gantt/machines",                 MachineUtilizationHandler),
+
+        # ── Missing Dashboard Pages (sidebar links) ──────────
+        (r"/qc-dashboard",                       QCDashboardPageHandler),
+        (r"/shipping",                           ShippingHubPageHandler),
+        (r"/field",                              FieldOpsPageHandler),
+        (r"/field-ops",                          FieldOpsPageHandler),
+        (r"/documents",                          DocumentManagementPageHandler),
+        (r"/job-costing",                        JobCostingPageHandler),
+        (r"/reports/production",                 ReportsPageHandler),
+        (r"/reports",                            ReportsPageHandler),
+        (r"/activity",                           ActivityFeedPageHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),
