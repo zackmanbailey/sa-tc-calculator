@@ -854,8 +854,25 @@ class LoginHandler(tornado.web.RequestHandler):
             self.redirect("/")
             return
         # HTML served from external module (will be imported)
+        # BUG-06 fix: Inject script to ensure login form submits as JSON POST
+        login_fix = (
+            '<script>document.addEventListener("DOMContentLoaded",function(){'
+            'var f=document.querySelector("form");'
+            'if(f)f.addEventListener("submit",function(e){'
+            'e.preventDefault();'
+            'var u=f.querySelector("[name=username]"),p=f.querySelector("[name=password]");'
+            'if(!u||!p)return;'
+            'fetch("/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},'
+            'body:JSON.stringify({username:u.value,password:p.value})})'
+            '.then(function(r){return r.json()})'
+            '.then(function(d){if(d.ok){window.location.href=d.redirect||"/"}else{var el=document.getElementById("loginError")||document.querySelector(".error");if(el){el.textContent=d.error||"Login failed";el.style.display="block"}else{alert(d.error||"Login failed")}}})'
+            '.catch(function(){alert("Network error. Please try again.")})'
+            '});'
+            '});</script>'
+        )
+        html = LOGIN_HTML.replace("</body>", login_fix + "</body>")
         self.set_header("Content-Type", "text/html")
-        self.write(LOGIN_HTML)
+        self.write(html)
 
     def post(self):
         apply_security_headers(self)
@@ -1392,6 +1409,37 @@ class DashboardHandler(BaseHandler):
         html = html.replace("{{CARD_GROUPS}}", cards_json)
         html = html.replace("{{PERM_FLAGS}}", perm_flags)
         html = html.replace("{{SIDEBAR_IDS}}", sidebar_ids)
+
+        # BUG-04 fix: The dashboard template JS has a misguided check that rejects
+        # "Admin" as a display name and falls back to "there". Inject a corrective
+        # script that always sets the hero name from the server-side display value.
+        # BUG-03 fix: Make pipeline project cards clickable by adding click handlers
+        # that navigate to /project/{job_code}.
+        dashboard_fixes = (
+            '<script>document.addEventListener("DOMContentLoaded",function(){'
+            # BUG-04: Fix hero name
+            f'var h=document.getElementById("heroName");'
+            f'if(h)h.textContent={json.dumps(display)};'
+            # BUG-03: Make project cards clickable
+            'function makeCardsClickable(){'
+            'document.querySelectorAll("[data-job-code]").forEach(function(card){'
+            'if(!card.dataset.clickBound){'
+            'card.dataset.clickBound="1";'
+            'card.style.cursor="pointer";'
+            'card.addEventListener("click",function(e){'
+            'if(e.target.tagName==="A"||e.target.tagName==="BUTTON")return;'
+            'window.location="/project/"+this.dataset.jobCode;'
+            '});'
+            '}'
+            '});'
+            '}'
+            'makeCardsClickable();'
+            'var obs=new MutationObserver(makeCardsClickable);'
+            'obs.observe(document.body,{childList:true,subtree:true});'
+            '});</script>'
+        )
+        html = html.replace("</body>", dashboard_fixes + "</body>")
+
         self.render_with_nav(html, active_page="dashboard")
 
 
@@ -2895,13 +2943,35 @@ class ProjectPageHandler(BaseHandler):
         safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
         meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
 
-        if not os.path.isfile(meta_path):
-            self.set_status(404)
-            self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
-            return
-
-        with open(meta_path) as f:
-            metadata = json.load(f)
+        if os.path.isfile(meta_path):
+            with open(meta_path) as f:
+                metadata = json.load(f)
+        else:
+            # Fallback: SA Estimator creates projects with only current.json (no metadata.json)
+            current_path = os.path.join(PROJECTS_DIR, safe_name, "current.json")
+            if os.path.isfile(current_path):
+                try:
+                    with open(current_path) as f:
+                        sa_data = json.load(f)
+                    proj = sa_data.get("project", {})
+                    metadata = {
+                        "job_code": sa_data.get("job_code", job_code),
+                        "project_name": proj.get("name", job_code),
+                        "customer": {"name": proj.get("customer_name", "")},
+                        "location": {"city": proj.get("city", ""), "state": proj.get("state", "")},
+                        "stage": "quote",
+                        "notes": "",
+                        "created": sa_data.get("created", ""),
+                        "source": "sa_estimator"
+                    }
+                except Exception:
+                    self.set_status(404)
+                    self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
+                    return
+            else:
+                self.set_status(404)
+                self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
+                return
 
         role = self.get_user_role() or "viewer"
         display = "User"
@@ -4849,6 +4919,9 @@ class RafterDrawingHandler(BaseHandler):
         html = RAFTER_DRAWING_HTML
         html = html.replace("{{RAFTER_CONFIG_JSON}}", cfg_json)
         html = html.replace("{{JOB_CODE}}", job_code)
+        # BUG-01 fix: Inject svg2pdf.js for Save PDF functionality
+        svg2pdf_script = '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>\n<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>\n'
+        html = html.replace("</head>", svg2pdf_script + "</head>")
         # Serve standalone — no sidebar nav injection (would break the drawing layout)
         self.set_header("Content-Type", "text/html")
         self.write(html)
@@ -4912,6 +4985,9 @@ class ColumnDrawingHandler(BaseHandler):
         html = COLUMN_DRAWING_HTML
         html = html.replace("{{COLUMN_CONFIG_JSON}}", cfg_json)
         html = html.replace("{{JOB_CODE}}", job_code)
+        # BUG-01 fix: Inject svg2pdf.js for Save PDF functionality
+        svg2pdf_script = '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>\n<script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js"></script>\n'
+        html = html.replace("</head>", svg2pdf_script + "</head>")
         # Serve standalone — no sidebar nav injection (would break the drawing layout)
         self.set_header("Content-Type", "text/html")
         self.write(html)
@@ -7045,7 +7121,8 @@ class ProductionMetricsPageHandler(BaseHandler):
     required_permission = "view_financials"
     def get(self):
         from templates.production_metrics_page import PRODUCTION_METRICS_PAGE_HTML
-        self.write(PRODUCTION_METRICS_PAGE_HTML)
+        # BUG-12 fix: Use render_with_nav for consistent sidebar navigation
+        self.render_with_nav(PRODUCTION_METRICS_PAGE_HTML, active_page="reports")
 
 
 class ExecutiveSummaryPageHandler(BaseHandler):
@@ -7053,7 +7130,8 @@ class ExecutiveSummaryPageHandler(BaseHandler):
     required_permission = "view_financials"
     def get(self):
         from templates.executive_summary_page import EXECUTIVE_SUMMARY_PAGE_HTML
-        self.write(EXECUTIVE_SUMMARY_PAGE_HTML)
+        # BUG-12 fix: Use render_with_nav for consistent sidebar navigation
+        self.render_with_nav(EXECUTIVE_SUMMARY_PAGE_HTML, active_page="reports")
 
 
 class ReportListHandler(BaseHandler):
@@ -7184,7 +7262,8 @@ class ActivityFeedPageHandler(BaseHandler):
     required_permission = "view_audit_log"
     def get(self):
         from templates.activity_feed_page import ACTIVITY_FEED_PAGE_HTML
-        self.write(ACTIVITY_FEED_PAGE_HTML)
+        # BUG-12 fix: Use render_with_nav for consistent sidebar navigation
+        self.render_with_nav(ACTIVITY_FEED_PAGE_HTML, active_page="activity")
 
 
 class ActivityEventsAPIHandler(BaseHandler):
@@ -7356,8 +7435,8 @@ class ProductionSchedulePageHandler(BaseHandler):
     required_permission = "view_schedule"
     def get(self):
         from templates.production_schedule_page import PRODUCTION_SCHEDULE_PAGE_HTML
-        self.set_header("Content-Type", "text/html")
-        self.write(PRODUCTION_SCHEDULE_PAGE_HTML)
+        # BUG-12 fix: Use render_with_nav for consistent sidebar navigation
+        self.render_with_nav(PRODUCTION_SCHEDULE_PAGE_HTML, active_page="schedule")
 
 
 class ScheduleListAPIHandler(BaseHandler):
@@ -8146,8 +8225,8 @@ class JobCostingPageHandler(BaseHandler):
     required_permission = "view_financials"
     def get(self):
         from templates.job_costing_page import JOB_COSTING_PAGE_HTML
-        self.set_header("Content-Type", "text/html")
-        self.write(JOB_COSTING_PAGE_HTML)
+        # BUG-12 fix: Use render_with_nav for consistent sidebar navigation
+        self.render_with_nav(JOB_COSTING_PAGE_HTML, active_page="jobcosting")
 
 
 # ── Cost Estimates ────────────────────────────────────────────────────

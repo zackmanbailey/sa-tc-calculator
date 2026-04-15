@@ -926,7 +926,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
     # Projects
     if perm.can("view_projects"):
-        items = [("/", "&#128194;", "All Projects", "projects")]
+        items = [("/", "&#128194;", "All Projects", "dashboard")]
         sections.append(("Projects", items))
 
     # Shop Floor

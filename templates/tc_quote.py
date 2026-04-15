@@ -581,6 +581,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
 
     <!-- SUMMARY TAB -->
     <div id="tab-summary" style="display:none">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">
+        <button class="btn btn-green" onclick="tcSaveProject()">💾 Save Quote</button>
+        <button class="btn btn-primary" onclick="tcExportPDF()">⬇ Export PDF</button>
+      </div>
       <div class="stat-cards" id="stat-cards-summary"></div>
       <div class="card">
         <div class="card-hdr blue"><span>💰</span>Construction Quote Summary</div>
@@ -828,12 +832,12 @@ function renderEquipTable() {
       <td><input type="text" value="${it.desc}" placeholder="e.g. 40-ton Crane"
         style="width:100%" onchange="equipItems[${idx}].desc=this.value;renderSummary()"/></td>
       <td><input type="number" value="${it.qty}" min="0" step="0.5"
-        style="width:60px" onchange="equipItems[${idx}].qty=parseFloat(this.value)||0;renderEquipTable();renderSummary()"/></td>
+        style="width:60px" oninput="equipItems[${idx}].qty=parseFloat(this.value)||0;renderEquipTable();renderSummary()" onchange="equipItems[${idx}].qty=parseFloat(this.value)||0;renderEquipTable();renderSummary()"/></td>
       <td><select onchange="equipItems[${idx}].unit=this.value">
         ${['day','week','trip','ea'].map(u=>`<option${it.unit===u?' selected':''}>${u}</option>`).join('')}
       </select></td>
       <td><input type="number" value="${it.rate}" min="0" step="50"
-        style="width:80px" onchange="equipItems[${idx}].rate=parseFloat(this.value)||0;renderEquipTable();renderSummary()"/></td>
+        style="width:80px" oninput="equipItems[${idx}].rate=parseFloat(this.value)||0;renderEquipTable();renderSummary()" onchange="equipItems[${idx}].rate=parseFloat(this.value)||0;renderEquipTable();renderSummary()"/></td>
       <td style="font-weight:700">${fmt(it.qty * it.rate)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="removeEquipItem(${idx})">✕</button></td>`;
     tbody.appendChild(tr);

@@ -248,8 +248,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
     </div>
 
     <!-- Calculate Button -->
-    <div style="margin-bottom:16px">
-      <button class="btn btn-red" style="width:100%;padding:12px;font-size:14px" onclick="calculate()">
+    <div style="margin-bottom:16px;position:sticky;bottom:0;background:#fff;padding-top:8px;z-index:5">
+      <button class="btn btn-red" style="width:100%;padding:12px;font-size:14px;position:relative;z-index:10" onclick="calculate()">
         ⚡ CALCULATE BOM
       </button>
     </div>
