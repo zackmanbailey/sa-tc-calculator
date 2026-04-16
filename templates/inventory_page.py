@@ -1182,16 +1182,19 @@ INVENTORY_PAGE_HTML = r'''
                     return;
                 }
 
-                tbody.innerHTML = alerts.map(a => `
-                    <tr>
-                        <td>${a.alert_id}</td>
-                        <td><span class="badge badge-low">${a.level}</span></td>
+                tbody.innerHTML = alerts.map(a => {
+                    const levelColor = a.level === 'critical' ? '#EF4444' : '#F59E0B';
+                    const levelBg = a.level === 'critical' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
+                    const typeLabel = (a.type || 'stock').replace(/_/g, ' ').toUpperCase();
+                    return `<tr style="border-left:3px solid ${levelColor}">
+                        <td><span style="background:${levelBg};color:${levelColor};padding:2px 8px;border-radius:4px;font-size:0.75rem;font-weight:600">${a.level.toUpperCase()}</span></td>
+                        <td><span style="color:#94A3B8;font-size:0.7rem">${typeLabel}</span></td>
                         <td>${a.coil_id}</td>
                         <td>${a.message}</td>
-                        <td>${a.date}</td>
+                        <td>${(a.date || '').slice(0,10)}</td>
                         <td><button class="btn btn-small btn-secondary" onclick="acknowledgeAlert('${a.alert_id}')">Acknowledge</button></td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (err) {
                 console.error('Failed to load alerts:', err);
                 $('alerts-table').innerHTML = '<tr><td colspan="6" class="empty-state"><p>Error loading alerts</p></td></tr>';
@@ -1286,15 +1289,20 @@ INVENTORY_PAGE_HTML = r'''
                     body: JSON.stringify(payload)
                 });
 
-                if (response.ok) {
+                const result = await response.json();
+                if (result.ok) {
                     closeModal('allocateModal');
                     $('allocateForm').reset();
                     loadCoils();
                     loadAllocations();
                     loadSummary();
-                    alert('Stock allocated successfully');
+                    if (result.warnings && result.warnings.length > 0) {
+                        alert('Stock allocated successfully.\\n\\n⚠️ Warnings:\\n' + result.warnings.join('\\n'));
+                    } else {
+                        alert('Stock allocated successfully');
+                    }
                 } else {
-                    alert('Error allocating stock');
+                    alert('Error: ' + (result.error || 'Allocation failed'));
                 }
             } catch (err) {
                 console.error('Error:', err);

@@ -1619,7 +1619,29 @@ class InventoryAllocateHandler(BaseHandler):
             json.dump(allocs, f, indent=2)
 
         self._log_transaction(coil_id, "allocate", qty, job_code, f"Allocation {alloc_id}")
-        self.write(json_encode({"ok": True, "allocation_id": alloc_id}))
+
+        # Check for multi-project conflict warnings
+        warnings = []
+        other_jobs = [a["job_code"] for a in allocs
+                      if a.get("coil_id") == coil_id
+                      and a.get("status") == "active"
+                      and a.get("job_code") != job_code]
+        if other_jobs:
+            unique_other = list(set(other_jobs))
+            warnings.append(
+                f"This coil is also allocated to {len(unique_other)} other "
+                f"project(s): {', '.join(unique_other[:5])}"
+            )
+        new_avail = stock - (committed + qty)
+        if new_avail < float(coil.get("min_stock_lbs", coil.get("min_order_lbs", 2000)) or 2000):
+            warnings.append(
+                f"Available stock after allocation: {new_avail:,.0f} lbs (below minimum)"
+            )
+
+        result = {"ok": True, "allocation_id": alloc_id}
+        if warnings:
+            result["warnings"] = warnings
+        self.write(json_encode(result))
 
     def _log_transaction(self, coil_id, tx_type, qty, job_code, ref):
         import datetime
@@ -1730,35 +1752,100 @@ class InventoryReceiveHandler(BaseHandler):
 
 
 class InventoryAlertsHandler(BaseHandler):
-    """GET /api/inventory/alerts — Return inventory alerts."""
+    """GET /api/inventory/alerts — Return inventory alerts including conflict detection."""
     def get(self):
         ack_filter = self.get_query_argument("acknowledged", "false")
         inv = load_inventory()
         coils = inv.get("coils", {})
         alerts = []
-        import datetime
+        now = datetime.datetime.now().isoformat()
+
+        # Load active allocations for conflict detection
+        alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+        allocs = []
+        if os.path.isfile(alloc_path):
+            try:
+                with open(alloc_path) as f:
+                    allocs = json.load(f)
+            except Exception:
+                allocs = []
+        active_allocs = [a for a in allocs if a.get("status") == "active"]
+
+        # Build per-coil allocation map: coil_id → [{job_code, qty, alloc_id}, ...]
+        coil_alloc_map = {}
+        for a in active_allocs:
+            cid = a.get("coil_id", "")
+            if cid:
+                coil_alloc_map.setdefault(cid, []).append({
+                    "job_code": a.get("job_code", ""),
+                    "quantity_lbs": float(a.get("quantity_lbs", 0)),
+                    "allocation_id": a.get("allocation_id", ""),
+                })
+
         for cid, c in coils.items():
             stock = float(c.get("stock_lbs", 0) or 0)
             committed = float(c.get("committed_lbs", 0) or 0)
             avail = stock - committed
             min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
+            name = c.get("name", cid)
 
+            # --- Stock level alerts ---
             if avail <= 0:
                 alerts.append({
                     "alert_id": f"ALT-{cid}",
                     "level": "critical",
                     "coil_id": cid,
-                    "message": f"{c.get('name', cid)} is OUT OF STOCK ({avail:,.0f} lbs available)",
-                    "date": datetime.datetime.now().isoformat(),
+                    "type": "out_of_stock",
+                    "message": f"{name} is OUT OF STOCK ({avail:,.0f} lbs available)",
+                    "date": now,
                 })
             elif avail < min_stock:
                 alerts.append({
                     "alert_id": f"ALT-{cid}",
                     "level": "warning",
                     "coil_id": cid,
-                    "message": f"{c.get('name', cid)} is LOW ({avail:,.0f} lbs available, min {min_stock:,.0f})",
-                    "date": datetime.datetime.now().isoformat(),
+                    "type": "low_stock",
+                    "message": f"{name} is LOW ({avail:,.0f} lbs available, min {min_stock:,.0f})",
+                    "date": now,
                 })
+
+            # --- Over-allocation alert (committed exceeds stock) ---
+            if committed > stock and stock > 0:
+                over_by = committed - stock
+                alerts.append({
+                    "alert_id": f"ALT-OVER-{cid}",
+                    "level": "critical",
+                    "coil_id": cid,
+                    "type": "over_allocated",
+                    "message": f"{name} is OVER-ALLOCATED by {over_by:,.0f} lbs "
+                               f"(committed {committed:,.0f} vs stock {stock:,.0f})",
+                    "date": now,
+                })
+
+            # --- Multi-project conflict alert ---
+            coil_jobs = coil_alloc_map.get(cid, [])
+            unique_jobs = list({a["job_code"] for a in coil_jobs})
+            if len(unique_jobs) > 1:
+                total_allocated = sum(a["quantity_lbs"] for a in coil_jobs)
+                job_list = ", ".join(unique_jobs[:5])
+                level = "critical" if total_allocated > stock else "warning"
+                msg = (f"{name} is shared across {len(unique_jobs)} projects "
+                       f"({job_list}) — {total_allocated:,.0f} lbs allocated")
+                if total_allocated > stock:
+                    msg += f" but only {stock:,.0f} lbs in stock!"
+                alerts.append({
+                    "alert_id": f"ALT-CONFLICT-{cid}",
+                    "level": level,
+                    "coil_id": cid,
+                    "type": "multi_project_conflict",
+                    "jobs": unique_jobs,
+                    "total_allocated_lbs": total_allocated,
+                    "message": msg,
+                    "date": now,
+                })
+
+        # Sort: critical first, then warning
+        alerts.sort(key=lambda a: (0 if a["level"] == "critical" else 1, a.get("coil_id", "")))
         self.write(json_encode({"ok": True, "alerts": alerts}))
 
 
