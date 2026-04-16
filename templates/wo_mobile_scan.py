@@ -308,7 +308,7 @@ body {
 <div class="tabs">
   <button class="tab active" onclick="switchTab('fab')" id="tabFab"><span class="tab-icon">&#9881;</span>Fab</button>
   <button class="tab" onclick="switchTab('drawings')" id="tabDrawings"><span class="tab-icon">&#128196;</span>Drawings</button>
-  <button class="tab" onclick="switchTab('qc')" id="tabQC"><span class="tab-icon">&#9989;</span>QC</button>
+  <button class="tab" onclick="switchTab('qc')" id="tabQc"><span class="tab-icon">&#9989;</span>QC</button>
   <button class="tab" onclick="switchTab('loading')" id="tabLoading"><span class="tab-icon">&#128666;</span>Loading</button>
   <button class="tab" onclick="switchTab('log')" id="tabLog"><span class="tab-icon">&#128203;</span>Log</button>
   <button class="tab" onclick="switchTab('all')" id="tabAll"><span class="tab-icon">&#128230;</span>All</button>
@@ -366,7 +366,7 @@ body {
 </div>
 
 <!-- TAB: QC Inspection -->
-<div class="panel" id="panelQC">
+<div class="panel" id="panelQc">
   <div class="card">
     <div class="card-header">
       Quality Control
