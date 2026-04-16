@@ -121,15 +121,18 @@ RAFTER_DRAWING_HTML = r"""
 // ── Server-injected project config ──
 window.RAFTER_CONFIG = window.RAFTER_CONFIG || null;
 
+function _setVal(id, val) { var el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; }
+
 function applyServerConfig() {
   var cfg = window.RAFTER_CONFIG;
   if (!cfg) return;
 
-  if (cfg.job_code) document.getElementById('inJobCode').value = cfg.job_code;
-  if (cfg.building_width_ft) document.getElementById('inBuildingWidth').value = cfg.building_width_ft;
-  if (cfg.raft_roofing_overhang_ft) document.getElementById('inRoofingOverhang').value = cfg.raft_roofing_overhang_ft;
-  if (cfg.purlin_spacing_ft) document.getElementById('inPurlinSpacing').value = cfg.purlin_spacing_ft;
-  if (cfg.raft_purlin_type) document.getElementById('inPurlinType').value = cfg.raft_purlin_type;
+  _setVal('inJobCode', cfg.job_code);
+  _setVal('inBuildingWidth', cfg.building_width_ft);
+  _setVal('inRoofingOverhang', cfg.raft_roofing_overhang_ft);
+  _setVal('inPurlinSpacing', cfg.purlin_spacing_ft);
+  _setVal('inPurlinType', cfg.raft_purlin_type);
+  _setVal('inRafterMark', cfg.rafter_mark);
   if (cfg.raft_reinforced !== undefined) {
     if (cfg.raft_reinforced) {
       document.getElementById('btnReinforced').classList.add('active');
@@ -199,6 +202,7 @@ window.RAFTER_CONFIG = {{RAFTER_CONFIG_JSON}};
 </head>
 <body>
 
+<input type="hidden" id="inJobCode" value="">
 <div class="top-bar">
   <h1>TitanForge — Rafter Shop Drawing</h1>
   <div class="controls">
