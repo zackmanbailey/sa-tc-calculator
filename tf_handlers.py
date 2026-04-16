@@ -144,73 +144,118 @@ def _auto_advance_stage(job_code, target_stage):
 
 
 # ─────────────────────────────────────────────
-# INVENTORY & USERS FILE MANAGEMENT
+# DATA ACCESS LAYER — SQLite (default) or JSON fallback
 # ─────────────────────────────────────────────
 
-def load_inventory():
-    """Load inventory from JSON."""
-    with open(INVENTORY_PATH, "r") as f:
-        return json.load(f)
+USE_SQLITE = os.environ.get("TITANFORGE_USE_SQLITE", "1") == "1"
 
-def save_inventory(data):
-    """Save inventory to JSON."""
-    with open(INVENTORY_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+if USE_SQLITE:
+    try:
+        import db as _db
+        _db.init_db()
+        # Auto-migrate from JSON if DB is empty and JSON files exist
+        _user_count = _db.get_db().execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if _user_count == 0 and os.path.isfile(os.path.join(DATA_DIR, "users.json")):
+            logger.info("Empty database detected with existing JSON files — auto-migrating...")
+            try:
+                from migrate_to_sqlite import (
+                    migrate_users, migrate_inventory, migrate_customers,
+                    migrate_allocations, migrate_transactions, migrate_receiving,
+                    migrate_quotes, migrate_qc, migrate_traceability, migrate_projects
+                )
+                _conn = _db.get_db()
+                migrate_users(_conn)
+                migrate_inventory(_conn)
+                migrate_customers(_conn)
+                migrate_allocations(_conn)
+                migrate_transactions(_conn)
+                migrate_receiving(_conn)
+                migrate_quotes(_conn)
+                migrate_qc(_conn)
+                migrate_traceability(_conn)
+                migrate_projects(_conn)
+                _conn.commit()
+                logger.info("Auto-migration complete!")
+            except Exception as _mig_err:
+                logger.warning("Auto-migration failed: %s", _mig_err)
+        load_inventory = _db.load_inventory
+        save_inventory = _db.save_inventory
+        load_users = _db.load_users
+        save_users = _db.save_users
+        load_customers = _db.load_customers
+        save_customers = _db.save_customers
+        load_quote_data = _db.load_quote_data
+        save_quote_data = _db.save_quote_data
+        load_project_qc = _db.load_project_qc
+        save_project_qc = _db.save_project_qc
+        load_traceability_index = _db.load_traceability_index
+        save_traceability_index = _db.save_traceability_index
+        logger.info("Using SQLite database backend")
+        _USING_SQLITE = True
+    except Exception as _e:
+        logger.warning("SQLite init failed (%s), falling back to JSON", _e)
+        _USING_SQLITE = False
+        USE_SQLITE = False
+else:
+    _USING_SQLITE = False
 
-def load_users():
-    """Load users from JSON. Creates default users if file doesn't exist."""
-    if not os.path.isfile(USERS_PATH):
-        _ensure_users_file()
-    with open(USERS_PATH, "r") as f:
-        return json.load(f)
+if not USE_SQLITE:
+    # ── JSON file fallback ──
+    def load_inventory():
+        """Load inventory from JSON."""
+        with open(INVENTORY_PATH, "r") as f:
+            return json.load(f)
 
-def save_users(data):
-    """Save users to JSON."""
-    with open(USERS_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    def save_inventory(data):
+        """Save inventory to JSON."""
+        with open(INVENTORY_PATH, "w") as f:
+            json.dump(data, f, indent=2)
 
-# ─────────────────────────────────────────────
-# CUSTOMER DATABASE FILE MANAGEMENT
-# ─────────────────────────────────────────────
+    def load_users():
+        """Load users from JSON. Creates default users if file doesn't exist."""
+        if not os.path.isfile(USERS_PATH):
+            _ensure_users_file()
+        with open(USERS_PATH, "r") as f:
+            return json.load(f)
 
-def load_customers():
-    """Load customers from JSON."""
-    if not os.path.isfile(CUSTOMERS_PATH):
+    def save_users(data):
+        """Save users to JSON."""
+        with open(USERS_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def load_customers():
+        """Load customers from JSON."""
+        if not os.path.isfile(CUSTOMERS_PATH):
+            os.makedirs(os.path.dirname(CUSTOMERS_PATH), exist_ok=True)
+            with open(CUSTOMERS_PATH, "w") as f:
+                json.dump([], f)
+            return []
+        with open(CUSTOMERS_PATH, "r") as f:
+            return json.load(f)
+
+    def save_customers(data):
+        """Save customers to JSON."""
         os.makedirs(os.path.dirname(CUSTOMERS_PATH), exist_ok=True)
         with open(CUSTOMERS_PATH, "w") as f:
-            json.dump([], f)
-        return []
-    with open(CUSTOMERS_PATH, "r") as f:
-        return json.load(f)
+            json.dump(data, f, indent=2)
 
-def save_customers(data):
-    """Save customers to JSON."""
-    os.makedirs(os.path.dirname(CUSTOMERS_PATH), exist_ok=True)
-    with open(CUSTOMERS_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    def load_quote_data(job_code):
+        """Load quote data for a project."""
+        safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+        qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
+        if os.path.isfile(qpath):
+            with open(qpath) as f:
+                return json.load(f)
+        return None
 
-
-# ─────────────────────────────────────────────
-# QUOTE DATA FILE MANAGEMENT
-# ─────────────────────────────────────────────
-
-def load_quote_data(job_code):
-    """Load quote data for a project."""
-    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
-    qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
-    if os.path.isfile(qpath):
-        with open(qpath) as f:
-            return json.load(f)
-    return None
-
-def save_quote_data(job_code, data):
-    """Save quote data for a project."""
-    os.makedirs(QUOTES_DIR, exist_ok=True)
-    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
-    qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
-    data["updated_at"] = datetime.datetime.now().isoformat()
-    with open(qpath, "w") as f:
-        json.dump(data, f, indent=2)
+    def save_quote_data(job_code, data):
+        """Save quote data for a project."""
+        os.makedirs(QUOTES_DIR, exist_ok=True)
+        safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+        qpath = os.path.join(QUOTES_DIR, f"{safe}.json")
+        data["updated_at"] = datetime.datetime.now().isoformat()
+        with open(qpath, "w") as f:
+            json.dump(data, f, indent=2)
 
 DEFAULT_QUOTE_TEMPLATE = {
     "project_overview": {
@@ -454,42 +499,44 @@ NCR_SEVERITY = ["minor", "major", "critical"]
 NCR_STATUS = ["open", "under_review", "corrective_action", "re_inspect", "closed", "voided"]
 
 
-def load_project_qc(job_code):
-    """Load all QC data for a project."""
-    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
-    qc_path = os.path.join(QC_DIR, f"{safe}.json")
-    if os.path.isfile(qc_path):
-        with open(qc_path) as f:
-            return json.load(f)
-    return {"inspections": [], "ncrs": [], "traceability": []}
+if not USE_SQLITE:
+    def load_project_qc(job_code):
+        """Load all QC data for a project."""
+        safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+        qc_path = os.path.join(QC_DIR, f"{safe}.json")
+        if os.path.isfile(qc_path):
+            with open(qc_path) as f:
+                return json.load(f)
+        return {"inspections": [], "ncrs": [], "traceability": []}
 
-def save_project_qc(job_code, data):
-    """Save QC data for a project."""
-    os.makedirs(QC_DIR, exist_ok=True)
-    safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
-    qc_path = os.path.join(QC_DIR, f"{safe}.json")
-    data["updated_at"] = datetime.datetime.now().isoformat()
-    with open(qc_path, "w") as f:
-        json.dump(data, f, indent=2)
+    def save_project_qc(job_code, data):
+        """Save QC data for a project."""
+        os.makedirs(QC_DIR, exist_ok=True)
+        safe = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+        qc_path = os.path.join(QC_DIR, f"{safe}.json")
+        data["updated_at"] = datetime.datetime.now().isoformat()
+        with open(qc_path, "w") as f:
+            json.dump(data, f, indent=2)
 
 
 # ─────────────────────────────────────────────
 # MATERIAL TRACEABILITY — HEAT NUMBER TRACKING
 # ─────────────────────────────────────────────
 
-def load_traceability_index():
-    """Load the global traceability index (heat number → coils → projects → members)."""
-    tpath = os.path.join(DATA_DIR, "traceability_index.json")
-    if os.path.isfile(tpath):
-        with open(tpath) as f:
-            return json.load(f)
-    return {"heat_numbers": {}}
+if not USE_SQLITE:
+    def load_traceability_index():
+        """Load the global traceability index (heat number → coils → projects → members)."""
+        tpath = os.path.join(DATA_DIR, "traceability_index.json")
+        if os.path.isfile(tpath):
+            with open(tpath) as f:
+                return json.load(f)
+        return {"heat_numbers": {}}
 
-def save_traceability_index(data):
-    """Save the global traceability index."""
-    tpath = os.path.join(DATA_DIR, "traceability_index.json")
-    with open(tpath, "w") as f:
-        json.dump(data, f, indent=2)
+    def save_traceability_index(data):
+        """Save the global traceability index."""
+        tpath = os.path.join(DATA_DIR, "traceability_index.json")
+        with open(tpath, "w") as f:
+            json.dump(data, f, indent=2)
 
 def register_heat_number(heat_number, coil_tag, material_spec, mill_name="", mtr_path=""):
     """Register a heat number in the traceability index when a coil is received."""
