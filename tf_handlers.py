@@ -4567,15 +4567,29 @@ def _derive_bom_config(job_code):
     proj_dir = os.path.join(PROJECTS_DIR, safe)
 
     # Look for the latest saved version with BOM data
-    versions_dir = os.path.join(proj_dir, "versions")
+    # Version files are stored directly in proj_dir as v1.json, v2.json, etc.
+    # Also check a "versions" subdirectory for backward compatibility
+    versions_dir = proj_dir
     if not os.path.isdir(versions_dir):
         return {}
 
-    # Find most recent version file
+    # Find most recent version file (v*.json pattern), also include current.json as fallback
     version_files = sorted(
-        [f for f in os.listdir(versions_dir) if f.endswith(".json")],
+        [f for f in os.listdir(versions_dir) if f.startswith("v") and f.endswith(".json")],
         reverse=True
     )
+    # Also check "versions" subdirectory if no v*.json found in proj_dir
+    if not version_files:
+        sub_versions_dir = os.path.join(proj_dir, "versions")
+        if os.path.isdir(sub_versions_dir):
+            version_files = sorted(
+                [f for f in os.listdir(sub_versions_dir) if f.endswith(".json")],
+                reverse=True
+            )
+            versions_dir = sub_versions_dir
+    # Fallback to current.json
+    if not version_files and os.path.isfile(os.path.join(proj_dir, "current.json")):
+        version_files = ["current.json"]
 
     for vf in version_files:
         try:
