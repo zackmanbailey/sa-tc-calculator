@@ -406,28 +406,24 @@ window.onload = function() {
 };
 
 async function autoLoadFromProject(jobCode) {
-  try {
-    // First try to load existing calc data
-    const loadResp = await fetch('/api/project/load', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ job_code: jobCode }),
-    });
-    const loadResult = await loadResp.json();
-    if (loadResult.ok && loadResult.data) {
-      // Full project data exists, load it
-      loadProject(jobCode);
-      return;
-    }
-  } catch(e) { /* no saved calc data yet */ }
+  // Always set the job code field first so the user sees it immediately
+  var jcField = document.getElementById('proj_jobcode');
+  if (jcField) jcField.value = jobCode;
 
-  // No calc data, but try to load metadata to auto-fill customer info
+  // Try to load the full saved calc/project data
+  try {
+    await loadProject(jobCode);
+    return;  // Success — data loaded and fields populated
+  } catch(e) {
+    console.warn('[autoLoad] loadProject failed for', jobCode, ':', e.message);
+  }
+
+  // No full calc data — fall back to metadata (customer info only)
   try {
     const metaResp = await fetch('/api/project/metadata?job_code=' + encodeURIComponent(jobCode));
     const metaResult = await metaResp.json();
     if (metaResult.ok && metaResult.metadata) {
       const m = metaResult.metadata;
-      document.getElementById('proj_jobcode').value = m.job_code || jobCode;
       if (m.project_name) document.getElementById('proj_name').value = m.project_name;
       if (m.customer && m.customer.name) document.getElementById('proj_customer').value = m.customer.name;
       if (m.location) {
@@ -436,8 +432,9 @@ async function autoLoadFromProject(jobCode) {
         if (m.location.state) document.getElementById('proj_state').value = m.location.state;
         if (m.location.zip) document.getElementById('proj_zip').value = m.location.zip;
       }
+      showToast('Project metadata loaded. Calculate BOM to see full data.', 'info');
     }
-  } catch(e) { /* silent */ }
+  } catch(e) { console.warn('[autoLoad] metadata fallback failed:', e.message); }
 }
 
 async function checkInventoryAlerts() {
@@ -1795,22 +1792,27 @@ async function loadProject(jobCode, version) {
       body: JSON.stringify(payload),
     });
     const result = await resp.json();
-    if (!result.ok) { showToast('Load failed: ' + (result.error||'unknown'), 'error'); return; }
+    if (!result.ok) { throw new Error(result.error || 'Project not found'); }
     const d = result.data;
+    if (!d) { throw new Error('No data in server response'); }
 
-    // Restore project info fields
+    // Restore project info fields (with safe element lookups)
     if (d.project) {
       const p = d.project;
-      if (p.name) document.getElementById('proj_name').value = p.name;
-      if (p.customer_name) document.getElementById('proj_customer').value = p.customer_name;
-      if (p.address) document.getElementById('proj_address').value = p.address;
-      if (p.city) document.getElementById('proj_city').value = p.city;
-      if (p.state) document.getElementById('proj_state').value = p.state;
-      if (p.zip_code) document.getElementById('proj_zip').value = p.zip_code;
-      if (p.quote_date) document.getElementById('proj_date').value = p.quote_date;
-      if (p.wind_speed_mph) document.getElementById('proj_wind').value = p.wind_speed_mph;
-      if (p.footing_depth_ft) document.getElementById('proj_footing').value = p.footing_depth_ft;
-      if (p.markup_pct) document.getElementById('proj_markup').value = p.markup_pct;
+      const setVal = function(id, val) {
+        var el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) el.value = val;
+      };
+      setVal('proj_name', p.name);
+      setVal('proj_customer', p.customer_name);
+      setVal('proj_address', p.address);
+      setVal('proj_city', p.city);
+      setVal('proj_state', p.state);
+      setVal('proj_zip', p.zip_code);
+      setVal('proj_date', p.quote_date);
+      setVal('proj_wind', p.wind_speed_mph);
+      setVal('proj_footing', p.footing_depth_ft);
+      setVal('proj_markup', p.markup_pct);
     }
     if (d.job_code) document.getElementById('proj_jobcode').value = d.job_code;
 
@@ -1836,7 +1838,7 @@ async function loadProject(jobCode, version) {
     if (currentBOM) renderPricingTab();
 
     showToast('Project loaded: ' + jobCode + ' (v' + currentVersion + ')', 'success');
-  } catch(e) { showToast('Load error: ' + e.message, 'error'); }
+  } catch(e) { showToast('Load error: ' + e.message, 'error'); throw e; }
 }
 
 async function showRevisionHistory() {

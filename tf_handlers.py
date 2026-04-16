@@ -2953,6 +2953,126 @@ class ProjectPageHandler(BaseHandler):
         self.render_with_nav(html, active_page="project", job_code=job_code)
 
 
+class ProjectToolStatusHandler(BaseHandler):
+    """GET /api/project/tool-status?job_code=XXX — Return completion status
+    for every toolbox card on the project page.
+
+    Returns a dict of tool → {done: bool, pct: int, version, detail}
+    so the front-end can decorate each card with a badge / mini-bar.
+    """
+    def get(self):
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+            tools = {}
+
+            # ── SA Estimator ─────────────────────────────────
+            current_path = os.path.join(proj_dir, "current.json")
+            sa_version = 0
+            sa_done = False
+            if os.path.isfile(current_path):
+                try:
+                    with open(current_path) as f:
+                        cdata = json.load(f)
+                    sa_version = cdata.get("version", 1)
+                    sa_done = bool(cdata.get("bom_data"))
+                except Exception:
+                    pass
+            # Count version files
+            n_versions = len(glob.glob(os.path.join(proj_dir, "v*.json")))
+            tools["sa_estimator"] = {
+                "done": sa_done,
+                "pct": 100 if sa_done else 0,
+                "version": sa_version,
+                "n_versions": n_versions,
+                "detail": f"v{sa_version}" if sa_version else "Not started",
+            }
+
+            # ── BOM ──────────────────────────────────────────
+            tools["bom"] = {
+                "done": sa_done,
+                "pct": 100 if sa_done else 0,
+                "version": sa_version,
+                "detail": "Calculated" if sa_done else "Pending",
+            }
+
+            # ── Shop Drawings ────────────────────────────────
+            interactive_sources = _load_interactive_sources(job_code)
+            n_drawings = len(interactive_sources)
+            revisions = _load_revisions(job_code)
+            last_rev = revisions[0].get("revision", "-") if revisions else None
+            sd_pct = min(100, n_drawings * 50)  # 2 drawings = 100%
+            tools["shop_drawings"] = {
+                "done": n_drawings >= 2,
+                "pct": sd_pct,
+                "version": last_rev,
+                "detail": f"{n_drawings} drawing{'s' if n_drawings != 1 else ''}" + (f" (Rev {last_rev})" if last_rev else ""),
+            }
+
+            # ── Work Orders ──────────────────────────────────
+            wo_pct = 0
+            wo_detail = "Not created"
+            wo_done = False
+            try:
+                if HAS_SHOP_DRAWINGS:
+                    wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+                    total_items = 0
+                    completed_items = 0
+                    for wo_info in wos:
+                        wo_obj = load_work_order(SHOP_DRAWINGS_DIR, wo_info.get("wo_id", ""))
+                        if wo_obj:
+                            for item in (wo_obj.items if hasattr(wo_obj, 'items') else []):
+                                total_items += 1
+                                st = item.status if hasattr(item, 'status') else ""
+                                if st == STATUS_COMPLETE or (hasattr(item, 'loading_status') and item.loading_status == "delivered"):
+                                    completed_items += 1
+                    if total_items > 0:
+                        wo_pct = int(completed_items / total_items * 100)
+                        wo_done = wo_pct == 100
+                        wo_detail = f"{completed_items}/{total_items} items"
+                    elif wos:
+                        wo_detail = f"{len(wos)} WO{'s' if len(wos)!=1 else ''} (no items)"
+            except Exception:
+                pass
+            tools["work_orders"] = {
+                "done": wo_done,
+                "pct": wo_pct,
+                "detail": wo_detail,
+            }
+
+            # ── QC Dashboard ─────────────────────────────────
+            tools["qc"] = {
+                "done": wo_done,
+                "pct": wo_pct,
+                "detail": wo_detail,
+            }
+
+            # ── Quote Editor ─────────────────────────────────
+            # Check if a quote document exists
+            quote_dir = os.path.join(proj_dir, "docs", "quotes")
+            n_quotes = 0
+            if os.path.isdir(quote_dir):
+                n_quotes = len([f for f in os.listdir(quote_dir)
+                               if os.path.isfile(os.path.join(quote_dir, f)) and not f.startswith("_")])
+            tools["quote"] = {
+                "done": n_quotes > 0,
+                "pct": 100 if n_quotes > 0 else (50 if sa_done else 0),
+                "detail": f"{n_quotes} quote{'s' if n_quotes!=1 else ''}" if n_quotes else ("Ready" if sa_done else "Pending BOM"),
+            }
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "tools": tools}))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class ProjectArchiveDocHandler(BaseHandler):
     """POST /api/project/docs/archive — Archive a document (move to archive subfolder)."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4533,7 +4653,9 @@ class QCPageHandler(BaseHandler):
 
 try:
     from shop_drawings.config import ShopDrawingConfig
-    from shop_drawings.master import generate_all_shop_drawings
+    # NOTE: generate_all_shop_drawings (legacy server-side PDF gen) is intentionally
+    # NOT imported.  All shop drawings are now created by the Interactive Builder
+    # in the browser and saved via /api/shop-drawings/save-interactive-pdf.
     from shop_drawings.work_orders import (
         WorkOrder, WorkOrderItem, STATUS_QUEUED, STATUS_APPROVED,
         STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
@@ -4625,6 +4747,38 @@ def _save_revision(job_code, rev_entry):
     with open(rev_path, "w") as f:
         json.dump(revisions, f, indent=2, default=str)
     return revisions
+
+
+def _load_interactive_sources(job_code):
+    """Load the interactive-source manifest for a project's shop drawings.
+
+    Returns a dict of {filename: {drawing_type, saved_at, source}} for every
+    PDF that was created by the Interactive Builder.  Legacy / unknown PDFs
+    are intentionally excluded so they never appear in the gallery.
+    """
+    d = _shop_drawing_project_dir(job_code)
+    manifest_path = os.path.join(d, "pdfs", "_interactive_sources.json")
+    if os.path.isfile(manifest_path):
+        with open(manifest_path) as f:
+            return json.load(f)
+    return {}
+
+
+def _register_interactive_source(job_code, filename, drawing_type):
+    """Record that *filename* was saved by the Interactive Builder."""
+    import datetime as _dt
+    sources = _load_interactive_sources(job_code)
+    sources[filename] = {
+        "drawing_type": drawing_type,
+        "saved_at": _dt.datetime.now().isoformat(),
+        "source": "interactive",
+    }
+    d = _shop_drawing_project_dir(job_code)
+    manifest_path = os.path.join(d, "pdfs", "_interactive_sources.json")
+    os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+    with open(manifest_path, "w") as f:
+        json.dump(sources, f, indent=2, default=str)
+    return sources
 
 
 def _derive_bom_config(job_code):
@@ -4813,6 +4967,9 @@ class SaveInteractivePDFHandler(BaseHandler):
             with open(out_path, "wb") as f:
                 f.write(pdf_file["body"])
 
+            # Register this file as an interactive-builder source
+            _register_interactive_source(job_code, filename, drawing_type)
+
             # Sync to project docs/shop_drawings/ so project page shows the file
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
             proj_sd_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", "shop_drawings")
@@ -4885,27 +5042,37 @@ class ShopDrawingsConfigHandler(BaseHandler):
             if gen_log and "files" in gen_log:
                 drawings = gen_log["files"]
 
-            # Also scan pdfs dir directly for any interactive PDFs not yet in the log
+            # Also scan pdfs dir directly for any interactive PDFs not yet
+            # in the log.  ONLY include files registered as interactive-builder
+            # sources — this ensures legacy/old shop drawings never appear.
             d = _shop_drawing_project_dir(job_code)
             pdfs_dir = os.path.join(d, "pdfs")
+            interactive_sources = _load_interactive_sources(job_code)
             if os.path.isdir(pdfs_dir):
                 known = {f["filename"] for f in drawings}
                 for fname in sorted(os.listdir(pdfs_dir)):
-                    if fname.endswith(".pdf") and fname not in known:
+                    if fname.endswith(".pdf") and fname not in known and fname in interactive_sources:
                         fpath = os.path.join(pdfs_dir, fname)
-                        upper = fname.upper()
-                        if "_C" in upper:
-                            dtype, desc = "column", "Column Shop Drawing"
-                        elif "_B" in upper:
-                            dtype, desc = "rafter", "Rafter Shop Drawing"
+                        src_info = interactive_sources[fname]
+                        dtype = src_info.get("drawing_type", "other")
+                        if dtype == "column":
+                            desc = "Column Shop Drawing"
+                        elif dtype in ("rafter", "beam"):
+                            desc = "Rafter Shop Drawing"
                         else:
-                            dtype, desc = "other", "Shop Drawing"
+                            desc = "Shop Drawing"
                         drawings.append({
                             "filename": fname,
                             "type": dtype,
                             "description": desc,
                             "size_bytes": os.path.getsize(fpath),
                         })
+
+            # Filter generation-log drawings too: remove any that are not
+            # from the interactive builder (in case an old log references
+            # legacy files).
+            if interactive_sources:
+                drawings = [d for d in drawings if d["filename"] in interactive_sources]
 
             revisions = _load_revisions(job_code)
 
@@ -5130,14 +5297,26 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             cfg_dict["job_code"] = job_code
             _save_shop_config(job_code, cfg_dict)
 
-            # Scan pdfs directory for interactive-saved PDFs
+            # Scan pdfs directory — ONLY collect files registered by the
+            # Interactive Builder (ignore any legacy / stale PDFs).
             d = _shop_drawing_project_dir(job_code)
             pdfs_dir = os.path.join(d, "pdfs")
             os.makedirs(pdfs_dir, exist_ok=True)
 
+            interactive_sources = _load_interactive_sources(job_code)
+
+            # Purge any PDFs that were NOT created by the interactive builder
+            for fname in list(os.listdir(pdfs_dir)):
+                if fname.lower().endswith(".pdf") and fname not in interactive_sources:
+                    old_path = os.path.join(pdfs_dir, fname)
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        pass
+
             pdf_files = sorted(
                 f for f in os.listdir(pdfs_dir)
-                if f.lower().endswith(".pdf") and not f.endswith("_generation_log.json")
+                if f.lower().endswith(".pdf") and f in interactive_sources
             )
 
             if not pdf_files:
@@ -7549,6 +7728,7 @@ def get_routes():
         # ── API - Project Status (NEW) ────────────────────────
         (r"/api/project/status",         ProjectStatusHandler),
         (r"/api/project/assets",         ProjectAssetsHandler),
+        (r"/api/project/tool-status",    ProjectToolStatusHandler),
 
         # ── API - Enhanced Project System ─────────────────────
         (r"/api/project/next-code",      ProjectNextCodeHandler),

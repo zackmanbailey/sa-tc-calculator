@@ -251,6 +251,55 @@ PROJECT_PAGE_HTML = r"""
         .tool-icon.ti-purple { background: #EDE9FE; }
         .tool-icon.ti-teal   { background: #CCFBF1; }
 
+        .tool-status {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            width: 100%;
+        }
+        .tool-status-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 6px;
+            display: inline-block;
+            align-self: flex-start;
+        }
+        .tool-status-badge.done {
+            background: var(--tf-success-bg, #D1FAE5);
+            color: var(--tf-success, #059669);
+        }
+        .tool-status-badge.partial {
+            background: var(--tf-amber-light, #FEF3C7);
+            color: #D97706;
+        }
+        .tool-status-badge.pending {
+            background: var(--tf-gray-100, #F3F4F6);
+            color: var(--tf-gray-500, #6B7280);
+        }
+        .tool-mini-bar {
+            width: 100%;
+            height: 3px;
+            background: var(--tf-gray-100, #E5E7EB);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .tool-mini-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        .tool-mini-bar-fill.green { background: var(--tf-success, #059669); }
+        .tool-mini-bar-fill.amber { background: #D97706; }
+        .tool-mini-bar-fill.gray  { background: var(--tf-gray-300, #D1D5DB); }
+        .tool-detail {
+            font-size: 9px;
+            color: var(--tf-gray-500, #6B7280);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .tool-label {
             font-size: var(--tf-text-xs);
             font-weight: 700;
@@ -767,33 +816,40 @@ PROJECT_PAGE_HTML = r"""
 
         <!-- TOOLBOX -->
         <div class="toolbox">
-            <div class="tool-card" onclick="openInSACalc()">
+            <div class="tool-card" onclick="openInSACalc()" id="tc-sa_estimator">
                 <div class="tool-icon ti-blue">&#128208;</div>
                 <div class="tool-label">SA Estimator</div>
+                <div class="tool-status" id="ts-sa_estimator"></div>
             </div>
-            <div class="tool-card" onclick="openInTCQuote()">
+            <div class="tool-card" onclick="openInTCQuote()" id="tc-tc_estimator">
                 <div class="tool-icon ti-amber">&#128221;</div>
                 <div class="tool-label">TC Estimator</div>
+                <div class="tool-status" id="ts-tc_estimator"></div>
             </div>
-            <div class="tool-card" onclick="openBOM()">
+            <div class="tool-card" onclick="openBOM()" id="tc-bom">
                 <div class="tool-icon ti-teal">&#128203;</div>
                 <div class="tool-label">Bill of Materials</div>
+                <div class="tool-status" id="ts-bom"></div>
             </div>
-            <div class="tool-card" onclick="openQuoteEditor()">
+            <div class="tool-card" onclick="openQuoteEditor()" id="tc-quote">
                 <div class="tool-icon ti-green">&#128196;</div>
                 <div class="tool-label">Quote Editor</div>
+                <div class="tool-status" id="ts-quote"></div>
             </div>
-            <div class="tool-card" onclick="openShopDrawings()">
+            <div class="tool-card" onclick="openShopDrawings()" id="tc-shop_drawings">
                 <div class="tool-icon ti-blue">&#9998;</div>
                 <div class="tool-label">Shop Drawings</div>
+                <div class="tool-status" id="ts-shop_drawings"></div>
             </div>
-            <div class="tool-card" onclick="openWorkOrders()">
+            <div class="tool-card" onclick="openWorkOrders()" id="tc-work_orders">
                 <div class="tool-icon ti-teal">&#128203;</div>
                 <div class="tool-label">Work Orders</div>
+                <div class="tool-status" id="ts-work_orders"></div>
             </div>
-            <div class="tool-card" onclick="openQCDashboard()">
+            <div class="tool-card" onclick="openQCDashboard()" id="tc-qc">
                 <div class="tool-icon ti-purple">&#128203;</div>
                 <div class="tool-label">QC Dashboard</div>
+                <div class="tool-status" id="ts-qc"></div>
             </div>
         </div>
 
@@ -933,6 +989,9 @@ PROJECT_PAGE_HTML = r"""
 
             // Intelligence (try to load calc data)
             loadIntelligence();
+
+            // Toolbox status badges
+            loadToolStatus();
 
             // Restrict actions by role
             if (USER_ROLE === 'viewer' || USER_ROLE === 'tc_limited') {
@@ -1438,7 +1497,7 @@ PROJECT_PAGE_HTML = r"""
             fetch('/api/project/load', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: JOB_CODE })
+                body: JSON.stringify({ job_code: JOB_CODE })
             })
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -1447,6 +1506,53 @@ PROJECT_PAGE_HTML = r"""
                 }
             })
             .catch(function() { /* Leave default message */ });
+        }
+
+        // ── Toolbox Status Badges ─────────────────────────
+        function loadToolStatus() {
+            fetch('/api/project/tool-status?job_code=' + encodeURIComponent(JOB_CODE))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok || !data.tools) return;
+                var tools = data.tools;
+                Object.keys(tools).forEach(function(key) {
+                    renderToolBadge(key, tools[key]);
+                });
+            })
+            .catch(function(e) { console.warn('[ToolStatus] Failed:', e); });
+        }
+
+        function renderToolBadge(toolKey, info) {
+            var container = document.getElementById('ts-' + toolKey);
+            if (!container) return;
+
+            var pct = info.pct || 0;
+            var badgeClass = pct >= 100 ? 'done' : (pct > 0 ? 'partial' : 'pending');
+            var badgeText = pct >= 100 ? 'Done' : (pct > 0 ? pct + '%' : 'Pending');
+            var barColor = pct >= 100 ? 'green' : (pct > 0 ? 'amber' : 'gray');
+
+            // Include version if available
+            if (info.version && info.version !== 0) {
+                badgeText = (pct >= 100 ? 'Done' : pct + '%');
+                if (typeof info.version === 'number') {
+                    badgeText += ' v' + info.version;
+                } else {
+                    badgeText += ' Rev ' + info.version;
+                }
+            }
+
+            container.innerHTML =
+                '<span class="tool-status-badge ' + badgeClass + '">' + badgeText + '</span>' +
+                '<div class="tool-mini-bar"><div class="tool-mini-bar-fill ' + barColor + '" style="width:' + pct + '%"></div></div>' +
+                '<div class="tool-detail">' + (info.detail || '') + '</div>';
+
+            // Also style the parent card
+            var card = document.getElementById('tc-' + toolKey);
+            if (card && pct >= 100) {
+                card.style.borderColor = 'var(--tf-success, #059669)';
+            } else if (card && pct > 0) {
+                card.style.borderColor = '#D97706';
+            }
         }
 
         function renderIntelligence(calcData) {

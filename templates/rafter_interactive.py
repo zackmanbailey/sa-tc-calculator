@@ -178,6 +178,8 @@ window.RAFTER_CONFIG = {{RAFTER_CONFIG_JSON}};
           canvas.width = (options.width || 1100) * scale;
           canvas.height = (options.height || 850) * scale;
           var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.scale(scale, scale);
           var img = new Image();
           var blob = new Blob([svgString], {type:'image/svg+xml;charset=utf-8'});
