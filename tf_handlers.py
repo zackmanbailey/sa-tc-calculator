@@ -4581,7 +4581,32 @@ def _derive_bom_config(job_code):
         try:
             with open(os.path.join(versions_dir, vf)) as f:
                 data = json.load(f)
-            bom_result = data.get("bom_result") or data.get("results", {})
+
+            # Try multiple keys for BOM data (different save formats)
+            bom_result = data.get("bom_result") or data.get("bom_data") or data.get("results", {})
+
+            # Build geometry dict from buildings array if geometry key is missing
+            if bom_result and "geometry" not in bom_result:
+                bom_buildings = bom_result.get("buildings", [])
+                # Also check top-level buildings array (SA save format)
+                if not bom_buildings:
+                    bom_buildings = data.get("buildings", [])
+                if bom_buildings and len(bom_buildings) > 0:
+                    b = bom_buildings[0]
+                    bom_result["geometry"] = {
+                        "width_ft": b.get("width_ft", 40.0),
+                        "length_ft": b.get("length_ft", 120.0),
+                        "clear_height_ft": b.get("clear_height_ft", 14.0),
+                        "slope_deg": b.get("slope_deg", 1.19),
+                        "n_frames": b.get("n_frames", 5),
+                        "overhang_ft": b.get("overhang_ft", 0.0),
+                        "embedment_ft": b.get("embedment_ft", 4.333),
+                        "footing_depth_ft": b.get("footing_depth_ft", 0.0),
+                        "purlin_spacing_ft": b.get("purlin_spacing_ft") or b.get("purlin_spacing_override") or 5.0,
+                        "frame_type": "tee" if b.get("width_ft", 40) <= 45 else "dbl_col",
+                        "col_positions": b.get("col_positions", []),
+                    }
+
             if bom_result and "geometry" in bom_result:
                 # Load project metadata for project_info
                 meta_path = os.path.join(proj_dir, "metadata.json")
@@ -4589,11 +4614,19 @@ def _derive_bom_config(job_code):
                 if os.path.isfile(meta_path):
                     with open(meta_path) as mf:
                         meta = json.load(mf)
+                    customer = meta.get("customer", {})
+                    customer_name = customer.get("name", "") if isinstance(customer, dict) else str(customer)
+                    location = meta.get("location", {})
+                    loc_str = ""
+                    if isinstance(location, dict):
+                        loc_str = ", ".join(filter(None, [location.get("city", ""), location.get("state", "")]))
+                    else:
+                        loc_str = str(location)
                     project_info = {
                         "job_code": job_code,
                         "project_name": meta.get("project_name", ""),
-                        "customer_name": meta.get("customer_name", ""),
-                        "location": meta.get("location", ""),
+                        "customer_name": customer_name,
+                        "location": loc_str,
                     }
                 cfg = ShopDrawingConfig.from_bom_data(bom_result, project_info)
                 return cfg.to_dict()
@@ -4721,6 +4754,15 @@ class ShopDrawingsConfigHandler(BaseHandler):
             if saved_config is None and bom_config:
                 saved_config = dict(bom_config)
                 _save_shop_config(job_code, saved_config)
+            elif saved_config and bom_config:
+                # Merge BOM-derived values into saved config where saved has defaults
+                # This ensures BOM updates flow through even if config was previously saved
+                for key in ["building_width_ft", "building_length_ft", "clear_height_ft",
+                            "roof_pitch_deg", "n_frames", "project_name", "customer_name",
+                            "project_location"]:
+                    bom_val = bom_config.get(key)
+                    if bom_val and bom_val != saved_config.get(key):
+                        saved_config[key] = bom_val
             elif saved_config is None:
                 # No BOM data either — return defaults
                 if HAS_SHOP_DRAWINGS:
@@ -6549,6 +6591,96 @@ class ActivityFeedPageHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# STUB API HANDLERS (return valid JSON so pages don't crash)
+# ─────────────────────────────────────────────
+
+class QCDashboardAPIHandler(BaseHandler):
+    """GET /api/qc/dashboard — QC dashboard data (stub)."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({
+            "ok": True,
+            "total_inspections": 0,
+            "pass_rate": 0,
+            "pending": 0,
+            "recent": [],
+            "by_type": {},
+            "message": "No QC inspections recorded yet.",
+        }))
+
+
+class DocumentsAPIHandler(BaseHandler):
+    """GET /api/documents/* — Document management API (stub)."""
+    def get(self, endpoint=""):
+        self.set_header("Content-Type", "application/json")
+        if endpoint == "config":
+            self.write(json_encode({
+                "ok": True,
+                "categories": ["quotes", "contracts", "engineering", "calcs", "shop_drawings", "mill_certs", "photos", "other"],
+                "message": "Document management ready.",
+            }))
+        elif endpoint == "summary":
+            self.write(json_encode({
+                "ok": True,
+                "total_documents": 0,
+                "by_category": {},
+                "recent_uploads": [],
+            }))
+        else:
+            # revisions, rfis, transmittals, bom-changes, etc.
+            self.write(json_encode({
+                "ok": True,
+                "items": [],
+                "total": 0,
+            }))
+
+
+class JobCostingAPIHandler(BaseHandler):
+    """GET /api/costing/* — Job costing API (stub)."""
+    def get(self, endpoint=""):
+        self.set_header("Content-Type", "application/json")
+        if endpoint == "config":
+            self.write(json_encode({
+                "ok": True,
+                "cost_categories": ["materials", "labor", "equipment", "subcontractors", "overhead"],
+                "message": "Job costing ready. Select a project to view cost data.",
+            }))
+        elif endpoint == "overview":
+            self.write(json_encode({
+                "ok": True,
+                "total_cost": 0,
+                "total_revenue": 0,
+                "margin": 0,
+                "projects": [],
+            }))
+        else:
+            self.write(json_encode({
+                "ok": True,
+                "items": [],
+                "total": 0,
+            }))
+
+
+class ReportsAPIHandler(BaseHandler):
+    """GET /api/reports/production — Production reports API (stub)."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        days_back = int(self.get_query_argument("days_back", "30"))
+        self.write(json_encode({
+            "ok": True,
+            "period_days": days_back,
+            "total_items_produced": 0,
+            "total_weight_lbs": 0,
+            "machine_hours": 0,
+            "efficiency": 0,
+            "daily_production": [],
+            "by_machine": {},
+            "by_component": {},
+            "message": "No production data recorded yet.",
+        }))
+
+
+# ─────────────────────────────────────────────
 # PWA SUPPORT HANDLERS
 # ─────────────────────────────────────────────
 
@@ -6813,6 +6945,12 @@ def get_routes():
         (r"/reports/production",                 ReportsPageHandler),
         (r"/reports",                            ReportsPageHandler),
         (r"/activity",                           ActivityFeedPageHandler),
+
+        # ── Stub API endpoints (return valid JSON so pages don't crash) ──
+        (r"/api/qc/dashboard",                   QCDashboardAPIHandler),
+        (r"/api/documents/?(.*)",                DocumentsAPIHandler),
+        (r"/api/costing/?(.*)",                  JobCostingAPIHandler),
+        (r"/api/reports/production",             ReportsAPIHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),

@@ -949,6 +949,7 @@ class ShopDrawingConfig:
         if project_info:
             cfg.job_code = project_info.get("job_code", "")
             cfg.project_name = project_info.get("project_name", "")
+            cfg.customer_name = project_info.get("customer_name", "")
             cfg.project_location = project_info.get("location", "")
 
         return cfg
