@@ -1298,6 +1298,7 @@ DASHBOARD_HTML = r"""
                     <button class="tf-btn tf-btn-outline" id="openShopDrawingsBtn" style="border-color:#1E40AF;color:#1E40AF;">Shop Drawings</button>
                     <button class="tf-btn tf-btn-outline" id="openWorkOrdersBtn" style="border-color:#0F766E;color:#0F766E;">Work Orders</button>
                     <button class="tf-btn tf-btn-outline" onclick="closeProjectModal()">Close</button>
+                    <button class="tf-btn tf-btn-ghost" id="deleteProjectBtn" style="color:var(--tf-danger, #dc3545);margin-left:auto;" onclick="deleteProject()">&#128465; Delete Project</button>
                 </div>
             </div>
         </div>
@@ -1698,6 +1699,37 @@ DASHBOARD_HTML = r"""
     function closeProjectModal() {
         document.getElementById('projectModal').classList.remove('show');
         currentProject = null;
+    }
+
+    function deleteProject() {
+        if (!currentProject) return;
+        var jc = currentProject.job_code;
+        var name = currentProject.project_name || 'Untitled';
+        if (!confirm('⚠️ DELETE PROJECT\\n\\n"' + jc + ' — ' + name + '"\\n\\nThis will permanently delete ALL project data including:\\n• Estimates & revisions\\n• Shop drawings\\n• Work orders\\n• Documents\\n\\nThis cannot be undone. Are you sure?')) return;
+        if (!confirm('FINAL WARNING: Type the job code to confirm deletion.\\n\\nClick OK to proceed with deleting ' + jc)) return;
+
+        fetch('/api/project/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_code: jc, confirm: true }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                closeProjectModal();
+                // Remove from local data and re-render
+                allProjects = allProjects.filter(function(p) { return p.job_code !== jc; });
+                filteredProjects = filteredProjects.filter(function(p) { return p.job_code !== jc; });
+                updateStats();
+                renderProjects();
+                alert('Project ' + jc + ' deleted successfully.');
+            } else {
+                alert('Delete failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function(err) {
+            alert('Delete failed: ' + err.message);
+        });
     }
 
     // ── New Project Modal ─────────────────────────
