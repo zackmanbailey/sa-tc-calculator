@@ -5,9 +5,12 @@ Includes: Auth (4-tier roles), Calculation, Inventory, Projects, Documents, Stat
 """
 
 import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time, shutil
+import logging, traceback
 import tornado.ioloop
 import tornado.web
 from tornado.escape import json_decode, json_encode
+
+logger = logging.getLogger("titanforge")
 
 # ── Authentication / User Management ─────────────────────────────────────────
 try:
@@ -651,6 +654,43 @@ class BaseHandler(tornado.web.RequestHandler):
                 self.write(json_encode({"error": "Insufficient permissions for this action"}))
                 raise tornado.web.Finish()
 
+    def write_error(self, status_code, **kwargs):
+        """Unified error handler — returns JSON for API routes, styled HTML for pages."""
+        # Log the error with traceback if available
+        if "exc_info" in kwargs:
+            logger.error("Unhandled %d on %s %s",
+                         status_code, self.request.method, self.request.uri,
+                         exc_info=kwargs["exc_info"])
+
+        is_api = self.request.path.startswith("/api/")
+        reason = self._reason if hasattr(self, '_reason') else "Internal Server Error"
+
+        if is_api:
+            self.set_header("Content-Type", "application/json")
+            self.finish(json_encode({
+                "ok": False,
+                "error": reason,
+                "status": status_code,
+            }))
+        else:
+            self.set_header("Content-Type", "text/html")
+            self.finish(
+                f"<!DOCTYPE html><html><head><title>Error {status_code}</title>"
+                f"<style>body{{font-family:-apple-system,BlinkMacSystemFont,sans-serif;"
+                f"background:#0F172A;color:#E2E8F0;display:flex;align-items:center;"
+                f"justify-content:center;height:100vh;margin:0;}}"
+                f".card{{background:#1E293B;border:1px solid #334155;border-radius:16px;"
+                f"padding:48px;text-align:center;max-width:480px;}}"
+                f"h1{{color:#F87171;font-size:3rem;margin:0 0 8px;}} "
+                f"h2{{color:#FFF;margin:0 0 12px;}} "
+                f"p{{color:#94A3B8;line-height:1.6;}} "
+                f"a{{color:#60A5FA;text-decoration:none;font-weight:600;}}</style></head>"
+                f"<body><div class='card'><h1>{status_code}</h1>"
+                f"<h2>{reason}</h2>"
+                f"<p>Something went wrong. If this keeps happening, contact your admin.</p>"
+                f"<br><a href='/'>← Back to Dashboard</a></div></body></html>"
+            )
+
     def render_with_nav(self, html: str, active_page: str = "",
                         job_code: str = ""):
         """Render HTML with the unified sidebar navigation injected.
@@ -832,8 +872,7 @@ class GettingStartedHandler(BaseHandler):
         users_db = load_users()
         role = users_db.get(user, {}).get("role", "shop") if user != "local" else "admin"
         html = GETTING_STARTED_HTML.replace("{{USER_ROLE}}", role)
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        self.render_with_nav(html, active_page="getting-started")
 
 
 class HelpBundleHandler(BaseHandler):
@@ -1260,9 +1299,12 @@ class CoilDetailHandler(BaseHandler):
 
         if coil is None:
             self.set_status(404)
-            self.write(f"<html><body><h2>Coil '{coil_id}' not found</h2>"
-                       "<p>This coil ID is not currently in the inventory system.</p>"
-                       "<a href='/'>← Back to Calculator</a></body></html>")
+            self.render_with_nav(
+                f"<html><head><title>Coil Not Found</title></head><body>"
+                f"<div style='padding:2rem;'><h2>Coil '{coil_id}' not found</h2>"
+                f"<p>This coil ID is not currently in the inventory system.</p>"
+                f"<a href='/inventory'>← Back to Inventory</a></div></body></html>",
+                active_page="inventory")
             return
 
         stock_lbs     = coil.get("stock_lbs", 0)
@@ -1348,8 +1390,7 @@ class CoilDetailHandler(BaseHandler):
         for placeholder, value in replacements.items():
             html = html.replace(placeholder, value)
 
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        self.render_with_nav(html, active_page="inventory")
 
 
 # ─────────────────────────────────────────────
