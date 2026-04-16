@@ -7766,22 +7766,214 @@ class JobCostingAPIHandler(BaseHandler):
 
 
 class ReportsAPIHandler(BaseHandler):
-    """GET /api/reports/production — Production reports API (stub)."""
+    """GET /api/reports/production — Production reports from real work order data."""
     def get(self):
         self.set_header("Content-Type", "application/json")
         days_back = int(self.get_query_argument("days_back", "30"))
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=days_back)).isoformat()
+
+        try:
+            from shop_drawings.work_orders import list_all_work_orders, load_work_order
+        except ImportError:
+            self.write(json_encode({"ok": True, "message": "Work orders module not available",
+                                    "total_items_produced": 0, "by_component": {}, "by_machine": {}}))
+            return
+
+        total_items = 0
+        completed_items = 0
+        by_component = {}
+        by_machine = {}
+        by_project = {}
+
+        all_wos = list_all_work_orders()
+        for wo_ref in all_wos:
+            try:
+                wo = load_work_order(wo_ref["job_code"], wo_ref["work_order_id"])
+                if not wo:
+                    continue
+                jc = wo.get("job_code", "unknown")
+                for item in wo.get("items", []):
+                    total_items += 1
+                    comp = item.get("component_type", "other")
+                    machine = item.get("machine", "unknown")
+                    status = item.get("status", "queued")
+
+                    by_component.setdefault(comp, {"total": 0, "complete": 0})
+                    by_component[comp]["total"] += 1
+                    by_machine.setdefault(machine, {"total": 0, "complete": 0})
+                    by_machine[machine]["total"] += 1
+                    by_project.setdefault(jc, {"total": 0, "complete": 0, "status": wo.get("status", "")})
+                    by_project[jc]["total"] += 1
+
+                    if status == "complete":
+                        completed_items += 1
+                        by_component[comp]["complete"] += 1
+                        by_machine[machine]["complete"] += 1
+                        by_project[jc]["complete"] += 1
+            except Exception:
+                continue
+
+        efficiency = round((completed_items / total_items * 100), 1) if total_items else 0
         self.write(json_encode({
             "ok": True,
             "period_days": days_back,
-            "total_items_produced": 0,
-            "total_weight_lbs": 0,
-            "machine_hours": 0,
-            "efficiency": 0,
-            "daily_production": [],
-            "by_machine": {},
-            "by_component": {},
-            "message": "No production data recorded yet.",
+            "total_items": total_items,
+            "total_items_produced": completed_items,
+            "efficiency": efficiency,
+            "by_component": by_component,
+            "by_machine": by_machine,
+            "by_project": by_project,
         }))
+
+
+class ReportsExportCSVHandler(BaseHandler):
+    """GET /api/reports/export?type=production|projects|inventory — CSV export."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        report_type = self.get_query_argument("type", "projects")
+
+        if report_type == "projects":
+            rows = self._export_projects()
+            filename = "titanforge_projects.csv"
+        elif report_type == "production":
+            rows = self._export_production()
+            filename = "titanforge_production.csv"
+        elif report_type == "inventory":
+            rows = self._export_inventory()
+            filename = "titanforge_inventory.csv"
+        elif report_type == "financial":
+            rows = self._export_financial()
+            filename = "titanforge_financial_summary.csv"
+        else:
+            self.write(json_encode({"ok": False, "error": f"Unknown report type: {report_type}"}))
+            return
+
+        output = io.StringIO()
+        import csv
+        writer = csv.writer(output)
+        for row in rows:
+            writer.writerow(row)
+
+        self.set_header("Content-Type", "text/csv")
+        self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.write(output.getvalue())
+
+    def _export_projects(self):
+        """All projects with status, customer, stage."""
+        rows = [["Job Code", "Project Name", "Customer", "Stage", "City", "State", "Created"]]
+        proj_dir = PROJECTS_DIR
+        if not os.path.isdir(proj_dir):
+            return rows
+        for name in sorted(os.listdir(proj_dir)):
+            meta_path = os.path.join(proj_dir, name, "metadata.json")
+            if not os.path.isfile(meta_path):
+                continue
+            try:
+                with open(meta_path) as f:
+                    m = json.load(f)
+                rows.append([
+                    m.get("job_code", name),
+                    m.get("project_name", ""),
+                    m.get("customer", {}).get("name", "") if isinstance(m.get("customer"), dict) else m.get("customer_name", ""),
+                    m.get("stage", ""),
+                    m.get("location", {}).get("city", "") if isinstance(m.get("location"), dict) else "",
+                    m.get("location", {}).get("state", "") if isinstance(m.get("location"), dict) else "",
+                    (m.get("created_at", "") or "")[:10],
+                ])
+            except Exception:
+                continue
+        return rows
+
+    def _export_production(self):
+        """Work order items with completion status."""
+        rows = [["Job Code", "Work Order", "Ship Mark", "Component", "Machine", "Status",
+                 "Started By", "Finished By", "Duration (min)"]]
+        try:
+            from shop_drawings.work_orders import list_all_work_orders, load_work_order
+        except ImportError:
+            return rows
+        for wo_ref in list_all_work_orders():
+            try:
+                wo = load_work_order(wo_ref["job_code"], wo_ref["work_order_id"])
+                if not wo:
+                    continue
+                for item in wo.get("items", []):
+                    rows.append([
+                        wo.get("job_code", ""),
+                        wo.get("work_order_id", ""),
+                        item.get("ship_mark", ""),
+                        item.get("component_type", ""),
+                        item.get("machine", ""),
+                        item.get("status", ""),
+                        item.get("started_by", ""),
+                        item.get("finished_by", ""),
+                        item.get("duration_minutes", ""),
+                    ])
+            except Exception:
+                continue
+        return rows
+
+    def _export_inventory(self):
+        """Current coil inventory with allocations."""
+        rows = [["Coil ID", "Name", "Gauge", "Grade", "Supplier",
+                 "Stock (lbs)", "Committed (lbs)", "Available (lbs)", "Price/lb"]]
+        inv = load_inventory()
+        for cid, c in inv.get("coils", {}).items():
+            stock = float(c.get("stock_lbs", 0) or 0)
+            committed = float(c.get("committed_lbs", 0) or 0)
+            rows.append([
+                cid,
+                c.get("name", ""),
+                c.get("gauge", ""),
+                c.get("grade", ""),
+                c.get("supplier", ""),
+                f"{stock:,.0f}",
+                f"{committed:,.0f}",
+                f"{stock - committed:,.0f}",
+                c.get("price_per_lb", ""),
+            ])
+        return rows
+
+    def _export_financial(self):
+        """Project financial summary from quotes."""
+        rows = [["Job Code", "Project Name", "Customer", "Stage", "Quote Total", "Material Cost"]]
+        proj_dir = PROJECTS_DIR
+        if not os.path.isdir(proj_dir):
+            return rows
+        for name in sorted(os.listdir(proj_dir)):
+            meta_path = os.path.join(proj_dir, name, "metadata.json")
+            if not os.path.isfile(meta_path):
+                continue
+            try:
+                with open(meta_path) as f:
+                    m = json.load(f)
+                # Try to load quote data
+                quote_total = ""
+                material_cost = ""
+                quote_path = os.path.join(DATA_DIR, "quotes", f"{name}.json")
+                if os.path.isfile(quote_path):
+                    with open(quote_path) as f:
+                        q = json.load(f)
+                    pricing = q.get("pricing", {})
+                    quote_total = pricing.get("base_total", "")
+                # Try BOM for material cost
+                current_path = os.path.join(proj_dir, name, "current.json")
+                if os.path.isfile(current_path):
+                    with open(current_path) as f:
+                        cur = json.load(f)
+                    material_cost = cur.get("material_cost", cur.get("total_sell", ""))
+                rows.append([
+                    m.get("job_code", name),
+                    m.get("project_name", ""),
+                    m.get("customer", {}).get("name", "") if isinstance(m.get("customer"), dict) else "",
+                    m.get("stage", ""),
+                    quote_total,
+                    material_cost,
+                ])
+            except Exception:
+                continue
+        return rows
 
 
 # ─────────────────────────────────────────────
@@ -8075,6 +8267,7 @@ def get_routes():
         (r"/api/documents/?(.*)",                DocumentsAPIHandler),
         (r"/api/costing/?(.*)",                  JobCostingAPIHandler),
         (r"/api/reports/production",             ReportsAPIHandler),
+        (r"/api/reports/export",                 ReportsExportCSVHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),

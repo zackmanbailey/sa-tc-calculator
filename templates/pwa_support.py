@@ -77,37 +77,60 @@ SERVICE_WORKER_JS = """
 // TitanForge Service Worker
 // Offline support with network-first for APIs, cache-first for static assets
 
-const CACHE_VERSION = 'tf-cache-v1';
-const CACHE_URLS = [
-    '/static/css/',
-    '/static/js/',
-    '/static/img/',
-    '/scan/',
-    '/work-station/',
-    '/shop-floor/'
-];
-
-const API_CACHE = 'tf-api-cache-v1';
-const OFFLINE_CACHE = 'tf-offline-cache-v1';
+const CACHE_VERSION = 'tf-cache-v2';
+const API_CACHE = 'tf-api-cache-v2';
+const OFFLINE_CACHE = 'tf-offline-cache-v2';
 const QUEUE_DB = 'titanforge-queue';
 const QUEUE_STORE = 'pending-requests';
+
+// Pages to pre-cache for offline shop floor use
+const PRECACHE_PAGES = [
+    '/',
+    '/shop-floor',
+    '/work-orders',
+    '/inventory',
+    '/static/offline.html'
+];
+
+// API endpoints worth caching for offline reads
+const PRECACHE_API = [
+    '/api/inventory/summary',
+    '/api/inventory/coils',
+    '/api/inventory/alerts',
+];
+
+// POST endpoints to queue when offline (not just QR scans)
+const QUEUEABLE_POSTS = [
+    '/api/work-orders/qr-scan',
+    '/api/work-orders/edit',
+    '/api/inspections/',
+    '/api/inventory/allocate',
+];
 
 // ─────────────────────────────────────────────
 // INSTALLATION
 // ─────────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
-    console.log('[ServiceWorker] Installing...');
+    console.log('[ServiceWorker] Installing v2...');
     event.waitUntil(
-        caches.open(OFFLINE_CACHE).then((cache) => {
-            return cache.addAll([
-                '/',
-                '/shop-floor',
-                '/work-station',
-                '/scan',
-                '/static/offline.html'
-            ]).catch(err => console.log('[ServiceWorker] Cache offline files:', err));
-        })
+        Promise.all([
+            // Cache pages for offline navigation
+            caches.open(OFFLINE_CACHE).then((cache) => {
+                return cache.addAll(PRECACHE_PAGES)
+                    .catch(err => console.log('[ServiceWorker] Page cache error:', err));
+            }),
+            // Pre-warm API cache with key data
+            caches.open(API_CACHE).then((cache) => {
+                return Promise.all(
+                    PRECACHE_API.map(url =>
+                        fetch(url).then(resp => {
+                            if (resp.ok) cache.put(url, resp);
+                        }).catch(() => {})
+                    )
+                );
+            })
+        ])
     );
     self.skipWaiting();
 });
@@ -117,13 +140,14 @@ self.addEventListener('install', (event) => {
 // ─────────────────────────────────────────────
 
 self.addEventListener('activate', (event) => {
-    console.log('[ServiceWorker] Activating...');
+    console.log('[ServiceWorker] Activating v2...');
+    const VALID_CACHES = [CACHE_VERSION, API_CACHE, OFFLINE_CACHE];
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
-                    if (!cacheName.startsWith('tf-cache-') && cacheName !== API_CACHE && cacheName !== OFFLINE_CACHE) {
-                        console.log('[ServiceWorker] Deleting old cache:', cacheName);
+                    if (!VALID_CACHES.includes(cacheName)) {
+                        console.log('[ServiceWorker] Purging old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
@@ -142,11 +166,14 @@ self.addEventListener('fetch', (event) => {
 
     // Skip non-GET requests (handled separately)
     if (event.request.method !== 'GET') {
-        // For POST, handle with queue
-        if (event.request.method === 'POST' && event.request.url.includes('/api/work-orders/qr-scan')) {
+        // Queue POST requests to known endpoints when offline
+        if (event.request.method === 'POST' && QUEUEABLE_POSTS.some(p => event.request.url.includes(p))) {
             event.respondWith(handleQueuedPost(event.request));
-        } else {
-            event.respondWith(handleOfflineRequest());
+        } else if (event.request.method === 'POST') {
+            // Try to fetch; if offline, return a useful error
+            event.respondWith(
+                fetch(event.request).catch(() => handleOfflineRequest())
+            );
         }
         return;
     }
