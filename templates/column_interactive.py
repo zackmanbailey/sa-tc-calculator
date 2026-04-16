@@ -2620,6 +2620,11 @@ function savePdfToProject() {
       format: [svgW, svgH]
     });
 
+    // Fill white background — SVG has no background rect, CSS bg doesn't
+    // carry into PDF, so without this the PDF renders on a black canvas.
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, svgW, svgH, 'F');
+
     svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
       var pdfData = pdf.output('arraybuffer');
       var blob = new Blob([pdfData], { type: 'application/pdf' });
