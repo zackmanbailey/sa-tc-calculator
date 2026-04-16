@@ -857,12 +857,22 @@ function savePdfToProject() {
       format: [svgW, svgH]
     });
 
-    // Fill white background — SVG has no background rect, CSS bg doesn't
-    // carry into PDF, so without this the PDF renders on a black canvas.
-    pdf.setFillColor(255, 255, 255);
-    pdf.rect(0, 0, svgW, svgH, 'F');
+    // Inject a white background rect into the SVG DOM itself so svg2pdf
+    // renders it as part of the SVG content. CSS background doesn't carry
+    // into PDF, and jsPDF rect before svg2pdf gets overwritten.
+    var bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', vb.x || 0);
+    bgRect.setAttribute('y', vb.y || 0);
+    bgRect.setAttribute('width', svgW);
+    bgRect.setAttribute('height', svgH);
+    bgRect.setAttribute('fill', '#FFFFFF');
+    bgRect.setAttribute('data-pdf-bg', 'true');
+    svgEl.insertBefore(bgRect, svgEl.firstChild);
 
     svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
+      // Remove injected bg rect from DOM
+      var injected = svgEl.querySelector('[data-pdf-bg]');
+      if (injected) injected.remove();
       var pdfData = pdf.output('arraybuffer');
       var blob = new Blob([pdfData], { type: 'application/pdf' });
 
@@ -888,9 +898,13 @@ function savePdfToProject() {
         statusEl.innerHTML = '<span style="color:#EF4444;">Error: ' + err.message + '</span>';
       });
     }).catch(function(err) {
+      var injected = svgEl.querySelector('[data-pdf-bg]');
+      if (injected) injected.remove();
       statusEl.innerHTML = '<span style="color:#EF4444;">PDF render error: ' + err.message + '</span>';
     });
   } catch(err) {
+    var injected = document.querySelector('[data-pdf-bg]');
+    if (injected) injected.remove();
     statusEl.innerHTML = '<span style="color:#EF4444;">Error: ' + err.message + '</span>';
   }
 }
