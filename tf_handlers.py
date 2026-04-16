@@ -7194,17 +7194,91 @@ class ActivityFeedPageHandler(BaseHandler):
 # ─────────────────────────────────────────────
 
 class QCDashboardAPIHandler(BaseHandler):
-    """GET /api/qc/dashboard — QC dashboard data (stub)."""
+    """GET /api/qc/dashboard — QC dashboard data aggregated from work orders."""
     def get(self):
         self.set_header("Content-Type", "application/json")
+        from shop_drawings.work_orders import list_all_work_orders, load_work_order
+        import os as _os
+
+        total_inspections = 0
+        passed = 0
+        failed = 0
+        items_awaiting_qc = 0
+        inspector_workload = {}   # {name: {total, passed, failed}}
+        recent_inspections = []
+
+        # Walk all work orders and aggregate QC data from items
+        if _os.path.isdir(SHOP_DRAWINGS_DIR):
+            for project_dir in _os.listdir(SHOP_DRAWINGS_DIR):
+                wo_dir = _os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
+                if not _os.path.isdir(wo_dir):
+                    continue
+                for fname in _os.listdir(wo_dir):
+                    if not fname.endswith(".json"):
+                        continue
+                    try:
+                        wo_id = fname.replace(".json", "")
+                        wo = load_work_order(SHOP_DRAWINGS_DIR, project_dir, wo_id)
+                        if wo is None:
+                            continue
+                        for item in wo.items:
+                            if item.qc_status in ("passed", "failed"):
+                                total_inspections += 1
+                                if item.qc_status == "passed":
+                                    passed += 1
+                                else:
+                                    failed += 1
+                                # Track inspector workload
+                                insp = item.qc_inspector or "unknown"
+                                if insp not in inspector_workload:
+                                    inspector_workload[insp] = {"total": 0, "passed": 0, "failed": 0}
+                                inspector_workload[insp]["total"] += 1
+                                inspector_workload[insp][item.qc_status] += 1
+                                # Collect for recent list
+                                recent_inspections.append({
+                                    "type": item.component_type or "general",
+                                    "type_label": (item.component_type or "General").title() + " Inspection",
+                                    "job_code": wo.job_code,
+                                    "inspector": insp,
+                                    "status": item.qc_status,
+                                    "created_at": item.qc_inspected_at,
+                                    "ship_mark": item.ship_mark,
+                                    "notes": item.qc_notes,
+                                })
+                            elif item.status == "complete" and item.qc_status == "pending":
+                                items_awaiting_qc += 1
+                    except Exception:
+                        continue
+
+        # Sort recent by timestamp descending
+        recent_inspections.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # Calculate pass rate
+        pass_rate = round(passed / total_inspections * 100) if total_inspections > 0 else 0
+
+        # Build inspections_by_type from recent
+        inspections_by_type = {}
+        for ri in recent_inspections:
+            t = ri.get("type", "general")
+            inspections_by_type[t] = inspections_by_type.get(t, 0) + 1
+
         self.write(json_encode({
             "ok": True,
-            "total_inspections": 0,
-            "pass_rate": 0,
-            "pending": 0,
-            "recent": [],
-            "by_type": {},
-            "message": "No QC inspections recorded yet.",
+            "metrics": {
+                "total_inspections": total_inspections,
+                "passed": passed,
+                "failed": failed,
+                "open_ncrs": 0,
+                "critical_ncrs": 0,
+                "items_awaiting_qc": items_awaiting_qc,
+                "pass_rate": pass_rate,
+                "inspections_by_type": inspections_by_type,
+                "ncrs_by_severity": {},
+                "ncrs_by_status": {},
+                "recent_ncrs": [],
+                "inspector_workload": inspector_workload,
+                "recent_inspections": recent_inspections[:20],
+            },
         }))
 
 

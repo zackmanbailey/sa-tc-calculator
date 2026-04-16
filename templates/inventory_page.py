@@ -942,8 +942,8 @@ INVENTORY_PAGE_HTML = r'''
         // Modal functions
         function showNewCoilModal() {
             $('newCoilModal').classList.add('show');
-            populateSelectFromConfig('coil-gauge', 'gauges');
-            populateSelectFromConfig('coil-grade', 'grades');
+            populateSelectFromConfig('coil-gauge', 'coil_gauges', 'Gauges');
+            populateSelectFromConfig('coil-grade', 'material_grades', 'Grades');
         }
 
         function showReceiveModal() {
@@ -1381,20 +1381,21 @@ INVENTORY_PAGE_HTML = r'''
 
         // Helper functions
         function populateFilterSelects() {
-            populateSelectFromConfig('filter-gauge', 'gauges');
-            populateSelectFromConfig('filter-grade', 'grades');
-            populateSelectFromConfig('filter-status', 'statuses');
+            populateSelectFromConfig('filter-gauge', 'coil_gauges', 'Gauges');
+            populateSelectFromConfig('filter-grade', 'material_grades', 'Grades');
+            populateSelectFromConfig('filter-status', 'inventory_statuses', 'Statuses');
             populateCoilSelects('filter-coil-trans');
         }
 
-        function populateSelectFromConfig(selectId, configKey) {
+        function populateSelectFromConfig(selectId, configKey, displayLabel) {
             const select = $(selectId);
             if (!select) return;
 
             const items = configData[configKey] || [];
             const currentValue = select.value;
+            const label = displayLabel || configKey.charAt(0).toUpperCase() + configKey.slice(1);
 
-            const options = ['<option value="">All ' + configKey.charAt(0).toUpperCase() + configKey.slice(1) + '</option>'];
+            const options = ['<option value="">All ' + label + '</option>'];
             items.forEach(item => {
                 options.push(`<option value="${item}">${item}</option>`);
             });
@@ -1409,7 +1410,8 @@ INVENTORY_PAGE_HTML = r'''
 
             try {
                 const response = await fetch('/api/inventory/coils');
-                const coils = await response.json();
+                const result = await response.json();
+                const coils = result.coils || [];
 
                 const options = ['<option value="">Select Coil</option>'];
                 coils.forEach(c => {
