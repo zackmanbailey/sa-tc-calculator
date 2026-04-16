@@ -114,6 +114,32 @@ PROJECT_STAGES = [
 ]
 
 
+def _auto_advance_stage(job_code, target_stage):
+    """Advance project stage to target_stage if current stage is earlier.
+
+    Returns the new stage (or current stage if already at or past target).
+    Returns None if project metadata not found.
+    """
+    if target_stage not in PROJECT_STAGES:
+        return None
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+    meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+    if not os.path.isfile(meta_path):
+        return None
+    with open(meta_path) as f:
+        metadata = json.load(f)
+    current = metadata.get("stage", "quote")
+    current_idx = PROJECT_STAGES.index(current) if current in PROJECT_STAGES else 0
+    target_idx = PROJECT_STAGES.index(target_stage)
+    if current_idx < target_idx:
+        metadata["stage"] = target_stage
+        metadata["updated_at"] = datetime.datetime.now().isoformat()
+        with open(meta_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        return target_stage
+    return current
+
+
 # ─────────────────────────────────────────────
 # INVENTORY & USERS FILE MANAGEMENT
 # ─────────────────────────────────────────────
@@ -1826,6 +1852,30 @@ class ProjectSaveHandler(BaseHandler):
             with open(cpath, "w") as f:
                 json.dump(body, f, indent=2)
 
+            # Extract BOM summary if present for project metadata
+            bom_result = body.get("bom_result") or body.get("results") or body.get("totals") or {}
+            has_bom = bool(bom_result.get("total_weight_lbs") or bom_result.get("total_sell"))
+            bom_summary = {
+                "total_weight_lbs": bom_result.get("total_weight_lbs", 0),
+                "total_sell": bom_result.get("total_sell", 0),
+                "material_cost": bom_result.get("material_cost", 0),
+                "fab_labor": bom_result.get("fab_labor", 0),
+                "building_count": len(body.get("buildings", [])),
+            } if has_bom else None
+
+            # Update existing metadata with BOM data
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path) and bom_summary:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                meta["bom_summary"] = bom_summary
+                meta["bom_updated_at"] = body["saved_at"]
+                meta["updated_at"] = body["saved_at"]
+                with open(meta_path, "w") as f:
+                    json.dump(meta, f, indent=2)
+                # Advance stage to at least engineering when BOM is calculated
+                _auto_advance_stage(job_code, "engineering")
+
             # Auto-create metadata.json if it doesn't exist yet
             # (ensures project shows on dashboard even if not created via + New Project)
             meta_path = os.path.join(proj_dir, "metadata.json")
@@ -2703,6 +2753,14 @@ class ProjectDeleteHandler(BaseHandler):
 
             # Remove the entire project directory
             shutil.rmtree(proj_dir)
+
+            # Also remove shop drawings directory for this project
+            shop_dir = os.path.join(SHOP_DRAWINGS_DIR, safe_name)
+            if os.path.isdir(shop_dir):
+                real_shop = os.path.realpath(shop_dir)
+                real_shop_base = os.path.realpath(SHOP_DRAWINGS_DIR)
+                if real_shop.startswith(real_shop_base):
+                    shutil.rmtree(shop_dir)
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
@@ -4754,6 +4812,14 @@ class SaveInteractivePDFHandler(BaseHandler):
             out_path = os.path.join(pdfs_dir, filename)
             with open(out_path, "wb") as f:
                 f.write(pdf_file["body"])
+
+            # Sync to project docs/shop_drawings/ so project page shows the file
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_sd_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", "shop_drawings")
+            if os.path.isdir(os.path.join(PROJECTS_DIR, safe_name)):
+                os.makedirs(proj_sd_dir, exist_ok=True)
+                shutil.copy2(out_path, os.path.join(proj_sd_dir, filename))
+
             self.write(json_encode({"ok": True, "filename": filename, "path": out_path}))
         except Exception as e:
             self.write(json_encode({"ok": False, "error": str(e)}))
@@ -5137,6 +5203,19 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             }
             _save_revision(job_code, rev_entry)
 
+            # Advance project stage to shop_drawings
+            _auto_advance_stage(job_code, "shop_drawings")
+
+            # Also sync collected PDFs to project docs/shop_drawings/
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_sd_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", "shop_drawings")
+            if os.path.isdir(os.path.join(PROJECTS_DIR, safe_name)):
+                os.makedirs(proj_sd_dir, exist_ok=True)
+                for finfo in files:
+                    src = os.path.join(pdfs_dir, finfo["filename"])
+                    if os.path.isfile(src):
+                        shutil.copy2(src, os.path.join(proj_sd_dir, finfo["filename"]))
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -5434,6 +5513,9 @@ class WorkOrderApproveHandler(BaseHandler):
             wo.approved_at = datetime.datetime.now().isoformat()
             wo.approved_by = body.get("approved_by", self.get_current_user() or "system")
             save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            # Auto-advance project stage to fabrication
+            _auto_advance_stage(job_code, "fabrication")
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
@@ -5784,6 +5866,13 @@ class WorkOrderLoadingHandler(BaseHandler):
 
             result = update_loading_status(SHOP_DRAWINGS_DIR, job_code, item_id,
                                             new_status, updated_by, truck_number)
+
+            # Auto-advance project stage based on loading status
+            if result.get("ok"):
+                if new_status == "shipped":
+                    _auto_advance_stage(job_code, "shipping")
+                elif new_status == "delivered":
+                    _auto_advance_stage(job_code, "install")
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
