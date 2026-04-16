@@ -1,0 +1,50 @@
+{
+  "heat_numbers": {
+    "H-123456": {
+      "material_spec": "A572 Gr 50",
+      "mill_name": "Nucor Steel",
+      "mtr_path": "",
+      "coils": [
+        {
+          "coil_tag": "COIL-001",
+          "added_at": "2026-04-09T08:45:51.465861"
+        }
+      ],
+      "members": [
+        {
+          "job_code": "TEST-001",
+          "member_mark": "C1",
+          "description": "W12x26 Column",
+          "assigned_at": "2026-04-09T08:45:51.465928"
+        },
+        {
+          "job_code": "TEST-001",
+          "member_mark": "B2",
+          "description": "W16x31 Beam",
+          "assigned_at": "2026-04-09T08:45:51.466049"
+        }
+      ],
+      "registered_at": "2026-04-09T08:45:51.465855"
+    },
+    "H-789012": {
+      "material_spec": "A500 Gr B/C",
+      "mill_name": "Steel Technologies",
+      "mtr_path": "",
+      "coils": [
+        {
+          "coil_tag": "COIL-003",
+          "added_at": "2026-04-09T08:46:13.253879"
+        }
+      ],
+      "members": [
+        {
+          "job_code": "2026-0001",
+          "member_mark": "HSS-1",
+          "description": "HSS 6x6x3/8 column",
+          "assigned_at": "2026-04-09T08:46:13.267937"
+        }
+      ],
+      "registered_at": "2026-04-09T08:46:13.253875"
+    }
+  }
+}

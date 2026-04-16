@@ -1,0 +1,63 @@
+{
+  "inspections": [
+    {
+      "id": "INS-20260409084613-807CBC",
+      "type": "weld_visual",
+      "type_label": "Weld Visual Inspection (VT)",
+      "standard": "AWS D1.1 Table 6.1 / AISC 360 Chapter J2",
+      "status": "in_progress",
+      "inspector": "Brad Spence",
+      "location": "Shop Floor Bay 2",
+      "member_marks": [
+        "C1",
+        "C2",
+        "B3"
+      ],
+      "items": {},
+      "notes": "",
+      "photos": [],
+      "created_at": "2026-04-09T08:46:13.228633",
+      "completed_at": null
+    }
+  ],
+  "ncrs": [
+    {
+      "id": "NCR-2026-0001-001",
+      "number": 1,
+      "severity": "major",
+      "status": "open",
+      "title": "Undercut exceeds 1/32 on B3 fillet weld",
+      "description": "Fillet weld on beam B3 at column C1 connection shows undercut of 1/16 inch, exceeding AWS D1.1 Table 6.1 limit of 1/32 inch.",
+      "member_marks": [
+        "B3",
+        "C1"
+      ],
+      "inspection_id": "",
+      "root_cause": "",
+      "corrective_action": "",
+      "preventive_action": "",
+      "disposition": "",
+      "reported_by": "local",
+      "assigned_to": "",
+      "photos": [],
+      "created_at": "2026-04-09T08:46:13.241495",
+      "closed_at": null,
+      "history": [
+        {
+          "action": "created",
+          "by": "local",
+          "at": "2026-04-09T08:46:13.241495"
+        }
+      ]
+    }
+  ],
+  "traceability": [
+    {
+      "heat_number": "H-789012",
+      "member_mark": "HSS-1",
+      "description": "HSS 6x6x3/8 column",
+      "assigned_at": "2026-04-09T08:46:13.268083"
+    }
+  ],
+  "updated_at": "2026-04-09T08:46:13.268102"
+}

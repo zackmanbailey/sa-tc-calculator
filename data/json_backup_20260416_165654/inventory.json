@@ -1,0 +1,121 @@
+{
+  "coils": {
+    "c_section_23": {
+      "name": "23\" 10GA C-Section (Columns & Rafters)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 10.83,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "z_purlin_20": {
+      "name": "20.125\" 12GA Z-Purlin",
+      "gauge": "12GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 7.43,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "angle_4_16ga": {
+      "name": "4\" 16GA Angle (Sag Rods)",
+      "gauge": "16GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.86,
+      "lbs_per_lft": 0.8656,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "spartan_rib_48": {
+      "name": "48\" 29GA Spartan Rib Panel",
+      "gauge": "29GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 5000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.795,
+      "lbs_per_lft": 2.81,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "plate_6_10ga": {
+      "name": "6\" 10GA Plate (Interior Purlin Plates)",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 1.04,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "strap_16ga": {
+      "name": "16GA Hurricane Strap Coil",
+      "gauge": "16GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.86,
+      "lbs_per_lft": 0.65,
+      "coil_max_lbs": 8000,
+      "orders": []
+    },
+    "gusset_10ga": {
+      "name": "10GA Gusset Plate Coil",
+      "gauge": "10GA",
+      "stock_lbs": 0,
+      "stock_lft": 0,
+      "committed_lbs": 0,
+      "min_order_lbs": 2000,
+      "lead_time_weeks": 8,
+      "price_per_lb": 0.82,
+      "lbs_per_lft": 4.0,
+      "coil_max_lbs": 8000,
+      "orders": []
+    }
+  },
+  "mill_certs": [
+    {
+      "coil_id": "c_section_23",
+      "heat": "TEST-HEAT-001",
+      "mill": "Test Mill",
+      "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
+    },
+    {
+      "coil_id": "c_section_23",
+      "heat": "HEAT-999",
+      "mill": "Steel Corp",
+      "date": "2026-01-01"
+    }
+  ]
+}
