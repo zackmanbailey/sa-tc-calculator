@@ -414,7 +414,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Column {mark} — 14x4x10GA box beam",
             quantity=1,
             machine="WELDING",
-            drawing_ref=f"{job_code}_C1.pdf",
+            drawing_ref=f"/shop-drawings/{job_code}/column",
         ))
 
     # ── Rafter items ──
@@ -427,7 +427,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Rafter {mark} — 14x4x10GA box beam",
             quantity=1,
             machine="WELDING",
-            drawing_ref=f"{job_code}_B1.pdf",
+            drawing_ref=f"/shop-drawings/{job_code}/rafter",
         ))
 
     # ── Purlin groups (one item per group) ──
@@ -441,7 +441,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Purlin Group {label} — Z-12x3.5x12GA",
             quantity=1,
             machine="Z1",
-            drawing_ref=f"{job_code}_PURLINS.pdf",
+            drawing_ref=f"/shop-drawings/{job_code}",
         ))
 
     # ── Sag rods (bundled per sticker grouping = per 10) ──
@@ -458,7 +458,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Sag Rod Bundle {i+1} — 2x2 angle, {bundle_qty} pcs",
             quantity=bundle_qty,
             machine="ANGLE",
-            drawing_ref=f"{job_code}_CUTLISTS.pdf",
+            drawing_ref=f"/shop-drawings/{job_code}",
         ))
 
     # ── Hurricane straps (bundled per 10) ──
@@ -474,7 +474,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Strap Bundle {i+1} — 1.5x10GA, {bundle_qty} pcs",
             quantity=bundle_qty,
             machine="P1",
-            drawing_ref=f"{job_code}_CUTLISTS.pdf",
+            drawing_ref=f"/shop-drawings/{job_code}",
         ))
 
     # ── Endcap channels ──
@@ -485,7 +485,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         description="Endcap U-Channel (Front End)",
         quantity=1,
         machine="C1",
-        drawing_ref=f"{job_code}_CUTLISTS.pdf",
+        drawing_ref=f"/shop-drawings/{job_code}",
     ))
     wo.items.append(WorkOrderItem(
         item_id=f"{wo.work_order_id}-EC-2",
@@ -494,7 +494,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         description="Endcap U-Channel (Back End)",
         quantity=1,
         machine="C1",
-        drawing_ref=f"{job_code}_CUTLISTS.pdf",
+        drawing_ref=f"/shop-drawings/{job_code}",
     ))
 
     # ── Roofing panels (one item — rolled in bulk) ──
@@ -505,7 +505,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         description="Spartan Rib Roofing Panels — full run",
         quantity=1,
         machine="SPARTAN",
-        drawing_ref=f"{job_code}_CUTLISTS.pdf",
+        drawing_ref=f"/shop-drawings/{job_code}",
     ))
 
     return wo

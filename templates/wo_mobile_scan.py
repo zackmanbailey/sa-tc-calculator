@@ -744,26 +744,30 @@ async function advanceLoading() {
 async function loadDrawings() {
   const container = document.getElementById('drawingsList');
   try {
-    // Check for PDFs associated with this item
-    const drawingRef = ITEM.drawing_ref || '';
-    const baseUrl = `/api/shop-drawings/file?job_code=${JOB_CODE}&filename=`;
+    const ctype = (ITEM.component_type || '').toLowerCase();
     let html = '';
 
-    // Always show the item's specific drawing first
-    if (drawingRef) {
-      html += drawingCard(drawingRef, 'Primary Drawing', baseUrl + encodeURIComponent(drawingRef));
+    // Map component type to the correct interactive builder page
+    const drawingMap = {
+      column:  { url: `/shop-drawings/${JOB_CODE}/column`, label: 'Column Drawing', icon: '&#128736;' },
+      rafter:  { url: `/shop-drawings/${JOB_CODE}/rafter`, label: 'Rafter Drawing', icon: '&#128736;' },
+    };
+
+    // Show the drawing that matches THIS item's component type first
+    if (drawingMap[ctype]) {
+      const d = drawingMap[ctype];
+      html += drawingCard(d.label, 'Primary — tap to open interactive drawing', d.url, d.icon);
     }
 
-    // Also show column and rafter drawings for reference
-    const types = [
-      {name: `${JOB_CODE}_C1.pdf`, label: 'Column Drawing'},
-      {name: `${JOB_CODE}_B1.pdf`, label: 'Rafter Drawing'},
-    ];
-    for (const t of types) {
-      if (t.name !== drawingRef) {
-        html += drawingCard(t.name, t.label, baseUrl + encodeURIComponent(t.name));
+    // Show other interactive drawings for reference
+    for (const [type, d] of Object.entries(drawingMap)) {
+      if (type !== ctype) {
+        html += drawingCard(d.label, 'Reference drawing', d.url, d.icon);
       }
     }
+
+    // Always link to the full project drawings page
+    html += drawingCard('All Project Drawings', 'View complete drawing set', `/shop-drawings/${JOB_CODE}`, '&#128209;');
 
     container.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--gray-500);">No drawings available</div>';
   } catch(e) {
@@ -771,14 +775,14 @@ async function loadDrawings() {
   }
 }
 
-function drawingCard(filename, label, url) {
+function drawingCard(title, subtitle, url, icon) {
   return `<a href="${url}" target="_blank" class="drawing-card" style="text-decoration:none;color:inherit;">
-    <span class="drawing-icon">&#128196;</span>
+    <span class="drawing-icon">${icon || '&#128196;'}</span>
     <div class="drawing-info">
-      <div class="drawing-name">${filename}</div>
-      <div class="drawing-size">${label}</div>
+      <div class="drawing-name">${title}</div>
+      <div class="drawing-size">${subtitle}</div>
     </div>
-    <span class="drawing-action">View &#8594;</span>
+    <span class="drawing-action">Open &#8594;</span>
   </a>`;
 }
 

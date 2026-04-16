@@ -636,7 +636,16 @@ def _draw_assembly_sticker(c: Canvas, item: dict, wo_info: dict,
     comp_type = item.get("component_type", "") or _parse_component_type(ship_mark)
     desc = item.get("description", "")
     machine = item.get("machine", "WELDING")
-    drawing_ref = item.get("drawing_ref", f"{job_code}_{ship_mark}")
+    # Derive a human-friendly drawing label from the interactive builder route
+    _raw_ref = item.get("drawing_ref", "")
+    if "/column" in _raw_ref:
+        drawing_ref = "Interactive Column Dwg"
+    elif "/rafter" in _raw_ref:
+        drawing_ref = "Interactive Rafter Dwg"
+    elif "/shop-drawings/" in _raw_ref:
+        drawing_ref = "Project Drawings"
+    else:
+        drawing_ref = _raw_ref or f"{job_code}_{ship_mark}"
     print_date = datetime.date.today().strftime("%m/%d/%Y")
 
     qr_data = f"{app_base_url}/wo/{job_code}/{item.get('item_id', ship_mark)}"
