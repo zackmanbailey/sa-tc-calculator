@@ -5186,7 +5186,7 @@ class ShopDrawingsFileHandler(BaseHandler):
 class ShopDrawingsZipHandler(BaseHandler):
     """GET /api/shop-drawings/zip?job_code=XXX — Download all PDFs as a ZIP."""
     def get(self):
-        import zipfile
+        import zipfile, io
         try:
             job_code = self.get_query_argument("job_code", "").strip()
             if not job_code:
