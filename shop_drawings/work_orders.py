@@ -381,7 +381,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
     """
     from shop_drawings.config import MACHINES
 
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     wo = WorkOrder(
         work_order_id=f"WO-{job_code}-{revision}-{uuid.uuid4().hex[:6].upper()}",
         job_code=job_code,
@@ -539,7 +539,7 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
     if wo.status not in [STATUS_APPROVED, STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS]:
         return {"ok": False, "error": f"Work order not ready (status: {wo.status})"}
 
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     item.status = STATUS_IN_PROGRESS
     item.started_by = scanned_by
     item.started_at = now
@@ -578,7 +578,7 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
         return {"ok": False, "error": "Item not started yet — scan Start first",
                 "item": item.to_dict()}
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc)
     item.status = STATUS_COMPLETE
     item.finished_by = scanned_by
     item.finished_at = now.isoformat()
@@ -586,6 +586,9 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
     # Calculate duration
     try:
         start = datetime.datetime.fromisoformat(item.started_at)
+        # Handle old timestamps without timezone info — assume UTC
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=datetime.timezone.utc)
         delta = now - start
         item.duration_minutes = round(delta.total_seconds() / 60.0, 1)
     except Exception:
@@ -633,7 +636,7 @@ def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
 
     item.qc_status = qc_status
     item.qc_inspector = inspector
-    item.qc_inspected_at = datetime.datetime.now().isoformat()
+    item.qc_inspected_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     item.qc_notes = qc_notes
 
     save_work_order(base_dir, wo)
@@ -685,7 +688,7 @@ def update_loading_status(base_dir: str, job_code: str, item_id: str,
     item.loading_status = new_status
     if new_status == "loaded":
         item.loaded_by = updated_by
-        item.loaded_at = datetime.datetime.now().isoformat()
+        item.loaded_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if truck_number:
             item.truck_number = truck_number
 

@@ -533,9 +533,14 @@ function renderFabTab() {
 
 function startTimer() {
   if (timerInterval) clearInterval(timerInterval);
-  const startTime = new Date(ITEM.started_at).getTime();
+  // Ensure timestamp is treated as UTC — old timestamps lack timezone info
+  let ts = ITEM.started_at || '';
+  if (ts && !ts.endsWith('Z') && !ts.includes('+') && !/\d{2}:\d{2}$/.test(ts.slice(-6))) {
+    ts += 'Z';  // Assume UTC for timezone-naive timestamps
+  }
+  const startTime = new Date(ts).getTime();
   function update() {
-    const elapsed = Date.now() - startTime;
+    const elapsed = Math.max(0, Date.now() - startTime);
     const h = Math.floor(elapsed / 3600000);
     const m = Math.floor((elapsed % 3600000) / 60000);
     const s = Math.floor((elapsed % 60000) / 1000);
