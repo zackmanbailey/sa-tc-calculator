@@ -4492,6 +4492,13 @@ try:
         generate_wo_sticker_pdf, generate_wo_sticker_zpl,
         generate_wo_sticker_csv,
     )
+    from shop_drawings.wo_fab_stickers import (
+        generate_assembly_sticker_pdf, generate_assembly_sticker_zpl,
+        generate_assembly_sticker_nlbl, generate_assembly_sticker_csv,
+        generate_material_master_pdf, generate_material_master_zpl,
+        generate_material_sub_pdf, generate_material_sub_zpl,
+        generate_material_sticker_nlbl, generate_material_sticker_csv,
+    )
     HAS_SHOP_DRAWINGS = True
 except Exception:
     HAS_SHOP_DRAWINGS = False
@@ -5947,6 +5954,244 @@ class WorkOrderSingleStickerHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# FABRICATION STICKER HANDLERS (Assembly / Material)
+# ─────────────────────────────────────────────
+
+class _FabStickerBaseMixin:
+    """Shared helper: load WO + config_dict, return (wo_dict, config_dict, app_base_url)."""
+
+    def _load_wo_and_config(self):
+        job_code = self.get_query_argument("job_code", "").strip()
+        wo_id = self.get_query_argument("wo_id", "").strip()
+        if not job_code or not wo_id:
+            self.set_status(400)
+            self.write("Missing job_code or wo_id")
+            return None
+        wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+        if wo is None:
+            self.set_status(404)
+            self.write("Work order not found")
+            return None
+        config_dict = _load_shop_config(job_code) or {}
+        config_dict.setdefault("job_code", job_code)
+        app_base_url = f"{self.request.protocol}://{self.request.host}"
+        return wo.to_dict(), config_dict, app_base_url
+
+
+class FabAssemblyPDFHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/assembly-pdf — Assembly sticker PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            pdf_bytes = generate_assembly_sticker_pdf(
+                wo_dict, config_dict=config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                            f'inline; filename="{wo_id}_assembly_stickers.pdf"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabAssemblyZPLHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/assembly-zpl — Assembly sticker ZPL."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            zpl = generate_assembly_sticker_zpl(
+                wo_dict, config_dict=config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "text/plain")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{wo_id}_assembly_stickers.zpl"')
+            self.write(zpl)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabMaterialMasterPDFHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/material-master-pdf — Material master sticker PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            pdf_bytes = generate_material_master_pdf(
+                wo_dict, config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                            f'inline; filename="{wo_id}_material_master_stickers.pdf"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabMaterialMasterZPLHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/material-master-zpl — Material master sticker ZPL."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            zpl = generate_material_master_zpl(
+                wo_dict, config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "text/plain")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{wo_id}_material_master_stickers.zpl"')
+            self.write(zpl)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabMaterialSubPDFHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/material-sub-pdf — Material sub-sticker PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            pdf_bytes = generate_material_sub_pdf(
+                wo_dict, config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                            f'inline; filename="{wo_id}_material_sub_stickers.pdf"')
+            self.write(pdf_bytes)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabMaterialSubZPLHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/material-sub-zpl — Material sub-sticker ZPL."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            zpl = generate_material_sub_zpl(
+                wo_dict, config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "text/plain")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{wo_id}_material_sub_stickers.zpl"')
+            self.write(zpl)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabNlblAssemblyHandler(BaseHandler):
+    """GET /api/work-orders/fab-stickers/nlbl/assembly — NiceLabel template for assembly stickers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            nlbl = generate_assembly_sticker_nlbl()
+            self.set_header("Content-Type", "application/xml")
+            self.set_header("Content-Disposition",
+                            'attachment; filename="assembly_sticker_template.nlbl"')
+            self.write(nlbl)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabNlblMaterialHandler(BaseHandler):
+    """GET /api/work-orders/fab-stickers/nlbl/material — NiceLabel template for material stickers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            nlbl = generate_material_sticker_nlbl()
+            self.set_header("Content-Type", "application/xml")
+            self.set_header("Content-Disposition",
+                            'attachment; filename="material_sticker_template.nlbl"')
+            self.write(nlbl)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabCsvAssemblyHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/csv/assembly — CSV data for assembly stickers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            csv_str = generate_assembly_sticker_csv(
+                wo_dict, config_dict=config_dict, app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "text/csv")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{wo_id}_assembly_stickers.csv"')
+            self.write(csv_str)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+class FabCsvMaterialHandler(_FabStickerBaseMixin, BaseHandler):
+    """GET /api/work-orders/fab-stickers/csv/material — CSV data for material stickers."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            result = self._load_wo_and_config()
+            if result is None:
+                return
+            wo_dict, config_dict, app_base_url = result
+            sticker_type = self.get_query_argument("type", "master").strip()
+            csv_str = generate_material_sticker_csv(
+                wo_dict, config_dict, sticker_type=sticker_type,
+                app_base_url=app_base_url)
+            wo_id = self.get_query_argument("wo_id", "")
+            self.set_header("Content-Type", "text/csv")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="{wo_id}_material_stickers.csv"')
+            self.write(csv_str)
+        except Exception as e:
+            self.set_status(500)
+            self.write(str(e))
+
+
+# ─────────────────────────────────────────────
 # SHOP FLOOR DASHBOARD HANDLERS
 # ─────────────────────────────────────────────
 
@@ -7187,6 +7432,18 @@ def get_routes():
         (r"/api/work-orders/stickers/zpl",       WorkOrderStickerZPLHandler),
         (r"/api/work-orders/stickers/csv",       WorkOrderStickerCSVHandler),
         (r"/api/work-orders/stickers/single",    WorkOrderSingleStickerHandler),
+
+        # ── Fabrication Stickers (Assembly / Material) ────────
+        (r"/api/work-orders/fab-stickers/assembly-pdf",       FabAssemblyPDFHandler),
+        (r"/api/work-orders/fab-stickers/assembly-zpl",       FabAssemblyZPLHandler),
+        (r"/api/work-orders/fab-stickers/material-master-pdf", FabMaterialMasterPDFHandler),
+        (r"/api/work-orders/fab-stickers/material-master-zpl", FabMaterialMasterZPLHandler),
+        (r"/api/work-orders/fab-stickers/material-sub-pdf",   FabMaterialSubPDFHandler),
+        (r"/api/work-orders/fab-stickers/material-sub-zpl",   FabMaterialSubZPLHandler),
+        (r"/api/work-orders/fab-stickers/nlbl/assembly",      FabNlblAssemblyHandler),
+        (r"/api/work-orders/fab-stickers/nlbl/material",      FabNlblMaterialHandler),
+        (r"/api/work-orders/fab-stickers/csv/assembly",       FabCsvAssemblyHandler),
+        (r"/api/work-orders/fab-stickers/csv/material",       FabCsvMaterialHandler),
 
         # ── Shop Floor Dashboard ─────────────────────────────
         (r"/shop-floor",                         ShopFloorPageHandler),

@@ -527,6 +527,10 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     background: var(--tf-bg);
 }
 
+[id^="fabMenu_"] a:hover {
+    background: var(--tf-bg);
+}
+
 .btn-wo:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -959,9 +963,29 @@ function renderDetail() {
     // Sticker download buttons (available once approved)
     const stickerBtns = (wo.status !== 'queued')
         ? `<div class="btn-group" style="display:inline-flex;gap:0;border:1px solid var(--tf-border);border-radius:8px;overflow:hidden;">
-               <button class="btn-wo outline" style="border:none;border-radius:0;border-right:1px solid var(--tf-border);" onclick="printStickers('${wo.work_order_id}','pdf')">Stickers PDF</button>
+               <button class="btn-wo outline" style="border:none;border-radius:0;border-right:1px solid var(--tf-border);" onclick="printStickers('${wo.work_order_id}','pdf')">WO Stickers</button>
                <button class="btn-wo outline" style="border:none;border-radius:0;border-right:1px solid var(--tf-border);" onclick="printStickers('${wo.work_order_id}','zpl')">ZPL</button>
                <button class="btn-wo outline" style="border:none;border-radius:0;" onclick="printStickers('${wo.work_order_id}','csv')">CSV</button>
+           </div>
+           <div style="position:relative;display:inline-block;margin-left:6px;">
+               <button class="btn-wo outline" onclick="toggleFabMenu('${wo.work_order_id}')">&#127991; Fab Stickers &#9662;</button>
+               <div id="fabMenu_${wo.work_order_id}" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--tf-bg);border:1px solid var(--tf-border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.15);min-width:220px;padding:6px 0;margin-top:4px;">
+                   <div style="padding:4px 12px;font-size:11px;color:var(--tf-muted);font-weight:600;">ASSEMBLY STICKERS</div>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','assembly-pdf');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128196; Assembly PDF</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','assembly-zpl');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#9000; Assembly ZPL</a>
+                   <div style="border-top:1px solid var(--tf-border);margin:4px 0;"></div>
+                   <div style="padding:4px 12px;font-size:11px;color:var(--tf-muted);font-weight:600;">MATERIAL STICKERS</div>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','material-master-pdf');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128196; Material Master PDF</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','material-master-zpl');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#9000; Material Master ZPL</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','material-sub-pdf');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128196; Material Sub PDF</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','material-sub-zpl');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#9000; Material Sub ZPL</a>
+                   <div style="border-top:1px solid var(--tf-border);margin:4px 0;"></div>
+                   <div style="padding:4px 12px;font-size:11px;color:var(--tf-muted);font-weight:600;">NICELABEL / CSV</div>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','nlbl/assembly');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128196; Assembly NLBL Template</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','nlbl/material');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128196; Material NLBL Template</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','csv/assembly');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128462; Assembly CSV Data</a>
+                   <a href="#" onclick="fabSticker('${wo.work_order_id}','csv/material');return false;" style="display:block;padding:6px 12px;color:var(--tf-fg);text-decoration:none;">&#128462; Material CSV Data</a>
+               </div>
            </div>
            <button class="btn-wo outline" onclick="downloadPacketPDF('${wo.work_order_id}')" style="margin-left:6px;">&#128196; Packet PDF</button>`
         : '';
@@ -1132,6 +1156,30 @@ function printSingleSticker(itemId) {
     const url = `/api/work-orders/stickers/single?job_code=${JOB_CODE}&item_id=${itemId}`;
     window.open(url, '_blank');
 }
+
+function fabSticker(woId, type) {
+    const url = `/api/work-orders/fab-stickers/${type}?job_code=${JOB_CODE}&wo_id=${woId}`;
+    window.open(url, '_blank');
+    // Close menu after click
+    const menu = document.getElementById('fabMenu_' + woId);
+    if (menu) menu.style.display = 'none';
+}
+
+function toggleFabMenu(woId) {
+    // Close any other open menus first
+    document.querySelectorAll('[id^="fabMenu_"]').forEach(m => {
+        if (m.id !== 'fabMenu_' + woId) m.style.display = 'none';
+    });
+    const menu = document.getElementById('fabMenu_' + woId);
+    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+
+// Close fab menus when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('[id^="fabMenu_"]') && !e.target.textContent.includes('Fab Stickers')) {
+        document.querySelectorAll('[id^="fabMenu_"]').forEach(m => m.style.display = 'none');
+    }
+});
 
 async function printAndMark(woId) {
     // Open sticker PDF in new tab
