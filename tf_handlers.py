@@ -4982,6 +4982,41 @@ class SaveInteractivePDFHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+class DeleteShopDrawingPDFHandler(BaseHandler):
+    """POST /api/shop-drawings/delete-pdf — Delete a single shop drawing PDF."""
+    def post(self):
+        job_code = self.get_argument("job_code", "")
+        filename = self.get_argument("filename", "")
+        if not job_code or not filename:
+            self.write(json_encode({"ok": False, "error": "job_code and filename required"}))
+            return
+        try:
+            d = _shop_drawing_project_dir(job_code)
+            pdf_path = os.path.join(d, "pdfs", filename)
+            removed = False
+            if os.path.isfile(pdf_path):
+                os.remove(pdf_path)
+                removed = True
+
+            # Also remove from project docs/shop_drawings/ sync copy
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_copy = os.path.join(PROJECTS_DIR, safe_name, "docs", "shop_drawings", filename)
+            if os.path.isfile(proj_copy):
+                os.remove(proj_copy)
+
+            # Remove from interactive sources manifest
+            sources = _load_interactive_sources(job_code)
+            if filename in sources:
+                del sources[filename]
+                manifest_path = os.path.join(d, "pdfs", "_interactive_sources.json")
+                with open(manifest_path, "w") as f:
+                    json.dump(sources, f, indent=2, default=str)
+
+            self.write(json_encode({"ok": True, "removed": removed, "filename": filename}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class ShopDrawingsPageHandler(BaseHandler):
     """GET /shop-drawings/{job_code} — Shop Drawing Dashboard page."""
     def get(self, job_code):
@@ -7748,6 +7783,7 @@ def get_routes():
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/save-interactive-pdf", SaveInteractivePDFHandler),
+        (r"/api/shop-drawings/delete-pdf",           DeleteShopDrawingPDFHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
         (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),
         (r"/api/shop-drawings/generate",         ShopDrawingsGenerateHandler),
