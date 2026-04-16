@@ -252,6 +252,7 @@ function applyServerConfig() {
 window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 // ── svg2pdf compatibility shim ──────────────────────────────
 // svg2pdf.js v2.x registers as a jsPDF plugin (doc.svg method).
@@ -2596,7 +2597,7 @@ window.addEventListener('keydown', function(e) {
 // ═══════════════════════════════════════════════
 // SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
 // ═══════════════════════════════════════════════
-function savePdfToProject() {
+async function savePdfToProject() {
   var btn = document.getElementById('btnSavePdf');
   var status = document.getElementById('savePdfStatus');
   var jobCode = (window.COLUMN_CONFIG && window.COLUMN_CONFIG.job_code) || '{{JOB_CODE}}';
@@ -2610,9 +2611,20 @@ function savePdfToProject() {
 
   try {
     var svgEl = document.getElementById('svg');
+    var container = svgEl.parentElement;
     var vb = svgEl.viewBox.baseVal;
     var svgW = vb.width || 1100;
     var svgH = vb.height || 850;
+
+    // Use html2canvas to capture the SVG with all CSS styles intact.
+    // svg2pdf produces black backgrounds because it loses CSS context;
+    // html2canvas renders the live DOM exactly as the browser displays it.
+    var canvas = await html2canvas(container, {
+      backgroundColor: '#FFFFFF',
+      scale: 2,
+      useCORS: true,
+      logging: false
+    });
 
     var pdf = new jspdf.jsPDF({
       orientation: 'landscape',
@@ -2620,70 +2632,40 @@ function savePdfToProject() {
       format: [svgW, svgH]
     });
 
-    // Inject a white background rect into the SVG DOM itself so svg2pdf
-    // renders it as part of the SVG content. CSS background doesn't carry
-    // into PDF, and jsPDF rect before svg2pdf gets overwritten.
-    var bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bgRect.setAttribute('x', vb.x || 0);
-    bgRect.setAttribute('y', vb.y || 0);
-    bgRect.setAttribute('width', svgW);
-    bgRect.setAttribute('height', svgH);
-    bgRect.setAttribute('fill', '#FFFFFF');
-    bgRect.setAttribute('data-pdf-bg', 'true');
-    svgEl.insertBefore(bgRect, svgEl.firstChild);
+    var imgData = canvas.toDataURL('image/jpeg', 0.95);
+    pdf.addImage(imgData, 'JPEG', 0, 0, svgW, svgH);
 
-    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
-      // Remove injected bg rect from DOM
-      var injected = svgEl.querySelector('[data-pdf-bg]');
-      if (injected) injected.remove();
-      var pdfData = pdf.output('arraybuffer');
-      var blob = new Blob([pdfData], { type: 'application/pdf' });
+    var pdfData = pdf.output('arraybuffer');
+    var blob = new Blob([pdfData], { type: 'application/pdf' });
 
-      var formData = new FormData();
-      formData.append('job_code', jobCode);
-      formData.append('drawing_type', 'column');
-      formData.append('source', 'interactive');
-      formData.append('pdf_file', blob, jobCode + '_C1.pdf');
+    var formData = new FormData();
+    formData.append('job_code', jobCode);
+    formData.append('drawing_type', 'column');
+    formData.append('source', 'interactive');
+    formData.append('pdf_file', blob, jobCode + '_C1.pdf');
 
-      fetch('/api/shop-drawings/save-interactive-pdf', {
-        method: 'POST',
-        body: formData
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          btn.textContent = 'Saved!';
-          btn.style.background = '#059669';
-          status.textContent = 'PDF saved to project';
-          status.style.color = '#10B981';
-          setTimeout(function() {
-            btn.textContent = 'Save PDF to Project';
-            btn.disabled = false;
-          }, 3000);
-        } else {
-          btn.textContent = 'Save PDF to Project';
-          btn.disabled = false;
-          status.textContent = 'Error: ' + (data.error || 'unknown');
-          status.style.color = '#EF4444';
-        }
-      })
-      .catch(function(err) {
+    var resp = await fetch('/api/shop-drawings/save-interactive-pdf', {
+      method: 'POST',
+      body: formData
+    });
+    var data = await resp.json();
+
+    if (data.ok) {
+      btn.textContent = 'Saved!';
+      btn.style.background = '#059669';
+      status.textContent = 'PDF saved to project';
+      status.style.color = '#10B981';
+      setTimeout(function() {
         btn.textContent = 'Save PDF to Project';
         btn.disabled = false;
-        status.textContent = 'Network error';
-        status.style.color = '#EF4444';
-      });
-    }).catch(function(err) {
-      var injected = svgEl.querySelector('[data-pdf-bg]');
-      if (injected) injected.remove();
+      }, 3000);
+    } else {
       btn.textContent = 'Save PDF to Project';
       btn.disabled = false;
-      status.textContent = 'PDF render error: ' + err.message;
+      status.textContent = 'Error: ' + (data.error || 'unknown');
       status.style.color = '#EF4444';
-    });
+    }
   } catch(err) {
-    var injected = document.querySelector('[data-pdf-bg]');
-    if (injected) injected.remove();
     btn.textContent = 'Save PDF to Project';
     btn.disabled = false;
     status.textContent = 'Error: ' + err.message;
