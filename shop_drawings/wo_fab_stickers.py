@@ -448,6 +448,8 @@ def get_material_groups(config_dict: dict, wo_items: list) -> dict:
                     "total_length_in": 0.0 if length_in else None,
                     "unit_length_in": length_in,
                     "destinations": {},
+                    "dest_lengths": {},   # {dest_label: length_in}
+                    "dest_weights": {},   # {dest_label: weight_lbs}
                 }
 
             g = groups[spec]
@@ -458,12 +460,25 @@ def get_material_groups(config_dict: dict, wo_items: list) -> dict:
 
             dest_label = comp_type.replace("_", " ").title()
             g["destinations"][dest_label] = g["destinations"].get(dest_label, 0) + qty
+            # Track per-destination length and weight
+            if length_in is not None:
+                g["dest_lengths"][dest_label] = length_in
+            g["dest_weights"][dest_label] = g["dest_weights"].get(dest_label, 0.0) + wt
 
-    # Round weights
+    # Round weights & check if unit_length varies across destinations
     for g in groups.values():
         g["total_weight"] = round(g["total_weight"], 1)
         if g["total_length_in"] is not None:
             g["total_length_in"] = round(g["total_length_in"], 1)
+        for dl in g["dest_weights"]:
+            g["dest_weights"][dl] = round(g["dest_weights"][dl], 1)
+        # If multiple different lengths exist, mark unit_length as "varies"
+        unique_lens = set(g["dest_lengths"].values())
+        if len(unique_lens) > 1:
+            g["unit_length_in"] = None  # varies — show per-dest on master
+            g["length_varies"] = True
+        else:
+            g["length_varies"] = False
 
     return groups
 
@@ -811,7 +826,11 @@ def _draw_material_master_sticker(c: Canvas, mat_group: dict, job_code: str,
     c.drawString(text_x + 1.6 * inch, ty, f"Weight: {_format_weight(total_weight)}")
 
     ty -= 0.14 * inch
-    if unit_length_in is not None:
+    length_varies = mat_group.get("length_varies", False)
+    if length_varies:
+        c.drawString(text_x, ty, "Length: varies (see destinations)")
+        c.drawString(text_x + 2.2 * inch, ty, f"Job: {job_code}")
+    elif unit_length_in is not None:
         c.drawString(text_x, ty, f"Length: {_fmt_ft_in(unit_length_in)} ea")
         c.drawString(text_x + 1.6 * inch, ty, f"Job: {job_code}")
     else:
@@ -821,13 +840,18 @@ def _draw_material_master_sticker(c: Canvas, mat_group: dict, job_code: str,
     div_y = qr_y - 0.06 * inch
     _draw_divider(c, div_y, "DESTINATIONS")
 
-    # Destination list
+    # Destination list — include per-dest lengths when they vary
+    dest_lengths = mat_group.get("dest_lengths", {})
+    length_varies = mat_group.get("length_varies", False)
     dest_y = div_y - 0.16 * inch
     c.setFont("Helvetica", 7)
     c.setFillColor(black)
     dest_parts = []
     for dest_name, qty in destinations.items():
-        dest_parts.append(f"{dest_name}: {qty} pcs")
+        part_str = f"{dest_name}: {qty} pcs"
+        if length_varies and dest_name in dest_lengths:
+            part_str += f" @ {_fmt_ft_in(dest_lengths[dest_name])}"
+        dest_parts.append(part_str)
     dest_line = "  |  ".join(dest_parts)
     # Wrap if needed
     if c.stringWidth(dest_line, "Helvetica", 7) > (W - 2 * M):
@@ -983,14 +1007,18 @@ def generate_material_sub_pdf(
         g = groups[spec_key]
         for dest_name in sorted(g["destinations"].keys()):
             dest_qty = g["destinations"][dest_name]
+            # Use per-destination length if available, else fall back to group
+            dest_len = g.get("dest_lengths", {}).get(dest_name, g.get("unit_length_in"))
+            # Use per-destination weight if available
+            dest_wt = g.get("dest_weights", {}).get(dest_name, 0.0)
             _draw_material_sub_sticker(
                 c,
                 spec=g["spec"],
                 dest_name=dest_name,
                 dest_qty=dest_qty,
-                total_weight=g["total_weight"],
-                unit_length_in=g.get("unit_length_in"),
-                total_qty_all=g["total_qty"],
+                total_weight=dest_wt,
+                unit_length_in=dest_len,
+                total_qty_all=dest_qty,  # use dest_qty so weight = dest_wt exactly
                 job_code=job_code,
                 app_base_url=app_base_url,
             )
