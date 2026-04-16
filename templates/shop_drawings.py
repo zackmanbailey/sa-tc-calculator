@@ -527,7 +527,7 @@ SHOP_DRAWINGS_HTML = r"""
                     Work Orders
                 </a>
                 <button class="tf-btn tf-btn-amber tf-btn-sm" onclick="generateAll()">
-                    Generate All Drawings
+                    Collect Drawings
                 </button>
                 <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="downloadAllZip()" id="btnDownloadAll" disabled>
                     Download ZIP
@@ -590,10 +590,13 @@ SHOP_DRAWINGS_HTML = r"""
         <div class="tab-content active" id="tab-drawings">
             <div id="drawingsEmpty" class="empty-state">
                 <div class="empty-icon">&#128209;</div>
-                <h3>No Drawings Generated Yet</h3>
-                <p>Configure the project parameters on the Configuration tab, then click "Generate All Drawings" to produce the full shop drawing package.</p>
+                <h3>No Drawings Yet</h3>
+                <p>Use the <strong>Interactive Builder</strong> tab to create Column and Rafter drawings, then click <strong>Collect Drawings</strong> to package them here.</p>
+                <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="showTab('interactive');document.querySelectorAll('.tf-tab')[1].click();" style="margin-right:8px;">
+                    Open Interactive Builder
+                </button>
                 <button class="tf-btn tf-btn-amber" onclick="generateAll()">
-                    Generate All Drawings
+                    Collect Drawings
                 </button>
             </div>
             <div id="drawingsGrid" class="drawing-grid" style="display:none"></div>
@@ -1047,19 +1050,14 @@ SHOP_DRAWINGS_HTML = r"""
         const DRAWING_TYPES = {
             column:   { label: 'Column',   icon: '&#128295;', plural: 'Columns' },
             rafter:   { label: 'Rafter',   icon: '&#9650;',   plural: 'Rafters' },
-            purlin:   { label: 'Purlin',   icon: '&#9644;',   plural: 'Purlins' },
-            cutlist:  { label: 'Cut List', icon: '&#9986;',   plural: 'Cut Lists' },
-            stickers: { label: 'Stickers', icon: '&#127991;', plural: 'Stickers' },
-            manifest: { label: 'Manifest', icon: '&#128230;', plural: 'Manifest' },
+            other:    { label: 'Drawing',  icon: '&#128196;', plural: 'Drawings' },
         };
 
         const GEN_STEPS = [
+            { key: 'scanning', label: 'Scanning for saved drawings' },
             { key: 'columns',  label: 'Column Drawings' },
             { key: 'rafters',  label: 'Rafter Drawings' },
-            { key: 'purlins',  label: 'Purlin Group Drawing' },
-            { key: 'cutlists', label: 'Cut Lists' },
-            { key: 'stickers', label: 'Fabrication Stickers' },
-            { key: 'manifest', label: 'Shipping Manifest' },
+            { key: 'packaging', label: 'Packaging results' },
         ];
 
         // ── Init ──

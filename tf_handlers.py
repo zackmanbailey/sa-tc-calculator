@@ -4680,13 +4680,24 @@ class ColumnInteractiveHandler(BaseHandler):
 class RafterInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/rafter — Interactive Rafter Drawing."""
     def get(self, job_code):
-        # Placeholder — serve rafter drawing if template exists
         try:
             from templates.rafter_interactive import RAFTER_DRAWING_HTML
+
+            # Load project config from saved BOM
             config_dict = _load_shop_config(job_code)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+
+            # Load project metadata
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+
             html = RAFTER_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", job_code)
             html = html.replace("{{RAFTER_CONFIG_JSON}}", json.dumps(config_dict))
@@ -4708,7 +4719,11 @@ class RafterInteractiveHandler(BaseHandler):
 
 
 class SaveInteractivePDFHandler(BaseHandler):
-    """POST /api/shop-drawings/save-interactive-pdf — Save PDF from interactive drawing."""
+    """POST /api/shop-drawings/save-interactive-pdf — Save PDF from interactive drawing.
+
+    Saves to the main shop drawings pdfs directory so the file appears in the
+    Drawings gallery and is included in ZIP downloads.
+    """
     def post(self):
         job_code = self.get_argument("job_code", "")
         drawing_type = self.get_argument("drawing_type", "column")
@@ -4720,11 +4735,13 @@ class SaveInteractivePDFHandler(BaseHandler):
             if not pdf_file:
                 self.write(json_encode({"ok": False, "error": "No PDF file"}))
                 return
-            # Save to project shop_drawings directory
-            sd_dir = os.path.join(PROJECTS_DIR, job_code, "shop_drawings")
-            os.makedirs(sd_dir, exist_ok=True)
-            filename = pdf_file.get("filename", f"{job_code}_{drawing_type}_interactive.pdf")
-            out_path = os.path.join(sd_dir, filename)
+            # Save to the main shop drawings pdfs directory (same location used
+            # by the file-serve and ZIP handlers so the gallery picks it up).
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+            os.makedirs(pdfs_dir, exist_ok=True)
+            filename = pdf_file.get("filename", f"{job_code}_{drawing_type}.pdf")
+            out_path = os.path.join(pdfs_dir, filename)
             with open(out_path, "wb") as f:
                 f.write(pdf_file["body"])
             self.write(json_encode({"ok": True, "filename": filename, "path": out_path}))
@@ -4791,6 +4808,28 @@ class ShopDrawingsConfigHandler(BaseHandler):
             drawings = []
             if gen_log and "files" in gen_log:
                 drawings = gen_log["files"]
+
+            # Also scan pdfs dir directly for any interactive PDFs not yet in the log
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+            if os.path.isdir(pdfs_dir):
+                known = {f["filename"] for f in drawings}
+                for fname in sorted(os.listdir(pdfs_dir)):
+                    if fname.endswith(".pdf") and fname not in known:
+                        fpath = os.path.join(pdfs_dir, fname)
+                        upper = fname.upper()
+                        if "_C" in upper:
+                            dtype, desc = "column", "Column Shop Drawing"
+                        elif "_B" in upper:
+                            dtype, desc = "rafter", "Rafter Shop Drawing"
+                        else:
+                            dtype, desc = "other", "Shop Drawing"
+                        drawings.append({
+                            "filename": fname,
+                            "type": dtype,
+                            "description": desc,
+                            "size_bytes": os.path.getsize(fpath),
+                        })
 
             revisions = _load_revisions(job_code)
 
@@ -4979,18 +5018,31 @@ class ShopDrawingsDiffHandler(BaseHandler):
 
 
 class ShopDrawingsGenerateHandler(BaseHandler):
-    """POST /api/shop-drawings/generate — Generate all shop drawings for a project."""
+    """POST /api/shop-drawings/generate — Collect interactive shop drawing PDFs.
+
+    Instead of generating PDFs server-side, this handler scans the pdfs
+    directory for PDFs that were saved from the Interactive Builder (column
+    and rafter).  It packages them into a generation log and revision entry
+    so the Drawings gallery, Download ZIP, and Revision History all work.
+    """
     required_roles = ["admin", "estimator", "shop"]
+
+    # Map filename patterns to drawing metadata
+    _DRAWING_META = {
+        "_C":  {"type": "column",  "description": "Column Shop Drawing"},
+        "_B":  {"type": "rafter",  "description": "Rafter Shop Drawing"},
+    }
+
+    def _classify(self, filename, job_code):
+        """Return (type, description) for a PDF filename."""
+        upper = filename.upper()
+        for pattern, meta in self._DRAWING_META.items():
+            if pattern in upper:
+                return meta["type"], meta["description"]
+        return "other", "Shop Drawing"
 
     def post(self):
         try:
-            if not HAS_SHOP_DRAWINGS:
-                self.write(json_encode({
-                    "ok": False,
-                    "error": "Shop drawing module not available"
-                }))
-                return
-
             body = json_decode(self.request.body)
             job_code = body.get("job_code", "").strip()
             cfg_dict = body.get("config", {})
@@ -5002,10 +5054,37 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             cfg_dict["job_code"] = job_code
             _save_shop_config(job_code, cfg_dict)
 
-            # Build ShopDrawingConfig (from_dict handles string→number coercion)
-            cfg = ShopDrawingConfig.from_dict(cfg_dict)
-            # Belt-and-suspenders: force all numeric fields to correct types
-            cfg.ensure_numeric()
+            # Scan pdfs directory for interactive-saved PDFs
+            d = _shop_drawing_project_dir(job_code)
+            pdfs_dir = os.path.join(d, "pdfs")
+            os.makedirs(pdfs_dir, exist_ok=True)
+
+            pdf_files = sorted(
+                f for f in os.listdir(pdfs_dir)
+                if f.lower().endswith(".pdf") and not f.endswith("_generation_log.json")
+            )
+
+            if not pdf_files:
+                self.write(json_encode({
+                    "ok": False,
+                    "error": "No drawings found. Open the Interactive Builder to create Column and Rafter drawings first, then come back and click Collect Drawings."
+                }))
+                return
+
+            # Build file list
+            files = []
+            total_bytes = 0
+            for fname in pdf_files:
+                fpath = os.path.join(pdfs_dir, fname)
+                size = os.path.getsize(fpath)
+                total_bytes += size
+                dtype, desc = self._classify(fname, job_code)
+                files.append({
+                    "filename": fname,
+                    "type": dtype,
+                    "description": desc,
+                    "size_bytes": size,
+                })
 
             # Determine revision
             revisions = _load_revisions(job_code)
@@ -5020,49 +5099,41 @@ class ShopDrawingsGenerateHandler(BaseHandler):
                 else:
                     revision = last_rev + "+"
 
-            # Generate
-            d = _shop_drawing_project_dir(job_code)
-            output_dir = os.path.join(d, "pdfs")
-            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.datetime.now().isoformat()
 
-            result = generate_all_shop_drawings(
-                cfg, output_dir, revision=revision,
-                include_stickers=True, include_manifest=True
-            )
+            # Save generation log (so the config GET endpoint can return it)
+            gen_log = {
+                "files": files,
+                "summary": {
+                    "total_files": len(files),
+                    "total_bytes": total_bytes,
+                    "total_kb": round(total_bytes / 1024, 1),
+                    "timestamp": timestamp,
+                    "revision": revision,
+                },
+                "errors": [],
+            }
+            log_path = os.path.join(pdfs_dir, f"{job_code}_generation_log.json")
+            with open(log_path, "w") as f:
+                json.dump(gen_log, f, indent=2, default=str)
 
             # Save revision entry
             rev_entry = {
                 "revision": revision,
-                "generated_at": result["summary"]["timestamp"],
-                "total_files": result["summary"]["total_files"],
-                "total_bytes": result["summary"]["total_bytes"],
-                "errors": result["summary"]["errors"],
+                "generated_at": timestamp,
+                "total_files": len(files),
+                "total_bytes": total_bytes,
+                "errors": 0,
             }
             _save_revision(job_code, rev_entry)
-
-            # Return file list (without full paths)
-            files = []
-            for f in result["files"]:
-                files.append({
-                    "filename": f["filename"],
-                    "type": f["type"],
-                    "description": f["description"],
-                    "size_bytes": f["size_bytes"],
-                })
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
                 "files": files,
-                "summary": {
-                    "total_files": result["summary"]["total_files"],
-                    "total_bytes": result["summary"]["total_bytes"],
-                    "total_kb": result["summary"]["total_kb"],
-                    "timestamp": result["summary"]["timestamp"],
-                    "revision": revision,
-                },
+                "summary": gen_log["summary"],
                 "revision_entry": rev_entry,
-                "errors": result["errors"],
+                "errors": [],
             }))
         except Exception as e:
             import traceback

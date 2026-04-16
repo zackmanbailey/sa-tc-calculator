@@ -2626,7 +2626,7 @@ function savePdfToProject() {
       formData.append('job_code', jobCode);
       formData.append('drawing_type', 'column');
       formData.append('source', 'interactive');
-      formData.append('pdf_file', blob, jobCode + '_COLUMN_INTERACTIVE.pdf');
+      formData.append('pdf_file', blob, jobCode + '_C1.pdf');
 
       fetch('/api/shop-drawings/save-interactive-pdf', {
         method: 'POST',
