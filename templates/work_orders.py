@@ -984,6 +984,13 @@ function renderDetail() {
         actionsHtml = stickerBtns;
     }
 
+    // Always add edit & delete (delete disabled for in_progress)
+    const canDelete = wo.status !== 'in_progress';
+    actionsHtml += `
+        <button class="btn-wo outline" onclick="editWO('${wo.work_order_id}')" style="margin-left:4px;">&#9998; Edit</button>
+        <button class="btn-wo" style="background:#dc3545;color:#fff;margin-left:4px;${canDelete?'':'opacity:0.4;pointer-events:none;'}" onclick="deleteWO('${wo.work_order_id}')">&#128465; Delete</button>
+    `;
+
     // Items table
     let itemsHtml = `
     <table class="items-table">
@@ -995,6 +1002,8 @@ function renderDetail() {
             <th>Qty</th>
             <th>Machine</th>
             <th>Status</th>
+            <th>QC</th>
+            <th>Loading</th>
             <th>Duration</th>
             <th>Actions</th>
         </tr>
@@ -1017,6 +1026,8 @@ function renderDetail() {
             <td>${item.quantity}</td>
             <td><span class="machine-badge">${item.machine}</span></td>
             <td><span class="status-badge ${iStatusClass}">${item.status === 'in_progress' ? 'In Progress' : (item.status === 'stickers_printed' ? 'Ready' : item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
+            <td><span class="status-badge ${item.qc_status === 'passed' ? 'complete' : (item.qc_status === 'failed' ? 'on_hold' : 'queued')}" style="font-size:0.7rem;">${(item.qc_status||'pending').toUpperCase()}</span></td>
+            <td><span style="font-size:0.75rem;">${(item.loading_status||'not_ready').replace(/_/g,' ')}</span></td>
             <td class="duration-cell">${dur}</td>
             <td class="item-actions">
                 <button class="btn-item start" ${canStart ? '' : 'disabled'}
@@ -1025,6 +1036,7 @@ function renderDetail() {
                         onclick="scanItem('${item.item_id}','finish')">Finish</button>
                 <button class="btn-item" style="background:var(--tf-navy);color:white;"
                         onclick="printSingleSticker('${item.item_id}')" title="Print sticker">QR</button>
+                <a href="/wo/${JOB_CODE}/${item.item_id}" target="_blank" class="btn-item" style="background:var(--tf-blue);color:white;text-decoration:none;display:inline-block;text-align:center;" title="Mobile scan page">&#128241;</a>
             </td>
         </tr>`;
     });
@@ -1037,7 +1049,10 @@ function renderDetail() {
                 <div style="font-size:0.82rem;color:var(--tf-slate);margin-top:4px;">
                     Rev ${wo.revision} &bull; Created ${new Date(wo.created_at).toLocaleString()}
                     ${wo.approved_by ? ` &bull; Approved by ${wo.approved_by}` : ''}
+                    ${wo.project_name ? ` &bull; ${wo.project_name}` : ''}
+                    ${wo.customer_name ? ` &mdash; ${wo.customer_name}` : ''}
                 </div>
+                ${wo.building_specs ? `<div style="font-size:0.8rem;color:var(--tf-blue);margin-top:2px;font-weight:600;">${wo.building_specs}${wo.priority && wo.priority !== 'normal' ? ' &bull; <span style="color:#dc3545;">'+wo.priority.toUpperCase()+'</span>' : ''}</div>` : ''}
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
                 ${isOnHold ? '<span class="status-badge on_hold">ON HOLD</span>' : ''}
@@ -1128,6 +1143,44 @@ async function printAndMark(woId) {
 function downloadPacketPDF(woId) {
     const url = `/api/work-orders/packet/pdf?job_code=${JOB_CODE}&wo_id=${woId}`;
     window.open(url, '_blank');
+}
+
+async function editWO(woId) {
+    if (!currentWO) return;
+    const priority = prompt('Priority (normal / rush / hot):', currentWO.priority || 'normal');
+    if (priority === null) return;
+    const dueDate = prompt('Due date (YYYY-MM-DD or leave empty):', currentWO.due_date || '');
+    if (dueDate === null) return;
+    const deliveryDate = prompt('Delivery date (YYYY-MM-DD or leave empty):', currentWO.delivery_date || '');
+    if (deliveryDate === null) return;
+    const notes = prompt('Notes:', currentWO.notes || '');
+    if (notes === null) return;
+
+    const data = await apiCall('/api/work-orders/edit', 'POST', {
+        job_code: JOB_CODE, wo_id: woId,
+        priority, due_date: dueDate, delivery_date: deliveryDate, notes
+    });
+    if (data.ok) {
+        showToast('Work order updated!', 'success');
+        currentWO = data.work_order;
+        await refreshAll();
+        renderDetail();
+    } else {
+        showToast(data.error || 'Failed to edit', 'error');
+    }
+}
+
+async function deleteWO(woId) {
+    if (!confirm('Are you sure you want to delete this work order? This cannot be undone.')) return;
+    const data = await apiCall('/api/work-orders/delete', 'POST', { job_code: JOB_CODE, wo_id: woId });
+    if (data.ok) {
+        showToast('Work order deleted', 'info');
+        currentWO = null;
+        await refreshAll();
+        switchTab('overview');
+    } else {
+        showToast(data.error || 'Failed to delete', 'error');
+    }
 }
 
 function showToast(msg, type) {

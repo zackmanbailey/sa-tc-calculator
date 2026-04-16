@@ -113,8 +113,8 @@ def _draw_wo_sticker(c: Canvas, item: dict, wo_info: dict,
     status = item.get("status", "queued")
     print_date = datetime.date.today().strftime("%m/%d/%Y")
 
-    # QR data: encode the item_id and job_code for the scan endpoint
-    qr_data = f"{app_base_url}/work-orders/{job_code}?scan={item_id}"
+    # QR data: direct link to mobile scan page for this specific item
+    qr_data = f"{app_base_url}/wo/{job_code}/{item_id}"
 
     c.setPageSize((W, H))
 
@@ -360,7 +360,7 @@ def generate_wo_sticker_zpl(
         qty = str(item.get("quantity", 1))
         machine = item.get("machine", "")
         drawing_ref = item.get("drawing_ref", "")
-        qr_data = f"{app_base_url}/work-orders/{job_code}?scan={item_id}"
+        qr_data = f"{app_base_url}/wo/{job_code}/{item_id}"
         print_date = datetime.date.today().strftime("%m/%d/%Y")
 
         zpl = []
@@ -455,7 +455,7 @@ def generate_wo_sticker_csv(
 
     for item in target_items:
         item_id = item.get("item_id", "")
-        qr_url = f"{app_base_url}/work-orders/{job_code}?scan={item_id}"
+        qr_url = f"{app_base_url}/wo/{job_code}/{item_id}"
         writer.writerow([
             item_id,
             item.get("ship_mark", ""),

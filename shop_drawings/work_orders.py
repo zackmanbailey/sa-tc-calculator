@@ -80,6 +80,20 @@ class WorkOrderItem:
     duration_minutes: float = 0.0  # Auto-calculated
     # Notes
     notes: str = ""
+    # ── Crew / Accountability ──
+    assigned_to: str = ""          # Worker assigned to this piece
+    weight_lbs: float = 0.0        # Piece weight from BOM
+    length_desc: str = ""          # e.g., "21'-1 1/2\""
+    # ── QC Tracking ──
+    qc_status: str = "pending"     # "pending", "passed", "failed", "n/a"
+    qc_inspector: str = ""         # Who inspected
+    qc_inspected_at: str = ""      # ISO timestamp
+    qc_notes: str = ""             # Inspector notes
+    # ── Loading / Shipping ──
+    loading_status: str = "not_ready"  # "not_ready", "staged", "loaded", "shipped", "delivered"
+    loaded_by: str = ""            # Who loaded it
+    loaded_at: str = ""            # ISO timestamp
+    truck_number: str = ""         # Truck/trailer ID
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -111,6 +125,16 @@ class WorkOrder:
     stickers_printed_at: str = ""
     items: List[WorkOrderItem] = field(default_factory=list)
     notes: str = ""
+    # ── Project Info ──
+    project_name: str = ""         # e.g., "Dallas Office Park"
+    customer_name: str = ""        # e.g., "Lone Star Properties"
+    priority: str = "normal"       # "normal", "rush", "hot"
+    due_date: str = ""             # Target completion date
+    delivery_date: str = ""        # Scheduled delivery
+    ship_to: str = ""              # Delivery address
+    total_weight_lbs: float = 0.0  # Total weight from BOM
+    total_sell: float = 0.0        # Total sell from TC
+    building_specs: str = ""       # e.g., "50'x150'x16' DBL-COL"
 
     def to_dict(self) -> dict:
         d = {
@@ -124,6 +148,15 @@ class WorkOrder:
             "approved_by": self.approved_by,
             "stickers_printed_at": self.stickers_printed_at,
             "notes": self.notes,
+            "project_name": self.project_name,
+            "customer_name": self.customer_name,
+            "priority": self.priority,
+            "due_date": self.due_date,
+            "delivery_date": self.delivery_date,
+            "ship_to": self.ship_to,
+            "total_weight_lbs": self.total_weight_lbs,
+            "total_sell": self.total_sell,
+            "building_specs": self.building_specs,
             "items": [item.to_dict() for item in self.items],
         }
         return d
@@ -173,6 +206,17 @@ class WorkOrder:
             "in_progress_items": self.in_progress_items,
             "progress_pct": self.progress_pct,
             "total_fab_minutes": round(self.total_fab_minutes, 1),
+            "project_name": self.project_name,
+            "customer_name": self.customer_name,
+            "priority": self.priority,
+            "due_date": self.due_date,
+            "delivery_date": self.delivery_date,
+            "total_weight_lbs": self.total_weight_lbs,
+            "building_specs": self.building_specs,
+            "qc_pending": sum(1 for i in self.items if i.qc_status == "pending" and i.status == STATUS_COMPLETE),
+            "qc_passed": sum(1 for i in self.items if i.qc_status == "passed"),
+            "loading_ready": sum(1 for i in self.items if i.loading_status == "staged"),
+            "loading_loaded": sum(1 for i in self.items if i.loading_status == "loaded"),
         }
 
 
@@ -196,6 +240,16 @@ def save_work_order(base_dir: str, wo: WorkOrder):
     with open(path, "w") as f:
         json.dump(wo.to_dict(), f, indent=2, default=str)
     return path
+
+
+def delete_work_order(base_dir: str, job_code: str, wo_id: str) -> bool:
+    """Delete a work order from disk. Returns True if deleted."""
+    d = _wo_dir(base_dir, job_code)
+    path = os.path.join(d, f"{wo_id}.json")
+    if os.path.isfile(path):
+        os.remove(path)
+        return True
+    return False
 
 
 def load_work_order(base_dir: str, job_code: str, wo_id: str) -> Optional[WorkOrder]:
@@ -307,7 +361,12 @@ def find_work_order_by_item(base_dir: str, job_code: str, item_id: str):
 # ─────────────────────────────────────────────
 
 def create_work_order(job_code: str, revision: str, created_by: str,
-                      drawing_files: list, config_dict: dict) -> WorkOrder:
+                      drawing_files: list, config_dict: dict,
+                      project_name: str = "", customer_name: str = "",
+                      priority: str = "normal", due_date: str = "",
+                      delivery_date: str = "", ship_to: str = "",
+                      total_weight_lbs: float = 0.0, total_sell: float = 0.0,
+                      building_specs: str = "") -> WorkOrder:
     """Create a work order from shop drawing generation results.
 
     Args:
@@ -330,6 +389,15 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         created_at=now,
         created_by=created_by,
         status=STATUS_QUEUED,
+        project_name=project_name,
+        customer_name=customer_name,
+        priority=priority,
+        due_date=due_date,
+        delivery_date=delivery_date,
+        ship_to=ship_to,
+        total_weight_lbs=total_weight_lbs,
+        total_sell=total_sell,
+        building_specs=building_specs,
     )
 
     n_frames = config_dict.get("n_frames", 1)
@@ -539,4 +607,92 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
                     f"({item.duration_minutes:.1f} min)"),
         "wo_complete": wo.status == STATUS_COMPLETE,
         "progress": wo.summary(),
+    }
+
+
+# ─────────────────────────────────────────────
+# QC ACTIONS
+# ─────────────────────────────────────────────
+
+def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
+                     inspector: str, qc_status: str, qc_notes: str = "") -> dict:
+    """Record a QC inspection on a work order item.
+
+    Args:
+        qc_status: "passed" or "failed"
+    """
+    wo, item = find_work_order_by_item(base_dir, job_code, item_id)
+    if wo is None or item is None:
+        return {"ok": False, "error": "Work order item not found"}
+
+    if item.status != STATUS_COMPLETE:
+        return {"ok": False, "error": "Item must be complete before QC inspection"}
+
+    if qc_status not in ("passed", "failed"):
+        return {"ok": False, "error": "qc_status must be 'passed' or 'failed'"}
+
+    item.qc_status = qc_status
+    item.qc_inspector = inspector
+    item.qc_inspected_at = datetime.datetime.now().isoformat()
+    item.qc_notes = qc_notes
+
+    save_work_order(base_dir, wo)
+
+    return {
+        "ok": True,
+        "item": item.to_dict(),
+        "message": f"QC {qc_status.upper()} for {item.ship_mark} by {inspector}",
+    }
+
+
+# ─────────────────────────────────────────────
+# LOADING / SHIPPING ACTIONS
+# ─────────────────────────────────────────────
+
+LOADING_FLOW = {
+    "not_ready": ["staged"],
+    "staged": ["loaded", "not_ready"],
+    "loaded": ["shipped"],
+    "shipped": ["delivered"],
+    "delivered": [],
+}
+
+LOADING_LABELS = {
+    "not_ready": "Not Ready",
+    "staged": "Staged",
+    "loaded": "Loaded",
+    "shipped": "Shipped",
+    "delivered": "Delivered",
+}
+
+
+def update_loading_status(base_dir: str, job_code: str, item_id: str,
+                           new_status: str, updated_by: str,
+                           truck_number: str = "") -> dict:
+    """Update the loading/shipping status of a work order item."""
+    wo, item = find_work_order_by_item(base_dir, job_code, item_id)
+    if wo is None or item is None:
+        return {"ok": False, "error": "Work order item not found"}
+
+    if new_status not in LOADING_FLOW:
+        return {"ok": False, "error": f"Invalid loading status: {new_status}"}
+
+    allowed = LOADING_FLOW.get(item.loading_status, [])
+    if new_status not in allowed:
+        return {"ok": False,
+                "error": f"Cannot go from '{item.loading_status}' to '{new_status}'. Allowed: {allowed}"}
+
+    item.loading_status = new_status
+    if new_status == "loaded":
+        item.loaded_by = updated_by
+        item.loaded_at = datetime.datetime.now().isoformat()
+        if truck_number:
+            item.truck_number = truck_number
+
+    save_work_order(base_dir, wo)
+
+    return {
+        "ok": True,
+        "item": item.to_dict(),
+        "message": f"{item.ship_mark} → {LOADING_LABELS.get(new_status, new_status)}",
     }

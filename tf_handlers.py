@@ -4481,9 +4481,12 @@ try:
         STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
         STATUS_ON_HOLD, STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
         create_work_order, save_work_order, load_work_order,
+        delete_work_order,
         list_work_orders, list_all_work_orders, load_all_active_items,
         find_work_order_by_item,
         qr_scan_start, qr_scan_finish,
+        qc_inspect_item, update_loading_status,
+        LOADING_FLOW, LOADING_LABELS,
     )
     from shop_drawings.wo_stickers import (
         generate_wo_sticker_pdf, generate_wo_sticker_zpl,
@@ -5275,12 +5278,69 @@ class WorkOrderCreateHandler(BaseHandler):
 
             created_by = body.get("created_by", self.get_current_user() or "system")
 
+            # ── Pull project info from SA/TC chain ──
+            project_name = body.get("project_name", "")
+            customer_name = body.get("customer_name", "")
+            priority = body.get("priority", "normal")
+            due_date = body.get("due_date", "")
+            delivery_date = body.get("delivery_date", "")
+            ship_to = body.get("ship_to", "")
+            total_weight_lbs = 0.0
+            total_sell = 0.0
+            building_specs = ""
+
+            # Try to load from project metadata/versions for real BOM data
+            try:
+                safe_jc = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+                proj_dir = os.path.join(PROJECTS_DIR, safe_jc)
+                # Find latest version file
+                version_files = sorted(
+                    [f for f in os.listdir(proj_dir) if f.startswith("v") and f.endswith(".json")],
+                    reverse=True
+                ) if os.path.isdir(proj_dir) else []
+                if not version_files and os.path.isfile(os.path.join(proj_dir, "current.json")):
+                    version_files = ["current.json"]
+                if version_files:
+                    with open(os.path.join(proj_dir, version_files[0])) as f:
+                        proj_data = json.load(f)
+                    # Extract project info
+                    if not project_name:
+                        project_name = proj_data.get("project_name", "")
+                    if not customer_name:
+                        customer_name = proj_data.get("customer_name", "")
+                    # Extract BOM results
+                    bom_result = proj_data.get("bom_result") or proj_data.get("results", {})
+                    if bom_result:
+                        total_weight_lbs = float(bom_result.get("total_weight_lbs", 0) or 0)
+                        total_sell = float(bom_result.get("total_sell", 0) or 0)
+                    # Extract building specs
+                    buildings = proj_data.get("buildings") or bom_result.get("buildings", [])
+                    if buildings and len(buildings) > 0:
+                        b = buildings[0]
+                        w = b.get("width_ft", 0)
+                        l = b.get("length_ft", 0)
+                        h = b.get("clear_height_ft", 0)
+                        ft = cfg_dict.get("frame_type", "tee")
+                        ft_label = "TEE" if ft == "tee" else "DBL-COL"
+                        building_specs = f"{int(w)}'x{int(l)}'x{int(h)}' {ft_label}"
+            except Exception:
+                pass  # Non-critical — proceed with whatever we have
+
             wo = create_work_order(
                 job_code=job_code,
                 revision=revision,
                 created_by=created_by,
                 drawing_files=drawing_files,
                 config_dict=cfg_dict,
+                project_name=project_name,
+                customer_name=customer_name,
+                priority=priority,
+                due_date=due_date,
+                delivery_date=delivery_date,
+                ship_to=ship_to,
+                total_weight_lbs=total_weight_lbs,
+                total_sell=total_sell,
+                building_specs=building_specs,
             )
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
@@ -5528,6 +5588,219 @@ class WorkOrderItemNotesHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderEditHandler(BaseHandler):
+    """POST /api/work-orders/edit — Edit work order fields (notes, priority, dates, etc.)."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            # Editable fields
+            editable = [
+                "notes", "priority", "due_date", "delivery_date",
+                "ship_to", "project_name", "customer_name",
+            ]
+            changes = {}
+            for fld in editable:
+                if fld in body:
+                    old_val = getattr(wo, fld, "")
+                    new_val = body[fld]
+                    if old_val != new_val:
+                        setattr(wo, fld, new_val)
+                        changes[fld] = {"old": old_val, "new": new_val}
+
+            if not changes:
+                self.write(json_encode({"ok": True, "message": "No changes", "work_order": wo.to_dict()}))
+                return
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "changes": changes,
+                "work_order": wo.to_dict(),
+                "summary": wo.summary(),
+            }))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class WorkOrderDeleteHandler(BaseHandler):
+    """POST /api/work-orders/delete — Delete a work order."""
+    required_roles = ["admin"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            # Don't allow deleting in-progress work orders
+            if wo.status == STATUS_IN_PROGRESS:
+                self.write(json_encode({"ok": False, "error": "Cannot delete an in-progress work order. Put it on hold first."}))
+                return
+
+            deleted = delete_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if not deleted:
+                self.set_status(500)
+                self.write(json_encode({"ok": False, "error": "Failed to delete work order file"}))
+                return
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "message": f"Work order {wo_id} deleted",
+                "deleted_wo_id": wo_id,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderItemEditHandler(BaseHandler):
+    """POST /api/work-orders/item-edit — Edit a single work order item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+
+            # Editable item fields
+            editable = [
+                "assigned_to", "machine", "notes", "description",
+                "quantity", "truck_number",
+            ]
+            changes = {}
+            for fld in editable:
+                if fld in body:
+                    old_val = getattr(item, fld, "")
+                    new_val = body[fld]
+                    if old_val != new_val:
+                        setattr(item, fld, new_val)
+                        changes[fld] = {"old": old_val, "new": new_val}
+
+            if not changes:
+                self.write(json_encode({"ok": True, "message": "No changes", "item": item.to_dict()}))
+                return
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "changes": changes,
+                "item": item.to_dict(),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderQCHandler(BaseHandler):
+    """POST /api/work-orders/qc — QC inspection pass/fail for a work order item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            qc_status = body.get("qc_status", "").strip()
+            inspector = body.get("inspector", self.get_current_user() or "qc")
+            qc_notes = body.get("qc_notes", "").strip()
+
+            if not job_code or not item_id or not qc_status:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or qc_status"}))
+                return
+
+            result = qc_inspect_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                      inspector, qc_status, qc_notes)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class WorkOrderLoadingHandler(BaseHandler):
+    """POST /api/work-orders/loading — Update loading/shipping status for an item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            new_status = body.get("loading_status", "").strip()
+            updated_by = body.get("updated_by", self.get_current_user() or "shop")
+            truck_number = body.get("truck_number", "").strip()
+
+            if not job_code or not item_id or not new_status:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or loading_status"}))
+                return
+
+            result = update_loading_status(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                            new_status, updated_by, truck_number)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            import traceback
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+
+
+class WorkOrderMobileScanPageHandler(BaseHandler):
+    """GET /wo/{job_code}/{item_id} — Mobile landing page for QR code scan.
+    Shows drawings, status, accountability tracking, QC, loading — everything
+    a fab worker, QC inspector, loader, or field guy needs."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self, job_code, item_id):
+        from templates.wo_mobile_scan import WO_MOBILE_SCAN_HTML
+        user = self.get_current_user() or "shop"
+        html = (WO_MOBILE_SCAN_HTML
+                .replace("{{JOB_CODE}}", job_code)
+                .replace("{{ITEM_ID}}", item_id)
+                .replace("{{USER_NAME}}", user))
+        self.set_header("Content-Type", "text/html")
+        self.write(html)
 
 
 class WorkOrderStickerPDFHandler(BaseHandler):
@@ -6130,7 +6403,9 @@ class QRScannerPageHandler(BaseHandler):
 
 
 class WorkOrderItemDetailHandler(BaseHandler):
-    """GET /api/work-orders/item-detail — Look up a single item by item_id for the scanner."""
+    """GET /api/work-orders/item-detail — Look up a single item by item_id.
+    Returns full item dict AND full work order dict (including all sibling items)
+    so the mobile scan page can render everything in one request."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
@@ -6142,23 +6417,17 @@ class WorkOrderItemDetailHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
                 return
 
-            wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
-            for wo in wos:
-                for it in (wo.items if hasattr(wo, 'items') else []):
-                    it_dict = it.to_dict() if hasattr(it, 'to_dict') else it
-                    if it_dict.get("item_id") == item_id:
-                        wo_dict = wo.to_dict() if hasattr(wo, 'to_dict') else wo
-                        self.write(json_encode({
-                            "ok": True,
-                            "item": it_dict,
-                            "work_order": {
-                                "work_order_id": wo_dict.get("work_order_id", ""),
-                                "status": wo_dict.get("status", ""),
-                            }
-                        }))
-                        return
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.write(json_encode({"ok": False, "error": f"Item '{item_id}' not found in job {job_code}"}))
+                return
 
-            self.write(json_encode({"ok": False, "error": f"Item '{item_id}' not found in job {job_code}"}))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "item": item.to_dict(),
+                "work_order": wo.to_dict(),
+            }))
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
@@ -6900,14 +7169,20 @@ def get_routes():
         # ── Work Orders ──────────────────────────────────────
         (r"/work-orders",                        WorkOrdersGlobalPageHandler),
         (r"/work-orders/([^/]+)",                WorkOrderPageHandler),
+        (r"/wo/([^/]+)/([^/]+)",                 WorkOrderMobileScanPageHandler),
         (r"/api/work-orders/create",             WorkOrderCreateHandler),
         (r"/api/work-orders/list",               WorkOrderListHandler),
         (r"/api/work-orders/detail",             WorkOrderDetailHandler),
+        (r"/api/work-orders/edit",               WorkOrderEditHandler),
+        (r"/api/work-orders/delete",             WorkOrderDeleteHandler),
         (r"/api/work-orders/approve",            WorkOrderApproveHandler),
         (r"/api/work-orders/stickers-printed",   WorkOrderStickersPrintedHandler),
         (r"/api/work-orders/hold",               WorkOrderHoldHandler),
         (r"/api/work-orders/qr-scan",            WorkOrderQRScanHandler),
         (r"/api/work-orders/item-notes",         WorkOrderItemNotesHandler),
+        (r"/api/work-orders/item-edit",          WorkOrderItemEditHandler),
+        (r"/api/work-orders/qc",                 WorkOrderQCHandler),
+        (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
         (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),
         (r"/api/work-orders/stickers/zpl",       WorkOrderStickerZPLHandler),
         (r"/api/work-orders/stickers/csv",       WorkOrderStickerCSVHandler),
