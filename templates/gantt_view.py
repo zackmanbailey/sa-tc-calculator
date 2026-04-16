@@ -740,7 +740,7 @@ function renderJobList() {
         div.className = 'job-item';
         div.innerHTML = `
             <div class="job-code">${job.job_code}</div>
-            <div class="job-customer">${job.customer}</div>
+            <div class="job-customer">${typeof job.customer === 'object' ? (job.customer.name || '') : (job.customer || '')}</div>
             <div class="job-due">Due: ${job.due_date}</div>
         `;
         div.addEventListener('click', () => {

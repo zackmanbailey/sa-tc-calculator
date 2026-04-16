@@ -367,8 +367,8 @@ def get_gantt_data(shop_drawings_dir: str, projects_dir: str) -> Dict[str, Any]:
             # Build job record
             job_record = {
                 "job_code": job_code,
-                "name": proj_meta.get("name", job_code),
-                "customer": proj_meta.get("customer", ""),
+                "name": proj_meta.get("project_name", proj_meta.get("name", job_code)),
+                "customer": proj_meta.get("customer", {}).get("name", "") if isinstance(proj_meta.get("customer"), dict) else proj_meta.get("customer", ""),
                 "due_date": proj_meta.get("due_date", ""),
                 "start_date": earliest_created[:10] if earliest_created else today_str,
                 "items_total": items_complete + items_in_progress + items_queued,
