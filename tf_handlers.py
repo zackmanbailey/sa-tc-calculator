@@ -164,7 +164,7 @@ ROLE_PERMISSIONS = {
 
 PROJECT_DOC_CATEGORIES = [
     "quotes", "contracts", "engineering", "shop_drawings",
-    "mill_certs", "photos", "other"
+    "mill_certs", "photos", "other", "calcs", "signed_quotes"
 ]
 
 PROJECT_STAGES = [
@@ -2976,6 +2976,7 @@ DEFAULT_DOC_CATEGORIES = [
     {"key": "mill_certs",    "label": "Mill Certs",     "icon": "doc_certs"},
     {"key": "photos",        "label": "Photos",         "icon": "doc_photos"},
     {"key": "other",         "label": "Other",          "icon": "doc_other"},
+    {"key": "signed_quotes", "label": "Signed Quotes",  "icon": "doc_signed"},
 ]
 
 # Stage-aware next-steps templates

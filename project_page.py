@@ -877,6 +877,7 @@ PROJECT_PAGE_HTML = r"""
             doc_certs: '&#128203;',
             doc_photos: '&#128247;',
             doc_other: '&#128193;',
+            doc_signed: '&#9997;',
         };
 
         const FILE_ICONS = {
