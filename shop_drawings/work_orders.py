@@ -565,20 +565,40 @@ def _check_rebar_inspection_before_finish(wo, item) -> Optional[dict]:
     if ctype not in ("column", "rafter"):
         return None
 
-    # Check if item description or drawing indicates reinforced
-    desc_lower = (item.description + " " + item.notes).lower()
-    is_reinforced = ("reinforced" in desc_lower or "rebar" in desc_lower)
+    is_reinforced = False
 
-    # Also check drawing_ref for reinforced indicator
+    # 1) Check the shop drawing config for reinforced flags
+    try:
+        from shop_drawings.config import ShopDrawingConfig
+        base_dir = os.environ.get("TITANFORGE_DATA_DIR",
+                                  os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+        cfg_path = os.path.join(base_dir, "shop_drawings", wo.job_code, "config.json")
+        if os.path.exists(cfg_path):
+            with open(cfg_path) as f:
+                cfg_data = json.load(f)
+            if ctype == "column" and cfg_data.get("col_reinforced", True):
+                is_reinforced = True
+            elif ctype == "rafter" and cfg_data.get("raft_reinforced", True):
+                is_reinforced = True
+    except Exception:
+        pass  # Fall through to text-based checks
+
+    # 2) Check item description/notes for reinforced indicators
+    if not is_reinforced:
+        desc_lower = (item.description + " " + item.notes).lower()
+        if "reinforced" in desc_lower or "rebar" in desc_lower:
+            is_reinforced = True
+
+    # 3) Check drawing_ref
     if not is_reinforced and item.drawing_ref:
-        is_reinforced = "reinforced" in item.drawing_ref.lower()
+        if "reinforced" in item.drawing_ref.lower():
+            is_reinforced = True
 
-    # For this project, if rebar quantity > 0 or description mentions rebar, it's reinforced
-    # Default: assume all columns and rafters in a reinforced project are reinforced
-    # Check the WO notes or config for reinforced flag
-    wo_notes = (wo.notes or "").lower()
-    if "reinforced" in wo_notes:
-        is_reinforced = True
+    # 4) Check WO-level notes
+    if not is_reinforced:
+        wo_notes = (wo.notes or "").lower()
+        if "reinforced" in wo_notes:
+            is_reinforced = True
 
     if not is_reinforced:
         return None  # Non-reinforced member, no inspection gate
