@@ -5858,6 +5858,195 @@ class RafterInteractiveHandler(BaseHandler):
             <br><a href="/shop-drawings/{job_code}">&larr; Back to Shop Drawings</a></div></body></html>""")
 
 
+class PurlinInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/purlin — Interactive Purlin Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.purlin_drawing import PURLIN_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = PURLIN_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"PurlinInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class SagrodInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/sagrod — Interactive Sag Rod Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.sagrod_drawing import SAGROD_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = SAGROD_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"SagrodInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class StrapInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/strap — Interactive Hurricane Strap Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.strap_drawing import STRAP_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = STRAP_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"StrapInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class EndcapInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/endcap — Interactive Endcap U-Channel Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.endcap_drawing import ENDCAP_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = ENDCAP_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"EndcapInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class P1ClipInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/p1clip — Interactive P1 Interior Clip Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.p1clip_drawing import P1CLIP_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = P1CLIP_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"P1ClipInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class P2PlateInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/p2plate — Interactive P2 Eave Plate Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.p2plate_drawing import P2PLATE_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = P2PLATE_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"P2PlateInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class SpliceInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/splice — Interactive Splice Plate Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.splice_drawing import SPLICE_DRAWING_HTML
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            html = SPLICE_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"SpliceInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
 class SaveInteractivePDFHandler(BaseHandler):
     """POST /api/shop-drawings/save-interactive-pdf — Save PDF from interactive drawing.
 
@@ -6039,12 +6228,19 @@ class ShopDrawingsConfigHandler(BaseHandler):
                         fpath = os.path.join(pdfs_dir, fname)
                         src_info = interactive_sources[fname]
                         dtype = src_info.get("drawing_type", "other")
-                        if dtype == "column":
-                            desc = "Column Shop Drawing"
-                        elif dtype in ("rafter", "beam"):
-                            desc = "Rafter Shop Drawing"
-                        else:
-                            desc = "Shop Drawing"
+                        _dtype_labels = {
+                            "column": "Column Shop Drawing",
+                            "rafter": "Rafter Shop Drawing",
+                            "beam": "Rafter Shop Drawing",
+                            "purlin": "Purlin Shop Drawing",
+                            "sagrod": "Sag Rod Shop Drawing",
+                            "strap": "Hurricane Strap Shop Drawing",
+                            "endcap": "Endcap Shop Drawing",
+                            "p1clip": "P1 Clip Shop Drawing",
+                            "p2plate": "P2 Eave Plate Shop Drawing",
+                            "splice": "Splice Plate Shop Drawing",
+                        }
+                        desc = _dtype_labels.get(dtype, "Shop Drawing")
                         drawings.append({
                             "filename": fname,
                             "type": dtype,
@@ -9552,6 +9748,13 @@ def get_routes():
         # ── Shop Drawings ─────────────────────────────────────
         (r"/shop-drawings/([^/]+)/column",       ColumnInteractiveHandler),
         (r"/shop-drawings/([^/]+)/rafter",       RafterInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/purlin",       PurlinInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/sagrod",       SagrodInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/strap",        StrapInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/endcap",       EndcapInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/p1clip",       P1ClipInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/p2plate",      P2PlateInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/splice",       SpliceInteractiveHandler),
         (r"/shop-drawings/([^/]+)",              ShopDrawingsPageHandler),
         (r"/api/shop-drawings/config",           ShopDrawingsConfigHandler),
         (r"/api/shop-drawings/save-interactive-pdf", SaveInteractivePDFHandler),

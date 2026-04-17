@@ -489,6 +489,170 @@ DEFAULT_STEPS = {
             "checkpoint": False,
         },
     ],
+
+    "strap": [
+        {
+            "step_num": 1,
+            "title": "Cut Flat Stock",
+            "instruction": "Cut 1.5\" x 10GA flat strap to length per shop drawing. "
+                           "Verify dimensions against drawing before proceeding.",
+            "safety": "Wear cut-resistant gloves when handling raw steel.",
+            "tool": "Shear or chop saw, tape measure",
+            "estimated_minutes": 3,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 2,
+            "title": "Drill Holes",
+            "instruction": "Drill bolt holes per the hole pattern on the shop drawing. "
+                           "Use drill press for consistency. Deburr all holes.",
+            "safety": "Eye protection required. Clamp workpiece securely.",
+            "tool": "Drill press, step drill, deburring tool",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 3,
+            "title": "Form Bends",
+            "instruction": "If strap requires bends, form on the brake per drawing detail. "
+                           "Verify bend radius and angle match spec.",
+            "safety": "Keep fingers clear of brake dies.",
+            "tool": "Press brake or bench vise",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 4,
+            "title": "QC & Tag",
+            "instruction": "Verify all dimensions against shop drawing. "
+                           "Apply ship mark sticker. Bundle like straps together.",
+            "safety": "",
+            "tool": "Tape measure, sticker",
+            "estimated_minutes": 3,
+            "checkpoint": True,
+        },
+    ],
+
+    "endcap": [
+        {
+            "step_num": 1,
+            "title": "Cut U-Channel",
+            "instruction": "Cut U-channel to length per shop drawing. "
+                           "Verify dimensions and squareness of cut.",
+            "safety": "Wear cut-resistant gloves.",
+            "tool": "Chop saw, tape measure, square",
+            "estimated_minutes": 3,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 2,
+            "title": "Drill Mounting Holes",
+            "instruction": "Drill bolt holes per the hole pattern on the shop drawing. "
+                           "Use drill press for consistency. Deburr all holes.",
+            "safety": "Eye protection required. Clamp workpiece securely.",
+            "tool": "Drill press, step drill, deburring tool",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 3,
+            "title": "QC & Tag",
+            "instruction": "Verify all dimensions against shop drawing. "
+                           "Apply ship mark sticker. Bundle like endcaps together.",
+            "safety": "",
+            "tool": "Tape measure, sticker",
+            "estimated_minutes": 3,
+            "checkpoint": True,
+        },
+    ],
+
+    "p2plate": [
+        {
+            "step_num": 1,
+            "title": "Cut Plate",
+            "instruction": "Cut 9\"x24\" eave plate from flat stock per shop drawing. "
+                           "Verify dimensions before proceeding.",
+            "safety": "Wear cut-resistant gloves.",
+            "tool": "Shear or plasma cutter, tape measure",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 2,
+            "title": "Drill Hole Pattern",
+            "instruction": "Drill bolt holes per the pattern on the shop drawing. "
+                           "Use drill press for consistency. Deburr all holes.",
+            "safety": "Eye protection required. Clamp workpiece securely.",
+            "tool": "Drill press, step drill, deburring tool",
+            "estimated_minutes": 8,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 3,
+            "title": "Form L-Bend",
+            "instruction": "Form the L-bend per the shop drawing side view. "
+                           "Verify bend angle and dimension match spec.",
+            "safety": "Keep fingers clear of brake dies.",
+            "tool": "Press brake",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 4,
+            "title": "QC & Tag",
+            "instruction": "Verify all dimensions and hole pattern against shop drawing. "
+                           "Apply ship mark sticker.",
+            "safety": "",
+            "tool": "Tape measure, sticker",
+            "estimated_minutes": 3,
+            "checkpoint": True,
+        },
+    ],
+
+    "splice": [
+        {
+            "step_num": 1,
+            "title": "Cut Plate",
+            "instruction": "Cut splice plate to size per shop drawing. "
+                           "Verify dimensions and squareness.",
+            "safety": "Wear cut-resistant gloves.",
+            "tool": "Shear or plasma cutter, tape measure, square",
+            "estimated_minutes": 5,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 2,
+            "title": "Drill Bolt Pattern",
+            "instruction": "Drill bolt holes per the pattern on the shop drawing. "
+                           "Use drill press with template jig for consistency. "
+                           "Deburr all holes.",
+            "safety": "Eye protection required. Clamp workpiece securely.",
+            "tool": "Drill press, template jig, step drill, deburring tool",
+            "estimated_minutes": 10,
+            "checkpoint": False,
+        },
+        {
+            "step_num": 3,
+            "title": "Verify Bolt Pattern",
+            "instruction": "Check all hole locations against shop drawing using go/no-go gauge. "
+                           "Verify bolt spacing, edge distance, and alignment. "
+                           "This is critical — misaligned splice plates cause field failures.",
+            "safety": "",
+            "tool": "Go/no-go gauge, calipers, shop drawing",
+            "estimated_minutes": 5,
+            "checkpoint": True,
+        },
+        {
+            "step_num": 4,
+            "title": "QC & Tag",
+            "instruction": "Final dimensional check. Mark splice plate pairs (L/R). "
+                           "Apply ship mark sticker with torque spec reference.",
+            "safety": "",
+            "tool": "Tape measure, sticker, marker",
+            "estimated_minutes": 3,
+            "checkpoint": True,
+        },
+    ],
 }
 
 # Component type aliases — map item component_types to step template keys
@@ -504,7 +668,17 @@ COMPONENT_TYPE_MAP = {
     "clip": "clip",
     "p1_clip": "clip",
     "p2_clip": "clip",
-    "hurricane_strap": "clip",
+    "hurricane_strap": "strap",
+    "strap": "strap",
+    "endcap": "endcap",
+    "end_cap": "endcap",
+    "u_channel": "endcap",
+    "p1clip": "clip",
+    "p2plate": "p2plate",
+    "p2_plate": "p2plate",
+    "eave_plate": "p2plate",
+    "splice": "splice",
+    "splice_plate": "splice",
     "panel": "panel",
     "roofing_panel": "panel",
     "wall_panel": "panel",

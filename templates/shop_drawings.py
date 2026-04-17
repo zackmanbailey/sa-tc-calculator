@@ -591,7 +591,7 @@ SHOP_DRAWINGS_HTML = r"""
             <div id="drawingsEmpty" class="empty-state">
                 <div class="empty-icon">&#128209;</div>
                 <h3>No Drawings Yet</h3>
-                <p>Use the <strong>Interactive Builder</strong> tab to create Column and Rafter drawings, then click <strong>Collect Drawings</strong> to package them here.</p>
+                <p>Use the <strong>Interactive Builder</strong> tab to create shop drawings for all components, then click <strong>Collect Drawings</strong> to package them here.</p>
                 <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="showTab('interactive');document.querySelectorAll('.tf-tab')[1].click();" style="margin-right:8px;">
                     Open Interactive Builder
                 </button>
@@ -638,6 +638,97 @@ SHOP_DRAWINGS_HTML = r"""
                         <a href="/shop-drawings/{{JOB_CODE}}/rafter"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Rafter Builder
+                        </a>
+                    </div>
+
+                    <!-- Purlin Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#9552;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Purlin Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            Z-purlin with elevation view, cross-section, P1 clip connection detail, sag rod connection, and lap splice detail.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/purlin"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Purlin Builder
+                        </a>
+                    </div>
+
+                    <!-- Sag Rod Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#128296;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Sag Rod Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            2&quot;x2&quot; angle sag rod with elevation, L-section, purlin connection detail, and angle cut detail.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/sagrod"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Sag Rod Builder
+                        </a>
+                    </div>
+
+                    <!-- Strap Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#127744;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Hurricane Strap Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            1.5&quot;x10GA flat strap with elevation, cross-section, connection details, and hole pattern.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/strap"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Strap Builder
+                        </a>
+                    </div>
+
+                    <!-- Endcap Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#9632;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Endcap Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            U-channel endcap with elevation, U-section, top/bottom connections, and panel termination detail.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/endcap"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Endcap Builder
+                        </a>
+                    </div>
+
+                    <!-- P1 Clip Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#128204;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">P1 Clip Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            L-shaped bent clip with front view, side view, hole pattern, and installed assembly view.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/p1clip"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open P1 Clip Builder
+                        </a>
+                    </div>
+
+                    <!-- P2 Plate Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#128207;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">P2 Eave Plate Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            9&quot;x24&quot; eave plate with front view, side L-bend view, hole pattern, and installed assembly view.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/p2plate"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open P2 Plate Builder
+                        </a>
+                    </div>
+
+                    <!-- Splice Plate Drawing Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#128279;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Splice Plate Drawing</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            Beam splice plate with bolt pattern, side assembly view, cross-section, and torque specifications.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/splice"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Splice Builder
                         </a>
                     </div>
 

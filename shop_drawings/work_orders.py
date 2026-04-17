@@ -445,7 +445,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Purlin Group {label} — Z-12x3.5x12GA",
             quantity=1,
             machine="Z1",
-            drawing_ref=f"/shop-drawings/{job_code}",
+            drawing_ref=f"/shop-drawings/{job_code}/purlin",
         ))
 
     # ── Sag rods (bundled per sticker grouping = per 10) ──
@@ -462,7 +462,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Sag Rod Bundle {i+1} — 2x2 angle, {bundle_qty} pcs",
             quantity=bundle_qty,
             machine="ANGLE",
-            drawing_ref=f"/shop-drawings/{job_code}",
+            drawing_ref=f"/shop-drawings/{job_code}/sagrod",
         ))
 
     # ── Hurricane straps (bundled per 10) ──
@@ -478,8 +478,53 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             description=f"Strap Bundle {i+1} — 1.5x10GA, {bundle_qty} pcs",
             quantity=bundle_qty,
             machine="P1",
-            drawing_ref=f"/shop-drawings/{job_code}",
+            drawing_ref=f"/shop-drawings/{job_code}/strap",
         ))
+
+    # ── P1 Interior Clips (bundled per 10) ──
+    n_clips = n_frames * 4  # 4 clips per frame interior
+    n_clip_bundles = max(1, -(-n_clips // 10))
+    for i in range(n_clip_bundles):
+        mark = f"P1-{i+1}"
+        bundle_qty = min(10, n_clips - i * 10)
+        wo.items.append(WorkOrderItem(
+            item_id=f"{wo.work_order_id}-{mark}",
+            ship_mark=mark,
+            component_type="clip",
+            description=f"P1 Clip Bundle {i+1} — L-bent clip, {bundle_qty} pcs",
+            quantity=bundle_qty,
+            machine="P1",
+            drawing_ref=f"/shop-drawings/{job_code}/p1clip",
+        ))
+
+    # ── P2 Eave Plates ──
+    n_p2 = n_frames * 2  # 2 per frame (left/right eave)
+    n_p2_bundles = max(1, -(-n_p2 // 10))
+    for i in range(n_p2_bundles):
+        mark = f"P2-{i+1}"
+        bundle_qty = min(10, n_p2 - i * 10)
+        wo.items.append(WorkOrderItem(
+            item_id=f"{wo.work_order_id}-{mark}",
+            ship_mark=mark,
+            component_type="p2plate",
+            description=f"P2 Eave Plate Bundle {i+1} — 9x24, {bundle_qty} pcs",
+            quantity=bundle_qty,
+            machine="P1",
+            drawing_ref=f"/shop-drawings/{job_code}/p2plate",
+        ))
+
+    # ── Splice Plates ──
+    n_splices = n_frames * 2  # 2 splice plates per rafter (peak splice L+R)
+    mark = "SPL-1"
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-{mark}",
+        ship_mark=mark,
+        component_type="splice",
+        description=f"Splice Plate Set — {n_splices} pcs",
+        quantity=n_splices,
+        machine="P1",
+        drawing_ref=f"/shop-drawings/{job_code}/splice",
+    ))
 
     # ── Endcap channels ──
     wo.items.append(WorkOrderItem(
@@ -489,7 +534,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         description="Endcap U-Channel (Front End)",
         quantity=1,
         machine="C1",
-        drawing_ref=f"/shop-drawings/{job_code}",
+        drawing_ref=f"/shop-drawings/{job_code}/endcap",
     ))
     wo.items.append(WorkOrderItem(
         item_id=f"{wo.work_order_id}-EC-2",
@@ -498,7 +543,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         description="Endcap U-Channel (Back End)",
         quantity=1,
         machine="C1",
-        drawing_ref=f"/shop-drawings/{job_code}",
+        drawing_ref=f"/shop-drawings/{job_code}/endcap",
     ))
 
     # ── Roofing panels (one item — rolled in bulk) ──
