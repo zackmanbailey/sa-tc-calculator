@@ -160,7 +160,13 @@ ACTIVITY_FEED_PAGE_HTML = r"""
                         <option value="project">Projects</option>
                         <option value="customer">Customers</option>
                         <option value="quote">Quotes</option>
-                        <option value="allocation">Allocations</option>
+                        <option value="work_order">Work Orders</option>
+                        <option value="work_order_item">WO Items</option>
+                        <option value="inspection">Inspections</option>
+                        <option value="ncr">NCRs</option>
+                        <option value="traceability">Traceability</option>
+                        <option value="shipping">Shipping</option>
+                        <option value="shop_drawing">Shop Drawings</option>
                     </select>
                     <input type="text" id="filterUser" placeholder="Filter by user..." style="width:160px;">
                     <button onclick="resetAndLoad()" class="btn btn-secondary" style="padding:6px 12px;">Apply</button>
@@ -213,15 +219,42 @@ ACTIVITY_FEED_PAGE_HTML = r"""
     };
     const typeIcons = {
         user: 'US', coil: 'IN', project: 'PR', customer: 'CU',
-        quote: 'QT', allocation: 'AL', system: 'SY'
+        quote: 'QT', allocation: 'AL', system: 'SY',
+        work_order: 'WO', work_order_item: 'WI', inspection: 'QC',
+        ncr: 'NC', traceability: 'TR', welder: 'WE', inspector: 'IQ',
+        calibration: 'CA', wps: 'WP', shop_drawing: 'SD', load: 'LD',
+        shipping: 'SH', tc_quote: 'TC', qc: 'QC'
     };
     const actionLabels = {
         login: 'Logged in', logout: 'Logged out',
         created_user: 'Created user', updated_user: 'Updated user', deleted_user: 'Deleted user',
-        created_coil: 'Created coil', updated_coil: 'Updated coil',
+        created_coil: 'Created coil', updated_coil: 'Updated coil', deleted_coil: 'Deleted coil',
         allocated_inventory: 'Allocated inventory', released_allocation: 'Released allocation',
+        received_inventory: 'Received inventory',
         created_customer: 'Created customer', updated_customer: 'Updated customer', deleted_customer: 'Deleted customer',
-        saved_quote: 'Saved quote', created_project: 'Created project', updated_project: 'Updated project',
+        saved_quote: 'Saved quote', saved_tc_quote: 'Saved TC quote',
+        created_project: 'Created project', updated_project: 'Updated project', deleted_project: 'Deleted project',
+        updated_project_status: 'Updated project status',
+        uploaded_project_doc: 'Uploaded project doc', deleted_project_doc: 'Deleted project doc',
+        uploaded_customer_doc: 'Uploaded customer doc',
+        created_work_order: 'Created work order', approved_work_order: 'Approved work order',
+        deleted_work_order: 'Deleted work order', edited_work_order: 'Edited work order',
+        stickers_printed: 'Stickers printed',
+        work_order_hold: 'Put WO on hold', work_order_resume: 'Resumed WO',
+        qr_scan_start: 'Started item (QR scan)', qr_scan_finish: 'Finished item (QR scan)',
+        batch_scan: 'Batch scan',
+        edited_work_order_item: 'Edited WO item',
+        qc_inspection: 'QC inspection', created_inspection: 'Created inspection',
+        created_ncr: 'Created NCR', updated_ncr: 'Updated NCR',
+        loading_update: 'Updated loading status',
+        picked_purchased_item: 'Picked purchased item',
+        registered_heat_number: 'Registered heat number', assigned_member: 'Assigned member to heat',
+        saved_welder_cert: 'Saved welder cert', saved_inspector_qual: 'Saved inspector qualification',
+        saved_calibration: 'Saved calibration record', saved_wps: 'Saved WPS',
+        deleted_shop_drawing: 'Deleted shop drawing', generated_shop_drawings: 'Generated shop drawings',
+        created_load: 'Created load', finalized_load: 'Finalized load',
+        generated_packing_list: 'Generated packing list', generated_bol: 'Generated BOL',
+        generated_manifest: 'Generated manifest', generated_inspection_report: 'Generated inspection report',
     };
 
     async function loadAll() {

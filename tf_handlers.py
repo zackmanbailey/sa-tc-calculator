@@ -1934,6 +1934,7 @@ class InventoryAllocateHandler(BaseHandler):
             result = {"ok": True, "allocation_id": alloc_id}
             if warnings:
                 result["warnings"] = warnings
+            self._log("allocated_inventory", "coil", coil_id, {"job_code": job_code, "lbs": qty})
             self.write(json_encode(result))
 
         except Exception as e:
@@ -1991,6 +1992,7 @@ class InventoryAllocateReleaseHandler(BaseHandler):
                 coil["committed_lbs"] = max(0, float(coil.get("committed_lbs", 0)) - remaining)
                 save_inventory(inv)
 
+            self._log("released_allocation", "coil", alloc_id, {"coil_id": found.get("coil_id",""), "lbs": remaining})
             self.write(json_encode({"ok": True}))
 
 
@@ -2054,6 +2056,7 @@ class InventoryReceiveHandler(BaseHandler):
             with open(rcv_path, "w") as f:
                 json.dump(records, f, indent=2)
 
+            self._log("received_inventory", "coil", coil_id, {"lbs": qty, "supplier": body.get("supplier","")})
             self.write(json_encode({"ok": True, "receiving_id": rcv_id}))
 
 
@@ -2814,6 +2817,7 @@ class ProjectStatusHandler(BaseHandler):
             with open(status_file, "w") as f:
                 json.dump(status_data, f, indent=2)
 
+            self._log("updated_project_status", "project", job_code, {"stage": stage})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "stage": stage}))
         except Exception as e:
@@ -4852,6 +4856,7 @@ class QCInspectionCreateHandler(BaseHandler):
             }
             qc["inspections"].append(inspection)
             save_project_qc(job_code, qc)
+            self._log("created_inspection", "inspection", insp_id, {"job_code": job_code, "type": body.get("inspection_type","")})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "inspection": inspection}))
 
@@ -4936,6 +4941,7 @@ class NCRCreateHandler(BaseHandler):
             }
             qc["ncrs"].append(ncr)
             save_project_qc(job_code, qc)
+            self._log("created_ncr", "ncr", ncr_id, {"job_code": job_code, "severity": body.get("severity","")})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "ncr": ncr}))
 
@@ -5009,6 +5015,7 @@ class NCRUpdateHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "NCR not found"}))
                 return
             save_project_qc(job_code, qc)
+            self._log("updated_ncr", "ncr", ncr_id, {"job_code": job_code, "status": body.get("status","")})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True}))
 
@@ -5366,6 +5373,7 @@ class WelderCertsAPIHandler(BaseHandler):
             sd_dir = SHOP_DRAWINGS_DIR
             body = json_decode(self.request.body)
             cert = save_welder_cert(sd_dir, body)
+            self._log("saved_welder_cert", "welder", cert.get("cert_id",""), {"name": body.get("welder_name","")})
             self.write(json_encode({"ok": True, "cert": cert}))
         except Exception as e:
             self.set_status(500)
@@ -5618,6 +5626,7 @@ class InspectorRegistryAPIHandler(BaseHandler):
             sd_dir = SHOP_DRAWINGS_DIR
             body = json_decode(self.request.body)
             qual = save_inspector_qual(sd_dir, body)
+            self._log("saved_inspector_qual", "inspector", qual.get("qual_id",""), {"name": body.get("inspector_name",""), "cert_type": body.get("cert_type","")})
             self.write(json_encode({"ok": True, "qual": qual}))
         except Exception as e:
             self.set_status(500)
@@ -7283,6 +7292,8 @@ class WorkOrderApproveHandler(BaseHandler):
             except Exception as pkt_err:
                 logger.warning("Auto-generate WO packet PDF failed: %s", pkt_err)
 
+            self._log("approved_work_order", "work_order", wo_id, {"job_code": job_code})
+
             self.set_header("Content-Type", "application/json")
             resp = {"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}
             if packet_path:
@@ -7318,6 +7329,7 @@ class WorkOrderStickersPrintedHandler(BaseHandler):
             wo.status = STATUS_STICKERS_PRINTED
             wo.stickers_printed_at = datetime.datetime.now().isoformat()
             save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self._log("stickers_printed", "work_order", wo_id, {"job_code": job_code})
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
@@ -7365,6 +7377,7 @@ class WorkOrderHoldHandler(BaseHandler):
                 return
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self._log("work_order_" + action, "work_order", wo_id, {"job_code": job_code})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
         except Exception as e:
@@ -7410,6 +7423,8 @@ class WorkOrderQRScanHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": f"Unknown action: {action}. Use 'start' or 'finish'."}))
                 return
 
+            if result.get("ok"):
+                self._log("qr_scan_" + action, "work_order_item", item_id, {"job_code": job_code})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
@@ -7544,6 +7559,7 @@ class WorkOrderDeleteHandler(BaseHandler):
                 return
 
             deleted = delete_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            self._log("deleted_work_order", "work_order", wo_id, {"job_code": job_code})
             if not deleted:
                 self.set_status(500)
                 self.write(json_encode({"ok": False, "error": "Failed to delete work order file"}))
@@ -7676,6 +7692,8 @@ class WorkOrderQCHandler(BaseHandler):
                 result["inspector_qualified"] = val.get("ok", False)
                 if not val.get("ok") and val.get("error"):
                     result["inspector_warning"] = val.get("error", "")
+            if result.get("ok"):
+                self._log("qc_inspection", "work_order_item", item_id, {"job_code": job_code, "qc_status": qc_status, "inspector": inspector})
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
@@ -7799,6 +7817,8 @@ class PurchasedItemsAPIHandler(BaseHandler):
             from shop_drawings.work_orders import pick_purchased_item
             result = pick_purchased_item(SHOP_DRAWINGS_DIR, job_code, item_id,
                                           picked_by, pick_status)
+            if result.get("ok"):
+                self._log("picked_purchased_item", "work_order_item", item_id, {"job_code": job_code, "pick_status": pick_status})
             self.write(json_encode(result))
         except Exception as e:
             self.set_status(500)
