@@ -629,7 +629,12 @@ async function approveHoldPoint(itemId) {
         })
     });
     const d = await r.json();
-    if (d.ok) { loadHoldPoints(); loadQCData(); } else { alert(d.error || 'Error approving item'); }
+    if (d.ok) {
+        if (d.inspector_warning) {
+            alert('Warning: ' + d.inspector_warning + '\\n\\nThe inspection was recorded, but this inspector may not be qualified per AISC requirements. Add their credentials in QA > Inspector Registry.');
+        }
+        loadHoldPoints(); loadQCData();
+    } else { alert(d.error || 'Error approving item'); }
 }
 
 async function rejectHoldPoint(itemId) {

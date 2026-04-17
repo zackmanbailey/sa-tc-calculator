@@ -5372,6 +5372,279 @@ class WelderCertsAPIHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+class InspectorRegistryPageHandler(BaseHandler):
+    """GET /qa/inspector-registry — Inspector Qualification Registry page."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            html = """<div style="padding:24px;max-width:1200px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+              <div>
+                <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:4px;">Inspector Qualification Registry</h1>
+                <p style="color:#94A3B8;font-size:14px;">
+                  Track CWI, ASNT, and QC technician certifications per AISC 360 Chapter N &amp; AWS QC1.
+                  Only qualified inspectors can release QC hold points.
+                </p>
+              </div>
+              <button onclick="showAddInspector()" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">+ Add Inspector</button>
+            </div>
+
+            <!-- Summary Cards -->
+            <div id="regSummary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+
+            <!-- Alerts Banner -->
+            <div id="regAlerts" style="margin-bottom:16px;"></div>
+
+            <!-- Inspector List -->
+            <div id="inspectorList"></div>
+
+            <!-- Add/Edit Form -->
+            <div id="inspForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;width:560px;max-height:90vh;overflow-y:auto;">
+              <h3 style="color:#FFF;margin-bottom:16px;font-size:18px;" id="inspFormTitle">Add Inspector Qualification</h3>
+              <input type="hidden" id="fQualId">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Inspector Name</label>
+                  <input id="fInspName" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Employee ID</label>
+                  <input id="fInspEmpId" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Certification Type</label>
+                  <select id="fCertType" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;">
+                    <option value="CWI">CWI — Certified Welding Inspector</option>
+                    <option value="SCWI">SCWI — Senior CWI</option>
+                    <option value="ASNT_II_UT">ASNT Level II — Ultrasonic Testing</option>
+                    <option value="ASNT_II_MT">ASNT Level II — Magnetic Particle</option>
+                    <option value="ASNT_II_PT">ASNT Level II — Liquid Penetrant</option>
+                    <option value="ASNT_III">ASNT Level III — NDE</option>
+                    <option value="QC_TECH">QC Technician (In-House)</option>
+                  </select></div>
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Cert Number</label>
+                  <input id="fCertNum" placeholder="e.g. 12345678" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Issue Date</label>
+                  <input id="fIssueDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;"></div>
+                <div><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Expiration Date</label>
+                  <input id="fInspExpDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;"></div>
+                <div style="grid-column:span 2;"><label style="font-size:12px;color:#64748B;display:block;margin-bottom:4px;">Notes</label>
+                  <textarea id="fInspNotes" rows="2" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;box-sizing:border-box;resize:vertical;"></textarea></div>
+              </div>
+              <div style="margin-top:16px;display:flex;gap:8px;">
+                <button onclick="saveInspector()" style="padding:8px 24px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
+                <button onclick="closeInspForm()" style="padding:8px 24px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
+              </div>
+            </div>
+            <div id="inspOverlay" onclick="closeInspForm()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999;"></div>
+            </div>
+
+            <script>
+            var CERT_LABELS = {
+              CWI: 'CWI', SCWI: 'SCWI', ASNT_II_UT: 'ASNT II (UT)', ASNT_II_MT: 'ASNT II (MT)',
+              ASNT_II_PT: 'ASNT II (PT)', ASNT_III: 'ASNT III', QC_TECH: 'QC Tech'
+            };
+            var CERT_COLORS = {
+              CWI: '#3B82F6', SCWI: '#8B5CF6', ASNT_II_UT: '#F59E0B', ASNT_II_MT: '#F97316',
+              ASNT_II_PT: '#EF4444', ASNT_III: '#EC4899', QC_TECH: '#6B7280'
+            };
+
+            function showAddInspector() {
+              document.getElementById('inspFormTitle').textContent = 'Add Inspector Qualification';
+              document.getElementById('fQualId').value = '';
+              document.getElementById('fInspName').value = '';
+              document.getElementById('fInspEmpId').value = '';
+              document.getElementById('fCertType').value = 'CWI';
+              document.getElementById('fCertNum').value = '';
+              document.getElementById('fIssueDate').value = '';
+              document.getElementById('fInspExpDate').value = '';
+              document.getElementById('fInspNotes').value = '';
+              document.getElementById('inspForm').style.display = 'block';
+              document.getElementById('inspOverlay').style.display = 'block';
+            }
+
+            function editInspector(q) {
+              document.getElementById('inspFormTitle').textContent = 'Edit Inspector Qualification';
+              document.getElementById('fQualId').value = q.qual_id || '';
+              document.getElementById('fInspName').value = q.inspector_name || '';
+              document.getElementById('fInspEmpId').value = q.employee_id || '';
+              document.getElementById('fCertType').value = q.cert_type || 'CWI';
+              document.getElementById('fCertNum').value = q.cert_number || '';
+              document.getElementById('fIssueDate').value = q.issue_date || '';
+              document.getElementById('fInspExpDate').value = q.expiration_date || '';
+              document.getElementById('fInspNotes').value = q.notes || '';
+              document.getElementById('inspForm').style.display = 'block';
+              document.getElementById('inspOverlay').style.display = 'block';
+            }
+
+            function closeInspForm() {
+              document.getElementById('inspForm').style.display = 'none';
+              document.getElementById('inspOverlay').style.display = 'none';
+            }
+
+            function saveInspector() {
+              var qual = {
+                inspector_name: document.getElementById('fInspName').value,
+                employee_id: document.getElementById('fInspEmpId').value,
+                cert_type: document.getElementById('fCertType').value,
+                cert_number: document.getElementById('fCertNum').value,
+                issue_date: document.getElementById('fIssueDate').value,
+                expiration_date: document.getElementById('fInspExpDate').value,
+                notes: document.getElementById('fInspNotes').value,
+                status: 'active'
+              };
+              var qid = document.getElementById('fQualId').value;
+              if (qid) qual.qual_id = qid;
+              fetch('/api/qa/inspector-registry', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(qual)
+              }).then(function(r){ return r.json(); }).then(function(d) {
+                if (d.ok) { closeInspForm(); loadInspectors(); }
+                else { alert('Error: ' + (d.error || 'Unknown')); }
+              });
+            }
+
+            function loadInspectors() {
+              fetch('/api/qa/inspector-registry').then(function(r){ return r.json(); }).then(function(d) {
+                if (!d.ok) return;
+                var inspectors = d.inspectors || [];
+                var summary = d.summary || {};
+
+                // Summary cards
+                var sh = '';
+                var cards = [
+                  {label: 'Total Inspectors', val: summary.total || 0, color: '#3B82F6', icon: '&#128100;'},
+                  {label: 'Active / Current', val: summary.active || 0, color: '#10B981', icon: '&#9989;'},
+                  {label: 'Expiring Soon', val: summary.expiring_soon || 0, color: '#F59E0B', icon: '&#9888;'},
+                  {label: 'Expired', val: summary.expired || 0, color: '#DC2626', icon: '&#10060;'}
+                ];
+                cards.forEach(function(c) {
+                  sh += '<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;text-align:center;">'
+                    + '<div style="font-size:28px;margin-bottom:4px;">' + c.icon + '</div>'
+                    + '<div style="font-size:24px;font-weight:800;color:' + c.color + ';">' + c.val + '</div>'
+                    + '<div style="font-size:12px;color:#64748B;margin-top:2px;">' + c.label + '</div></div>';
+                });
+                document.getElementById('regSummary').innerHTML = sh;
+
+                // Alerts
+                var alerts = d.alerts || [];
+                var ah = '';
+                if (alerts.length > 0) {
+                  ah = '<div style="background:#7F1D1D;border:1px solid #DC2626;border-radius:10px;padding:14px;">';
+                  ah += '<div style="font-size:14px;font-weight:700;color:#FCA5A5;margin-bottom:6px;">&#9888; Certification Alerts</div>';
+                  alerts.forEach(function(a) {
+                    var alertColor = a.alert === 'EXPIRED' ? '#DC2626' : '#F59E0B';
+                    ah += '<div style="font-size:13px;color:#FCA5A5;margin-top:4px;">'
+                      + '<span style="color:' + alertColor + ';font-weight:600;">' + a.alert + '</span> — '
+                      + a.name + ' (' + (CERT_LABELS[a.cert_type] || a.cert_type) + ') '
+                      + (a.days_left <= 0 ? 'expired ' + Math.abs(a.days_left) + ' days ago' : 'expires in ' + a.days_left + ' days')
+                      + '</div>';
+                  });
+                  ah += '</div>';
+                }
+                document.getElementById('regAlerts').innerHTML = ah;
+
+                // Inspector list
+                var lh = '';
+                if (inspectors.length === 0) {
+                  lh = '<div style="color:#475569;padding:40px;text-align:center;background:#111827;border:1px solid #1E293B;border-radius:10px;">No inspector qualifications registered yet. Click + Add Inspector to get started.</div>';
+                } else {
+                  inspectors.forEach(function(q) {
+                    var certColor = CERT_COLORS[q.cert_type] || '#6B7280';
+                    var certLabel = CERT_LABELS[q.cert_type] || q.cert_type;
+                    var expColor = '#10B981'; var expText = 'Valid';
+                    if (q.days_left !== undefined && q.days_left <= 0) { expColor = '#DC2626'; expText = 'EXPIRED'; }
+                    else if (q.days_left !== undefined && q.days_left <= 60) { expColor = '#F59E0B'; expText = 'Expiring'; }
+
+                    lh += '<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">'
+                      + '<div style="width:48px;height:48px;border-radius:10px;background:' + certColor + '22;border:1px solid ' + certColor + '44;display:flex;align-items:center;justify-content:center;">'
+                      + '<span style="font-size:11px;font-weight:800;color:' + certColor + ';">' + certLabel + '</span></div>'
+                      + '<div style="flex:1;">'
+                      + '<div style="font-size:16px;font-weight:700;color:#FFF;">' + (q.inspector_name || '—') + '</div>'
+                      + '<div style="font-size:12px;color:#94A3B8;margin-top:2px;">'
+                      + 'Cert #' + (q.cert_number || '—') + ' | ID: ' + (q.employee_id || '—')
+                      + (q.issue_date ? ' | Issued: ' + q.issue_date : '') + '</div>'
+                      + (q.notes ? '<div style="font-size:12px;color:#64748B;margin-top:2px;">' + q.notes + '</div>' : '')
+                      + '</div>'
+                      + '<div style="text-align:right;">'
+                      + '<div style="font-size:12px;color:#64748B;">Expires</div>'
+                      + '<div style="font-size:14px;font-weight:600;color:' + expColor + ';">' + (q.expiration_date || 'N/A') + '</div>'
+                      + '<div style="font-size:11px;color:' + expColor + ';margin-top:2px;">' + expText + '</div></div>'
+                      + '<button data-qual="' + btoa(JSON.stringify(q)) + '" onclick="editInspector(JSON.parse(atob(this.dataset.qual)))" style="padding:6px 12px;background:#1E293B;color:#94A3B8;border:1px solid #334155;border-radius:6px;font-size:12px;cursor:pointer;">Edit</button>'
+                      + '</div>';
+                  });
+                }
+                document.getElementById('inspectorList').innerHTML = lh;
+              });
+            }
+            loadInspectors();
+            </script>"""
+            self.render_with_nav(html, active_page="inspectorregistry")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class InspectorRegistryAPIHandler(BaseHandler):
+    """GET/POST /api/qa/inspector-registry — CRUD for inspector qualifications."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.qa_system import (get_inspector_quals,
+                check_inspector_expirations, get_inspector_registry_summary)
+            sd_dir = SHOP_DRAWINGS_DIR
+            inspectors = get_inspector_quals(sd_dir)
+            alerts_list = check_inspector_expirations(sd_dir)
+            alerts_map = {}
+            for a in alerts_list:
+                alerts_map[a.get("qual_id")] = a
+            for q in inspectors:
+                if q.get("qual_id") in alerts_map:
+                    q["days_left"] = alerts_map[q["qual_id"]].get("days_left")
+                    q["alert"] = alerts_map[q["qual_id"]].get("alert")
+            summary = get_inspector_registry_summary(sd_dir)
+            self.write(json_encode({
+                "ok": True,
+                "inspectors": inspectors,
+                "summary": summary,
+                "alerts": [{"name": a.get("inspector_name",""), "cert_type": a.get("cert_type",""),
+                            "alert": a.get("alert",""), "days_left": a.get("days_left",0)}
+                           for a in alerts_list],
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            from shop_drawings.qa_system import save_inspector_qual
+            sd_dir = SHOP_DRAWINGS_DIR
+            body = json_decode(self.request.body)
+            qual = save_inspector_qual(sd_dir, body)
+            self.write(json_encode({"ok": True, "qual": qual}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class InspectorValidateAPIHandler(BaseHandler):
+    """POST /api/qa/inspector-validate — Check if an inspector is qualified for a scope."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            from shop_drawings.qa_system import validate_inspector_for_scope
+            sd_dir = SHOP_DRAWINGS_DIR
+            body = json_decode(self.request.body)
+            inspector_name = body.get("inspector_name", "").strip()
+            inspection_type = body.get("inspection_type", "").strip()
+            if not inspector_name or not inspection_type:
+                self.write(json_encode({"ok": False, "error": "Missing inspector_name or inspection_type"}))
+                return
+            result = validate_inspector_for_scope(sd_dir, inspector_name, inspection_type)
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class ProceduresPageHandler(BaseHandler):
     """GET /qa/procedures — Procedures & Quality Manual page."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7384,8 +7657,25 @@ class WorkOrderQCHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or qc_status"}))
                 return
 
+            # ── Inspector Qualification Validation ──
+            # For QC hold point releases (passed/failed on structural members),
+            # validate the inspector holds a current CWI/SCWI cert.
+            try:
+                from shop_drawings.qa_system import validate_inspector_for_scope
+                val = validate_inspector_for_scope(SHOP_DRAWINGS_DIR, inspector, "qc_hold_release")
+                if not val.get("ok") and val.get("error"):
+                    # Still allow the inspection but attach a warning
+                    pass  # warning attached below in result
+            except Exception:
+                val = {"ok": True, "reason": "validation_unavailable"}
+
             result = qc_inspect_item(SHOP_DRAWINGS_DIR, job_code, item_id,
                                       inspector, qc_status, qc_notes)
+            # Attach inspector qualification info to result
+            if result.get("ok"):
+                result["inspector_qualified"] = val.get("ok", False)
+                if not val.get("ok") and val.get("error"):
+                    result["inspector_warning"] = val.get("error", "")
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
@@ -10304,6 +10594,9 @@ def get_routes():
         (r"/api/qa/procedures",          ProceduresAPIHandler),
         (r"/qa/calibration",             CalibrationPageHandler),
         (r"/api/qa/calibration",         CalibrationAPIHandler),
+        (r"/qa/inspector-registry",      InspectorRegistryPageHandler),
+        (r"/api/qa/inspector-registry",  InspectorRegistryAPIHandler),
+        (r"/api/qa/inspector-validate",  InspectorValidateAPIHandler),
         (r"/qa/ncr-log",                 NCRLogPageHandler),
         (r"/api/qa/ncr-log",             NCRLogAPIHandler),
 

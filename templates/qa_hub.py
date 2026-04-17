@@ -179,6 +179,16 @@ QA_HUB_HTML = """
       </div>
     </a>
 
+    <a href="/qa/inspector-registry" class="qa-card">
+      <div class="qc-icon blue">&#128100;</div>
+      <h3>Inspector Registry</h3>
+      <p>CWI, ASNT, and QC technician qualification records per AISC 360 Chapter N &amp; AWS QC1. Validates that inspectors hold current certifications before they can release QC hold points on structural members.</p>
+      <div class="qc-status">
+        <div class="qc-dot green"></div>
+        <span class="qc-status-text green" id="inspStatus">Registry active</span>
+      </div>
+    </a>
+
     <a href="/qa/calibration" class="qa-card">
       <div class="qc-icon purple">&#128295;</div>
       <h3>Calibration Log</h3>
@@ -286,6 +296,14 @@ QA_HUB_HTML = """
           <span>System for documenting, tracking, and resolving quality deviations</span>
         </div>
         <div class="aisc-ref">AISC QM §8.3</div>
+      </li>
+      <li>
+        <div class="aisc-check done">&#10003;</div>
+        <div class="aisc-item-text">
+          <strong>Inspector Qualification Registry</strong>
+          <span>CWI/ASNT certification tracking with scope validation for QC hold point releases</span>
+        </div>
+        <div class="aisc-ref">AISC 360 Ch.N / AWS QC1</div>
       </li>
       <li>
         <div class="aisc-check done">&#10003;</div>

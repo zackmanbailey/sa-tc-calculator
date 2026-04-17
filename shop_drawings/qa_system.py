@@ -425,6 +425,231 @@ def save_procedure(base_dir: str, proc: dict) -> dict:
 
 
 # ═══════════════════════════════════════════════
+# INSPECTOR QUALIFICATIONS REGISTRY
+# ═══════════════════════════════════════════════
+
+# Certification types and their inspection scopes
+INSPECTOR_CERT_TYPES = {
+    "CWI": {
+        "name": "Certified Welding Inspector",
+        "standard": "AWS QC1",
+        "scopes": ["visual_weld", "wps_compliance", "welder_qualification", "final_inspection"],
+    },
+    "SCWI": {
+        "name": "Senior Certified Welding Inspector",
+        "standard": "AWS QC1",
+        "scopes": ["visual_weld", "wps_compliance", "welder_qualification", "final_inspection", "ndt_oversight"],
+    },
+    "ASNT_II_UT": {
+        "name": "ASNT Level II — Ultrasonic Testing",
+        "standard": "ASNT SNT-TC-1A",
+        "scopes": ["ndt_ut"],
+    },
+    "ASNT_II_MT": {
+        "name": "ASNT Level II — Magnetic Particle Testing",
+        "standard": "ASNT SNT-TC-1A",
+        "scopes": ["ndt_mt"],
+    },
+    "ASNT_II_PT": {
+        "name": "ASNT Level II — Liquid Penetrant Testing",
+        "standard": "ASNT SNT-TC-1A",
+        "scopes": ["ndt_pt"],
+    },
+    "ASNT_III": {
+        "name": "ASNT Level III — NDE",
+        "standard": "ASNT SNT-TC-1A",
+        "scopes": ["ndt_ut", "ndt_mt", "ndt_pt", "ndt_oversight"],
+    },
+    "QC_TECH": {
+        "name": "QC Technician (In-House)",
+        "standard": "Company QM-001",
+        "scopes": ["dimensional", "visual_general", "coating"],
+    },
+}
+
+# Map inspection types to required cert scopes
+INSPECTION_SCOPE_REQUIREMENTS = {
+    "visual_weld":          ["CWI", "SCWI"],
+    "wps_compliance":       ["CWI", "SCWI"],
+    "welder_qualification": ["CWI", "SCWI"],
+    "final_inspection":     ["CWI", "SCWI"],
+    "ndt_ut":               ["ASNT_II_UT", "ASNT_III"],
+    "ndt_mt":               ["ASNT_II_MT", "ASNT_III"],
+    "ndt_pt":               ["ASNT_II_PT", "ASNT_III"],
+    "ndt_oversight":        ["SCWI", "ASNT_III"],
+    "dimensional":          ["QC_TECH", "CWI", "SCWI"],
+    "visual_general":       ["QC_TECH", "CWI", "SCWI"],
+    "coating":              ["QC_TECH", "CWI", "SCWI"],
+    "qc_hold_release":      ["CWI", "SCWI"],
+}
+
+
+def _inspectors_path(base_dir: str) -> str:
+    return os.path.join(_qa_dir(base_dir), "inspector_quals.json")
+
+
+def get_inspector_quals(base_dir: str) -> List[dict]:
+    """Get all inspector qualification records."""
+    data = _load(_inspectors_path(base_dir))
+    return data.get("inspectors", [])
+
+
+def save_inspector_qual(base_dir: str, qual: dict) -> dict:
+    """Add or update an inspector qualification record."""
+    path = _inspectors_path(base_dir)
+    data = _load(path) or {"inspectors": []}
+
+    if not qual.get("qual_id"):
+        qual["qual_id"] = f"IQ-{uuid.uuid4().hex[:8].upper()}"
+        qual["created_at"] = datetime.datetime.now().isoformat()
+
+    existing = next((i for i, q in enumerate(data["inspectors"])
+                     if q.get("qual_id") == qual["qual_id"]), None)
+    if existing is not None:
+        data["inspectors"][existing] = qual
+    else:
+        data["inspectors"].append(qual)
+
+    qual["updated_at"] = datetime.datetime.now().isoformat()
+    _save(path, data)
+    return qual
+
+
+def delete_inspector_qual(base_dir: str, qual_id: str) -> bool:
+    """Remove an inspector qualification record."""
+    path = _inspectors_path(base_dir)
+    data = _load(path) or {"inspectors": []}
+    before = len(data["inspectors"])
+    data["inspectors"] = [q for q in data["inspectors"] if q.get("qual_id") != qual_id]
+    if len(data["inspectors"]) < before:
+        _save(path, data)
+        return True
+    return False
+
+
+def check_inspector_expirations(base_dir: str) -> List[dict]:
+    """Check for expiring inspector certifications (within 60 days)."""
+    inspectors = get_inspector_quals(base_dir)
+    alerts = []
+    today = datetime.date.today()
+    for q in inspectors:
+        exp = q.get("expiration_date", "")
+        if not exp:
+            continue
+        try:
+            exp_date = datetime.date.fromisoformat(exp)
+            days_left = (exp_date - today).days
+            if days_left <= 0:
+                alerts.append({**q, "alert": "EXPIRED", "days_left": days_left})
+            elif days_left <= 60:
+                alerts.append({**q, "alert": "EXPIRING_SOON", "days_left": days_left})
+        except (ValueError, TypeError):
+            pass
+    return alerts
+
+
+def validate_inspector_for_scope(base_dir: str, inspector_name: str,
+                                  inspection_type: str) -> dict:
+    """
+    Check if a named inspector has valid, non-expired credentials
+    for the given inspection type.
+
+    Returns: {"ok": True/False, "inspector": {...}, "cert_type": "CWI", ...}
+    """
+    inspection_type = inspection_type.lower().strip()
+    required_certs = INSPECTION_SCOPE_REQUIREMENTS.get(inspection_type)
+
+    # If not a controlled scope, allow anyone
+    if required_certs is None:
+        return {"ok": True, "reason": "uncontrolled_scope"}
+
+    inspectors = get_inspector_quals(base_dir)
+    today = datetime.date.today()
+
+    # Find matching inspector by name (case-insensitive)
+    name_lower = inspector_name.lower().strip()
+    matches = [q for q in inspectors
+                if q.get("inspector_name", "").lower().strip() == name_lower]
+
+    if not matches:
+        return {
+            "ok": False,
+            "error": f"Inspector '{inspector_name}' not found in qualification registry",
+            "hint": "Add this inspector via QA > Inspector Registry before they can perform controlled inspections",
+        }
+
+    # Check if any of their certs cover this scope and are current
+    for q in matches:
+        cert_type = q.get("cert_type", "")
+        if cert_type not in required_certs:
+            continue
+        if q.get("status") not in ("active", None, ""):
+            continue
+        exp = q.get("expiration_date", "")
+        if exp:
+            try:
+                if datetime.date.fromisoformat(exp) < today:
+                    continue  # expired
+            except (ValueError, TypeError):
+                pass
+        # Valid cert found
+        return {
+            "ok": True,
+            "inspector": q,
+            "cert_type": cert_type,
+            "cert_name": INSPECTOR_CERT_TYPES.get(cert_type, {}).get("name", cert_type),
+        }
+
+    # Has a record but no valid cert for this scope
+    held_certs = [q.get("cert_type", "?") for q in matches]
+    return {
+        "ok": False,
+        "error": f"Inspector '{inspector_name}' does not hold a valid certification for '{inspection_type}' inspections",
+        "held_certs": held_certs,
+        "required_certs": required_certs,
+    }
+
+
+def get_inspector_registry_summary(base_dir: str) -> dict:
+    """Summary data for the inspector registry dashboard."""
+    inspectors = get_inspector_quals(base_dir)
+    today = datetime.date.today()
+    active = 0
+    expired = 0
+    expiring_soon = 0
+    by_type = {}
+
+    for q in inspectors:
+        ct = q.get("cert_type", "OTHER")
+        by_type[ct] = by_type.get(ct, 0) + 1
+
+        exp = q.get("expiration_date", "")
+        if not exp:
+            active += 1
+            continue
+        try:
+            exp_date = datetime.date.fromisoformat(exp)
+            days_left = (exp_date - today).days
+            if days_left <= 0:
+                expired += 1
+            elif days_left <= 60:
+                expiring_soon += 1
+                active += 1
+            else:
+                active += 1
+        except (ValueError, TypeError):
+            active += 1
+
+    return {
+        "total": len(inspectors),
+        "active": active,
+        "expired": expired,
+        "expiring_soon": expiring_soon,
+        "by_type": by_type,
+    }
+
+
+# ═══════════════════════════════════════════════
 # QA DASHBOARD STATS
 # ═══════════════════════════════════════════════
 
@@ -442,6 +667,8 @@ def get_qa_stats(base_dir: str) -> dict:
 
     welder_alerts = check_welder_expirations(base_dir)
     cal_alerts = check_calibration_due(base_dir)
+    inspector_alerts = check_inspector_expirations(base_dir)
+    inspector_summary = get_inspector_registry_summary(base_dir)
 
     # Count NCRs from QC data (scan all project QC files)
     qc_dir = os.path.join(os.path.dirname(_qa_dir(base_dir)), "qc")
@@ -475,4 +702,6 @@ def get_qa_stats(base_dir: str) -> dict:
         "calibrated_tools": in_cal,
         "welder_alerts": [{"name": a.get("welder_name",""), "alert": a.get("alert",""), "days_left": a.get("days_left",0)} for a in welder_alerts],
         "calibration_alerts": [{"tool": a.get("tool_name",""), "alert": a.get("alert",""), "days_left": a.get("days_left",0)} for a in cal_alerts],
+        "inspector_alerts": [{"name": a.get("inspector_name",""), "cert_type": a.get("cert_type",""), "alert": a.get("alert",""), "days_left": a.get("days_left",0)} for a in inspector_alerts],
+        "qualified_inspectors": inspector_summary.get("active", 0),
     }
