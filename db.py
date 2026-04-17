@@ -233,6 +233,21 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_receiving_coil ON receiving(coil_id);
 CREATE INDEX IF NOT EXISTS idx_project_versions_job ON project_versions(job_code);
 CREATE INDEX IF NOT EXISTS idx_projects_stage ON projects(stage);
+
+-- Activity Log
+CREATE TABLE IF NOT EXISTS activity_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT NOT NULL,
+    user        TEXT NOT NULL DEFAULT 'system',
+    action      TEXT NOT NULL,
+    entity_type TEXT DEFAULT '',
+    entity_id   TEXT DEFAULT '',
+    details     TEXT DEFAULT '{}',
+    ip_address  TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_activity_timestamp ON activity_log(timestamp);
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user);
+CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_log(entity_type, entity_id);
 """
 
 
@@ -743,3 +758,87 @@ def invalidate(key=None):
     else:
         _cache.pop(key, None)
         _cache_ttl.pop(key, None)
+
+
+# ─────────────────────────────────────────────
+# ACTIVITY LOG
+# ─────────────────────────────────────────────
+
+def log_activity(user, action, entity_type="", entity_id="", details=None, ip_address=""):
+    """Record an activity to the audit log.
+
+    Args:
+        user: username performing the action
+        action: short verb phrase, e.g. "created_project", "updated_coil"
+        entity_type: "project", "coil", "customer", "user", "quote", etc.
+        entity_id: the specific ID (job_code, coil_id, customer id, etc.)
+        details: optional dict of extra context (serialized to JSON)
+        ip_address: requesting client IP
+    """
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO activity_log (timestamp, user, action, entity_type, entity_id, details, ip_address)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            datetime.datetime.utcnow().isoformat() + "Z",
+            user or "system",
+            action,
+            entity_type,
+            str(entity_id),
+            json.dumps(details or {}),
+            ip_address,
+        ),
+    )
+    conn.commit()
+
+
+def get_activity_log(limit=50, offset=0, user=None, entity_type=None, entity_id=None):
+    """Retrieve activity log entries with optional filters.
+
+    Returns list of dicts sorted by most recent first.
+    """
+    conn = get_db()
+    sql = "SELECT * FROM activity_log WHERE 1=1"
+    params = []
+    if user:
+        sql += " AND user = ?"
+        params.append(user)
+    if entity_type:
+        sql += " AND entity_type = ?"
+        params.append(entity_type)
+    if entity_id:
+        sql += " AND entity_id = ?"
+        params.append(str(entity_id))
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    rows = conn.execute(sql, params).fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            "id": r["id"],
+            "timestamp": r["timestamp"],
+            "user": r["user"],
+            "action": r["action"],
+            "entity_type": r["entity_type"],
+            "entity_id": r["entity_id"],
+            "details": json.loads(r["details"] or "{}"),
+            "ip_address": r["ip_address"],
+        })
+    return result
+
+
+def get_activity_count(user=None, entity_type=None, entity_id=None):
+    """Get total count of activity entries (for pagination)."""
+    conn = get_db()
+    sql = "SELECT COUNT(*) FROM activity_log WHERE 1=1"
+    params = []
+    if user:
+        sql += " AND user = ?"
+        params.append(user)
+    if entity_type:
+        sql += " AND entity_type = ?"
+        params.append(entity_type)
+    if entity_id:
+        sql += " AND entity_id = ?"
+        params.append(str(entity_id))
+    return conn.execute(sql, params).fetchone()[0]

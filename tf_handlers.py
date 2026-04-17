@@ -12,6 +12,48 @@ from tornado.escape import json_decode, json_encode
 
 logger = logging.getLogger("titanforge")
 
+
+# ── Input Validation Helpers ─────────────────────────────────────────────────
+
+def _validate_required(body, fields):
+    """Check that all required fields are present and non-empty in body dict.
+    Returns (True, None) if valid, (False, error_message) if not.
+    """
+    missing = [f for f in fields if not body.get(f, "")]
+    if missing:
+        return False, f"Required fields missing: {', '.join(missing)}"
+    return True, None
+
+
+def _validate_numeric(body, fields):
+    """Ensure fields are numeric (int or float). Returns (True, None) or (False, msg)."""
+    for f in fields:
+        val = body.get(f)
+        if val is not None and val != "":
+            try:
+                float(val)
+            except (TypeError, ValueError):
+                return False, f"Field '{f}' must be a number, got: {val}"
+    return True, None
+
+
+def _sanitize_string(val, max_len=500):
+    """Strip whitespace and limit length. Returns sanitized string."""
+    if not isinstance(val, str):
+        return str(val) if val is not None else ""
+    return val.strip()[:max_len]
+
+
+def _validate_job_code(code):
+    """Validate a job code format. Returns sanitized code or None."""
+    if not code or not isinstance(code, str):
+        return None
+    code = code.strip()
+    if not re.match(r'^[A-Za-z0-9_\-\.]+$', code):
+        return None
+    return code[:50]
+
+
 # ── Authentication / User Management ─────────────────────────────────────────
 try:
     import bcrypt
@@ -738,6 +780,22 @@ class BaseHandler(tornado.web.RequestHandler):
                 f"<br><a href='/'>← Back to Dashboard</a></div></body></html>"
             )
 
+    def _log(self, action, entity_type="", entity_id="", details=None):
+        """Log an activity for the current user. Safe to call even if db not available."""
+        if USE_SQLITE:
+            try:
+                import db as _db
+                _db.log_activity(
+                    user=self.get_current_user() or "anonymous",
+                    action=action,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    details=details,
+                    ip_address=self.request.remote_ip or "",
+                )
+            except Exception:
+                logger.debug("Activity log write failed", exc_info=True)
+
     def render_with_nav(self, html: str, active_page: str = "",
                         job_code: str = ""):
         """Render HTML with the unified sidebar navigation injected.
@@ -767,135 +825,193 @@ class BaseHandler(tornado.web.RequestHandler):
 class LoginHandler(tornado.web.RequestHandler):
     """POST /auth/login — Authenticate user and set secure cookie."""
     def get(self):
-        # If already logged in, redirect to dashboard
-        if self.get_secure_cookie("sa_user"):
-            self.redirect("/")
-            return
-        # HTML served from external module (will be imported)
-        self.set_header("Content-Type", "text/html")
-        self.write(LOGIN_HTML)
+        try:
+            # If already logged in, redirect to dashboard
+            if self.get_secure_cookie("sa_user"):
+                self.redirect("/")
+                return
+            # HTML served from external module (will be imported)
+            self.set_header("Content-Type", "text/html")
+            self.write(LOGIN_HTML)
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
     def post(self):
-        body     = json_decode(self.request.body)
-        username = body.get("username", "").strip().lower()
-        password = body.get("password", "")
+        try:
+            body     = json_decode(self.request.body)
+            username = body.get("username", "").strip().lower()
+            password = body.get("password", "")
 
-        users = load_users()
-        user  = users.get(username)
-        if not user or not verify_password(user["password"], password):
+            users = load_users()
+            user  = users.get(username)
+            if not user or not verify_password(user["password"], password):
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
+                return
+
+            self.set_secure_cookie("sa_user", username, expires_days=30)
+            self._log("login", "user", username)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
-            return
-
-        self.set_secure_cookie("sa_user", username, expires_days=30)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "redirect": "/"}))
+            self.write(json_encode({"ok": True, "redirect": "/"}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LogoutHandler(tornado.web.RequestHandler):
     """GET /auth/logout — Clear session and redirect to login."""
     def get(self):
-        self.clear_cookie("sa_user")
-        self.redirect("/auth/login")
+        try:
+            self.clear_cookie("sa_user")
+            self._log("logout", "user", current_user)
+            self.redirect("/auth/login")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class AdminPageHandler(BaseHandler):
     """GET /admin — User management page (admin only)."""
     required_roles = ["admin"]
 
     def get(self):
-        self.render_with_nav(ADMIN_HTML, active_page="admin")
+        try:
+            self.render_with_nav(ADMIN_HTML, active_page="admin")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class UsersListHandler(BaseHandler):
     """GET /auth/users — List all users (admin only)."""
     required_roles = ["admin"]
 
     def get(self):
-        users = load_users()
-        safe = {}
-        for uname, udata in users.items():
-            safe[uname] = {
-                "display_name": udata.get("display_name", ""),
-                "role": udata.get("role", "viewer"),
-                "created": udata.get("created", ""),
-            }
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"users": safe}))
+        try:
+            users = load_users()
+            safe = {}
+            for uname, udata in users.items():
+                safe[uname] = {
+                    "display_name": udata.get("display_name", ""),
+                    "role": udata.get("role", "viewer"),
+                    "created": udata.get("created", ""),
+                }
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"users": safe}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class UserAddHandler(BaseHandler):
     """POST /auth/users/add — Add a new user (admin only)."""
     required_roles = ["admin"]
 
     def post(self):
-        body = json_decode(self.request.body)
-        username = body.get("username", "").strip().lower()
-        password = body.get("password", "")
-        if not username or not password:
-            self.write(json_encode({"ok": False, "error": "Username and password required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            username = _sanitize_string(body.get("username", "")).lower()
+            password = body.get("password", "")
+            if not username or not password:
+                self.write(json_encode({"ok": False, "error": "Username and password required"}))
+                return
+            if len(username) < 2 or len(username) > 50:
+                self.write(json_encode({"ok": False, "error": "Username must be 2-50 characters"}))
+                return
+            if not re.match(r'^[a-z0-9_\-\.]+$', username):
+                self.write(json_encode({"ok": False, "error": "Username can only contain letters, numbers, underscores, hyphens"}))
+                return
+            if len(password) < 4:
+                self.write(json_encode({"ok": False, "error": "Password must be at least 4 characters"}))
+                return
+            role = body.get("role", "viewer")
+            if role not in ROLE_PERMISSIONS:
+                self.write(json_encode({"ok": False, "error": f"Invalid role: {role}"}))
+                return
 
-        users = load_users()
-        if username in users:
-            self.write(json_encode({"ok": False, "error": "Username already exists"}))
-            return
+            users = load_users()
+            if username in users:
+                self.write(json_encode({"ok": False, "error": "Username already exists"}))
+                return
 
-        users[username] = {
-            "password": hash_password(password),
-            "display_name": body.get("display_name", username),
-            "role": body.get("role", "viewer"),
-            "created": datetime.datetime.now().isoformat(),
-        }
-        save_users(users)
-        self.write(json_encode({"ok": True}))
+            users[username] = {
+                "password": hash_password(password),
+                "display_name": _sanitize_string(body.get("display_name", username), 100),
+                "role": role,
+                "created": datetime.datetime.now().isoformat(),
+            }
+            save_users(users)
+            self._log("created_user", "user", username, {"role": body.get("role", "viewer")})
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class UserEditHandler(BaseHandler):
     """POST /auth/users/edit — Edit a user's display_name, role, or password (admin only)."""
     required_roles = ["admin"]
 
     def post(self):
-        body = json_decode(self.request.body)
-        username = body.get("username", "").strip().lower()
-        if not username:
-            self.write(json_encode({"ok": False, "error": "Username required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            username = body.get("username", "").strip().lower()
+            if not username:
+                self.write(json_encode({"ok": False, "error": "Username required"}))
+                return
 
-        users = load_users()
-        if username not in users:
-            self.write(json_encode({"ok": False, "error": "User not found"}))
-            return
+            users = load_users()
+            if username not in users:
+                self.write(json_encode({"ok": False, "error": "User not found"}))
+                return
 
-        if "display_name" in body and body["display_name"].strip():
-            users[username]["display_name"] = body["display_name"].strip()
-        if "role" in body and body["role"] in ROLE_PERMISSIONS:
-            users[username]["role"] = body["role"]
-        if "password" in body and body["password"]:
-            users[username]["password"] = hash_password(body["password"])
+            if "display_name" in body and body["display_name"].strip():
+                users[username]["display_name"] = body["display_name"].strip()
+            if "role" in body and body["role"] in ROLE_PERMISSIONS:
+                users[username]["role"] = body["role"]
+            if "password" in body and body["password"]:
+                users[username]["password"] = hash_password(body["password"])
 
-        save_users(users)
-        self.write(json_encode({"ok": True}))
+            save_users(users)
+            self._log("updated_user", "user", username)
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class UserDeleteHandler(BaseHandler):
     """POST /auth/users/delete — Delete a user (admin only)."""
     required_roles = ["admin"]
 
     def post(self):
-        body = json_decode(self.request.body)
-        username = body.get("username", "")
-        if username == "admin":
-            self.write(json_encode({"ok": False, "error": "Cannot delete the admin account"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            username = body.get("username", "")
+            if username == "admin":
+                self.write(json_encode({"ok": False, "error": "Cannot delete the admin account"}))
+                return
 
-        users = load_users()
-        if username in users:
-            del users[username]
-            save_users(users)
-        self.write(json_encode({"ok": True}))
+            users = load_users()
+            if username in users:
+                del users[username]
+                save_users(users)
+                self._log("deleted_user", "user", username)
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # APP PAGE HANDLERS (Dashboard, Calculators)
 # ─────────────────────────────────────────────
@@ -903,47 +1019,72 @@ class UserDeleteHandler(BaseHandler):
 class DashboardHandler(BaseHandler):
     """GET / — Main TitanForge dashboard."""
     def get(self):
-        user = self.get_current_user() or "local"
-        users_db = load_users()
-        role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
-        display = users_db.get(user, {}).get("display_name", user) if user != "local" else "Admin"
-        html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", display)
-        self.render_with_nav(html, active_page="dashboard")
+        try:
+            user = self.get_current_user() or "local"
+            users_db = load_users()
+            role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
+            display = users_db.get(user, {}).get("display_name", user) if user != "local" else "Admin"
+            html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", display)
+            self.render_with_nav(html, active_page="dashboard")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class GettingStartedHandler(BaseHandler):
     """GET /getting-started — Role-based onboarding guide."""
     def get(self):
-        from templates.getting_started import GETTING_STARTED_HTML
-        user = self.get_current_user() or "local"
-        users_db = load_users()
-        role = users_db.get(user, {}).get("role", "shop") if user != "local" else "admin"
-        html = GETTING_STARTED_HTML.replace("{{USER_ROLE}}", role)
-        self.render_with_nav(html, active_page="getting-started")
+        try:
+            from templates.getting_started import GETTING_STARTED_HTML
+            user = self.get_current_user() or "local"
+            users_db = load_users()
+            role = users_db.get(user, {}).get("role", "shop") if user != "local" else "admin"
+            html = GETTING_STARTED_HTML.replace("{{USER_ROLE}}", role)
+            self.render_with_nav(html, active_page="getting-started")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class HelpBundleHandler(BaseHandler):
     """GET /api/help-bundle — Returns tooltip CSS+JS+glossary for injection into any page."""
     def get(self):
-        from templates.help_tooltips import get_tooltip_bundle
-        from templates.error_handling import get_error_bundle
-        bundle = get_tooltip_bundle() + "\n" + get_error_bundle()
-        self.set_header("Content-Type", "text/html")
-        self.write(bundle)
+        try:
+            from templates.help_tooltips import get_tooltip_bundle
+            from templates.error_handling import get_error_bundle
+            bundle = get_tooltip_bundle() + "\n" + get_error_bundle()
+            self.set_header("Content-Type", "text/html")
+            self.write(bundle)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
-        self.render_with_nav(MAIN_HTML, active_page="sa")
+        try:
+            self.render_with_nav(MAIN_HTML, active_page="sa")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class TCQuoteHandler(BaseHandler):
     """GET /tc — Titan Carports Estimator."""
     def get(self):
-        self.render_with_nav(TC_HTML, active_page="tc")
+        try:
+            self.render_with_nav(TC_HTML, active_page="tc")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # CALCULATION & EXPORT HANDLERS
 # ─────────────────────────────────────────────
@@ -976,7 +1117,6 @@ class CalculateHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
-            import traceback
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
 
@@ -994,7 +1134,6 @@ class ExcelHandler(BaseHandler):
             self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.write(xlsx_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Excel error: {e}\n{traceback.format_exc()}")
 
@@ -1011,7 +1150,6 @@ class PDFHandler(BaseHandler):
             self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"PDF error: {e}\n{traceback.format_exc()}")
 
@@ -1051,7 +1189,6 @@ class LabelsHandler(BaseHandler):
                 "html": html_str,
             }))
         except Exception as e:
-            import traceback
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
 
@@ -1069,7 +1206,6 @@ class LabelsPDFHandler(BaseHandler):
                             f'attachment; filename="SA_Labels_{job}.pdf"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Label PDF error: {e}\n{traceback.format_exc()}")
 
@@ -1087,7 +1223,6 @@ class LabelsCsvHandler(BaseHandler):
                             f'attachment; filename="SA_Labels_{job}.csv"')
             self.write(csv_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Label CSV error: {e}\n{traceback.format_exc()}")
 
@@ -1099,32 +1234,43 @@ class LabelsCsvHandler(BaseHandler):
 class InventoryHandler(BaseHandler):
     """GET /api/inventory — Fetch current inventory."""
     def get(self):
-        data = load_inventory()
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode(data))
+        try:
+            data = load_inventory()
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(data))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryUpdateHandler(BaseHandler):
     """POST /api/inventory/update — Update coil stock."""
     def post(self):
-        body = json_decode(self.request.body)
-        data = load_inventory()
-        coil_id = body.get("coil_id")
-        add_lbs = float(body.get("add_lbs", 0))
-        if coil_id and coil_id in data["coils"]:
-            coil = data["coils"][coil_id]
-            coil["stock_lbs"] = coil.get("stock_lbs", 0) + add_lbs
-            lbs_per_lft = coil.get("lbs_per_lft", 1)
-            coil["stock_lft"] = coil["stock_lbs"] / lbs_per_lft if lbs_per_lft else 0
-            coil.setdefault("orders", []).append({
-                "date": datetime.date.today().isoformat(),
-                "lbs_added": add_lbs,
-            })
-            save_inventory(data)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            data = load_inventory()
+            coil_id = body.get("coil_id")
+            add_lbs = float(body.get("add_lbs", 0))
+            if coil_id and coil_id in data["coils"]:
+                coil = data["coils"][coil_id]
+                coil["stock_lbs"] = coil.get("stock_lbs", 0) + add_lbs
+                lbs_per_lft = coil.get("lbs_per_lft", 1)
+                coil["stock_lft"] = coil["stock_lbs"] / lbs_per_lft if lbs_per_lft else 0
+                coil.setdefault("orders", []).append({
+                    "date": datetime.date.today().isoformat(),
+                    "lbs_added": add_lbs,
+                })
+                save_inventory(data)
+                self._log("updated_coil", "coil", coil_id, {"add_lbs": add_lbs})
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventorySaveHandler(BaseHandler):
     """POST /api/inventory/save — Save full inventory JSON."""
     def post(self):
@@ -1142,14 +1288,19 @@ class InventorySaveHandler(BaseHandler):
 class InventoryCertHandler(BaseHandler):
     """POST /api/inventory/cert — Add mill certificate (legacy JSON-only)."""
     def post(self):
-        cert = json_decode(self.request.body)
-        data = load_inventory()
-        data.setdefault("mill_certs", []).append(cert)
-        save_inventory(data)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            cert = json_decode(self.request.body)
+            data = load_inventory()
+            data.setdefault("mill_certs", []).append(cert)
+            save_inventory(data)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryCertUploadHandler(BaseHandler):
     """POST /api/inventory/cert/upload — Upload mill certificate PDF + metadata."""
     def post(self):
@@ -1186,7 +1337,6 @@ class InventoryCertUploadHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "filename": filename}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -1195,23 +1345,28 @@ class InventoryCertUploadHandler(BaseHandler):
 class CertFileHandler(BaseHandler):
     """GET /certs/{filename} — Serve mill cert PDF."""
     def get(self, filename):
-        # Safety: only allow plain filenames, no path traversal
-        if not re.match(r"^[a-zA-Z0-9_.-]+\.pdf$", filename):
-            self.set_status(400)
-            self.write("Invalid filename")
-            return
-        path = os.path.join(CERTS_DIR, filename)
-        if not os.path.isfile(path):
-            self.set_status(404)
-            self.write("Cert PDF not found")
-            return
-        self.set_header("Content-Type", "application/pdf")
-        self.set_header("Content-Disposition",
-                        f'inline; filename="{filename}"')
-        with open(path, "rb") as f:
-            self.write(f.read())
+        try:
+            # Safety: only allow plain filenames, no path traversal
+            if not re.match(r"^[a-zA-Z0-9_.-]+\.pdf$", filename):
+                self.set_status(400)
+                self.write("Invalid filename")
+                return
+            path = os.path.join(CERTS_DIR, filename)
+            if not os.path.isfile(path):
+                self.set_status(404)
+                self.write("Cert PDF not found")
+                return
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                            f'inline; filename="{filename}"')
+            with open(path, "rb") as f:
+                self.write(f.read())
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # COIL MANAGEMENT HANDLERS
 # ─────────────────────────────────────────────
@@ -1252,7 +1407,6 @@ class CoilDeleteHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "deleted": coil_id}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -1332,7 +1486,6 @@ class CoilStickerHandler(BaseHandler):
                 self.set_status(400)
                 self.write(json_encode({"error": f"Unknown format: {fmt}"}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Sticker error: {e}\n{traceback.format_exc()}")
 
@@ -1340,106 +1493,111 @@ class CoilStickerHandler(BaseHandler):
 class CoilDetailHandler(BaseHandler):
     """GET /coil/{coil_id} — Mobile coil status page (linked from QR code)."""
     def get(self, coil_id):
-        inv   = load_inventory()
-        coils = inv.get("coils", {})
-        coil  = coils.get(coil_id)
+        try:
+            inv   = load_inventory()
+            coils = inv.get("coils", {})
+            coil  = coils.get(coil_id)
 
-        if coil is None:
-            self.set_status(404)
-            self.render_with_nav(
-                f"<html><head><title>Coil Not Found</title></head><body>"
-                f"<div style='padding:2rem;'><h2>Coil '{coil_id}' not found</h2>"
-                f"<p>This coil ID is not currently in the inventory system.</p>"
-                f"<a href='/inventory'>← Back to Inventory</a></div></body></html>",
-                active_page="inventory")
-            return
+            if coil is None:
+                self.set_status(404)
+                self.render_with_nav(
+                    f"<html><head><title>Coil Not Found</title></head><body>"
+                    f"<div style='padding:2rem;'><h2>Coil '{coil_id}' not found</h2>"
+                    f"<p>This coil ID is not currently in the inventory system.</p>"
+                    f"<a href='/inventory'>← Back to Inventory</a></div></body></html>",
+                    active_page="inventory")
+                return
 
-        stock_lbs     = coil.get("stock_lbs", 0)
-        committed_lbs = coil.get("committed_lbs", 0)
-        available_lbs = max(0, stock_lbs - committed_lbs)
+            stock_lbs     = coil.get("stock_lbs", 0)
+            committed_lbs = coil.get("committed_lbs", 0)
+            available_lbs = max(0, stock_lbs - committed_lbs)
 
-        if available_lbs > 0 and committed_lbs == 0:
-            status_label = "AVAILABLE"
-            status_class = "status-available"
-            avail_color  = "#155724"
-        elif available_lbs > 0:
-            status_label = "PARTIALLY COMMITTED"
-            status_class = "status-committed"
-            avail_color  = "#856404"
-        else:
-            status_label = "FULLY COMMITTED / OUT"
-            status_class = "status-out"
-            avail_color  = "#721c24"
+            if available_lbs > 0 and committed_lbs == 0:
+                status_label = "AVAILABLE"
+                status_class = "status-available"
+                avail_color  = "#155724"
+            elif available_lbs > 0:
+                status_label = "PARTIALLY COMMITTED"
+                status_class = "status-committed"
+                avail_color  = "#856404"
+            else:
+                status_label = "FULLY COMMITTED / OUT"
+                status_class = "status-out"
+                avail_color  = "#721c24"
 
-        # Build jobs list
-        projects = inv.get("projects", {})
-        assigned_jobs = []
-        for job_code, proj in projects.items():
-            for item in proj.get("materials", []):
-                if item.get("coil_id") == coil_id:
-                    assigned_jobs.append({
-                        "job_code": job_code,
-                        "name":     proj.get("name", ""),
-                        "lbs":      item.get("lbs_committed", 0),
-                    })
+            # Build jobs list
+            projects = inv.get("projects", {})
+            assigned_jobs = []
+            for job_code, proj in projects.items():
+                for item in proj.get("materials", []):
+                    if item.get("coil_id") == coil_id:
+                        assigned_jobs.append({
+                            "job_code": job_code,
+                            "name":     proj.get("name", ""),
+                            "lbs":      item.get("lbs_committed", 0),
+                        })
 
-        if assigned_jobs:
-            rows = "".join(
-                f'<div class="job-row">'
-                f'<span><strong>{j["job_code"]}</strong> — {j["name"]}</span>'
-                f'<span style="color:#888">{j["lbs"]:,} lbs</span>'
-                f'</div>'
-                for j in assigned_jobs
-            )
-        else:
-            rows = '<p class="empty">No jobs currently assigned to this coil.</p>'
+            if assigned_jobs:
+                rows = "".join(
+                    f'<div class="job-row">'
+                    f'<span><strong>{j["job_code"]}</strong> — {j["name"]}</span>'
+                    f'<span style="color:#888">{j["lbs"]:,} lbs</span>'
+                    f'</div>'
+                    for j in assigned_jobs
+                )
+            else:
+                rows = '<p class="empty">No jobs currently assigned to this coil.</p>'
 
-        # Build certs list
-        mill_certs = inv.get("mill_certs", [])
-        if isinstance(mill_certs, dict):
-            mill_certs = list(mill_certs.values())
-        coil_certs = [c for c in mill_certs
-                      if c.get("coil_id") == coil_id]
-        if coil_certs:
-            cert_rows = "".join(
-                f'<div class="cert-row">'
-                f'<strong>Heat: {c.get("heat_num", c.get("heat", "—"))}</strong>'
-                f' &nbsp;|&nbsp; Date: {(c.get("uploaded_at") or c.get("date") or c.get("added") or "—")[:10]}'
-                + (f' &nbsp;|&nbsp; <a href="/certs/{c["filename"]}" target="_blank">📄 VIEW PDF</a>'
-                   if c.get("filename") else '')
-                + f'</div>'
-                for c in coil_certs
-            )
-        else:
-            cert_rows = '<p class="empty">No mill certificates uploaded for this coil.</p>'
+            # Build certs list
+            mill_certs = inv.get("mill_certs", [])
+            if isinstance(mill_certs, dict):
+                mill_certs = list(mill_certs.values())
+            coil_certs = [c for c in mill_certs
+                          if c.get("coil_id") == coil_id]
+            if coil_certs:
+                cert_rows = "".join(
+                    f'<div class="cert-row">'
+                    f'<strong>Heat: {c.get("heat_num", c.get("heat", "—"))}</strong>'
+                    f' &nbsp;|&nbsp; Date: {(c.get("uploaded_at") or c.get("date") or c.get("added") or "—")[:10]}'
+                    + (f' &nbsp;|&nbsp; <a href="/certs/{c["filename"]}" target="_blank">📄 VIEW PDF</a>'
+                       if c.get("filename") else '')
+                    + f'</div>'
+                    for c in coil_certs
+                )
+            else:
+                cert_rows = '<p class="empty">No mill certificates uploaded for this coil.</p>'
 
-        html = COIL_DETAIL_HTML
-        replacements = {
-            "{{coil_id}}":      coil_id,
-            "{{description}}":  coil.get("name", coil_id),
-            "{{grade}}":        coil.get("grade", "—"),
-            "{{gauge}}":        coil.get("gauge", "—"),
-            "{{heat_num}}":     coil.get("heat_num", "—"),
-            "{{supplier}}":     coil.get("supplier", "—"),
-            "{{weight_lbs}}":   str(coil.get("weight_lbs", "—")),
-            "{{width_in}}":     str(coil.get("width_in", "—")),
-            "{{received_date}}":coil.get("received_date", "—"),
-            "{{stock_lbs}}":    f"{stock_lbs:,}",
-            "{{committed_lbs}}":f"{committed_lbs:,}",
-            "{{available_lbs}}":f"{available_lbs:,}",
-            "{{avail_color}}":  avail_color,
-            "{{min_order_lbs}}":f"{coil.get('min_order_lbs', 0):,}",
-            "{{status_label}}": status_label,
-            "{{status_class}}": status_class,
-            "{{jobs_html}}":    rows,
-            "{{certs_html}}":   cert_rows,
-        }
-        for placeholder, value in replacements.items():
-            html = html.replace(placeholder, value)
+            html = COIL_DETAIL_HTML
+            replacements = {
+                "{{coil_id}}":      coil_id,
+                "{{description}}":  coil.get("name", coil_id),
+                "{{grade}}":        coil.get("grade", "—"),
+                "{{gauge}}":        coil.get("gauge", "—"),
+                "{{heat_num}}":     coil.get("heat_num", "—"),
+                "{{supplier}}":     coil.get("supplier", "—"),
+                "{{weight_lbs}}":   str(coil.get("weight_lbs", "—")),
+                "{{width_in}}":     str(coil.get("width_in", "—")),
+                "{{received_date}}":coil.get("received_date", "—"),
+                "{{stock_lbs}}":    f"{stock_lbs:,}",
+                "{{committed_lbs}}":f"{committed_lbs:,}",
+                "{{available_lbs}}":f"{available_lbs:,}",
+                "{{avail_color}}":  avail_color,
+                "{{min_order_lbs}}":f"{coil.get('min_order_lbs', 0):,}",
+                "{{status_label}}": status_label,
+                "{{status_class}}": status_class,
+                "{{jobs_html}}":    rows,
+                "{{certs_html}}":   cert_rows,
+            }
+            for placeholder, value in replacements.items():
+                html = html.replace(placeholder, value)
 
-        self.render_with_nav(html, active_page="inventory")
+            self.render_with_nav(html, active_page="inventory")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # INVENTORY V2 API HANDLERS (for new inventory page)
 # ─────────────────────────────────────────────
@@ -1447,251 +1605,299 @@ class CoilDetailHandler(BaseHandler):
 class InventoryConfigHandler(BaseHandler):
     """GET /api/inventory/inv-config — Return config for inventory dropdowns."""
     def get(self):
-        self.write(json_encode({
-            "coil_gauges": ["10GA", "12GA", "14GA", "16GA", "18GA", "20GA", "22GA", "24GA", "26GA"],
-            "material_grades": ["A500 Gr B", "A500 Gr C", "A572 Gr 50", "A36", "Galvalume", "Galvanized"],
-            "inventory_statuses": ["active", "low_stock", "depleted", "on_hold"],
-            "suppliers": ["Skyline Steel", "Steel Technologies", "Nucor", "Olympic Steel", "BlueScope"],
-        }))
+        try:
+            self.write(json_encode({
+                "coil_gauges": ["10GA", "12GA", "14GA", "16GA", "18GA", "20GA", "22GA", "24GA", "26GA"],
+                "material_grades": ["A500 Gr B", "A500 Gr C", "A572 Gr 50", "A36", "Galvalume", "Galvanized"],
+                "inventory_statuses": ["active", "low_stock", "depleted", "on_hold"],
+                "suppliers": ["Skyline Steel", "Steel Technologies", "Nucor", "Olympic Steel", "BlueScope"],
+            }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventorySummaryHandler(BaseHandler):
     """GET /api/inventory/summary — Return summary stats for dashboard."""
     def get(self):
-        inv = load_inventory()
-        coils = inv.get("coils", {})
-        total_coils = len(coils)
-        total_stock = 0
-        total_committed = 0
-        low_stock_count = 0
-        depleted_count = 0
-        active_count = 0
-        total_value = 0
-        stock_by_gauge = {}
+        try:
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            total_coils = len(coils)
+            total_stock = 0
+            total_committed = 0
+            low_stock_count = 0
+            depleted_count = 0
+            active_count = 0
+            total_value = 0
+            stock_by_gauge = {}
 
-        for cid, c in coils.items():
-            stock = float(c.get("stock_lbs", 0) or 0)
-            committed = float(c.get("committed_lbs", 0) or 0)
-            avail = stock - committed
-            price = float(c.get("price_per_lb", 0) or 0)
-            min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
-            gauge = c.get("gauge", "Unknown")
+            for cid, c in coils.items():
+                stock = float(c.get("stock_lbs", 0) or 0)
+                committed = float(c.get("committed_lbs", 0) or 0)
+                avail = stock - committed
+                price = float(c.get("price_per_lb", 0) or 0)
+                min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
+                gauge = c.get("gauge", "Unknown")
 
-            total_stock += stock
-            total_committed += committed
-            total_value += stock * price
-            stock_by_gauge[gauge] = stock_by_gauge.get(gauge, 0) + stock
+                total_stock += stock
+                total_committed += committed
+                total_value += stock * price
+                stock_by_gauge[gauge] = stock_by_gauge.get(gauge, 0) + stock
 
-            if avail <= 0:
-                depleted_count += 1
-            elif avail < min_stock:
-                low_stock_count += 1
-            else:
-                active_count += 1
+                if avail <= 0:
+                    depleted_count += 1
+                elif avail < min_stock:
+                    low_stock_count += 1
+                else:
+                    active_count += 1
 
-        self.write(json_encode({
-            "ok": True,
-            "summary": {
-                "total_coils": total_coils,
-                "total_stock_lbs": round(total_stock, 2),
-                "total_committed_lbs": round(total_committed, 2),
-                "total_available_lbs": round(total_stock - total_committed, 2),
-                "low_stock_count": low_stock_count,
-                "total_value": round(total_value, 2),
-                "stock_by_gauge": stock_by_gauge,
-                "stock_by_status": {
-                    "active_count": active_count,
+            self.write(json_encode({
+                "ok": True,
+                "summary": {
+                    "total_coils": total_coils,
+                    "total_stock_lbs": round(total_stock, 2),
+                    "total_committed_lbs": round(total_committed, 2),
+                    "total_available_lbs": round(total_stock - total_committed, 2),
                     "low_stock_count": low_stock_count,
-                    "depleted_count": depleted_count,
-                },
-            }
-        }))
+                    "total_value": round(total_value, 2),
+                    "stock_by_gauge": stock_by_gauge,
+                    "stock_by_status": {
+                        "active_count": active_count,
+                        "low_stock_count": low_stock_count,
+                        "depleted_count": depleted_count,
+                    },
+                }
+            }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryCoilsHandler(BaseHandler):
     """GET /api/inventory/coils — Return list of coils with filtering."""
     def get(self):
-        inv = load_inventory()
-        coils_dict = inv.get("coils", {})
-        gauge_filter = self.get_query_argument("gauge", "")
-        grade_filter = self.get_query_argument("grade", "")
-        status_filter = self.get_query_argument("status", "")
+        try:
+            inv = load_inventory()
+            coils_dict = inv.get("coils", {})
+            gauge_filter = self.get_query_argument("gauge", "")
+            grade_filter = self.get_query_argument("grade", "")
+            status_filter = self.get_query_argument("status", "")
 
-        result = []
-        for cid, c in coils_dict.items():
-            stock = float(c.get("stock_lbs", 0) or 0)
-            committed = float(c.get("committed_lbs", 0) or 0)
-            avail = stock - committed
-            min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
+            result = []
+            for cid, c in coils_dict.items():
+                stock = float(c.get("stock_lbs", 0) or 0)
+                committed = float(c.get("committed_lbs", 0) or 0)
+                avail = stock - committed
+                min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
 
-            if avail <= 0:
-                status = "depleted"
-            elif avail < min_stock:
-                status = "low_stock"
-            else:
-                status = "active"
+                if avail <= 0:
+                    status = "depleted"
+                elif avail < min_stock:
+                    status = "low_stock"
+                else:
+                    status = "active"
 
-            if gauge_filter and c.get("gauge", "") != gauge_filter:
-                continue
-            if grade_filter and c.get("grade", "") != grade_filter:
-                continue
-            if status_filter and status != status_filter:
-                continue
+                if gauge_filter and c.get("gauge", "") != gauge_filter:
+                    continue
+                if grade_filter and c.get("grade", "") != grade_filter:
+                    continue
+                if status_filter and status != status_filter:
+                    continue
 
-            result.append({
-                "coil_id": cid,
-                "name": c.get("name", cid),
-                "gauge": c.get("gauge", ""),
-                "grade": c.get("grade", ""),
-                "supplier": c.get("supplier", ""),
-                "stock_lbs": round(stock, 2),
-                "committed_lbs": round(committed, 2),
-                "available_lbs": round(avail, 2),
-                "status": status,
-                "price_per_lb": c.get("price_per_lb", 0),
-                "min_stock_lbs": min_stock,
-            })
+                result.append({
+                    "coil_id": cid,
+                    "name": c.get("name", cid),
+                    "gauge": c.get("gauge", ""),
+                    "grade": c.get("grade", ""),
+                    "supplier": c.get("supplier", ""),
+                    "stock_lbs": round(stock, 2),
+                    "committed_lbs": round(committed, 2),
+                    "available_lbs": round(avail, 2),
+                    "status": status,
+                    "price_per_lb": c.get("price_per_lb", 0),
+                    "min_stock_lbs": min_stock,
+                })
 
-        self.write(json_encode({"ok": True, "coils": result}))
+            self.write(json_encode({"ok": True, "coils": result}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryCoilCreateHandler(BaseHandler):
     """POST /api/inventory/coil/create — Create a new coil."""
     def post(self):
-        body = json_decode(self.request.body)
-        coil_id = body.get("coil_id", "").strip()
-        if not coil_id:
-            self.write(json_encode({"ok": False, "error": "coil_id is required"}))
-            return
-        inv = load_inventory()
-        coils = inv.setdefault("coils", {})
-        if coil_id in coils:
-            self.write(json_encode({"ok": False, "error": "Coil ID already exists"}))
-            return
-        coils[coil_id] = {
-            "name": body.get("name", coil_id),
-            "gauge": body.get("gauge", ""),
-            "grade": body.get("grade", ""),
-            "supplier": body.get("supplier", ""),
-            "stock_lbs": float(body.get("stock_lbs", 0) or 0),
-            "committed_lbs": 0,
-            "min_stock_lbs": float(body.get("min_order_lbs", 2000) or 2000),
-            "min_order_lbs": float(body.get("min_order_lbs", 2000) or 2000),
-            "lead_time_weeks": int(body.get("lead_time_weeks", 8) or 8),
-            "price_per_lb": float(body.get("price_per_lb", 0) or 0),
-            "lbs_per_lft": float(body.get("lbs_per_lft", 0) or 0),
-            "coil_max_lbs": float(body.get("weight_lbs", 8000) or 8000),
-            "width_in": float(body.get("width_in", 0) or 0),
-            "heat_num": body.get("heat_num", ""),
-            "orders": [],
-        }
-        save_inventory(inv)
-        self.write(json_encode({"ok": True, "coil_id": coil_id}))
+        try:
+            body = json_decode(self.request.body)
+            coil_id = _sanitize_string(body.get("coil_id", ""), 50)
+            if not coil_id:
+                self.write(json_encode({"ok": False, "error": "coil_id is required"}))
+                return
+            if not re.match(r'^[A-Za-z0-9_\-\.]+$', coil_id):
+                self.write(json_encode({"ok": False, "error": "coil_id can only contain letters, numbers, underscores, hyphens, dots"}))
+                return
+            ok, err = _validate_numeric(body, ["stock_lbs", "min_order_lbs", "price_per_lb", "lbs_per_lft", "width_in", "weight_lbs", "lead_time_weeks"])
+            if not ok:
+                self.write(json_encode({"ok": False, "error": err}))
+                return
+            inv = load_inventory()
+            coils = inv.setdefault("coils", {})
+            if coil_id in coils:
+                self.write(json_encode({"ok": False, "error": "Coil ID already exists"}))
+                return
+            coils[coil_id] = {
+                "name": body.get("name", coil_id),
+                "gauge": body.get("gauge", ""),
+                "grade": body.get("grade", ""),
+                "supplier": body.get("supplier", ""),
+                "stock_lbs": float(body.get("stock_lbs", 0) or 0),
+                "committed_lbs": 0,
+                "min_stock_lbs": float(body.get("min_order_lbs", 2000) or 2000),
+                "min_order_lbs": float(body.get("min_order_lbs", 2000) or 2000),
+                "lead_time_weeks": int(body.get("lead_time_weeks", 8) or 8),
+                "price_per_lb": float(body.get("price_per_lb", 0) or 0),
+                "lbs_per_lft": float(body.get("lbs_per_lft", 0) or 0),
+                "coil_max_lbs": float(body.get("weight_lbs", 8000) or 8000),
+                "width_in": float(body.get("width_in", 0) or 0),
+                "heat_num": body.get("heat_num", ""),
+                "orders": [],
+            }
+            save_inventory(inv)
+            self._log("created_coil", "coil", coil_id, {"name": body.get("name", coil_id)})
+            self.write(json_encode({"ok": True, "coil_id": coil_id}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryTransactionsHandler(BaseHandler):
     """GET /api/inventory/transactions — Return transaction history."""
     def get(self):
-        coil_filter = self.get_query_argument("coil_id", "")
-        type_filter = self.get_query_argument("type", "")
-        tx_path = os.path.join(DATA_DIR, "inventory_transactions.json")
-        txns = []
-        if os.path.isfile(tx_path):
-            with open(tx_path) as f:
-                txns = json.load(f)
-        if coil_filter:
-            txns = [t for t in txns if t.get("coil_id") == coil_filter]
-        if type_filter:
-            txns = [t for t in txns if t.get("type") == type_filter]
-        self.write(json_encode({"ok": True, "transactions": txns[-100:]}))
+        try:
+            coil_filter = self.get_query_argument("coil_id", "")
+            type_filter = self.get_query_argument("type", "")
+            tx_path = os.path.join(DATA_DIR, "inventory_transactions.json")
+            txns = []
+            if os.path.isfile(tx_path):
+                with open(tx_path) as f:
+                    txns = json.load(f)
+            if coil_filter:
+                txns = [t for t in txns if t.get("coil_id") == coil_filter]
+            if type_filter:
+                txns = [t for t in txns if t.get("type") == type_filter]
+            self.write(json_encode({"ok": True, "transactions": txns[-100:]}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryAllocationsHandler(BaseHandler):
     """GET /api/inventory/allocations — Return active allocations."""
     def get(self):
-        alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
-        allocs = []
-        if os.path.isfile(alloc_path):
-            with open(alloc_path) as f:
-                allocs = json.load(f)
-        self.write(json_encode({"ok": True, "allocations": allocs}))
+        try:
+            alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+            allocs = []
+            if os.path.isfile(alloc_path):
+                with open(alloc_path) as f:
+                    allocs = json.load(f)
+            self.write(json_encode({"ok": True, "allocations": allocs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryAllocateHandler(BaseHandler):
     """POST /api/inventory/allocate — Allocate stock to a job."""
     def post(self):
-        body = json_decode(self.request.body)
-        coil_id = body.get("coil_id", "")
-        job_code = body.get("job_code", "")
-        qty = float(body.get("quantity_lbs", 0) or 0)
-        if not coil_id or not job_code or qty <= 0:
-            self.write(json_encode({"ok": False, "error": "coil_id, job_code, and quantity_lbs required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            coil_id = _sanitize_string(body.get("coil_id", ""))
+            job_code = _validate_job_code(body.get("job_code", ""))
+            ok, err = _validate_numeric(body, ["quantity_lbs"])
+            if not ok:
+                self.write(json_encode({"ok": False, "error": err}))
+                return
+            qty = float(body.get("quantity_lbs", 0) or 0)
+            if not coil_id or not job_code or qty <= 0:
+                self.write(json_encode({"ok": False, "error": "coil_id, job_code, and positive quantity_lbs required"}))
+                return
+            if qty > 100000:
+                self.write(json_encode({"ok": False, "error": "Quantity exceeds maximum (100,000 lbs)"}))
+                return
 
-        inv = load_inventory()
-        coils = inv.get("coils", {})
-        if coil_id not in coils:
-            self.write(json_encode({"ok": False, "error": "Coil not found"}))
-            return
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            if coil_id not in coils:
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
 
-        coil = coils[coil_id]
-        stock = float(coil.get("stock_lbs", 0))
-        committed = float(coil.get("committed_lbs", 0))
-        if stock - committed < qty:
-            self.write(json_encode({"ok": False, "error": "Insufficient available stock"}))
-            return
+            coil = coils[coil_id]
+            stock = float(coil.get("stock_lbs", 0))
+            committed = float(coil.get("committed_lbs", 0))
+            if stock - committed < qty:
+                self.write(json_encode({"ok": False, "error": "Insufficient available stock"}))
+                return
 
-        coil["committed_lbs"] = committed + qty
-        save_inventory(inv)
+            coil["committed_lbs"] = committed + qty
+            save_inventory(inv)
 
-        alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
-        allocs = []
-        if os.path.isfile(alloc_path):
-            with open(alloc_path) as f:
-                allocs = json.load(f)
-        import datetime
-        alloc_id = f"ALLOC-{len(allocs)+1:04d}"
-        allocs.append({
-            "allocation_id": alloc_id,
-            "coil_id": coil_id,
-            "job_code": job_code,
-            "quantity_lbs": qty,
-            "consumed_lbs": 0,
-            "status": "active",
-            "work_order_ref": body.get("work_order_ref", ""),
-            "notes": body.get("notes", ""),
-            "date": datetime.datetime.now().isoformat(),
-        })
-        with open(alloc_path, "w") as f:
-            json.dump(allocs, f, indent=2)
+            alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+            allocs = []
+            if os.path.isfile(alloc_path):
+                with open(alloc_path) as f:
+                    allocs = json.load(f)
+            alloc_id = f"ALLOC-{len(allocs)+1:04d}"
+            allocs.append({
+                "allocation_id": alloc_id,
+                "coil_id": coil_id,
+                "job_code": job_code,
+                "quantity_lbs": qty,
+                "consumed_lbs": 0,
+                "status": "active",
+                "work_order_ref": body.get("work_order_ref", ""),
+                "notes": body.get("notes", ""),
+                "date": datetime.datetime.now().isoformat(),
+            })
+            with open(alloc_path, "w") as f:
+                json.dump(allocs, f, indent=2)
 
-        self._log_transaction(coil_id, "allocate", qty, job_code, f"Allocation {alloc_id}")
+            self._log_transaction(coil_id, "allocate", qty, job_code, f"Allocation {alloc_id}")
 
-        # Check for multi-project conflict warnings
-        warnings = []
-        other_jobs = [a["job_code"] for a in allocs
-                      if a.get("coil_id") == coil_id
-                      and a.get("status") == "active"
-                      and a.get("job_code") != job_code]
-        if other_jobs:
-            unique_other = list(set(other_jobs))
-            warnings.append(
-                f"This coil is also allocated to {len(unique_other)} other "
-                f"project(s): {', '.join(unique_other[:5])}"
-            )
-        new_avail = stock - (committed + qty)
-        if new_avail < float(coil.get("min_stock_lbs", coil.get("min_order_lbs", 2000)) or 2000):
-            warnings.append(
-                f"Available stock after allocation: {new_avail:,.0f} lbs (below minimum)"
-            )
+            # Check for multi-project conflict warnings
+            warnings = []
+            other_jobs = [a["job_code"] for a in allocs
+                          if a.get("coil_id") == coil_id
+                          and a.get("status") == "active"
+                          and a.get("job_code") != job_code]
+            if other_jobs:
+                unique_other = list(set(other_jobs))
+                warnings.append(
+                    f"This coil is also allocated to {len(unique_other)} other "
+                    f"project(s): {', '.join(unique_other[:5])}"
+                )
+            new_avail = stock - (committed + qty)
+            if new_avail < float(coil.get("min_stock_lbs", coil.get("min_order_lbs", 2000)) or 2000):
+                warnings.append(
+                    f"Available stock after allocation: {new_avail:,.0f} lbs (below minimum)"
+                )
 
-        result = {"ok": True, "allocation_id": alloc_id}
-        if warnings:
-            result["warnings"] = warnings
-        self.write(json_encode(result))
+            result = {"ok": True, "allocation_id": alloc_id}
+            if warnings:
+                result["warnings"] = warnings
+            self.write(json_encode(result))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def _log_transaction(self, coil_id, tx_type, qty, job_code, ref):
-        import datetime
         tx_path = os.path.join(DATA_DIR, "inventory_transactions.json")
         txns = []
         if os.path.isfile(tx_path):
@@ -1714,90 +1920,104 @@ class InventoryAllocateHandler(BaseHandler):
 class InventoryAllocateReleaseHandler(BaseHandler):
     """POST /api/inventory/allocate/release — Release an allocation."""
     def post(self):
-        body = json_decode(self.request.body)
-        alloc_id = body.get("allocation_id", "")
-        alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
-        allocs = []
-        if os.path.isfile(alloc_path):
-            with open(alloc_path) as f:
-                allocs = json.load(f)
-        found = None
-        for a in allocs:
-            if a.get("allocation_id") == alloc_id:
-                found = a
-                break
-        if not found:
-            self.write(json_encode({"ok": False, "error": "Allocation not found"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            alloc_id = body.get("allocation_id", "")
+            alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+            allocs = []
+            if os.path.isfile(alloc_path):
+                with open(alloc_path) as f:
+                    allocs = json.load(f)
+            found = None
+            for a in allocs:
+                if a.get("allocation_id") == alloc_id:
+                    found = a
+                    break
+            if not found:
+                self.write(json_encode({"ok": False, "error": "Allocation not found"}))
+                return
 
-        remaining = found.get("quantity_lbs", 0) - found.get("consumed_lbs", 0)
-        found["status"] = "released"
-        with open(alloc_path, "w") as f:
-            json.dump(allocs, f, indent=2)
+            remaining = found.get("quantity_lbs", 0) - found.get("consumed_lbs", 0)
+            found["status"] = "released"
+            with open(alloc_path, "w") as f:
+                json.dump(allocs, f, indent=2)
 
-        if remaining > 0:
-            inv = load_inventory()
-            coil = inv.get("coils", {}).get(found["coil_id"], {})
-            coil["committed_lbs"] = max(0, float(coil.get("committed_lbs", 0)) - remaining)
-            save_inventory(inv)
+            if remaining > 0:
+                inv = load_inventory()
+                coil = inv.get("coils", {}).get(found["coil_id"], {})
+                coil["committed_lbs"] = max(0, float(coil.get("committed_lbs", 0)) - remaining)
+                save_inventory(inv)
 
-        self.write(json_encode({"ok": True}))
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryReceivingHandler(BaseHandler):
     """GET /api/inventory/receiving — Return receiving records."""
     def get(self):
-        rcv_path = os.path.join(DATA_DIR, "inventory_receiving.json")
-        records = []
-        if os.path.isfile(rcv_path):
-            with open(rcv_path) as f:
-                records = json.load(f)
-        self.write(json_encode({"ok": True, "receiving": records[-100:]}))
+        try:
+            rcv_path = os.path.join(DATA_DIR, "inventory_receiving.json")
+            records = []
+            if os.path.isfile(rcv_path):
+                with open(rcv_path) as f:
+                    records = json.load(f)
+            self.write(json_encode({"ok": True, "receiving": records[-100:]}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryReceiveHandler(BaseHandler):
     """POST /api/inventory/receive — Receive stock into inventory."""
     def post(self):
-        body = json_decode(self.request.body)
-        coil_id = body.get("coil_id", "")
-        qty = float(body.get("quantity_lbs", 0) or 0)
-        if not coil_id or qty <= 0:
-            self.write(json_encode({"ok": False, "error": "coil_id and quantity_lbs required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            coil_id = body.get("coil_id", "")
+            qty = float(body.get("quantity_lbs", 0) or 0)
+            if not coil_id or qty <= 0:
+                self.write(json_encode({"ok": False, "error": "coil_id and quantity_lbs required"}))
+                return
 
-        inv = load_inventory()
-        coils = inv.get("coils", {})
-        if coil_id not in coils:
-            self.write(json_encode({"ok": False, "error": "Coil not found"}))
-            return
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            if coil_id not in coils:
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
 
-        coils[coil_id]["stock_lbs"] = float(coils[coil_id].get("stock_lbs", 0)) + qty
-        save_inventory(inv)
+            coils[coil_id]["stock_lbs"] = float(coils[coil_id].get("stock_lbs", 0)) + qty
+            save_inventory(inv)
 
-        import datetime
-        rcv_path = os.path.join(DATA_DIR, "inventory_receiving.json")
-        records = []
-        if os.path.isfile(rcv_path):
-            with open(rcv_path) as f:
-                records = json.load(f)
-        rcv_id = f"RCV-{len(records)+1:04d}"
-        records.append({
-            "receiving_id": rcv_id,
-            "coil_id": coil_id,
-            "supplier": body.get("supplier", ""),
-            "quantity_lbs": qty,
-            "po_number": body.get("po_number", ""),
-            "bol_number": body.get("bol_number", ""),
-            "heat_number": body.get("heat_number", ""),
-            "condition_notes": body.get("condition_notes", ""),
-            "date": datetime.datetime.now().isoformat(),
-        })
-        with open(rcv_path, "w") as f:
-            json.dump(records, f, indent=2)
+            rcv_path = os.path.join(DATA_DIR, "inventory_receiving.json")
+            records = []
+            if os.path.isfile(rcv_path):
+                with open(rcv_path) as f:
+                    records = json.load(f)
+            rcv_id = f"RCV-{len(records)+1:04d}"
+            records.append({
+                "receiving_id": rcv_id,
+                "coil_id": coil_id,
+                "supplier": body.get("supplier", ""),
+                "quantity_lbs": qty,
+                "po_number": body.get("po_number", ""),
+                "bol_number": body.get("bol_number", ""),
+                "heat_number": body.get("heat_number", ""),
+                "condition_notes": body.get("condition_notes", ""),
+                "date": datetime.datetime.now().isoformat(),
+            })
+            with open(rcv_path, "w") as f:
+                json.dump(records, f, indent=2)
 
-        self.write(json_encode({"ok": True, "receiving_id": rcv_id}))
+            self.write(json_encode({"ok": True, "receiving_id": rcv_id}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class InventoryAlertsHandler(BaseHandler):
     """GET /api/inventory/alerts — Return inventory alerts including conflict detection."""
     def get(self):
@@ -1899,9 +2119,14 @@ class InventoryAlertsHandler(BaseHandler):
 class InventoryAlertAcknowledgeHandler(BaseHandler):
     """POST /api/inventory/alerts/acknowledge — Acknowledge an alert."""
     def post(self):
-        self.write(json_encode({"ok": True}))
+        try:
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # INVENTORY & TRACEABILITY PAGE HANDLERS
 # ─────────────────────────────────────────────
@@ -1911,79 +2136,89 @@ class InventoryPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.inventory_page import INVENTORY_PAGE_HTML
-        self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory")
+        try:
+            from templates.inventory_page import INVENTORY_PAGE_HTML
+            self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class TraceabilityPageHandler(BaseHandler):
     """GET /inventory/traceability — Material Traceability page."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        # Render a traceability-focused view of inventory data
-        html = """
-        <div style="padding:24px;max-width:1200px;margin:0 auto">
-          <h1 style="color:#F6AE2D;margin-bottom:8px">Material Traceability</h1>
-          <p style="color:#94A3B8;margin-bottom:24px">Track material heat numbers, mill certifications, and coil assignments across all jobs.</p>
-          <div id="traceApp" style="color:#CBD5E1">
-            <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-              <input type="text" id="traceSearch" placeholder="Search by heat #, coil ID, or job code..."
-                style="flex:1;min-width:250px;padding:10px 14px;background:#1E293B;border:1px solid #334155;
-                border-radius:8px;color:#F1F5F9;font-size:14px" oninput="filterTrace()">
-              <button onclick="loadTraceData()" style="padding:10px 20px;background:#1E40AF;color:#FFF;
-                border:none;border-radius:8px;font-weight:600;cursor:pointer">Refresh</button>
+        try:
+            # Render a traceability-focused view of inventory data
+            html = """
+            <div style="padding:24px;max-width:1200px;margin:0 auto">
+              <h1 style="color:#F6AE2D;margin-bottom:8px">Material Traceability</h1>
+              <p style="color:#94A3B8;margin-bottom:24px">Track material heat numbers, mill certifications, and coil assignments across all jobs.</p>
+              <div id="traceApp" style="color:#CBD5E1">
+                <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+                  <input type="text" id="traceSearch" placeholder="Search by heat #, coil ID, or job code..."
+                    style="flex:1;min-width:250px;padding:10px 14px;background:#1E293B;border:1px solid #334155;
+                    border-radius:8px;color:#F1F5F9;font-size:14px" oninput="filterTrace()">
+                  <button onclick="loadTraceData()" style="padding:10px 20px;background:#1E40AF;color:#FFF;
+                    border:none;border-radius:8px;font-weight:600;cursor:pointer">Refresh</button>
+                </div>
+                <div id="traceTable" style="background:#1E293B;border-radius:12px;overflow:hidden">
+                  <div style="padding:40px;text-align:center;color:#64748B">Loading traceability data...</div>
+                </div>
+              </div>
             </div>
-            <div id="traceTable" style="background:#1E293B;border-radius:12px;overflow:hidden">
-              <div style="padding:40px;text-align:center;color:#64748B">Loading traceability data...</div>
-            </div>
-          </div>
-        </div>
-        <script>
-        var traceData = [];
-        function loadTraceData() {
-          tfFetch('/api/traceability').then(function(d) {
-            traceData = d.entries || [];
-            renderTrace(traceData);
-          });
-        }
-        function filterTrace() {
-          var q = document.getElementById('traceSearch').value.toLowerCase();
-          var filtered = traceData.filter(function(e) {
-            return (e.heat_num||'').toLowerCase().indexOf(q)>=0
-              || (e.coil_id||'').toLowerCase().indexOf(q)>=0
-              || (e.job_code||'').toLowerCase().indexOf(q)>=0;
-          });
-          renderTrace(filtered);
-        }
-        function renderTrace(entries) {
-          if (!entries.length) {
-            document.getElementById('traceTable').innerHTML =
-              '<div style="padding:40px;text-align:center;color:#64748B">No traceability records found.</div>';
-            return;
-          }
-          var h = '<table style="width:100%;border-collapse:collapse;font-size:14px">'
-            + '<tr style="background:#0F172A;color:#94A3B8;text-align:left">'
-            + '<th style="padding:12px">Heat #</th><th style="padding:12px">Coil ID</th>'
-            + '<th style="padding:12px">Job Code</th><th style="padding:12px">Ship Mark</th>'
-            + '<th style="padding:12px">Date</th></tr>';
-          entries.forEach(function(e) {
-            h += '<tr style="border-top:1px solid #334155">'
-              + '<td style="padding:10px 12px;color:#F6AE2D;font-weight:600">' + (e.heat_num||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.coil_id||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.job_code||'—') + '</td>'
-              + '<td style="padding:10px 12px">' + (e.ship_mark||'—') + '</td>'
-              + '<td style="padding:10px 12px;color:#64748B">' + (e.date||'—') + '</td>'
-              + '</tr>';
-          });
-          h += '</table>';
-          document.getElementById('traceTable').innerHTML = h;
-        }
-        loadTraceData();
-        </script>
-        """
-        self.render_with_nav(html, active_page="traceability")
+            <script>
+            var traceData = [];
+            function loadTraceData() {
+              tfFetch('/api/traceability').then(function(d) {
+                traceData = d.entries || [];
+                renderTrace(traceData);
+              });
+            }
+            function filterTrace() {
+              var q = document.getElementById('traceSearch').value.toLowerCase();
+              var filtered = traceData.filter(function(e) {
+                return (e.heat_num||'').toLowerCase().indexOf(q)>=0
+                  || (e.coil_id||'').toLowerCase().indexOf(q)>=0
+                  || (e.job_code||'').toLowerCase().indexOf(q)>=0;
+              });
+              renderTrace(filtered);
+            }
+            function renderTrace(entries) {
+              if (!entries.length) {
+                document.getElementById('traceTable').innerHTML =
+                  '<div style="padding:40px;text-align:center;color:#64748B">No traceability records found.</div>';
+                return;
+              }
+              var h = '<table style="width:100%;border-collapse:collapse;font-size:14px">'
+                + '<tr style="background:#0F172A;color:#94A3B8;text-align:left">'
+                + '<th style="padding:12px">Heat #</th><th style="padding:12px">Coil ID</th>'
+                + '<th style="padding:12px">Job Code</th><th style="padding:12px">Ship Mark</th>'
+                + '<th style="padding:12px">Date</th></tr>';
+              entries.forEach(function(e) {
+                h += '<tr style="border-top:1px solid #334155">'
+                  + '<td style="padding:10px 12px;color:#F6AE2D;font-weight:600">' + (e.heat_num||'—') + '</td>'
+                  + '<td style="padding:10px 12px">' + (e.coil_id||'—') + '</td>'
+                  + '<td style="padding:10px 12px">' + (e.job_code||'—') + '</td>'
+                  + '<td style="padding:10px 12px">' + (e.ship_mark||'—') + '</td>'
+                  + '<td style="padding:10px 12px;color:#64748B">' + (e.date||'—') + '</td>'
+                  + '</tr>';
+              });
+              h += '</table>';
+              document.getElementById('traceTable').innerHTML = h;
+            }
+            loadTraceData();
+            </script>
+            """
+            self.render_with_nav(html, active_page="traceability")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # PROJECT HANDLERS (Save, Load, Versions)
 # ─────────────────────────────────────────────
@@ -2099,7 +2334,6 @@ class ProjectSaveHandler(BaseHandler):
                 "file": f"{safe_name}/v{next_v}.json",
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2266,7 +2500,6 @@ class ProjectCompareHandler(BaseHandler):
                 "diffs": diffs,
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2367,7 +2600,6 @@ class ProjectDocUploadHandler(BaseHandler):
                 "url": f"/project-files/{safe_name}/{category}/{filename}"
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2409,7 +2641,6 @@ class ProjectDocListHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "files": files}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2449,7 +2680,6 @@ class ProjectDocDeleteHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2499,7 +2729,6 @@ class ProjectDocServeHandler(BaseHandler):
             with open(filepath, "rb") as f:
                 self.write(f.read())
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Error serving file: {e}\n{traceback.format_exc()}")
 
@@ -2543,7 +2772,6 @@ class ProjectStatusHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "stage": stage}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2639,7 +2867,6 @@ class ProjectAssetsHandler(BaseHandler):
             self.write(json_encode({"ok": True, "assets": assets}))
 
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
@@ -2664,7 +2891,6 @@ class TCExportPDFHandler(BaseHandler):
                 self.set_status(501)
                 self.write("TC PDF generation not available (install reportlab: pip install reportlab)")
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"TC PDF error: {e}\n{traceback.format_exc()}")
 
@@ -2685,7 +2911,6 @@ class TCExportExcelHandler(BaseHandler):
                 self.set_status(501)
                 self.write("TC Excel not available (install openpyxl: pip install openpyxl)")
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"TC Excel error: {e}\n{traceback.format_exc()}")
 
@@ -2856,7 +3081,6 @@ class ProjectCreateHandler(BaseHandler):
             self.write(json_encode({"ok": True, "job_code": job_code, "metadata": metadata}))
 
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2946,7 +3170,6 @@ class ProjectDeleteHandler(BaseHandler):
             }))
 
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
@@ -2955,20 +3178,25 @@ class ProjectDeleteHandler(BaseHandler):
 class ProjectMetadataHandler(BaseHandler):
     """GET/POST /api/project/metadata — Get or update project metadata."""
     def get(self):
-        job_code = self.get_query_argument("job_code", "").strip()
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "No job_code"}))
-            return
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
-        if not os.path.isfile(meta_path):
-            self.write(json_encode({"ok": False, "error": "Project not found"}))
-            return
-        with open(meta_path) as f:
-            metadata = json.load(f)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "metadata": metadata}))
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "No job_code"}))
+                return
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+            if not os.path.isfile(meta_path):
+                self.write(json_encode({"ok": False, "error": "Project not found"}))
+                return
+            with open(meta_path) as f:
+                metadata = json.load(f)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "metadata": metadata}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def post(self):
         try:
             body = json_decode(self.request.body)
@@ -3005,7 +3233,6 @@ class ProjectMetadataHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "metadata": metadata}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
 
@@ -3053,7 +3280,6 @@ class ProjectChecklistHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "checklist": checklist, "completion_pct": pct}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
 
@@ -3061,73 +3287,83 @@ class ProjectChecklistHandler(BaseHandler):
 class ProjectNextStepsHandler(BaseHandler):
     """GET /api/project/next-steps — Get stage-aware next steps for a project."""
     def get(self):
-        job_code = self.get_query_argument("job_code", "").strip()
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+        try:
+            job_code = self.get_query_argument("job_code", "").strip()
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
 
-        stage = "quote"
-        checklist = {}
-        if os.path.isfile(meta_path):
-            with open(meta_path) as f:
-                meta = json.load(f)
-            stage = meta.get("stage", "quote")
-            checklist = meta.get("checklist", {})
+            stage = "quote"
+            checklist = {}
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                stage = meta.get("stage", "quote")
+                checklist = meta.get("checklist", {})
 
-        steps = STAGE_NEXT_STEPS.get(stage, STAGE_NEXT_STEPS["quote"])
-        result = []
-        for s in steps:
-            result.append({
-                "text": s["text"],
-                "key": s["key"],
-                "completed": s["key"] in checklist,
-                "completed_at": checklist.get(s["key"], {}).get("completed_at"),
-                "completed_by": checklist.get(s["key"], {}).get("completed_by"),
-            })
+            steps = STAGE_NEXT_STEPS.get(stage, STAGE_NEXT_STEPS["quote"])
+            result = []
+            for s in steps:
+                result.append({
+                    "text": s["text"],
+                    "key": s["key"],
+                    "completed": s["key"] in checklist,
+                    "completed_at": checklist.get(s["key"], {}).get("completed_at"),
+                    "completed_by": checklist.get(s["key"], {}).get("completed_by"),
+                })
 
-        total = len(steps)
-        done = sum(1 for r in result if r["completed"])
-        pct = int((done / total) * 100) if total > 0 else 0
+            total = len(steps)
+            done = sum(1 for r in result if r["completed"])
+            pct = int((done / total) * 100) if total > 0 else 0
 
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({
-            "ok": True, "stage": stage, "steps": result,
-            "completion_pct": pct, "done": done, "total": total,
-        }))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True, "stage": stage, "steps": result,
+                "completion_pct": pct, "done": done, "total": total,
+            }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ProjectPageHandler(BaseHandler):
     """GET /project/{job_code} — Full project page."""
     def get(self, job_code):
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-        meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+        try:
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
 
-        if not os.path.isfile(meta_path):
-            self.set_status(404)
-            self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
-            return
+            if not os.path.isfile(meta_path):
+                self.set_status(404)
+                self.write(f"<h2>Project '{job_code}' not found</h2><a href='/'>Back to Dashboard</a>")
+                return
 
-        with open(meta_path) as f:
-            metadata = json.load(f)
+            with open(meta_path) as f:
+                metadata = json.load(f)
 
-        role = self.get_user_role() or "viewer"
-        display = "User"
-        if AUTH_ENABLED:
-            user = self.get_current_user()
-            users = load_users()
-            display = users.get(user, {}).get("display_name", user or "User")
+            role = self.get_user_role() or "viewer"
+            display = "User"
+            if AUTH_ENABLED:
+                user = self.get_current_user()
+                users = load_users()
+                display = users.get(user, {}).get("display_name", user or "User")
 
-        html = PROJECT_PAGE_HTML
-        html = html.replace("{{JOB_CODE}}", job_code)
-        html = html.replace("{{METADATA_JSON}}", json.dumps(metadata))
-        html = html.replace("{{USER_ROLE}}", role)
-        html = html.replace("{{USER_NAME}}", display)
-        html = html.replace("{{STAGES_JSON}}", json.dumps(PROJECT_STAGES))
-        html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
-        html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
+            html = PROJECT_PAGE_HTML
+            html = html.replace("{{JOB_CODE}}", job_code)
+            html = html.replace("{{METADATA_JSON}}", json.dumps(metadata))
+            html = html.replace("{{USER_ROLE}}", role)
+            html = html.replace("{{USER_NAME}}", display)
+            html = html.replace("{{STAGES_JSON}}", json.dumps(PROJECT_STAGES))
+            html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
+            html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
 
-        self.render_with_nav(html, active_page="project", job_code=job_code)
+            self.render_with_nav(html, active_page="project", job_code=job_code)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ProjectToolStatusHandler(BaseHandler):
     """GET /api/project/tool-status?job_code=XXX — Return completion status
     for every toolbox card on the project page.
@@ -3243,7 +3479,6 @@ class ProjectToolStatusHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "tools": tools}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
 
@@ -3279,7 +3514,6 @@ class ProjectArchiveDocHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "archived_as": archived_name}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
 
@@ -3388,84 +3622,108 @@ class ProjectListEnhancedHandler(BaseHandler):
 class CustomerListHandler(BaseHandler):
     """GET /api/customers — List all customers with optional search."""
     def get(self):
-        customers = load_customers()
-        q = self.get_query_argument("q", "").strip().lower()
-        tag = self.get_query_argument("tag", "").strip().lower()
-        if q:
-            customers = [c for c in customers
-                         if q in c.get("company","").lower()
-                         or q in c.get("primary_contact",{}).get("name","").lower()
-                         or q in c.get("primary_contact",{}).get("email","").lower()
-                         or any(q in ct.get("name","").lower() for ct in c.get("contacts",[]))]
-        if tag:
-            customers = [c for c in customers if tag in [t.lower() for t in c.get("tags",[])]]
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "customers": customers}))
+        try:
+            customers = load_customers()
+            q = self.get_query_argument("q", "").strip().lower()
+            tag = self.get_query_argument("tag", "").strip().lower()
+            if q:
+                customers = [c for c in customers
+                             if q in c.get("company","").lower()
+                             or q in c.get("primary_contact",{}).get("name","").lower()
+                             or q in c.get("primary_contact",{}).get("email","").lower()
+                             or any(q in ct.get("name","").lower() for ct in c.get("contacts",[]))]
+            if tag:
+                customers = [c for c in customers if tag in [t.lower() for t in c.get("tags",[])]]
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "customers": customers}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerCreateHandler(BaseHandler):
     """POST /api/customers/create — Create a new customer."""
     required_roles = ["admin", "estimator"]
     def post(self):
-        body = json_decode(self.request.body)
-        customers = load_customers()
-        cid = "CUS-" + datetime.datetime.now().strftime("%Y%m%d") + "-" + secrets.token_hex(3).upper()
-        now = datetime.datetime.now().isoformat()
-        customer = {
-            "id": cid,
-            "company": body.get("company", ""),
-            "primary_contact": body.get("primary_contact", {}),
-            "contacts": body.get("contacts", []),
-            "address": body.get("address", {}),
-            "tags": body.get("tags", []),
-            "notes": body.get("notes", ""),
-            "payment_terms": body.get("payment_terms", "Net 30"),
-            "credit_limit": body.get("credit_limit", ""),
-            "tax_id": body.get("tax_id", ""),
-            "insurance_info": body.get("insurance_info", ""),
-            "credit_terms": body.get("credit_terms", ""),
-            "created_at": now,
-            "updated_at": now,
-        }
-        customers.append(customer)
-        save_customers(customers)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "customer": customer}))
+        try:
+            body = json_decode(self.request.body)
+            company = _sanitize_string(body.get("company", ""), 200)
+            if not company:
+                self.write(json_encode({"ok": False, "error": "Company name is required"}))
+                return
+            customers = load_customers()
+            cid = "CUS-" + datetime.datetime.now().strftime("%Y%m%d") + "-" + secrets.token_hex(3).upper()
+            now = datetime.datetime.now().isoformat()
+            customer = {
+                "id": cid,
+                "company": company,
+                "primary_contact": body.get("primary_contact", {}),
+                "contacts": body.get("contacts", []),
+                "address": body.get("address", {}),
+                "tags": body.get("tags", []),
+                "notes": body.get("notes", ""),
+                "payment_terms": body.get("payment_terms", "Net 30"),
+                "credit_limit": body.get("credit_limit", ""),
+                "tax_id": body.get("tax_id", ""),
+                "insurance_info": body.get("insurance_info", ""),
+                "credit_terms": body.get("credit_terms", ""),
+                "created_at": now,
+                "updated_at": now,
+            }
+            customers.append(customer)
+            save_customers(customers)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "customer": customer}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerUpdateHandler(BaseHandler):
     """POST /api/customers/update — Update a customer record."""
     required_roles = ["admin", "estimator"]
     def post(self):
-        body = json_decode(self.request.body)
-        cid = body.get("id", "")
-        customers = load_customers()
-        found = False
-        for i, c in enumerate(customers):
-            if c["id"] == cid:
-                for k, v in body.items():
-                    if k != "id":
-                        customers[i][k] = v
-                customers[i]["updated_at"] = datetime.datetime.now().isoformat()
-                found = True
-                break
-        if not found:
-            self.write(json_encode({"ok": False, "error": "Customer not found"}))
-            return
-        save_customers(customers)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "customer": customers[i]}))
+        try:
+            body = json_decode(self.request.body)
+            cid = body.get("id", "")
+            customers = load_customers()
+            found = False
+            for i, c in enumerate(customers):
+                if c["id"] == cid:
+                    for k, v in body.items():
+                        if k != "id":
+                            customers[i][k] = v
+                    customers[i]["updated_at"] = datetime.datetime.now().isoformat()
+                    found = True
+                    break
+            if not found:
+                self.write(json_encode({"ok": False, "error": "Customer not found"}))
+                return
+            save_customers(customers)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "customer": customers[i]}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerDeleteHandler(BaseHandler):
     """POST /api/customers/delete — Delete a customer record."""
     required_roles = ["admin"]
     def post(self):
-        body = json_decode(self.request.body)
-        cid = body.get("id", "")
-        customers = load_customers()
-        customers = [c for c in customers if c["id"] != cid]
-        save_customers(customers)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            cid = body.get("id", "")
+            customers = load_customers()
+            customers = [c for c in customers if c["id"] != cid]
+            save_customers(customers)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerDetailHandler(BaseHandler):
     """GET /api/customers/detail — Get single customer with project history."""
     def get(self):
@@ -3503,153 +3761,240 @@ class CustomerDocUploadHandler(BaseHandler):
     """POST /api/customers/docs/upload — Upload a document for a customer."""
     required_roles = ["admin", "estimator"]
     def post(self):
-        cid = self.get_argument("customer_id", "")
-        doc_type = self.get_argument("doc_type", "other")  # contract, insurance, tax_id, credit_terms, other
-        if not cid:
-            self.write(json_encode({"ok": False, "error": "customer_id required"}))
-            return
-        safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
-        docs_dir = os.path.join(DATA_DIR, "customer_docs", safe_cid, doc_type)
-        os.makedirs(docs_dir, exist_ok=True)
-        uploaded = []
-        for field_name, files in self.request.files.items():
-            for finfo in files:
-                fname = re.sub(r'[^A-Za-z0-9._-]', '_', finfo["filename"])
-                fpath = os.path.join(docs_dir, fname)
-                with open(fpath, "wb") as f:
-                    f.write(finfo["body"])
-                uploaded.append({"name": fname, "type": doc_type, "size": len(finfo["body"])})
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "uploaded": uploaded}))
+        try:
+            cid = self.get_argument("customer_id", "")
+            doc_type = self.get_argument("doc_type", "other")  # contract, insurance, tax_id, credit_terms, other
+            if not cid:
+                self.write(json_encode({"ok": False, "error": "customer_id required"}))
+                return
+            safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
+            docs_dir = os.path.join(DATA_DIR, "customer_docs", safe_cid, doc_type)
+            os.makedirs(docs_dir, exist_ok=True)
+            uploaded = []
+            for field_name, files in self.request.files.items():
+                for finfo in files:
+                    fname = re.sub(r'[^A-Za-z0-9._-]', '_', finfo["filename"])
+                    fpath = os.path.join(docs_dir, fname)
+                    with open(fpath, "wb") as f:
+                        f.write(finfo["body"])
+                    uploaded.append({"name": fname, "type": doc_type, "size": len(finfo["body"])})
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "uploaded": uploaded}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerDocListHandler(BaseHandler):
     """GET /api/customers/docs — List documents for a customer."""
     def get(self):
-        cid = self.get_query_argument("customer_id", "")
-        safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
-        base = os.path.join(DATA_DIR, "customer_docs", safe_cid)
-        docs = {}
-        if os.path.isdir(base):
-            for dtype in os.listdir(base):
-                dpath = os.path.join(base, dtype)
-                if os.path.isdir(dpath):
-                    docs[dtype] = []
-                    for f in os.listdir(dpath):
-                        fpath = os.path.join(dpath, f)
-                        if os.path.isfile(fpath):
-                            docs[dtype].append({
-                                "name": f,
-                                "size": os.path.getsize(fpath),
-                                "url": f"/customer-files/{safe_cid}/{dtype}/{f}",
-                            })
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            cid = self.get_query_argument("customer_id", "")
+            safe_cid = re.sub(r'[^A-Za-z0-9_-]', '_', cid)
+            base = os.path.join(DATA_DIR, "customer_docs", safe_cid)
+            docs = {}
+            if os.path.isdir(base):
+                for dtype in os.listdir(base):
+                    dpath = os.path.join(base, dtype)
+                    if os.path.isdir(dpath):
+                        docs[dtype] = []
+                        for f in os.listdir(dpath):
+                            fpath = os.path.join(dpath, f)
+                            if os.path.isfile(fpath):
+                                docs[dtype].append({
+                                    "name": f,
+                                    "size": os.path.getsize(fpath),
+                                    "url": f"/customer-files/{safe_cid}/{dtype}/{f}",
+                                })
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "docs": docs}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerDocServeHandler(tornado.web.RequestHandler):
     """GET /customer-files/{cid}/{type}/{filename} — Serve customer document."""
     def get(self, cid, dtype, fname):
-        fpath = os.path.join(DATA_DIR, "customer_docs", cid, dtype, fname)
-        if not os.path.isfile(fpath):
-            self.set_status(404)
-            self.write("Not found")
-            return
-        import mimetypes
-        ct = mimetypes.guess_type(fname)[0] or "application/octet-stream"
-        self.set_header("Content-Type", ct)
-        self.set_header("Content-Disposition", f'inline; filename="{fname}"')
-        with open(fpath, "rb") as f:
-            self.write(f.read())
+        try:
+            fpath = os.path.join(DATA_DIR, "customer_docs", cid, dtype, fname)
+            if not os.path.isfile(fpath):
+                self.set_status(404)
+                self.write("Not found")
+                return
+            import mimetypes
+            ct = mimetypes.guess_type(fname)[0] or "application/octet-stream"
+            self.set_header("Content-Type", ct)
+            self.set_header("Content-Disposition", f'inline; filename="{fname}"')
+            with open(fpath, "rb") as f:
+                self.write(f.read())
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class CustomerPageHandler(BaseHandler):
     """GET /customers — Customer database page."""
     def get(self):
-        self.render_with_nav(CUSTOMERS_HTML, active_page="customers")
+        try:
+            self.render_with_nav(CUSTOMERS_HTML, active_page="customers")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # GLOBAL SEARCH HANDLER
 # ─────────────────────────────────────────────
 
 class GlobalSearchHandler(BaseHandler):
-    """GET /api/search — Search across projects, customers, and inventory."""
+    """GET /api/search — Search across projects, customers, inventory, users, and work orders."""
     def get(self):
-        q = self.get_query_argument("q", "").strip().lower()
-        if not q or len(q) < 2:
-            self.write(json_encode({"ok": True, "results": []}))
-            return
-        results = []
-        # Search projects
-        os.makedirs(PROJECTS_DIR, exist_ok=True)
-        for d in os.listdir(PROJECTS_DIR):
-            mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
-            if os.path.isfile(mpath):
-                try:
-                    with open(mpath) as f:
-                        meta = json.load(f)
+        try:
+            q = self.get_query_argument("q", "").strip().lower()
+            entity_filter = self.get_query_argument("type", "")  # optional filter
+            if not q or len(q) < 2:
+                self.write(json_encode({"ok": True, "results": []}))
+                return
+            results = []
+
+            # Search projects
+            if not entity_filter or entity_filter == "project":
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for d in os.listdir(PROJECTS_DIR):
+                    mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
+                    if os.path.isfile(mpath):
+                        try:
+                            with open(mpath) as f:
+                                meta = json.load(f)
+                            searchable = " ".join([
+                                meta.get("job_code", ""),
+                                meta.get("project_name", ""),
+                                meta.get("customer", {}).get("name", ""),
+                                meta.get("customer", {}).get("email", ""),
+                                meta.get("location", {}).get("city", ""),
+                                meta.get("location", {}).get("state", ""),
+                                meta.get("notes", ""),
+                            ]).lower()
+                            if q in searchable:
+                                results.append({
+                                    "type": "project",
+                                    "title": meta.get("project_name", d),
+                                    "subtitle": f'{meta.get("job_code","")} — {meta.get("customer",{}).get("name","")}',
+                                    "stage": meta.get("stage", ""),
+                                    "url": f'/project/{meta.get("job_code", d)}',
+                                    "icon": "project",
+                                })
+                        except Exception:
+                            pass
+
+            # Search customers
+            if not entity_filter or entity_filter == "customer":
+                customers = load_customers()
+                for c in customers:
                     searchable = " ".join([
-                        meta.get("job_code", ""),
-                        meta.get("project_name", ""),
-                        meta.get("customer", {}).get("name", ""),
-                        meta.get("customer", {}).get("email", ""),
-                        meta.get("location", {}).get("city", ""),
-                        meta.get("location", {}).get("state", ""),
-                        meta.get("notes", ""),
+                        c.get("company", ""),
+                        c.get("primary_contact", {}).get("name", "") if isinstance(c.get("primary_contact"), dict) else str(c.get("primary_contact", "")),
+                        c.get("primary_contact", {}).get("email", "") if isinstance(c.get("primary_contact"), dict) else "",
+                        c.get("primary_contact", {}).get("phone", "") if isinstance(c.get("primary_contact"), dict) else "",
+                        c.get("notes", ""),
+                        " ".join(c.get("tags", []) if isinstance(c.get("tags"), list) else []),
                     ]).lower()
                     if q in searchable:
                         results.append({
-                            "type": "project",
-                            "title": meta.get("project_name", d),
-                            "subtitle": f'{meta.get("job_code","")} — {meta.get("customer",{}).get("name","")}',
-                            "stage": meta.get("stage", ""),
-                            "url": f'/project/{meta.get("job_code", d)}',
-                            "icon": "project",
+                            "type": "customer",
+                            "title": c.get("company", "Unknown"),
+                            "subtitle": c.get("primary_contact", {}).get("name", "") if isinstance(c.get("primary_contact"), dict) else "",
+                            "url": f'/customers?id={c.get("id","")}',
+                            "icon": "customer",
                         })
+
+            # Search inventory (coils dict format)
+            if not entity_filter or entity_filter == "inventory":
+                try:
+                    inv = load_inventory()
+                    coils = inv.get("coils", inv) if isinstance(inv, dict) else {}
+                    if isinstance(coils, dict):
+                        for cid, coil in coils.items():
+                            if not isinstance(coil, dict):
+                                continue
+                            searchable = " ".join([
+                                cid,
+                                coil.get("name", ""),
+                                coil.get("gauge", ""),
+                                coil.get("grade", ""),
+                                coil.get("supplier", ""),
+                                coil.get("heat_num", ""),
+                            ]).lower()
+                            if q in searchable:
+                                results.append({
+                                    "type": "inventory",
+                                    "title": coil.get("name", cid),
+                                    "subtitle": f'{coil.get("gauge","")} ga | {coil.get("stock_lbs",0):.0f} lbs in stock',
+                                    "url": f'/coil/{cid}',
+                                    "icon": "inventory",
+                                })
                 except Exception:
                     pass
-        # Search customers
-        customers = load_customers()
-        for c in customers:
-            searchable = " ".join([
-                c.get("company", ""),
-                c.get("primary_contact", {}).get("name", ""),
-                c.get("primary_contact", {}).get("email", ""),
-                c.get("primary_contact", {}).get("phone", ""),
-                c.get("notes", ""),
-                " ".join(c.get("tags", [])),
-            ]).lower()
-            if q in searchable:
-                results.append({
-                    "type": "customer",
-                    "title": c.get("company", "Unknown"),
-                    "subtitle": c.get("primary_contact", {}).get("name", ""),
-                    "url": f'/customers?id={c.get("id","")}',
-                    "icon": "customer",
-                })
-        # Search inventory
-        try:
-            inv = load_inventory()
-            for coil in inv:
-                searchable = " ".join([
-                    coil.get("coil_tag", ""),
-                    coil.get("gauge", ""),
-                    coil.get("color", ""),
-                    coil.get("width", ""),
-                    coil.get("manufacturer", ""),
-                    coil.get("po_number", ""),
-                ]).lower()
-                if q in searchable:
-                    results.append({
-                        "type": "inventory",
-                        "title": f'{coil.get("gauge","")} ga {coil.get("color","")} — {coil.get("width","")}',
-                        "subtitle": f'Tag: {coil.get("coil_tag","")} | {coil.get("weight_lbs",0)} lbs',
-                        "url": f'/coil/{coil.get("coil_tag","")}',
-                        "icon": "inventory",
-                    })
-        except Exception:
-            pass
-        # Cap results
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "results": results[:50]}))
+
+            # Search users
+            if not entity_filter or entity_filter == "user":
+                try:
+                    users = load_users()
+                    for uname, udata in users.items():
+                        searchable = " ".join([
+                            uname,
+                            udata.get("display_name", ""),
+                            udata.get("email", ""),
+                            udata.get("role", ""),
+                        ]).lower()
+                        if q in searchable:
+                            results.append({
+                                "type": "user",
+                                "title": udata.get("display_name", uname),
+                                "subtitle": f'{udata.get("role", "viewer")} — {udata.get("email", "")}',
+                                "url": "/admin/users",
+                                "icon": "user",
+                            })
+                except Exception:
+                    pass
+
+            # Search work orders
+            if not entity_filter or entity_filter == "work_order":
+                try:
+                    from shop_drawings.work_orders import list_all_work_orders, load_work_order
+                    for wo_id in list_all_work_orders():
+                        wo = load_work_order(wo_id)
+                        if not wo:
+                            continue
+                        searchable = " ".join([
+                            wo_id,
+                            wo.get("job_code", ""),
+                            wo.get("description", ""),
+                            wo.get("assigned_to", ""),
+                            wo.get("status", ""),
+                        ]).lower()
+                        if q in searchable:
+                            results.append({
+                                "type": "work_order",
+                                "title": f'WO: {wo_id}',
+                                "subtitle": f'{wo.get("job_code","")} — {wo.get("description","")[:60]}',
+                                "status": wo.get("status", ""),
+                                "url": f'/work-orders?id={wo_id}',
+                                "icon": "work_order",
+                            })
+                except Exception:
+                    pass
+
+            # Cap results
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "results": results[:50]}))
+
+        except Exception as e:
+            logger.error(f"GlobalSearchHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 
 
 # ─────────────────────────────────────────────
@@ -3690,17 +4035,23 @@ class QuoteDataHandler(BaseHandler):
         self.write(json_encode({"ok": True, "data": data}))
 
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        data = body.get("data", {})
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        save_quote_data(job_code, data)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            data = body.get("data", {})
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            save_quote_data(job_code, data)
+            self._log("saved_quote", "quote", job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QuotePDFHandler(BaseHandler):
     """POST /api/quote/pdf — Generate a professional PDF quote."""
     required_roles = ["admin", "estimator"]
@@ -3728,12 +4079,17 @@ class QuotePDFHandler(BaseHandler):
 class QuoteEditorPageHandler(BaseHandler):
     """GET /quote/{job_code} — Quote editor page."""
     def get(self, job_code):
-        html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", job_code)
-        html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
-        html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
-        self.render_with_nav(html, active_page="quote", job_code=job_code)
+        try:
+            html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", job_code)
+            html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
+            html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
+            self.render_with_nav(html, active_page="quote", job_code=job_code)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # QUOTE PDF GENERATION (ReportLab)
 # ─────────────────────────────────────────────
@@ -4094,170 +4450,205 @@ def generate_titan_quote_pdf(data, job_code=""):
 class QCInspectionTypesHandler(BaseHandler):
     """GET /api/qc/types — Return AISC inspection type definitions."""
     def get(self):
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "types": AISC_INSPECTION_TYPES}))
+        try:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "types": AISC_INSPECTION_TYPES}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCDataHandler(BaseHandler):
     """GET/POST /api/qc/data — Load or save QC data for a project."""
     def get(self):
-        job_code = self.get_query_argument("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        data = load_project_qc(job_code)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "data": data}))
+        try:
+            job_code = self.get_query_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            data = load_project_qc(job_code)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        data = body.get("data", {})
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        save_project_qc(job_code, data)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            data = body.get("data", {})
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            save_project_qc(job_code, data)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCInspectionCreateHandler(BaseHandler):
     """POST /api/qc/inspection/create — Create a new inspection record."""
     required_roles = ["admin", "estimator", "shop"]
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        insp_type = body.get("type", "")
-        if not job_code or not insp_type:
-            self.write(json_encode({"ok": False, "error": "job_code and type required"}))
-            return
-        if insp_type not in AISC_INSPECTION_TYPES:
-            self.write(json_encode({"ok": False, "error": f"Unknown inspection type: {insp_type}"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            insp_type = body.get("type", "")
+            if not job_code or not insp_type:
+                self.write(json_encode({"ok": False, "error": "job_code and type required"}))
+                return
+            if insp_type not in AISC_INSPECTION_TYPES:
+                self.write(json_encode({"ok": False, "error": f"Unknown inspection type: {insp_type}"}))
+                return
 
-        qc = load_project_qc(job_code)
-        now = datetime.datetime.now()
-        inspection = {
-            "id": "INS-" + now.strftime("%Y%m%d%H%M%S") + "-" + secrets.token_hex(3).upper(),
-            "type": insp_type,
-            "type_label": AISC_INSPECTION_TYPES[insp_type]["label"],
-            "standard": AISC_INSPECTION_TYPES[insp_type]["standard"],
-            "status": "in_progress",  # in_progress, passed, failed, incomplete
-            "inspector": body.get("inspector", self.get_current_user() or ""),
-            "location": body.get("location", ""),
-            "member_marks": body.get("member_marks", []),
-            "items": {},  # checklist item responses
-            "notes": body.get("notes", ""),
-            "photos": [],
-            "created_at": now.isoformat(),
-            "completed_at": None,
-        }
-        qc["inspections"].append(inspection)
-        save_project_qc(job_code, qc)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "inspection": inspection}))
+            qc = load_project_qc(job_code)
+            now = datetime.datetime.now()
+            inspection = {
+                "id": "INS-" + now.strftime("%Y%m%d%H%M%S") + "-" + secrets.token_hex(3).upper(),
+                "type": insp_type,
+                "type_label": AISC_INSPECTION_TYPES[insp_type]["label"],
+                "standard": AISC_INSPECTION_TYPES[insp_type]["standard"],
+                "status": "in_progress",  # in_progress, passed, failed, incomplete
+                "inspector": body.get("inspector", self.get_current_user() or ""),
+                "location": body.get("location", ""),
+                "member_marks": body.get("member_marks", []),
+                "items": {},  # checklist item responses
+                "notes": body.get("notes", ""),
+                "photos": [],
+                "created_at": now.isoformat(),
+                "completed_at": None,
+            }
+            qc["inspections"].append(inspection)
+            save_project_qc(job_code, qc)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "inspection": inspection}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCInspectionUpdateHandler(BaseHandler):
     """POST /api/qc/inspection/update — Update an inspection record (checklist items, status, notes)."""
     required_roles = ["admin", "estimator", "shop"]
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        insp_id = body.get("inspection_id", "")
-        qc = load_project_qc(job_code)
-        found = False
-        for i, insp in enumerate(qc["inspections"]):
-            if insp["id"] == insp_id:
-                for k in ["items", "notes", "status", "location", "member_marks", "photos"]:
-                    if k in body:
-                        qc["inspections"][i][k] = body[k]
-                if body.get("status") in ["passed", "failed"]:
-                    qc["inspections"][i]["completed_at"] = datetime.datetime.now().isoformat()
-                found = True
-                break
-        if not found:
-            self.write(json_encode({"ok": False, "error": "Inspection not found"}))
-            return
-        save_project_qc(job_code, qc)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            insp_id = body.get("inspection_id", "")
+            qc = load_project_qc(job_code)
+            found = False
+            for i, insp in enumerate(qc["inspections"]):
+                if insp["id"] == insp_id:
+                    for k in ["items", "notes", "status", "location", "member_marks", "photos"]:
+                        if k in body:
+                            qc["inspections"][i][k] = body[k]
+                    if body.get("status") in ["passed", "failed"]:
+                        qc["inspections"][i]["completed_at"] = datetime.datetime.now().isoformat()
+                    found = True
+                    break
+            if not found:
+                self.write(json_encode({"ok": False, "error": "Inspection not found"}))
+                return
+            save_project_qc(job_code, qc)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class NCRCreateHandler(BaseHandler):
     """POST /api/qc/ncr/create — Create a Non-Conformance Report."""
     required_roles = ["admin", "estimator", "shop"]
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
 
-        qc = load_project_qc(job_code)
-        now = datetime.datetime.now()
-        ncr_num = len(qc["ncrs"]) + 1
-        ncr = {
-            "id": f"NCR-{job_code}-{ncr_num:03d}",
-            "number": ncr_num,
-            "severity": body.get("severity", "minor"),  # minor, major, critical
-            "status": "open",
-            "title": body.get("title", ""),
-            "description": body.get("description", ""),
-            "member_marks": body.get("member_marks", []),
-            "inspection_id": body.get("inspection_id", ""),
-            "root_cause": "",
-            "corrective_action": "",
-            "preventive_action": "",
-            "disposition": "",  # rework, accept-as-is, reject, repair
-            "reported_by": body.get("reported_by", self.get_current_user() or ""),
-            "assigned_to": body.get("assigned_to", ""),
-            "photos": [],
-            "created_at": now.isoformat(),
-            "closed_at": None,
-            "history": [
-                {"action": "created", "by": self.get_current_user() or "", "at": now.isoformat()}
-            ],
-        }
-        qc["ncrs"].append(ncr)
-        save_project_qc(job_code, qc)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "ncr": ncr}))
+            qc = load_project_qc(job_code)
+            now = datetime.datetime.now()
+            ncr_num = len(qc["ncrs"]) + 1
+            ncr = {
+                "id": f"NCR-{job_code}-{ncr_num:03d}",
+                "number": ncr_num,
+                "severity": body.get("severity", "minor"),  # minor, major, critical
+                "status": "open",
+                "title": body.get("title", ""),
+                "description": body.get("description", ""),
+                "member_marks": body.get("member_marks", []),
+                "inspection_id": body.get("inspection_id", ""),
+                "root_cause": "",
+                "corrective_action": "",
+                "preventive_action": "",
+                "disposition": "",  # rework, accept-as-is, reject, repair
+                "reported_by": body.get("reported_by", self.get_current_user() or ""),
+                "assigned_to": body.get("assigned_to", ""),
+                "photos": [],
+                "created_at": now.isoformat(),
+                "closed_at": None,
+                "history": [
+                    {"action": "created", "by": self.get_current_user() or "", "at": now.isoformat()}
+                ],
+            }
+            qc["ncrs"].append(ncr)
+            save_project_qc(job_code, qc)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "ncr": ncr}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class NCRUpdateHandler(BaseHandler):
     """POST /api/qc/ncr/update — Update an NCR (status, corrective action, disposition, etc.)."""
     required_roles = ["admin", "estimator", "shop"]
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        ncr_id = body.get("ncr_id", "")
-        qc = load_project_qc(job_code)
-        found = False
-        for i, ncr in enumerate(qc["ncrs"]):
-            if ncr["id"] == ncr_id:
-                for k in ["severity", "status", "title", "description", "root_cause",
-                           "corrective_action", "preventive_action", "disposition",
-                           "assigned_to", "member_marks", "photos"]:
-                    if k in body:
-                        qc["ncrs"][i][k] = body[k]
-                if body.get("status") == "closed":
-                    qc["ncrs"][i]["closed_at"] = datetime.datetime.now().isoformat()
-                qc["ncrs"][i]["history"].append({
-                    "action": f"updated ({', '.join(k for k in body if k not in ['job_code','ncr_id'])})",
-                    "by": self.get_current_user() or "",
-                    "at": datetime.datetime.now().isoformat(),
-                })
-                found = True
-                break
-        if not found:
-            self.write(json_encode({"ok": False, "error": "NCR not found"}))
-            return
-        save_project_qc(job_code, qc)
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            ncr_id = body.get("ncr_id", "")
+            qc = load_project_qc(job_code)
+            found = False
+            for i, ncr in enumerate(qc["ncrs"]):
+                if ncr["id"] == ncr_id:
+                    for k in ["severity", "status", "title", "description", "root_cause",
+                               "corrective_action", "preventive_action", "disposition",
+                               "assigned_to", "member_marks", "photos"]:
+                        if k in body:
+                            qc["ncrs"][i][k] = body[k]
+                    if body.get("status") == "closed":
+                        qc["ncrs"][i]["closed_at"] = datetime.datetime.now().isoformat()
+                    qc["ncrs"][i]["history"].append({
+                        "action": f"updated ({', '.join(k for k in body if k not in ['job_code','ncr_id'])})",
+                        "by": self.get_current_user() or "",
+                        "at": datetime.datetime.now().isoformat(),
+                    })
+                    found = True
+                    break
+            if not found:
+                self.write(json_encode({"ok": False, "error": "NCR not found"}))
+                return
+            save_project_qc(job_code, qc)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # MATERIAL TRACEABILITY HANDLERS
 # ─────────────────────────────────────────────
@@ -4265,24 +4656,29 @@ class NCRUpdateHandler(BaseHandler):
 class TraceabilityIndexHandler(BaseHandler):
     """GET /api/traceability — Get full traceability index (all heat numbers)."""
     def get(self):
-        q = self.get_query_argument("q", "").strip().lower()
-        idx = load_traceability_index()
-        if q:
-            filtered = {}
-            for hn, data in idx["heat_numbers"].items():
-                searchable = " ".join([
-                    hn.lower(),
-                    data.get("material_spec", "").lower(),
-                    data.get("mill_name", "").lower(),
-                    " ".join(c.get("coil_tag", "").lower() for c in data.get("coils", [])),
-                ]).lower()
-                if q in searchable:
-                    filtered[hn] = data
-            idx["heat_numbers"] = filtered
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True, "index": idx}))
+        try:
+            q = self.get_query_argument("q", "").strip().lower()
+            idx = load_traceability_index()
+            if q:
+                filtered = {}
+                for hn, data in idx["heat_numbers"].items():
+                    searchable = " ".join([
+                        hn.lower(),
+                        data.get("material_spec", "").lower(),
+                        data.get("mill_name", "").lower(),
+                        " ".join(c.get("coil_tag", "").lower() for c in data.get("coils", [])),
+                    ]).lower()
+                    if q in searchable:
+                        filtered[hn] = data
+                idx["heat_numbers"] = filtered
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "index": idx}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class TraceabilityRegisterHandler(BaseHandler):
     """POST /api/traceability/register — Register a heat number with a coil."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4319,64 +4715,74 @@ class TraceabilityAssignHandler(BaseHandler):
     """POST /api/traceability/assign — Assign a member to a heat number."""
     required_roles = ["admin", "estimator", "shop"]
     def post(self):
-        body = json_decode(self.request.body)
-        heat_number = body.get("heat_number", "")
-        job_code = body.get("job_code", "")
-        member_mark = body.get("member_mark", "")
-        if not heat_number or not job_code or not member_mark:
-            self.write(json_encode({"ok": False, "error": "heat_number, job_code, and member_mark required"}))
-            return
-        assign_member_to_heat(heat_number, job_code, member_mark,
-                              description=body.get("description", ""))
-        self.set_header("Content-Type", "application/json")
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            heat_number = body.get("heat_number", "")
+            job_code = body.get("job_code", "")
+            member_mark = body.get("member_mark", "")
+            if not heat_number or not job_code or not member_mark:
+                self.write(json_encode({"ok": False, "error": "heat_number, job_code, and member_mark required"}))
+                return
+            assign_member_to_heat(heat_number, job_code, member_mark,
+                                  description=body.get("description", ""))
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class TraceabilityReportHandler(BaseHandler):
     """GET /api/traceability/report — Generate a traceability report for a project or heat number."""
     def get(self):
-        job_code = self.get_query_argument("job_code", "")
-        heat_number = self.get_query_argument("heat_number", "")
-        idx = load_traceability_index()
+        try:
+            job_code = self.get_query_argument("job_code", "")
+            heat_number = self.get_query_argument("heat_number", "")
+            idx = load_traceability_index()
 
-        if heat_number:
-            # Report for a specific heat number
-            data = idx["heat_numbers"].get(heat_number, {})
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({
-                "ok": True,
-                "report_type": "heat_number",
-                "heat_number": heat_number,
-                "data": data,
-            }))
-        elif job_code:
-            # Report for a project — find all heat numbers used
-            qc = load_project_qc(job_code)
-            # Also scan the traceability index for members in this project
-            project_heats = {}
-            for hn, data in idx["heat_numbers"].items():
-                for member in data.get("members", []):
-                    if member.get("job_code") == job_code:
-                        if hn not in project_heats:
-                            project_heats[hn] = {
-                                "material_spec": data.get("material_spec", ""),
-                                "mill_name": data.get("mill_name", ""),
-                                "coils": data.get("coils", []),
-                                "members": [],
-                            }
-                        project_heats[hn]["members"].append(member)
-            self.set_header("Content-Type", "application/json")
-            self.write(json_encode({
-                "ok": True,
-                "report_type": "project",
-                "job_code": job_code,
-                "heat_numbers": project_heats,
-                "qc_traceability": qc.get("traceability", []),
-            }))
-        else:
-            self.write(json_encode({"ok": False, "error": "Provide job_code or heat_number"}))
+            if heat_number:
+                # Report for a specific heat number
+                data = idx["heat_numbers"].get(heat_number, {})
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({
+                    "ok": True,
+                    "report_type": "heat_number",
+                    "heat_number": heat_number,
+                    "data": data,
+                }))
+            elif job_code:
+                # Report for a project — find all heat numbers used
+                qc = load_project_qc(job_code)
+                # Also scan the traceability index for members in this project
+                project_heats = {}
+                for hn, data in idx["heat_numbers"].items():
+                    for member in data.get("members", []):
+                        if member.get("job_code") == job_code:
+                            if hn not in project_heats:
+                                project_heats[hn] = {
+                                    "material_spec": data.get("material_spec", ""),
+                                    "mill_name": data.get("mill_name", ""),
+                                    "coils": data.get("coils", []),
+                                    "members": [],
+                                }
+                            project_heats[hn]["members"].append(member)
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({
+                    "ok": True,
+                    "report_type": "project",
+                    "job_code": job_code,
+                    "heat_numbers": project_heats,
+                    "qc_traceability": qc.get("traceability", []),
+                }))
+            else:
+                self.write(json_encode({"ok": False, "error": "Provide job_code or heat_number"}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # QA / QC HUB & DOCUMENTATION HANDLERS
 # ─────────────────────────────────────────────
@@ -4386,10 +4792,15 @@ class QAHubHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.qa_hub import QA_HUB_HTML
-        self.render_with_nav(QA_HUB_HTML, active_page="qa")
+        try:
+            from templates.qa_hub import QA_HUB_HTML
+            self.render_with_nav(QA_HUB_HTML, active_page="qa")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class QAStatsHandler(BaseHandler):
     """GET /api/qa/stats — Aggregated QA statistics for the hub dashboard."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4441,117 +4852,127 @@ class WPSPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        # Serve a simple page that loads WPS data via API
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">WPS Library</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Welding Procedure Specifications per AWS D1.1. Each WPS defines the qualified parameters
-          for a specific joint type used in production.
-        </p>
-        <div id="wpsCards" style="display:grid;grid-template-columns:1fr;gap:16px;"></div>
-        </div>
-        <script>
-        fetch('/api/qa/wps').then(r=>r.json()).then(function(d){
-          if(!d.ok) return;
-          var html='';
-          Object.values(d.wps).forEach(function(w){
-            html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;">'
-              +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-              +'<h3 style="font-size:18px;font-weight:700;color:#C89A2E;">'+w.wps_id+' — '+w.title+'</h3>'
-              +'<span style="padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600;'
-              +(w.status==='active'?'background:#14532D;color:#10B981':'background:#7F1D1D;color:#DC2626')
-              +'">'+w.status.toUpperCase()+'</span></div>'
-              +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px;">';
-            var fields=[
-              ['Standard',w.standard],['Process',w.process],['Joint Type',w.joint_type],
-              ['Filler Metal',w.filler_metal],['Shielding Gas',w.shielding_gas],['Base Metal',w.base_metal],
-              ['Thickness',w.thickness_range],['Position',w.position],['Preheat',w.preheat],
-              ['Voltage',w.voltage],['Amperage',w.amperage],['Wire Speed',w.wire_speed],
-              ['Travel Speed',w.travel_speed],['Weld Size',w.weld_size],['Pattern',w.stitch_pattern],
-            ];
-            fields.forEach(function(f){
-              html+='<div style="background:#0F172A;padding:10px 12px;border-radius:8px;">'
-                +'<div style="font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">'+f[0]+'</div>'
-                +'<div style="color:#E2E8F0;font-weight:600;margin-top:2px;">'+f[1]+'</div></div>';
+        try:
+            # Serve a simple page that loads WPS data via API
+            html = """<div style="padding:24px;max-width:1100px;">
+            <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">WPS Library</h1>
+            <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
+              Welding Procedure Specifications per AWS D1.1. Each WPS defines the qualified parameters
+              for a specific joint type used in production.
+            </p>
+            <div id="wpsCards" style="display:grid;grid-template-columns:1fr;gap:16px;"></div>
+            </div>
+            <script>
+            fetch('/api/qa/wps').then(r=>r.json()).then(function(d){
+              if(!d.ok) return;
+              var html='';
+              Object.values(d.wps).forEach(function(w){
+                html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;">'
+                  +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+                  +'<h3 style="font-size:18px;font-weight:700;color:#C89A2E;">'+w.wps_id+' — '+w.title+'</h3>'
+                  +'<span style="padding:4px 12px;border-radius:12px;font-size:11px;font-weight:600;'
+                  +(w.status==='active'?'background:#14532D;color:#10B981':'background:#7F1D1D;color:#DC2626')
+                  +'">'+w.status.toUpperCase()+'</span></div>'
+                  +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px;">';
+                var fields=[
+                  ['Standard',w.standard],['Process',w.process],['Joint Type',w.joint_type],
+                  ['Filler Metal',w.filler_metal],['Shielding Gas',w.shielding_gas],['Base Metal',w.base_metal],
+                  ['Thickness',w.thickness_range],['Position',w.position],['Preheat',w.preheat],
+                  ['Voltage',w.voltage],['Amperage',w.amperage],['Wire Speed',w.wire_speed],
+                  ['Travel Speed',w.travel_speed],['Weld Size',w.weld_size],['Pattern',w.stitch_pattern],
+                ];
+                fields.forEach(function(f){
+                  html+='<div style="background:#0F172A;padding:10px 12px;border-radius:8px;">'
+                    +'<div style="font-size:10px;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">'+f[0]+'</div>'
+                    +'<div style="color:#E2E8F0;font-weight:600;margin-top:2px;">'+f[1]+'</div></div>';
+                });
+                html+='</div>';
+                html+='<div style="margin-top:12px;padding:12px;background:#0F172A;border-radius:8px;font-size:13px;">'
+                  +'<strong style="color:#64748B;">Acceptance: </strong><span style="color:#CBD5E1;">'+w.acceptance_criteria+'</span></div>';
+                if(w.notes) html+='<div style="margin-top:8px;font-size:12px;color:#94A3B8;font-style:italic;">'+w.notes+'</div>';
+                html+='<div style="margin-top:12px;font-size:11px;color:#475569;">PQR: '+w.pqr_ref+' | Approved: '+w.approved_by+' ('+w.approved_date+')</div>';
+                html+='</div>';
+              });
+              document.getElementById('wpsCards').innerHTML=html;
             });
-            html+='</div>';
-            html+='<div style="margin-top:12px;padding:12px;background:#0F172A;border-radius:8px;font-size:13px;">'
-              +'<strong style="color:#64748B;">Acceptance: </strong><span style="color:#CBD5E1;">'+w.acceptance_criteria+'</span></div>';
-            if(w.notes) html+='<div style="margin-top:8px;font-size:12px;color:#94A3B8;font-style:italic;">'+w.notes+'</div>';
-            html+='<div style="margin-top:12px;font-size:11px;color:#475569;">PQR: '+w.pqr_ref+' | Approved: '+w.approved_by+' ('+w.approved_date+')</div>';
-            html+='</div>';
-          });
-          document.getElementById('wpsCards').innerHTML=html;
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="wps")
+            </script>"""
+            self.render_with_nav(html, active_page="wps")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WelderCertsPageHandler(BaseHandler):
     """GET /qa/welder-certs — Welder Certifications page."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Welder Certifications</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
-          Welder qualification records per AWS D1.1 §4.19. Tracks test dates, qualified positions,
-          welding process, expiration, and 6-month continuity.
-        </p>
-        <div style="margin-bottom:16px;">
-          <button onclick="showAddForm()" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Welder</button>
-        </div>
-        <div id="welderList"></div>
-        <div id="addForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
-          <h3 style="color:#FFF;margin-bottom:12px;">Add Welder Certification</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div><label style="font-size:12px;color:#64748B;">Welder Name</label><input id="fName" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Employee ID</label><input id="fEmpId" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Process</label><select id="fProcess" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;">
-              <option value="GMAW">GMAW (MIG)</option><option value="FCAW">FCAW (Flux Core)</option><option value="SMAW">SMAW (Stick)</option></select></div>
-            <div><label style="font-size:12px;color:#64748B;">Positions Qualified</label><input id="fPositions" placeholder="1G, 2G, 3G" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Test Date</label><input id="fTestDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Expiration Date</label><input id="fExpDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px;">
-            <button onclick="saveWelder()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
-            <button onclick="document.getElementById('addForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-          </div>
-        </div>
-        </div>
-        <script>
-        function showAddForm(){ document.getElementById('addForm').style.display='block'; }
-        function saveWelder(){
-          var cert={welder_name:document.getElementById('fName').value,employee_id:document.getElementById('fEmpId').value,
-            process:document.getElementById('fProcess').value,positions:document.getElementById('fPositions').value,
-            test_date:document.getElementById('fTestDate').value,expiration_date:document.getElementById('fExpDate').value,status:'active'};
-          fetch('/api/qa/welder-certs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cert)})
-            .then(r=>r.json()).then(function(d){ if(d.ok){ loadWelders(); document.getElementById('addForm').style.display='none'; }});
-        }
-        function loadWelders(){
-          fetch('/api/qa/welder-certs').then(r=>r.json()).then(function(d){
-            if(!d.ok) return;
-            var html='';
-            d.welders.forEach(function(w){
-              var expColor='#10B981'; var expText='Valid';
-              if(w.days_left!==undefined && w.days_left<=0){ expColor='#DC2626'; expText='EXPIRED'; }
-              else if(w.days_left!==undefined && w.days_left<=30){ expColor='#F59E0B'; expText='Expiring'; }
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">'
-                +'<div style="width:48px;height:48px;border-radius:10px;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:20px;">&#128119;</div>'
-                +'<div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#FFF;">'+w.welder_name+'</div>'
-                +'<div style="font-size:12px;color:#94A3B8;">'+w.process+' | Positions: '+w.positions+' | ID: '+(w.employee_id||'—')+'</div></div>'
-                +'<div style="text-align:right;"><div style="font-size:12px;color:#64748B;">Expires</div>'
-                +'<div style="font-size:14px;font-weight:600;color:'+expColor+';">'+w.expiration_date+'</div></div>'
-                +'</div>';
-            });
-            document.getElementById('welderList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No welder certifications yet. Click + Add Welder to get started.</div>';
-          });
-        }
-        loadWelders();
-        </script>"""
-        self.render_with_nav(html, active_page="weldercerts")
+        try:
+            html = """<div style="padding:24px;max-width:1100px;">
+            <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Welder Certifications</h1>
+            <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
+              Welder qualification records per AWS D1.1 §4.19. Tracks test dates, qualified positions,
+              welding process, expiration, and 6-month continuity.
+            </p>
+            <div style="margin-bottom:16px;">
+              <button onclick="showAddForm()" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Welder</button>
+            </div>
+            <div id="welderList"></div>
+            <div id="addForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
+              <h3 style="color:#FFF;margin-bottom:12px;">Add Welder Certification</h3>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><label style="font-size:12px;color:#64748B;">Welder Name</label><input id="fName" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Employee ID</label><input id="fEmpId" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Process</label><select id="fProcess" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;">
+                  <option value="GMAW">GMAW (MIG)</option><option value="FCAW">FCAW (Flux Core)</option><option value="SMAW">SMAW (Stick)</option></select></div>
+                <div><label style="font-size:12px;color:#64748B;">Positions Qualified</label><input id="fPositions" placeholder="1G, 2G, 3G" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Test Date</label><input id="fTestDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Expiration Date</label><input id="fExpDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+              </div>
+              <div style="margin-top:12px;display:flex;gap:8px;">
+                <button onclick="saveWelder()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
+                <button onclick="document.getElementById('addForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
+              </div>
+            </div>
+            </div>
+            <script>
+            function showAddForm(){ document.getElementById('addForm').style.display='block'; }
+            function saveWelder(){
+              var cert={welder_name:document.getElementById('fName').value,employee_id:document.getElementById('fEmpId').value,
+                process:document.getElementById('fProcess').value,positions:document.getElementById('fPositions').value,
+                test_date:document.getElementById('fTestDate').value,expiration_date:document.getElementById('fExpDate').value,status:'active'};
+              fetch('/api/qa/welder-certs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cert)})
+                .then(r=>r.json()).then(function(d){ if(d.ok){ loadWelders(); document.getElementById('addForm').style.display='none'; }});
+            }
+            function loadWelders(){
+              fetch('/api/qa/welder-certs').then(r=>r.json()).then(function(d){
+                if(!d.ok) return;
+                var html='';
+                d.welders.forEach(function(w){
+                  var expColor='#10B981'; var expText='Valid';
+                  if(w.days_left!==undefined && w.days_left<=0){ expColor='#DC2626'; expText='EXPIRED'; }
+                  else if(w.days_left!==undefined && w.days_left<=30){ expColor='#F59E0B'; expText='Expiring'; }
+                  html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">'
+                    +'<div style="width:48px;height:48px;border-radius:10px;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:20px;">&#128119;</div>'
+                    +'<div style="flex:1;"><div style="font-size:16px;font-weight:700;color:#FFF;">'+w.welder_name+'</div>'
+                    +'<div style="font-size:12px;color:#94A3B8;">'+w.process+' | Positions: '+w.positions+' | ID: '+(w.employee_id||'—')+'</div></div>'
+                    +'<div style="text-align:right;"><div style="font-size:12px;color:#64748B;">Expires</div>'
+                    +'<div style="font-size:14px;font-weight:600;color:'+expColor+';">'+w.expiration_date+'</div></div>'
+                    +'</div>';
+                });
+                document.getElementById('welderList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No welder certifications yet. Click + Add Welder to get started.</div>';
+              });
+            }
+            loadWelders();
+            </script>"""
+            self.render_with_nav(html, active_page="weldercerts")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WelderCertsAPIHandler(BaseHandler):
     """GET/POST /api/qa/welder-certs — CRUD for welder certifications."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4588,47 +5009,52 @@ class ProceduresPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Procedures & Quality Manual</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Standard Operating Procedures (SOPs) covering all fabrication, inspection, and quality management processes.
-          Required by AISC Chapter M and the company Quality Manual.
-        </p>
-        <div id="procList"></div>
-        </div>
-        <script>
-        fetch('/api/qa/procedures').then(r=>r.json()).then(function(d){
-          if(!d.ok) return;
-          var cats={quality_manual:'Quality Management',inspection:'Inspection',welding:'Welding',fabrication:'Fabrication',calibration:'Calibration'};
-          var groups={};
-          d.procedures.forEach(function(p){
-            var c=p.category||'other';
-            if(!groups[c]) groups[c]=[];
-            groups[c].push(p);
-          });
-          var html='';
-          Object.keys(cats).forEach(function(k){
-            var procs=groups[k]||[];
-            if(!procs.length) return;
-            html+='<div style="margin-bottom:24px;">'
-              +'<h3 style="font-size:14px;color:#64748B;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">'+cats[k]+'</h3>';
-            procs.forEach(function(p){
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;">'
-                +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-                +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+p.proc_id+' — '+p.title+'</div>'
-                +'<div style="font-size:13px;color:#94A3B8;margin-top:4px;line-height:1.5;">'+p.description+'</div></div>'
-                +'<div style="text-align:right;flex-shrink:0;margin-left:16px;">'
-                +'<div style="padding:3px 10px;background:#14532D;color:#10B981;border-radius:10px;font-size:11px;font-weight:600;">Rev '+p.revision+'</div>'
-                +'<div style="font-size:11px;color:#475569;margin-top:4px;">'+p.standard_ref+'</div></div></div></div>';
+        try:
+            html = """<div style="padding:24px;max-width:1100px;">
+            <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Procedures & Quality Manual</h1>
+            <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
+              Standard Operating Procedures (SOPs) covering all fabrication, inspection, and quality management processes.
+              Required by AISC Chapter M and the company Quality Manual.
+            </p>
+            <div id="procList"></div>
+            </div>
+            <script>
+            fetch('/api/qa/procedures').then(r=>r.json()).then(function(d){
+              if(!d.ok) return;
+              var cats={quality_manual:'Quality Management',inspection:'Inspection',welding:'Welding',fabrication:'Fabrication',calibration:'Calibration'};
+              var groups={};
+              d.procedures.forEach(function(p){
+                var c=p.category||'other';
+                if(!groups[c]) groups[c]=[];
+                groups[c].push(p);
+              });
+              var html='';
+              Object.keys(cats).forEach(function(k){
+                var procs=groups[k]||[];
+                if(!procs.length) return;
+                html+='<div style="margin-bottom:24px;">'
+                  +'<h3 style="font-size:14px;color:#64748B;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">'+cats[k]+'</h3>';
+                procs.forEach(function(p){
+                  html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;">'
+                    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                    +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+p.proc_id+' — '+p.title+'</div>'
+                    +'<div style="font-size:13px;color:#94A3B8;margin-top:4px;line-height:1.5;">'+p.description+'</div></div>'
+                    +'<div style="text-align:right;flex-shrink:0;margin-left:16px;">'
+                    +'<div style="padding:3px 10px;background:#14532D;color:#10B981;border-radius:10px;font-size:11px;font-weight:600;">Rev '+p.revision+'</div>'
+                    +'<div style="font-size:11px;color:#475569;margin-top:4px;">'+p.standard_ref+'</div></div></div></div>';
+                });
+                html+='</div>';
+              });
+              document.getElementById('procList').innerHTML=html;
             });
-            html+='</div>';
-          });
-          document.getElementById('procList').innerHTML=html;
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="procedures")
+            </script>"""
+            self.render_with_nav(html, active_page="procedures")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ProceduresAPIHandler(BaseHandler):
     """GET/POST /api/qa/procedures — CRUD for procedures."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4660,61 +5086,66 @@ class CalibrationPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Calibration Log</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
-          Equipment calibration records per AISC QM §7.6. Tracks all measuring and testing tools,
-          calibration dates, due dates, and certificates. Tools out of calibration cannot be used for QC inspections.
-        </p>
-        <div style="margin-bottom:16px;">
-          <button onclick="document.getElementById('calForm').style.display='block'" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Tool</button>
-        </div>
-        <div id="calForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
-          <h3 style="color:#FFF;margin-bottom:12px;">Add Calibration Record</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div><label style="font-size:12px;color:#64748B;">Tool Name</label><input id="cName" placeholder="e.g. Fillet Gauge Set #1" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Serial Number</label><input id="cSerial" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Last Cal Date</label><input id="cLastDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-            <div><label style="font-size:12px;color:#64748B;">Next Cal Due</label><input id="cNextDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
-          </div>
-          <div style="margin-top:12px;display:flex;gap:8px;">
-            <button onclick="saveCal()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
-            <button onclick="document.getElementById('calForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
-          </div>
-        </div>
-        <div id="calList"></div>
-        </div>
-        <script>
-        function saveCal(){
-          var rec={tool_name:document.getElementById('cName').value,serial_number:document.getElementById('cSerial').value,
-            last_cal_date:document.getElementById('cLastDate').value,next_cal_date:document.getElementById('cNextDate').value,status:'active'};
-          fetch('/api/qa/calibration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rec)})
-            .then(r=>r.json()).then(function(d){ if(d.ok){ loadCal(); document.getElementById('calForm').style.display='none'; }});
-        }
-        function loadCal(){
-          fetch('/api/qa/calibration').then(r=>r.json()).then(function(d){
-            if(!d.ok) return;
-            var html='';
-            d.tools.forEach(function(t){
-              var color='#10B981', label='In Cal';
-              if(t.alert==='OVERDUE'){color='#DC2626';label='OVERDUE';}
-              else if(t.alert==='DUE_SOON'){color='#F59E0B';label='Due Soon';}
-              html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;display:flex;align-items:center;gap:16px;">'
-                +'<div style="width:44px;height:44px;border-radius:10px;background:#3B0764;display:flex;align-items:center;justify-content:center;font-size:18px;">&#128295;</div>'
-                +'<div style="flex:1;"><div style="font-size:15px;font-weight:700;color:#FFF;">'+t.tool_name+'</div>'
-                +'<div style="font-size:12px;color:#94A3B8;">S/N: '+(t.serial_number||'—')+' | Last Cal: '+(t.last_cal_date||'—')+'</div></div>'
-                +'<div style="text-align:right;"><div style="font-size:11px;color:#64748B;">Next Cal</div>'
-                +'<div style="font-size:14px;font-weight:600;color:'+color+';">'+(t.next_cal_date||'—')+'</div>'
-                +'<div style="font-size:11px;font-weight:600;color:'+color+';">'+label+'</div></div></div>';
-            });
-            document.getElementById('calList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No calibration records yet. Click + Add Tool to get started.</div>';
-          });
-        }
-        loadCal();
-        </script>"""
-        self.render_with_nav(html, active_page="calibration")
+        try:
+            html = """<div style="padding:24px;max-width:1100px;">
+            <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">Calibration Log</h1>
+            <p style="color:#94A3B8;font-size:14px;margin-bottom:16px;">
+              Equipment calibration records per AISC QM §7.6. Tracks all measuring and testing tools,
+              calibration dates, due dates, and certificates. Tools out of calibration cannot be used for QC inspections.
+            </p>
+            <div style="margin-bottom:16px;">
+              <button onclick="document.getElementById('calForm').style.display='block'" style="padding:10px 20px;background:#1E40AF;color:#FFF;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">+ Add Tool</button>
+            </div>
+            <div id="calForm" style="display:none;background:#111827;border:1px solid #1E293B;border-radius:12px;padding:24px;margin-bottom:16px;">
+              <h3 style="color:#FFF;margin-bottom:12px;">Add Calibration Record</h3>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div><label style="font-size:12px;color:#64748B;">Tool Name</label><input id="cName" placeholder="e.g. Fillet Gauge Set #1" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Serial Number</label><input id="cSerial" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Last Cal Date</label><input id="cLastDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+                <div><label style="font-size:12px;color:#64748B;">Next Cal Due</label><input id="cNextDate" type="date" style="width:100%;padding:8px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;"></div>
+              </div>
+              <div style="margin-top:12px;display:flex;gap:8px;">
+                <button onclick="saveCal()" style="padding:8px 20px;background:#10B981;color:#FFF;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Save</button>
+                <button onclick="document.getElementById('calForm').style.display='none'" style="padding:8px 20px;background:#334155;color:#CBD5E1;border:none;border-radius:6px;cursor:pointer;">Cancel</button>
+              </div>
+            </div>
+            <div id="calList"></div>
+            </div>
+            <script>
+            function saveCal(){
+              var rec={tool_name:document.getElementById('cName').value,serial_number:document.getElementById('cSerial').value,
+                last_cal_date:document.getElementById('cLastDate').value,next_cal_date:document.getElementById('cNextDate').value,status:'active'};
+              fetch('/api/qa/calibration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rec)})
+                .then(r=>r.json()).then(function(d){ if(d.ok){ loadCal(); document.getElementById('calForm').style.display='none'; }});
+            }
+            function loadCal(){
+              fetch('/api/qa/calibration').then(r=>r.json()).then(function(d){
+                if(!d.ok) return;
+                var html='';
+                d.tools.forEach(function(t){
+                  var color='#10B981', label='In Cal';
+                  if(t.alert==='OVERDUE'){color='#DC2626';label='OVERDUE';}
+                  else if(t.alert==='DUE_SOON'){color='#F59E0B';label='Due Soon';}
+                  html+='<div style="background:#111827;border:1px solid #1E293B;border-radius:10px;padding:16px;margin-bottom:8px;display:flex;align-items:center;gap:16px;">'
+                    +'<div style="width:44px;height:44px;border-radius:10px;background:#3B0764;display:flex;align-items:center;justify-content:center;font-size:18px;">&#128295;</div>'
+                    +'<div style="flex:1;"><div style="font-size:15px;font-weight:700;color:#FFF;">'+t.tool_name+'</div>'
+                    +'<div style="font-size:12px;color:#94A3B8;">S/N: '+(t.serial_number||'—')+' | Last Cal: '+(t.last_cal_date||'—')+'</div></div>'
+                    +'<div style="text-align:right;"><div style="font-size:11px;color:#64748B;">Next Cal</div>'
+                    +'<div style="font-size:14px;font-weight:600;color:'+color+';">'+(t.next_cal_date||'—')+'</div>'
+                    +'<div style="font-size:11px;font-weight:600;color:'+color+';">'+label+'</div></div></div>';
+                });
+                document.getElementById('calList').innerHTML=html||'<div style="color:#475569;padding:20px;text-align:center;">No calibration records yet. Click + Add Tool to get started.</div>';
+              });
+            }
+            loadCal();
+            </script>"""
+            self.render_with_nav(html, active_page="calibration")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class CalibrationAPIHandler(BaseHandler):
     """GET/POST /api/qa/calibration — CRUD for calibration records."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4751,41 +5182,46 @@ class NCRLogPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        html = """<div style="padding:24px;max-width:1100px;">
-        <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">NCR Log</h1>
-        <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
-          Non-Conformance Reports across all projects. Tracks quality deviations, root cause analysis,
-          corrective actions, and closure. Required for AISC audit trail (QM §8.3).
-        </p>
-        <div id="ncrList"><div style="color:#475569;padding:40px;text-align:center;">Loading NCRs...</div></div>
-        </div>
-        <script>
-        // Load NCRs from all project QC files
-        fetch('/api/qa/ncr-log').then(r=>r.json()).then(function(d){
-          if(!d.ok){document.getElementById('ncrList').innerHTML='<div style="color:#DC2626;">Error loading NCRs</div>';return;}
-          var html='';
-          var sevColors={critical:'#DC2626',major:'#F59E0B',minor:'#3B82F6'};
-          var statColors={open:'#DC2626',under_review:'#F59E0B',corrective_action:'#3B82F6',closed:'#10B981',voided:'#475569'};
-          d.ncrs.forEach(function(n){
-            var sc=sevColors[n.severity]||'#64748B';
-            var stc=statColors[n.status]||'#64748B';
-            html+='<div style="background:#111827;border:1px solid #1E293B;border-left:3px solid '+sc+';border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px;">'
-              +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-              +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+(n.ncr_id||'—')+' — '+(n.title||'Untitled')+'</div>'
-              +'<div style="font-size:12px;color:#94A3B8;margin-top:4px;">Job: '+(n.job_code||'—')+' | Reported: '+(n.created_at||'—').slice(0,10)+'</div></div>'
-              +'<div style="display:flex;gap:6px;">'
-              +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+sc+'22;color:'+sc+';">'+(n.severity||'—').toUpperCase()+'</span>'
-              +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+stc+'22;color:'+stc+';">'+(n.status||'—').replace('_',' ').toUpperCase()+'</span>'
-              +'</div></div>';
-            if(n.description) html+='<div style="font-size:13px;color:#94A3B8;margin-top:8px;">'+n.description+'</div>';
-            html+='</div>';
-          });
-          document.getElementById('ncrList').innerHTML=html||'<div style="color:#475569;padding:40px;text-align:center;">No NCRs found. That\\'s a good thing!</div>';
-        });
-        </script>"""
-        self.render_with_nav(html, active_page="ncrlog")
+        try:
+            html = """<div style="padding:24px;max-width:1100px;">
+            <h1 style="font-size:24px;font-weight:800;color:#FFF;margin-bottom:8px;">NCR Log</h1>
+            <p style="color:#94A3B8;font-size:14px;margin-bottom:24px;">
+              Non-Conformance Reports across all projects. Tracks quality deviations, root cause analysis,
+              corrective actions, and closure. Required for AISC audit trail (QM §8.3).
+            </p>
+            <div id="ncrList"><div style="color:#475569;padding:40px;text-align:center;">Loading NCRs...</div></div>
+            </div>
+            <script>
+            // Load NCRs from all project QC files
+            fetch('/api/qa/ncr-log').then(r=>r.json()).then(function(d){
+              if(!d.ok){document.getElementById('ncrList').innerHTML='<div style="color:#DC2626;">Error loading NCRs</div>';return;}
+              var html='';
+              var sevColors={critical:'#DC2626',major:'#F59E0B',minor:'#3B82F6'};
+              var statColors={open:'#DC2626',under_review:'#F59E0B',corrective_action:'#3B82F6',closed:'#10B981',voided:'#475569'};
+              d.ncrs.forEach(function(n){
+                var sc=sevColors[n.severity]||'#64748B';
+                var stc=statColors[n.status]||'#64748B';
+                html+='<div style="background:#111827;border:1px solid #1E293B;border-left:3px solid '+sc+';border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px;">'
+                  +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                  +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+(n.ncr_id||'—')+' — '+(n.title||'Untitled')+'</div>'
+                  +'<div style="font-size:12px;color:#94A3B8;margin-top:4px;">Job: '+(n.job_code||'—')+' | Reported: '+(n.created_at||'—').slice(0,10)+'</div></div>'
+                  +'<div style="display:flex;gap:6px;">'
+                  +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+sc+'22;color:'+sc+';">'+(n.severity||'—').toUpperCase()+'</span>'
+                  +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+stc+'22;color:'+stc+';">'+(n.status||'—').replace('_',' ').toUpperCase()+'</span>'
+                  +'</div></div>';
+                if(n.description) html+='<div style="font-size:13px;color:#94A3B8;margin-top:8px;">'+n.description+'</div>';
+                html+='</div>';
+              });
+              document.getElementById('ncrList').innerHTML=html||'<div style="color:#475569;padding:40px;text-align:center;">No NCRs found. That\\'s a good thing!</div>';
+            });
+            </script>"""
+            self.render_with_nav(html, active_page="ncrlog")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class NCRLogAPIHandler(BaseHandler):
     """GET /api/qa/ncr-log — All NCRs across all projects."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4941,11 +5377,10 @@ def _load_interactive_sources(job_code):
 
 def _register_interactive_source(job_code, filename, drawing_type):
     """Record that *filename* was saved by the Interactive Builder."""
-    import datetime as _dt
     sources = _load_interactive_sources(job_code)
     sources[filename] = {
         "drawing_type": drawing_type,
-        "saved_at": _dt.datetime.now().isoformat(),
+        "saved_at": datetime.datetime.now().isoformat(),
         "source": "interactive",
     }
     d = _shop_drawing_project_dir(job_code)
@@ -5050,30 +5485,35 @@ def _derive_bom_config(job_code):
 class ColumnInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/column — Interactive Column Drawing."""
     def get(self, job_code):
-        from templates.column_interactive import COLUMN_DRAWING_HTML
+        try:
+            from templates.column_interactive import COLUMN_DRAWING_HTML
 
-        # Load project config from saved BOM
-        config_dict = _load_shop_config(job_code)
-        if not config_dict:
-            config_dict = {"job_code": job_code}
-        config_dict.setdefault("job_code", job_code)
+            # Load project config from saved BOM
+            config_dict = _load_shop_config(job_code)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
 
-        # Load project metadata
-        proj_dir = os.path.join(PROJECTS_DIR, job_code)
-        meta_path = os.path.join(proj_dir, "metadata.json")
-        if os.path.isfile(meta_path):
-            with open(meta_path) as f:
-                meta = json.load(f)
-            config_dict.setdefault("project_name", meta.get("project_name", ""))
-            config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+            # Load project metadata
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
 
-        html = COLUMN_DRAWING_HTML
-        html = html.replace("{{JOB_CODE}}", job_code)
-        html = html.replace("{{COLUMN_CONFIG_JSON}}", json.dumps(config_dict))
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+            html = COLUMN_DRAWING_HTML
+            html = html.replace("{{JOB_CODE}}", job_code)
+            html = html.replace("{{COLUMN_CONFIG_JSON}}", json.dumps(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class RafterInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/rafter — Interactive Rafter Drawing."""
     def get(self, job_code):
@@ -5195,20 +5635,25 @@ class DeleteShopDrawingPDFHandler(BaseHandler):
 class ShopDrawingsPageHandler(BaseHandler):
     """GET /shop-drawings/{job_code} — Shop Drawing Dashboard page."""
     def get(self, job_code):
-        role = self.get_user_role() or "viewer"
-        display = "User"
-        if AUTH_ENABLED:
-            user = self.get_current_user()
-            users_db = load_users()
-            display = users_db.get(user, {}).get("display_name", user or "User")
+        try:
+            role = self.get_user_role() or "viewer"
+            display = "User"
+            if AUTH_ENABLED:
+                user = self.get_current_user()
+                users_db = load_users()
+                display = users_db.get(user, {}).get("display_name", user or "User")
 
-        html = SHOP_DRAWINGS_HTML
-        html = html.replace("{{JOB_CODE}}", job_code)
-        html = html.replace("{{USER_ROLE}}", role)
-        html = html.replace("{{USER_NAME}}", display)
-        self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+            html = SHOP_DRAWINGS_HTML
+            html = html.replace("{{JOB_CODE}}", job_code)
+            html = html.replace("{{USER_ROLE}}", role)
+            html = html.replace("{{USER_NAME}}", display)
+            self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ShopDrawingsConfigHandler(BaseHandler):
     """
     GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
@@ -5296,7 +5741,6 @@ class ShopDrawingsConfigHandler(BaseHandler):
                 "generation_log": gen_log,
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
                                     "trace": traceback.format_exc()}))
@@ -5464,7 +5908,6 @@ class ShopDrawingsDiffHandler(BaseHandler):
                 "total_changes": len(diffs),
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
                                     "trace": traceback.format_exc()}))
@@ -5614,7 +6057,6 @@ class ShopDrawingsGenerateHandler(BaseHandler):
                 "errors": [],
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({
                 "ok": False,
@@ -5713,11 +6155,16 @@ class WorkOrderPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self, job_code):
-        from templates.work_orders import WORK_ORDERS_HTML
-        html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", job_code)
-        self.render_with_nav(html, active_page="workorders", job_code=job_code)
+        try:
+            from templates.work_orders import WORK_ORDERS_HTML
+            html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", job_code)
+            self.render_with_nav(html, active_page="workorders", job_code=job_code)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WorkOrderCreateHandler(BaseHandler):
     """POST /api/work-orders/create — Create a new work order from shop drawings."""
     required_roles = ["admin", "estimator"]
@@ -5827,7 +6274,6 @@ class WorkOrderCreateHandler(BaseHandler):
                 "summary": wo.summary(),
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6033,7 +6479,6 @@ class WorkOrderQRScanHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6114,7 +6559,6 @@ class WorkOrderEditHandler(BaseHandler):
                 "summary": wo.summary(),
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6231,7 +6675,6 @@ class WorkOrderQCHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6266,7 +6709,6 @@ class WorkOrderLoadingHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6278,16 +6720,21 @@ class WorkOrderMobileScanPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self, job_code, item_id):
-        from templates.wo_mobile_scan import WO_MOBILE_SCAN_HTML
-        user = self.get_current_user() or "shop"
-        html = (WO_MOBILE_SCAN_HTML
-                .replace("{{JOB_CODE}}", job_code)
-                .replace("{{ITEM_ID}}", item_id)
-                .replace("{{USER_NAME}}", user))
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        try:
+            from templates.wo_mobile_scan import WO_MOBILE_SCAN_HTML
+            user = self.get_current_user() or "shop"
+            html = (WO_MOBILE_SCAN_HTML
+                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{ITEM_ID}}", item_id)
+                    .replace("{{USER_NAME}}", user))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WorkOrderStickerPDFHandler(BaseHandler):
     """GET /api/work-orders/stickers/pdf?job_code=X&wo_id=Y — Generate sticker PDF."""
     required_roles = ["admin", "estimator", "shop"]
@@ -6320,7 +6767,6 @@ class WorkOrderStickerPDFHandler(BaseHandler):
             self.set_header("Content-Disposition", f'inline; filename="{filename}"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(str(e))
 
@@ -6474,7 +6920,7 @@ class FabAssemblyPDFHandler(_FabStickerBaseMixin, BaseHandler):
                             f'inline; filename="{wo_id}_assembly_stickers.pdf"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback; traceback.print_exc()
+            traceback.print_exc()
             self.set_status(500)
             self.write(str(e))
 
@@ -6519,7 +6965,7 @@ class FabMaterialMasterPDFHandler(_FabStickerBaseMixin, BaseHandler):
                             f'inline; filename="{wo_id}_material_master_stickers.pdf"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback; traceback.print_exc()
+            traceback.print_exc()
             self.set_status(500)
             self.write(str(e))
 
@@ -6564,7 +7010,7 @@ class FabMaterialSubPDFHandler(_FabStickerBaseMixin, BaseHandler):
                             f'inline; filename="{wo_id}_material_sub_stickers.pdf"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback; traceback.print_exc()
+            traceback.print_exc()
             self.set_status(500)
             self.write(str(e))
 
@@ -6682,11 +7128,16 @@ class TVDashboardPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.tv_dashboard import TV_DASHBOARD_HTML
-        self.set_header("Content-Type", "text/html")
-        self.write(TV_DASHBOARD_HTML)
+        try:
+            from templates.tv_dashboard import TV_DASHBOARD_HTML
+            self.set_header("Content-Type", "text/html")
+            self.write(TV_DASHBOARD_HTML)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class GamificationLeaderboardHandler(BaseHandler):
     """GET /api/gamification/leaderboard — Worker leaderboard."""
     required_roles = ["admin", "estimator", "shop"]
@@ -6773,7 +7224,6 @@ class SmartQueueHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "items": prioritized, "total": len(prioritized)}))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6834,10 +7284,15 @@ class ShopFloorPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.shop_floor import SHOP_FLOOR_HTML
-        self.render_with_nav(SHOP_FLOOR_HTML, active_page="shopfloor")
+        try:
+            from templates.shop_floor import SHOP_FLOOR_HTML
+            self.render_with_nav(SHOP_FLOOR_HTML, active_page="shopfloor")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ShopFloorDataHandler(BaseHandler):
     """GET /api/shop-floor/data — Aggregated shop floor metrics."""
     required_roles = ["admin", "estimator", "shop"]
@@ -6956,7 +7411,6 @@ class ShopFloorDataHandler(BaseHandler):
                 "events": events,
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
 
@@ -6970,14 +7424,19 @@ class WorkStationPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self, job_code):
-        from templates.work_station import WORK_STATION_HTML
-        user = self.get_current_user() or "local"
-        html = (WORK_STATION_HTML
-                .replace("{{JOB_CODE}}", job_code)
-                .replace("{{USER_NAME}}", user))
-        self.render_with_nav(html, active_page="workstation", job_code=job_code)
+        try:
+            from templates.work_station import WORK_STATION_HTML
+            user = self.get_current_user() or "local"
+            html = (WORK_STATION_HTML
+                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{USER_NAME}}", user))
+            self.render_with_nav(html, active_page="workstation", job_code=job_code)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WorkStationDataHandler(BaseHandler):
     """GET /api/work-station/data — Items + machine info for a job's work station."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7044,7 +7503,6 @@ class WorkStationDataHandler(BaseHandler):
                 "work_orders": wo_summaries,
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
                                     "trace": traceback.format_exc()}))
@@ -7080,7 +7538,6 @@ class WorkStationStepsHandler(BaseHandler):
                 "steps": steps,
             }))
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
                                     "trace": traceback.format_exc()}))
@@ -7116,15 +7573,20 @@ class QRScannerPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self, job_code):
-        from templates.qr_scanner import QR_SCANNER_HTML
-        user = self.get_current_user() or "shop"
-        html = (QR_SCANNER_HTML
-                .replace("{{JOB_CODE}}", job_code)
-                .replace("{{USER_NAME}}", user))
-        self.set_header("Content-Type", "text/html")
-        self.write(html)
+        try:
+            from templates.qr_scanner import QR_SCANNER_HTML
+            user = self.get_current_user() or "shop"
+            html = (QR_SCANNER_HTML
+                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{USER_NAME}}", user))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WorkOrderItemDetailHandler(BaseHandler):
     """GET /api/work-orders/item-detail — Look up a single item by item_id.
     Returns full item dict AND full work order dict (including all sibling items)
@@ -7195,7 +7657,6 @@ class WorkOrderPacketPDFHandler(BaseHandler):
                             f'inline; filename="WO_Packet_{wo_id}.pdf"')
             self.write(pdf_bytes)
         except Exception as e:
-            import traceback
             self.set_status(500)
             self.write(f"Error: {e}\n{traceback.format_exc()}")
 
@@ -7224,111 +7685,144 @@ class LoadBuilderPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.load_builder import LOAD_BUILDER_HTML
-        self.render_with_nav(LOAD_BUILDER_HTML, active_page="shipping")
+        try:
+            from templates.load_builder import LOAD_BUILDER_HTML
+            self.render_with_nav(LOAD_BUILDER_HTML, active_page="shipping")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class LoadBuilderListHandler(BaseHandler):
     """GET /api/load-builder/loads — List active loads."""
     def get(self):
-        data = _load_builder_data()
-        self.write(json_encode({"ok": True, "loads": data.get("loads", [])}))
+        try:
+            data = _load_builder_data()
+            self.write(json_encode({"ok": True, "loads": data.get("loads", [])}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LoadBuilderCreateHandler(BaseHandler):
     """POST /api/load-builder/create — Create a new load."""
     def post(self):
-        import datetime
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
 
-        data = _load_builder_data()
-        loads = data.get("loads", [])
-        load_id = f"LOAD-{len(loads)+1:04d}"
-        new_load = {
-            "load_id": load_id,
-            "job_code": job_code,
-            "truck_number": body.get("truck_number", ""),
-            "trailer_number": body.get("trailer_number", ""),
-            "driver": body.get("driver", ""),
-            "date": body.get("date", datetime.datetime.now().strftime("%Y-%m-%d")),
-            "status": "building",
-            "items": [],
-            "created_at": datetime.datetime.now().isoformat(),
-        }
-        loads.append(new_load)
-        data["loads"] = loads
-        _save_builder_data(data)
-        self.write(json_encode({"ok": True, "load": new_load}))
+            data = _load_builder_data()
+            loads = data.get("loads", [])
+            load_id = f"LOAD-{len(loads)+1:04d}"
+            new_load = {
+                "load_id": load_id,
+                "job_code": job_code,
+                "truck_number": body.get("truck_number", ""),
+                "trailer_number": body.get("trailer_number", ""),
+                "driver": body.get("driver", ""),
+                "date": body.get("date", datetime.datetime.now().strftime("%Y-%m-%d")),
+                "status": "building",
+                "items": [],
+                "created_at": datetime.datetime.now().isoformat(),
+            }
+            loads.append(new_load)
+            data["loads"] = loads
+            _save_builder_data(data)
+            self.write(json_encode({"ok": True, "load": new_load}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LoadBuilderAddItemHandler(BaseHandler):
     """POST /api/load-builder/add-item — Add item to a load."""
     def post(self):
-        body = json_decode(self.request.body)
-        load_id = body.get("load_id", "")
-        item = body.get("item", {})
-        if not load_id or not item:
-            self.write(json_encode({"ok": False, "error": "load_id and item required"}))
-            return
-
-        data = _load_builder_data()
-        for load in data.get("loads", []):
-            if load["load_id"] == load_id:
-                import datetime
-                item.setdefault("added_at", datetime.datetime.now().isoformat())
-                load["items"].append(item)
-                _save_builder_data(data)
-                self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "")
+            item = body.get("item", {})
+            if not load_id or not item:
+                self.write(json_encode({"ok": False, "error": "load_id and item required"}))
                 return
-        self.write(json_encode({"ok": False, "error": "Load not found"}))
+
+            data = _load_builder_data()
+            for load in data.get("loads", []):
+                if load["load_id"] == load_id:
+                    item.setdefault("added_at", datetime.datetime.now().isoformat())
+                    load["items"].append(item)
+                    _save_builder_data(data)
+                    self.write(json_encode({"ok": True}))
+                    return
+            self.write(json_encode({"ok": False, "error": "Load not found"}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LoadBuilderRemoveItemHandler(BaseHandler):
     """POST /api/load-builder/remove-item — Remove item from a load."""
     def post(self):
-        body = json_decode(self.request.body)
-        load_id = body.get("load_id", "")
-        item_id = body.get("item_id", "")
-        data = _load_builder_data()
-        for load in data.get("loads", []):
-            if load["load_id"] == load_id:
-                load["items"] = [i for i in load["items"] if i.get("item_id") != item_id]
-                _save_builder_data(data)
-                self.write(json_encode({"ok": True}))
-                return
-        self.write(json_encode({"ok": False, "error": "Load not found"}))
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "")
+            item_id = body.get("item_id", "")
+            data = _load_builder_data()
+            for load in data.get("loads", []):
+                if load["load_id"] == load_id:
+                    load["items"] = [i for i in load["items"] if i.get("item_id") != item_id]
+                    _save_builder_data(data)
+                    self.write(json_encode({"ok": True}))
+                    return
+            self.write(json_encode({"ok": False, "error": "Load not found"}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LoadBuilderFinalizeHandler(BaseHandler):
     """POST /api/load-builder/finalize — Finalize a load."""
     def post(self):
-        body = json_decode(self.request.body)
-        load_id = body.get("load_id", "")
-        data = _load_builder_data()
-        for load in data.get("loads", []):
-            if load["load_id"] == load_id:
-                load["status"] = "ready"
-                _save_builder_data(data)
-                self.write(json_encode({"ok": True}))
-                return
-        self.write(json_encode({"ok": False, "error": "Load not found"}))
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "")
+            data = _load_builder_data()
+            for load in data.get("loads", []):
+                if load["load_id"] == load_id:
+                    load["status"] = "ready"
+                    _save_builder_data(data)
+                    self.write(json_encode({"ok": True}))
+                    return
+            self.write(json_encode({"ok": False, "error": "Load not found"}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class LoadBuilderDeleteHandler(BaseHandler):
     """DELETE/POST /api/load-builder/delete — Delete a load."""
     def post(self):
-        body = json_decode(self.request.body)
-        load_id = body.get("load_id", "")
-        data = _load_builder_data()
-        data["loads"] = [l for l in data.get("loads", []) if l["load_id"] != load_id]
-        _save_builder_data(data)
-        self.write(json_encode({"ok": True}))
+        try:
+            body = json_decode(self.request.body)
+            load_id = body.get("load_id", "")
+            data = _load_builder_data()
+            data["loads"] = [l for l in data.get("loads", []) if l["load_id"] != load_id]
+            _save_builder_data(data)
+            self.write(json_encode({"ok": True}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # SHIPPING DOCUMENT HANDLERS
 # ─────────────────────────────────────────────
@@ -7338,132 +7832,187 @@ class ShippingPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self, job_code):
-        from templates.shipping_page import SHIPPING_PAGE_HTML
-        html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
-        self.render_with_nav(html, active_page="shipping")
+        try:
+            from templates.shipping_page import SHIPPING_PAGE_HTML
+            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
+            self.render_with_nav(html, active_page="shipping")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ShippingPackingListHandler(BaseHandler):
     """POST /api/shipping/packing-list — Generate a packing list."""
     required_roles = ["admin", "estimator", "shop"]
 
     def post(self):
-        from shop_drawings.shipping_docs import generate_packing_list, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        wo_dict = body.get("work_order", {})
-        result = generate_packing_list(
-            job_code, wo_dict,
-            items_filter=body.get("items_filter"),
-            ship_date=body.get("ship_date"),
-            truck_info=body.get("truck_info")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "packing_list", result)
-        self.write(json_encode({"ok": True, "data": result}))
+        try:
+            from shop_drawings.shipping_docs import generate_packing_list, save_shipping_doc
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            wo_dict = body.get("work_order", {})
+            result = generate_packing_list(
+                job_code, wo_dict,
+                items_filter=body.get("items_filter"),
+                ship_date=body.get("ship_date"),
+                truck_info=body.get("truck_info")
+            )
+            save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "packing_list", result)
+            self.write(json_encode({"ok": True, "data": result}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "packing_list")
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            from shop_drawings.shipping_docs import load_shipping_docs
+            job_code = self.get_argument("job_code", "")
+            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "packing_list")
+            self.write(json_encode({"ok": True, "docs": docs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ShippingBOLHandler(BaseHandler):
     """POST /api/shipping/bol — Generate a Bill of Lading."""
     required_roles = ["admin", "estimator", "shop"]
 
     def post(self):
-        from shop_drawings.shipping_docs import generate_bill_of_lading, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        if not job_code:
-            self.write(json_encode({"ok": False, "error": "job_code required"}))
-            return
-        result = generate_bill_of_lading(
-            job_code, body.get("work_order", {}),
-            carrier_info=body.get("carrier_info"),
-            consignee=body.get("consignee")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "bol", result)
-        self.write(json_encode({"ok": True, "data": result}))
+        try:
+            from shop_drawings.shipping_docs import generate_bill_of_lading, save_shipping_doc
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            result = generate_bill_of_lading(
+                job_code, body.get("work_order", {}),
+                carrier_info=body.get("carrier_info"),
+                consignee=body.get("consignee")
+            )
+            save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "bol", result)
+            self.write(json_encode({"ok": True, "data": result}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "bol")
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            from shop_drawings.shipping_docs import load_shipping_docs
+            job_code = self.get_argument("job_code", "")
+            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "bol")
+            self.write(json_encode({"ok": True, "docs": docs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ShippingManifestHandler(BaseHandler):
     """POST /api/shipping/manifest — Generate a shipping manifest."""
     required_roles = ["admin", "estimator", "shop"]
 
     def post(self):
-        from shop_drawings.shipping_docs import generate_shipping_manifest, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        result = generate_shipping_manifest(job_code, loads=body.get("loads"))
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "manifest", result)
-        self.write(json_encode({"ok": True, "data": result}))
+        try:
+            from shop_drawings.shipping_docs import generate_shipping_manifest, save_shipping_doc
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            result = generate_shipping_manifest(job_code, loads=body.get("loads"))
+            save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "manifest", result)
+            self.write(json_encode({"ok": True, "data": result}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "manifest")
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            from shop_drawings.shipping_docs import load_shipping_docs
+            job_code = self.get_argument("job_code", "")
+            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "manifest")
+            self.write(json_encode({"ok": True, "docs": docs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ShippingPurchaseOrderHandler(BaseHandler):
     """POST /api/shipping/purchase-order — Generate a purchase order."""
     required_roles = ["admin", "estimator"]
 
     def post(self):
-        from shop_drawings.shipping_docs import generate_purchase_order, save_shipping_doc
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "general")
-        result = generate_purchase_order(
-            po_number=body.get("po_number"),
-            vendor=body.get("vendor"),
-            line_items=body.get("line_items", []),
-            delivery_date=body.get("delivery_date"),
-            notes=body.get("notes")
-        )
-        save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "purchase_order", result)
-        self.write(json_encode({"ok": True, "data": result}))
+        try:
+            from shop_drawings.shipping_docs import generate_purchase_order, save_shipping_doc
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "general")
+            result = generate_purchase_order(
+                po_number=body.get("po_number"),
+                vendor=body.get("vendor"),
+                line_items=body.get("line_items", []),
+                delivery_date=body.get("delivery_date"),
+                notes=body.get("notes")
+            )
+            save_shipping_doc(SHOP_DRAWINGS_DIR, job_code, "purchase_order", result)
+            self.write(json_encode({"ok": True, "data": result}))
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "general")
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "purchase_order")
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            from shop_drawings.shipping_docs import load_shipping_docs
+            job_code = self.get_argument("job_code", "general")
+            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, "purchase_order")
+            self.write(json_encode({"ok": True, "docs": docs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ShippingReorderHandler(BaseHandler):
     """GET /api/shipping/reorder-alerts — Check inventory reorder points."""
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        from shop_drawings.shipping_docs import check_reorder_points
-        inv = load_inventory()
-        alerts = check_reorder_points(inv)
-        self.write(json_encode({"ok": True, "alerts": alerts}))
+        try:
+            from shop_drawings.shipping_docs import check_reorder_points
+            inv = load_inventory()
+            alerts = check_reorder_points(inv)
+            self.write(json_encode({"ok": True, "alerts": alerts}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ShippingDocsListHandler(BaseHandler):
     """GET /api/shipping/docs — List all shipping docs for a job."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from shop_drawings.shipping_docs import load_shipping_docs
-        job_code = self.get_argument("job_code", "")
-        doc_type = self.get_argument("type", None)
-        docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, doc_type)
-        self.write(json_encode({"ok": True, "docs": docs}))
+        try:
+            from shop_drawings.shipping_docs import load_shipping_docs
+            job_code = self.get_argument("job_code", "")
+            doc_type = self.get_argument("type", None)
+            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, job_code, doc_type)
+            self.write(json_encode({"ok": True, "docs": docs}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # QC PHOTO HANDLERS
 # ─────────────────────────────────────────────
@@ -7473,74 +8022,94 @@ class QCPhotoUploadHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def post(self):
-        from shop_drawings.qc_photos import save_qc_photo
-        job_code = self.get_argument("job_code", "")
-        record_type = self.get_argument("record_type", "")
-        record_id = self.get_argument("record_id", "")
-        caption = self.get_argument("caption", "")
+        try:
+            from shop_drawings.qc_photos import save_qc_photo
+            job_code = self.get_argument("job_code", "")
+            record_type = self.get_argument("record_type", "")
+            record_id = self.get_argument("record_id", "")
+            caption = self.get_argument("caption", "")
 
-        if not job_code or not record_type or not record_id:
-            self.write(json_encode({"ok": False, "error": "job_code, record_type, record_id required"}))
-            return
+            if not job_code or not record_type or not record_id:
+                self.write(json_encode({"ok": False, "error": "job_code, record_type, record_id required"}))
+                return
 
-        if "photo" not in self.request.files:
-            self.write(json_encode({"ok": False, "error": "No photo file uploaded"}))
-            return
+            if "photo" not in self.request.files:
+                self.write(json_encode({"ok": False, "error": "No photo file uploaded"}))
+                return
 
-        file_info = self.request.files["photo"][0]
-        user = self.get_current_user() or "local"
-        result = save_qc_photo(
-            QC_DIR, job_code, record_type, record_id,
-            file_info["body"], file_info["filename"],
-            caption=caption, uploaded_by=user
-        )
-        self.write(json_encode({"ok": True, "photo": result}))
+            file_info = self.request.files["photo"][0]
+            user = self.get_current_user() or "local"
+            result = save_qc_photo(
+                QC_DIR, job_code, record_type, record_id,
+                file_info["body"], file_info["filename"],
+                caption=caption, uploaded_by=user
+            )
+            self.write(json_encode({"ok": True, "photo": result}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCPhotoListHandler(BaseHandler):
     """GET /api/qc/photos — List photos for a QC record."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from shop_drawings.qc_photos import list_qc_photos
-        job_code = self.get_argument("job_code", "")
-        record_type = self.get_argument("record_type", None)
-        record_id = self.get_argument("record_id", None)
-        photos = list_qc_photos(QC_DIR, job_code, record_type, record_id)
-        self.write(json_encode({"ok": True, "photos": photos}))
+        try:
+            from shop_drawings.qc_photos import list_qc_photos
+            job_code = self.get_argument("job_code", "")
+            record_type = self.get_argument("record_type", None)
+            record_id = self.get_argument("record_id", None)
+            photos = list_qc_photos(QC_DIR, job_code, record_type, record_id)
+            self.write(json_encode({"ok": True, "photos": photos}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCPhotoDeleteHandler(BaseHandler):
     """POST /api/qc/photos/delete — Delete a QC photo."""
     required_roles = ["admin", "estimator"]
 
     def post(self):
-        from shop_drawings.qc_photos import delete_qc_photo
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        photo_id = body.get("photo_id", "")
-        ok = delete_qc_photo(QC_DIR, job_code, photo_id)
-        self.write(json_encode({"ok": ok}))
+        try:
+            from shop_drawings.qc_photos import delete_qc_photo
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            photo_id = body.get("photo_id", "")
+            ok = delete_qc_photo(QC_DIR, job_code, photo_id)
+            self.write(json_encode({"ok": ok}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class QCPhotoServeHandler(BaseHandler):
     """GET /qc-photos/{job_code}/{record_id}/{filename} — Serve a QC photo file."""
 
     def get(self, job_code, record_id, filename):
-        from shop_drawings.qc_photos import get_photo_path
-        import mimetypes
-        path = get_photo_path(QC_DIR, job_code, record_id, filename)
-        if not path or not os.path.isfile(path):
-            self.set_status(404)
-            self.write("Photo not found")
-            return
-        content_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
-        self.set_header("Content-Type", content_type)
-        self.set_header("Cache-Control", "public, max-age=86400")
-        with open(path, "rb") as f:
-            self.write(f.read())
+        try:
+            from shop_drawings.qc_photos import get_photo_path
+            import mimetypes
+            path = get_photo_path(QC_DIR, job_code, record_id, filename)
+            if not path or not os.path.isfile(path):
+                self.set_status(404)
+                self.write("Photo not found")
+                return
+            content_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
+            self.set_header("Content-Type", content_type)
+            self.set_header("Cache-Control", "public, max-age=86400")
+            with open(path, "rb") as f:
+                self.write(f.read())
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # GANTT / SCHEDULING HANDLERS
 # ─────────────────────────────────────────────
@@ -7550,10 +8119,15 @@ class GanttPageHandler(BaseHandler):
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        from templates.gantt_view import GANTT_VIEW_HTML
-        self.render_with_nav(GANTT_VIEW_HTML, active_page="schedule")
+        try:
+            from templates.gantt_view import GANTT_VIEW_HTML
+            self.render_with_nav(GANTT_VIEW_HTML, active_page="schedule")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class GanttDataHandler(BaseHandler):
     """GET /api/gantt/data — Gantt chart data for all active jobs."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7565,7 +8139,6 @@ class GanttDataHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "data": data}))
         except Exception as e:
-            import traceback
             # Return valid JSON with today's date so the UI renders even if data fails
             today_str = datetime.datetime.now().strftime("%Y-%m-%d")
             self.set_header("Content-Type", "application/json")
@@ -7585,12 +8158,17 @@ class MachineUtilizationHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from shop_drawings.scheduling import get_machine_utilization
-        days = int(self.get_argument("days", "14"))
-        data = get_machine_utilization(SHOP_DRAWINGS_DIR, days_ahead=days)
-        self.write(json_encode({"ok": True, "data": data}))
+        try:
+            from shop_drawings.scheduling import get_machine_utilization
+            days = int(self.get_argument("days", "14"))
+            data = get_machine_utilization(SHOP_DRAWINGS_DIR, days_ahead=days)
+            self.write(json_encode({"ok": True, "data": data}))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
 # MISSING DASHBOARD PAGE HANDLERS
 # (These pages have templates but were missing route handlers)
@@ -7601,71 +8179,153 @@ class QCDashboardPageHandler(BaseHandler):
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.qc_dashboard_page import QC_DASHBOARD_PAGE_HTML
-        self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc")
+        try:
+            from templates.qc_dashboard_page import QC_DASHBOARD_PAGE_HTML
+            self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ShippingHubPageHandler(BaseHandler):
     """GET /shipping — Global shipping hub (no specific project)."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.shipping_page import SHIPPING_PAGE_HTML
-        html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", "")
-        self.render_with_nav(html, active_page="shipping")
+        try:
+            from templates.shipping_page import SHIPPING_PAGE_HTML
+            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", "")
+            self.render_with_nav(html, active_page="shipping")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class FieldOpsPageHandler(BaseHandler):
     """GET /field-ops — Field operations dashboard."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.field_ops_page import FIELD_OPS_PAGE_HTML
-        self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field_ops")
+        try:
+            from templates.field_ops_page import FIELD_OPS_PAGE_HTML
+            self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field_ops")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class DocumentManagementPageHandler(BaseHandler):
     """GET /documents — Document management dashboard."""
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        from templates.document_management_page import DOCUMENT_MANAGEMENT_PAGE_HTML
-        self.render_with_nav(DOCUMENT_MANAGEMENT_PAGE_HTML, active_page="documents")
+        try:
+            from templates.document_management_page import DOCUMENT_MANAGEMENT_PAGE_HTML
+            self.render_with_nav(DOCUMENT_MANAGEMENT_PAGE_HTML, active_page="documents")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class JobCostingPageHandler(BaseHandler):
     """GET /job-costing — Job costing & financial tracking."""
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        from templates.job_costing_page import JOB_COSTING_PAGE_HTML
-        self.render_with_nav(JOB_COSTING_PAGE_HTML, active_page="job_costing")
+        try:
+            from templates.job_costing_page import JOB_COSTING_PAGE_HTML
+            self.render_with_nav(JOB_COSTING_PAGE_HTML, active_page="job_costing")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ReportsPageHandler(BaseHandler):
     """GET /reports — Production metrics & reports dashboard."""
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        from templates.production_metrics_page import PRODUCTION_METRICS_PAGE_HTML
-        self.render_with_nav(PRODUCTION_METRICS_PAGE_HTML, active_page="reports")
+        try:
+            from templates.production_metrics_page import PRODUCTION_METRICS_PAGE_HTML
+            self.render_with_nav(PRODUCTION_METRICS_PAGE_HTML, active_page="reports")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class WorkOrdersGlobalPageHandler(BaseHandler):
     """GET /work-orders — Global work orders list (all projects)."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
-        from templates.work_orders_global import WORK_ORDERS_GLOBAL_HTML
-        self.render_with_nav(WORK_ORDERS_GLOBAL_HTML, active_page="workorders_global")
+        try:
+            from templates.work_orders_global import WORK_ORDERS_GLOBAL_HTML
+            self.render_with_nav(WORK_ORDERS_GLOBAL_HTML, active_page="workorders_global")
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class ActivityFeedPageHandler(BaseHandler):
     """GET /activity — Activity feed."""
     def get(self):
-        from templates.activity_feed_page import ACTIVITY_FEED_PAGE_HTML
-        self.render_with_nav(ACTIVITY_FEED_PAGE_HTML, active_page="activity")
+        try:
+            from templates.activity_feed_page import ACTIVITY_FEED_PAGE_HTML
+            self.render_with_nav(ACTIVITY_FEED_PAGE_HTML, active_page="activity")
 
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class ActivityFeedAPIHandler(BaseHandler):
+    """GET /api/activity — Returns paginated activity log entries."""
+    def get(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            limit = int(self.get_argument("limit", "50"))
+            offset = int(self.get_argument("offset", "0"))
+            user_filter = self.get_argument("user", None)
+            entity_type = self.get_argument("entity_type", None)
+            entity_id = self.get_argument("entity_id", None)
+
+            if USE_SQLITE:
+                import db as _db
+                entries = _db.get_activity_log(
+                    limit=min(limit, 200),
+                    offset=offset,
+                    user=user_filter,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                )
+                total = _db.get_activity_count(
+                    user=user_filter,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                )
+            else:
+                entries = []
+                total = 0
+
+            self.write(json_encode({
+                "ok": True,
+                "entries": entries,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 
 # ─────────────────────────────────────────────
 # STUB API HANDLERS (return valid JSON so pages don't crash)
@@ -7674,144 +8334,159 @@ class ActivityFeedPageHandler(BaseHandler):
 class QCDashboardAPIHandler(BaseHandler):
     """GET /api/qc/dashboard — QC dashboard data aggregated from work orders."""
     def get(self):
-        self.set_header("Content-Type", "application/json")
-        from shop_drawings.work_orders import list_all_work_orders, load_work_order
-        import os as _os
+        try:
+            self.set_header("Content-Type", "application/json")
+            from shop_drawings.work_orders import list_all_work_orders, load_work_order
+            import os as _os
 
-        total_inspections = 0
-        passed = 0
-        failed = 0
-        items_awaiting_qc = 0
-        inspector_workload = {}   # {name: {total, passed, failed}}
-        recent_inspections = []
+            total_inspections = 0
+            passed = 0
+            failed = 0
+            items_awaiting_qc = 0
+            inspector_workload = {}   # {name: {total, passed, failed}}
+            recent_inspections = []
 
-        # Walk all work orders and aggregate QC data from items
-        if _os.path.isdir(SHOP_DRAWINGS_DIR):
-            for project_dir in _os.listdir(SHOP_DRAWINGS_DIR):
-                wo_dir = _os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
-                if not _os.path.isdir(wo_dir):
-                    continue
-                for fname in _os.listdir(wo_dir):
-                    if not fname.endswith(".json"):
+            # Walk all work orders and aggregate QC data from items
+            if _os.path.isdir(SHOP_DRAWINGS_DIR):
+                for project_dir in _os.listdir(SHOP_DRAWINGS_DIR):
+                    wo_dir = _os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
+                    if not _os.path.isdir(wo_dir):
                         continue
-                    try:
-                        wo_id = fname.replace(".json", "")
-                        wo = load_work_order(SHOP_DRAWINGS_DIR, project_dir, wo_id)
-                        if wo is None:
+                    for fname in _os.listdir(wo_dir):
+                        if not fname.endswith(".json"):
                             continue
-                        for item in wo.items:
-                            if item.qc_status in ("passed", "failed"):
-                                total_inspections += 1
-                                if item.qc_status == "passed":
-                                    passed += 1
-                                else:
-                                    failed += 1
-                                # Track inspector workload
-                                insp = item.qc_inspector or "unknown"
-                                if insp not in inspector_workload:
-                                    inspector_workload[insp] = {"total": 0, "passed": 0, "failed": 0}
-                                inspector_workload[insp]["total"] += 1
-                                inspector_workload[insp][item.qc_status] += 1
-                                # Collect for recent list
-                                recent_inspections.append({
-                                    "type": item.component_type or "general",
-                                    "type_label": (item.component_type or "General").title() + " Inspection",
-                                    "job_code": wo.job_code,
-                                    "inspector": insp,
-                                    "status": item.qc_status,
-                                    "created_at": item.qc_inspected_at,
-                                    "ship_mark": item.ship_mark,
-                                    "notes": item.qc_notes,
-                                })
-                            elif item.status == "complete" and item.qc_status == "pending":
-                                items_awaiting_qc += 1
-                    except Exception:
-                        continue
+                        try:
+                            wo_id = fname.replace(".json", "")
+                            wo = load_work_order(SHOP_DRAWINGS_DIR, project_dir, wo_id)
+                            if wo is None:
+                                continue
+                            for item in wo.items:
+                                if item.qc_status in ("passed", "failed"):
+                                    total_inspections += 1
+                                    if item.qc_status == "passed":
+                                        passed += 1
+                                    else:
+                                        failed += 1
+                                    # Track inspector workload
+                                    insp = item.qc_inspector or "unknown"
+                                    if insp not in inspector_workload:
+                                        inspector_workload[insp] = {"total": 0, "passed": 0, "failed": 0}
+                                    inspector_workload[insp]["total"] += 1
+                                    inspector_workload[insp][item.qc_status] += 1
+                                    # Collect for recent list
+                                    recent_inspections.append({
+                                        "type": item.component_type or "general",
+                                        "type_label": (item.component_type or "General").title() + " Inspection",
+                                        "job_code": wo.job_code,
+                                        "inspector": insp,
+                                        "status": item.qc_status,
+                                        "created_at": item.qc_inspected_at,
+                                        "ship_mark": item.ship_mark,
+                                        "notes": item.qc_notes,
+                                    })
+                                elif item.status == "complete" and item.qc_status == "pending":
+                                    items_awaiting_qc += 1
+                        except Exception:
+                            continue
 
-        # Sort recent by timestamp descending
-        recent_inspections.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            # Sort recent by timestamp descending
+            recent_inspections.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
-        # Calculate pass rate
-        pass_rate = round(passed / total_inspections * 100) if total_inspections > 0 else 0
+            # Calculate pass rate
+            pass_rate = round(passed / total_inspections * 100) if total_inspections > 0 else 0
 
-        # Build inspections_by_type from recent
-        inspections_by_type = {}
-        for ri in recent_inspections:
-            t = ri.get("type", "general")
-            inspections_by_type[t] = inspections_by_type.get(t, 0) + 1
+            # Build inspections_by_type from recent
+            inspections_by_type = {}
+            for ri in recent_inspections:
+                t = ri.get("type", "general")
+                inspections_by_type[t] = inspections_by_type.get(t, 0) + 1
 
-        self.write(json_encode({
-            "ok": True,
-            "metrics": {
-                "total_inspections": total_inspections,
-                "passed": passed,
-                "failed": failed,
-                "open_ncrs": 0,
-                "critical_ncrs": 0,
-                "items_awaiting_qc": items_awaiting_qc,
-                "pass_rate": pass_rate,
-                "inspections_by_type": inspections_by_type,
-                "ncrs_by_severity": {},
-                "ncrs_by_status": {},
-                "recent_ncrs": [],
-                "inspector_workload": inspector_workload,
-                "recent_inspections": recent_inspections[:20],
-            },
-        }))
+            self.write(json_encode({
+                "ok": True,
+                "metrics": {
+                    "total_inspections": total_inspections,
+                    "passed": passed,
+                    "failed": failed,
+                    "open_ncrs": 0,
+                    "critical_ncrs": 0,
+                    "items_awaiting_qc": items_awaiting_qc,
+                    "pass_rate": pass_rate,
+                    "inspections_by_type": inspections_by_type,
+                    "ncrs_by_severity": {},
+                    "ncrs_by_status": {},
+                    "recent_ncrs": [],
+                    "inspector_workload": inspector_workload,
+                    "recent_inspections": recent_inspections[:20],
+                },
+            }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class DocumentsAPIHandler(BaseHandler):
     """GET /api/documents/* — Document management API (stub)."""
     def get(self, endpoint=""):
-        self.set_header("Content-Type", "application/json")
-        if endpoint == "config":
-            self.write(json_encode({
-                "ok": True,
-                "categories": ["quotes", "contracts", "engineering", "calcs", "shop_drawings", "mill_certs", "photos", "other"],
-                "message": "Document management ready.",
-            }))
-        elif endpoint == "summary":
-            self.write(json_encode({
-                "ok": True,
-                "total_documents": 0,
-                "by_category": {},
-                "recent_uploads": [],
-            }))
-        else:
-            # revisions, rfis, transmittals, bom-changes, etc.
-            self.write(json_encode({
-                "ok": True,
-                "items": [],
-                "total": 0,
-            }))
+        try:
+            self.set_header("Content-Type", "application/json")
+            if endpoint == "config":
+                self.write(json_encode({
+                    "ok": True,
+                    "categories": ["quotes", "contracts", "engineering", "calcs", "shop_drawings", "mill_certs", "photos", "other"],
+                    "message": "Document management ready.",
+                }))
+            elif endpoint == "summary":
+                self.write(json_encode({
+                    "ok": True,
+                    "total_documents": 0,
+                    "by_category": {},
+                    "recent_uploads": [],
+                }))
+            else:
+                # revisions, rfis, transmittals, bom-changes, etc.
+                self.write(json_encode({
+                    "ok": True,
+                    "items": [],
+                    "total": 0,
+                }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class JobCostingAPIHandler(BaseHandler):
     """GET /api/costing/* — Job costing API (stub)."""
     def get(self, endpoint=""):
-        self.set_header("Content-Type", "application/json")
-        if endpoint == "config":
-            self.write(json_encode({
-                "ok": True,
-                "cost_categories": ["materials", "labor", "equipment", "subcontractors", "overhead"],
-                "message": "Job costing ready. Select a project to view cost data.",
-            }))
-        elif endpoint == "overview":
-            self.write(json_encode({
-                "ok": True,
-                "total_cost": 0,
-                "total_revenue": 0,
-                "margin": 0,
-                "projects": [],
-            }))
-        else:
-            self.write(json_encode({
-                "ok": True,
-                "items": [],
-                "total": 0,
-            }))
+        try:
+            self.set_header("Content-Type", "application/json")
+            if endpoint == "config":
+                self.write(json_encode({
+                    "ok": True,
+                    "cost_categories": ["materials", "labor", "equipment", "subcontractors", "overhead"],
+                    "message": "Job costing ready. Select a project to view cost data.",
+                }))
+            elif endpoint == "overview":
+                self.write(json_encode({
+                    "ok": True,
+                    "total_cost": 0,
+                    "total_revenue": 0,
+                    "margin": 0,
+                    "projects": [],
+                }))
+            else:
+                self.write(json_encode({
+                    "ok": True,
+                    "items": [],
+                    "total": 0,
+                }))
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class ReportsAPIHandler(BaseHandler):
     """GET /api/reports/production — Production reports from real work order data."""
     def get(self):
@@ -7878,34 +8553,39 @@ class ReportsExportCSVHandler(BaseHandler):
     required_roles = ["admin", "estimator"]
 
     def get(self):
-        report_type = self.get_query_argument("type", "projects")
+        try:
+            report_type = self.get_query_argument("type", "projects")
 
-        if report_type == "projects":
-            rows = self._export_projects()
-            filename = "titanforge_projects.csv"
-        elif report_type == "production":
-            rows = self._export_production()
-            filename = "titanforge_production.csv"
-        elif report_type == "inventory":
-            rows = self._export_inventory()
-            filename = "titanforge_inventory.csv"
-        elif report_type == "financial":
-            rows = self._export_financial()
-            filename = "titanforge_financial_summary.csv"
-        else:
-            self.write(json_encode({"ok": False, "error": f"Unknown report type: {report_type}"}))
-            return
+            if report_type == "projects":
+                rows = self._export_projects()
+                filename = "titanforge_projects.csv"
+            elif report_type == "production":
+                rows = self._export_production()
+                filename = "titanforge_production.csv"
+            elif report_type == "inventory":
+                rows = self._export_inventory()
+                filename = "titanforge_inventory.csv"
+            elif report_type == "financial":
+                rows = self._export_financial()
+                filename = "titanforge_financial_summary.csv"
+            else:
+                self.write(json_encode({"ok": False, "error": f"Unknown report type: {report_type}"}))
+                return
 
-        output = io.StringIO()
-        import csv
-        writer = csv.writer(output)
-        for row in rows:
-            writer.writerow(row)
+            output = io.StringIO()
+            import csv
+            writer = csv.writer(output)
+            for row in rows:
+                writer.writerow(row)
 
-        self.set_header("Content-Type", "text/csv")
-        self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.write(output.getvalue())
+            self.set_header("Content-Type", "text/csv")
+            self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.write(output.getvalue())
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
     def _export_projects(self):
         """All projects with status, customer, stage."""
         rows = [["Job Code", "Project Name", "Customer", "Stage", "City", "State", "Created"]]
@@ -8030,31 +8710,46 @@ class ReportsExportCSVHandler(BaseHandler):
 class PWAManifestHandler(tornado.web.RequestHandler):
     """GET /static/manifest.json — PWA web app manifest."""
     def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "application/manifest+json")
-        self.write(bundle["manifest_json_str"])
+        try:
+            from templates.pwa_support import get_pwa_bundle
+            bundle = get_pwa_bundle()
+            self.set_header("Content-Type", "application/manifest+json")
+            self.write(bundle["manifest_json_str"])
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
 class PWAServiceWorkerHandler(tornado.web.RequestHandler):
     """GET /static/service-worker.js — PWA service worker."""
     def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "application/javascript")
-        self.set_header("Service-Worker-Allowed", "/")
-        self.write(bundle["service_worker_js"])
+        try:
+            from templates.pwa_support import get_pwa_bundle
+            bundle = get_pwa_bundle()
+            self.set_header("Content-Type", "application/javascript")
+            self.set_header("Service-Worker-Allowed", "/")
+            self.write(bundle["service_worker_js"])
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 class PWAOfflineHandler(tornado.web.RequestHandler):
     """GET /offline — Offline fallback page."""
     def get(self):
-        from templates.pwa_support import get_pwa_bundle
-        bundle = get_pwa_bundle()
-        self.set_header("Content-Type", "text/html")
-        self.write(bundle["offline_html"])
+        try:
+            from templates.pwa_support import get_pwa_bundle
+            bundle = get_pwa_bundle()
+            self.set_header("Content-Type", "text/html")
+            self.write(bundle["offline_html"])
 
 
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
 # ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
@@ -8308,6 +9003,7 @@ def get_routes():
         (r"/reports/production",                 ReportsPageHandler),
         (r"/reports",                            ReportsPageHandler),
         (r"/activity",                           ActivityFeedPageHandler),
+        (r"/api/activity",                       ActivityFeedAPIHandler),
 
         # ── Stub API endpoints (return valid JSON so pages don't crash) ──
         (r"/api/qc/dashboard",                   QCDashboardAPIHandler),

@@ -2,7 +2,7 @@
 TitanForge v4 — Activity Feed & Audit Trail Dashboard
 =======================================================
 Filterable timeline of all system events. Shows recent activity,
-category/severity breakdowns, event statistics, and alert rule management.
+category breakdowns, user activity, and pagination.
 """
 from templates.shared_styles import DESIGN_SYSTEM_CSS
 
@@ -26,7 +26,7 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         .top-bar .actions { display: flex; gap: var(--tf-sp-3); align-items: center; }
 
         /* Stat cards */
-        .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--tf-sp-4); margin-bottom: var(--tf-sp-6); }
+        .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--tf-sp-4); margin-bottom: var(--tf-sp-6); }
         .stat-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); padding: var(--tf-sp-4); text-align: center;
@@ -36,7 +36,6 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         .stat-card.blue .val { color: var(--tf-blue); }
         .stat-card.green .val { color: var(--tf-success); }
         .stat-card.amber .val { color: var(--tf-amber); }
-        .stat-card.red .val { color: var(--tf-danger); }
         .stat-card.purple .val { color: #8b5cf6; }
 
         /* Layout */
@@ -50,6 +49,7 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         .filter-bar select, .filter-bar input {
             padding: var(--tf-sp-2) var(--tf-sp-3); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-md); font-size: var(--tf-text-sm);
+            background: var(--tf-surface); color: var(--tf-gray-900);
         }
 
         /* Event list */
@@ -84,10 +84,12 @@ ACTIVITY_FEED_PAGE_HTML = r"""
             display: inline-block; padding: 1px 6px; border-radius: 999px;
             font-size: 10px; font-weight: 600;
         }
-        .event-badge.info { background: #dbeafe; color: #1e40af; }
-        .event-badge.warning { background: #fef3c7; color: #92400e; }
-        .event-badge.critical { background: #fee2e2; color: #991b1b; }
-        .event-badge.success { background: #d1fae5; color: #065f46; }
+        .event-badge.user { background: #dbeafe; color: #1e40af; }
+        .event-badge.coil { background: #fef3c7; color: #92400e; }
+        .event-badge.project { background: #ede9fe; color: #7c3aed; }
+        .event-badge.customer { background: #d1fae5; color: #065f46; }
+        .event-badge.quote { background: #fce7f3; color: #9d174d; }
+        .event-badge.allocation { background: #e0e7ff; color: #3730a3; }
 
         /* Side panel */
         .panel {
@@ -125,7 +127,7 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         .empty-state { text-align: center; padding: var(--tf-sp-8); color: var(--tf-gray-400); }
 
         @media (max-width: 1000px) {
-            .stat-row { grid-template-columns: repeat(3, 1fr); }
+            .stat-row { grid-template-columns: repeat(2, 1fr); }
             .main-grid { grid-template-columns: 1fr; }
         }
     </style>
@@ -135,38 +137,33 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         <div class="top-bar">
             <h1>Activity Feed</h1>
             <div class="actions">
-                <a href="/reports/executive" class="btn btn-secondary">Executive Summary</a>
                 <button onclick="loadAll()" class="btn btn-primary">Refresh</button>
             </div>
         </div>
 
         <!-- Stat cards -->
         <div class="stat-row">
-            <div class="stat-card blue"><div class="val" id="statTotal">—</div><div class="lbl">Events (Period)</div></div>
-            <div class="stat-card green"><div class="val" id="statSuccess">—</div><div class="lbl">Success</div></div>
-            <div class="stat-card amber"><div class="val" id="statWarning">—</div><div class="lbl">Warnings</div></div>
-            <div class="stat-card red"><div class="val" id="statCritical">—</div><div class="lbl">Critical</div></div>
-            <div class="stat-card purple"><div class="val" id="statAllTime">—</div><div class="lbl">All-Time Events</div></div>
+            <div class="stat-card blue"><div class="val" id="statTotal">--</div><div class="lbl">Total Events</div></div>
+            <div class="stat-card green"><div class="val" id="statToday">--</div><div class="lbl">Today</div></div>
+            <div class="stat-card amber"><div class="val" id="statTypes">--</div><div class="lbl">Entity Types</div></div>
+            <div class="stat-card purple"><div class="val" id="statUsers">--</div><div class="lbl">Active Users</div></div>
         </div>
 
         <div class="main-grid">
             <!-- Main: filter bar + event list -->
             <div>
                 <div class="filter-bar">
-                    <select id="filterCategory" onchange="loadEvents()">
-                        <option value="">All Categories</option>
+                    <select id="filterEntityType" onchange="resetAndLoad()">
+                        <option value="">All Types</option>
+                        <option value="user">Users</option>
+                        <option value="coil">Inventory</option>
+                        <option value="project">Projects</option>
+                        <option value="customer">Customers</option>
+                        <option value="quote">Quotes</option>
+                        <option value="allocation">Allocations</option>
                     </select>
-                    <select id="filterSeverity" onchange="loadEvents()">
-                        <option value="">All Severities</option>
-                        <option value="info">Info</option>
-                        <option value="success">Success</option>
-                        <option value="warning">Warning</option>
-                        <option value="critical">Critical</option>
-                    </select>
-                    <select id="filterProject" onchange="loadEvents()">
-                        <option value="">All Projects</option>
-                    </select>
-                    <input type="text" id="filterActor" placeholder="Filter by user..." onchange="loadEvents()">
+                    <input type="text" id="filterUser" placeholder="Filter by user..." style="width:160px;">
+                    <button onclick="resetAndLoad()" class="btn btn-secondary" style="padding:6px 12px;">Apply</button>
                 </div>
 
                 <div class="event-list-wrapper" style="border:1px solid var(--tf-border);border-radius:var(--tf-radius-lg);">
@@ -181,22 +178,22 @@ ACTIVITY_FEED_PAGE_HTML = r"""
             <!-- Sidebar -->
             <div>
                 <div class="panel">
-                    <div class="panel-header">Events by Category</div>
-                    <div class="panel-body" id="catBreakdown">
+                    <div class="panel-header">Events by Type</div>
+                    <div class="panel-body" id="typeBreakdown">
                         <div class="empty-state" style="padding:var(--tf-sp-3)">Loading...</div>
                     </div>
                 </div>
 
                 <div class="panel">
-                    <div class="panel-header">Top Users (Period)</div>
+                    <div class="panel-header">Top Users</div>
                     <div class="panel-body" id="topUsers">
                         <div class="empty-state" style="padding:var(--tf-sp-3)">Loading...</div>
                     </div>
                 </div>
 
                 <div class="panel">
-                    <div class="panel-header">Events per Day</div>
-                    <div class="panel-body" id="dailyChart">
+                    <div class="panel-header">Recent Actions</div>
+                    <div class="panel-body" id="recentActions">
                         <div class="empty-state" style="padding:var(--tf-sp-3)">Loading...</div>
                     </div>
                 </div>
@@ -208,81 +205,99 @@ ACTIVITY_FEED_PAGE_HTML = r"""
     let currentOffset = 0;
     const PAGE_SIZE = 50;
     let totalEvents = 0;
+    let allEntries = [];
 
-    const catColors = {
-        work_order: 'blue', qc: 'purple', shipping: 'amber', field: 'green',
-        punch: 'red', project: 'blue', user: 'gray', system: 'gray', inventory: 'amber'
+    const typeColors = {
+        user: 'blue', coil: 'amber', project: 'purple', customer: 'green',
+        quote: 'red', allocation: 'blue', system: 'gray'
     };
-    const catLabels = {
-        work_order: 'Work Order', qc: 'Quality Control', shipping: 'Shipping',
-        field: 'Field Ops', punch: 'Punch List', project: 'Project',
-        user: 'User', system: 'System', inventory: 'Inventory'
+    const typeIcons = {
+        user: 'US', coil: 'IN', project: 'PR', customer: 'CU',
+        quote: 'QT', allocation: 'AL', system: 'SY'
     };
-    const iconMap = {
-        work_order: 'WO', qc: 'QC', shipping: 'SH', field: 'FD',
-        punch: 'PL', project: 'PR', user: 'US', system: 'SY', inventory: 'IN'
+    const actionLabels = {
+        login: 'Logged in', logout: 'Logged out',
+        created_user: 'Created user', updated_user: 'Updated user', deleted_user: 'Deleted user',
+        created_coil: 'Created coil', updated_coil: 'Updated coil',
+        allocated_inventory: 'Allocated inventory', released_allocation: 'Released allocation',
+        created_customer: 'Created customer', updated_customer: 'Updated customer', deleted_customer: 'Deleted customer',
+        saved_quote: 'Saved quote', created_project: 'Created project', updated_project: 'Updated project',
     };
 
     async function loadAll() {
-        await Promise.all([loadEvents(), loadStats()]);
+        await loadEvents();
+        computeSidebar();
+    }
+
+    function resetAndLoad() {
+        currentOffset = 0;
+        loadAll();
     }
 
     async function loadEvents() {
-        const cat = document.getElementById('filterCategory').value;
-        const sev = document.getElementById('filterSeverity').value;
-        const proj = document.getElementById('filterProject').value;
-        const actor = document.getElementById('filterActor').value;
+        const entityType = document.getElementById('filterEntityType').value;
+        const userFilter = document.getElementById('filterUser').value.trim();
 
-        let url = `/api/activity/events?limit=${PAGE_SIZE}&offset=${currentOffset}`;
-        if (cat) url += `&category=${cat}`;
-        if (sev) url += `&severity=${sev}`;
-        if (proj) url += `&job_code=${proj}`;
-        if (actor) url += `&actor=${actor}`;
+        let url = `/api/activity?limit=${PAGE_SIZE}&offset=${currentOffset}`;
+        if (entityType) url += `&entity_type=${encodeURIComponent(entityType)}`;
+        if (userFilter) url += `&user=${encodeURIComponent(userFilter)}`;
 
         try {
             const res = await fetch(url);
             const data = await res.json();
-            if (!data.ok) return;
+            if (!data.ok) { showEmpty('Failed to load'); return; }
             totalEvents = data.total;
-            renderEvents(data.events);
+            allEntries = data.entries || [];
+            renderEvents(allEntries);
             renderPagination();
+            updateStats();
         } catch (e) {
-            document.getElementById('eventList').innerHTML =
-                '<li class="empty-state">Failed to load events</li>';
+            showEmpty('Failed to load events');
         }
     }
 
-    async function loadStats() {
-        try {
-            const res = await fetch('/api/activity/stats?days=7');
-            const data = await res.json();
-            if (!data.ok) return;
-            renderStats(data.stats);
-        } catch (e) {}
+    function showEmpty(msg) {
+        document.getElementById('eventList').innerHTML = `<li class="empty-state">${msg}</li>`;
     }
 
-    function renderEvents(events) {
+    function formatTime(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const now = new Date();
+        const diff = (now - d) / 1000;
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+        return d.toLocaleDateString();
+    }
+
+    function renderEvents(entries) {
         const list = document.getElementById('eventList');
-        if (!events.length) {
-            list.innerHTML = '<li class="empty-state">No events found</li>';
-            return;
-        }
+        if (!entries.length) { showEmpty('No activity yet'); return; }
 
-        list.innerHTML = events.map(e => {
-            const color = catColors[e.category] || 'gray';
-            const icon = iconMap[e.category] || '?';
-            const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '';
+        list.innerHTML = entries.map(e => {
+            const color = typeColors[e.entity_type] || 'gray';
+            const icon = typeIcons[e.entity_type] || '?';
+            const label = actionLabels[e.action] || e.action.replace(/_/g, ' ');
+            const details = e.details || {};
+            let desc = '';
+            if (e.entity_id) desc += e.entity_id;
+            if (details.name) desc += (desc ? ' - ' : '') + details.name;
+            if (details.job_code) desc += (desc ? ' | ' : '') + details.job_code;
+            if (details.role) desc += (desc ? ' | role: ' : '') + details.role;
+            if (details.quantity) desc += (desc ? ' | ' : '') + details.quantity + ' lbs';
+
             return `<li class="event-item">
                 <div class="event-icon ${color}">${icon}</div>
                 <div class="event-body">
-                    <div class="event-title">${e.title || e.event_type}</div>
-                    ${e.description ? `<div class="event-desc">${e.description}</div>` : ''}
+                    <div class="event-title">${label}</div>
+                    ${desc ? `<div class="event-desc">${desc}</div>` : ''}
                     <div class="event-meta">
-                        <span class="event-badge ${e.severity}">${e.severity}</span>
-                        <span>${catLabels[e.category] || e.category}</span>
-                        ${e.job_code ? `<span>${e.job_code}</span>` : ''}
-                        <span>${e.actor || ''}</span>
-                        <span>${ts}</span>
+                        <span class="event-badge ${e.entity_type || 'system'}">${e.entity_type || 'system'}</span>
+                        <span>${e.user}</span>
+                        <span>${formatTime(e.timestamp)}</span>
+                        ${e.ip_address ? `<span>${e.ip_address}</span>` : ''}
                     </div>
                 </div>
             </li>`;
@@ -293,7 +308,6 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         const pg = document.getElementById('pagination');
         const pages = Math.ceil(totalEvents / PAGE_SIZE);
         const current = Math.floor(currentOffset / PAGE_SIZE);
-
         pg.innerHTML = `
             <button onclick="goPage(${current - 1})" ${current === 0 ? 'disabled' : ''}>Prev</button>
             <span class="info">Page ${current + 1} of ${Math.max(pages, 1)} (${totalEvents} events)</span>
@@ -306,67 +320,61 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         loadEvents();
     }
 
-    function renderStats(stats) {
-        document.getElementById('statTotal').textContent = stats.total_events || 0;
-        document.getElementById('statAllTime').textContent = stats.total_all_time || 0;
-        document.getElementById('statSuccess').textContent = stats.by_severity?.success || 0;
-        document.getElementById('statWarning').textContent = stats.by_severity?.warning || 0;
-        document.getElementById('statCritical').textContent = stats.by_severity?.critical || 0;
+    function updateStats() {
+        document.getElementById('statTotal').textContent = totalEvents;
+        const today = new Date().toISOString().split('T')[0];
+        const todayCount = allEntries.filter(e => e.timestamp && e.timestamp.startsWith(today)).length;
+        document.getElementById('statToday').textContent = todayCount;
 
-        // Category breakdown
-        const cats = stats.by_category || {};
-        if (Object.keys(cats).length > 0) {
-            document.getElementById('catBreakdown').innerHTML = Object.entries(cats)
-                .sort((a, b) => b[1] - a[1])
-                .map(([cat, count]) => {
-                    const color = catColors[cat] || 'gray';
-                    const label = catLabels[cat] || cat;
-                    return `<div class="cat-row">
-                        <span><span class="cat-dot" style="background:var(--tf-${color === 'gray' ? 'gray-400' : color})"></span>${label}</span>
-                        <span class="v">${count}</span>
-                    </div>`;
-                }).join('');
+        const types = new Set(allEntries.map(e => e.entity_type).filter(Boolean));
+        document.getElementById('statTypes').textContent = types.size;
+
+        const users = new Set(allEntries.map(e => e.user).filter(Boolean));
+        document.getElementById('statUsers').textContent = users.size;
+    }
+
+    function computeSidebar() {
+        // Type breakdown
+        const typeCounts = {};
+        const userCounts = {};
+        const actionCounts = {};
+        allEntries.forEach(e => {
+            const t = e.entity_type || 'system';
+            typeCounts[t] = (typeCounts[t] || 0) + 1;
+            userCounts[e.user] = (userCounts[e.user] || 0) + 1;
+            actionCounts[e.action] = (actionCounts[e.action] || 0) + 1;
+        });
+
+        const typeEl = document.getElementById('typeBreakdown');
+        const typeEntries = Object.entries(typeCounts).sort((a,b) => b[1] - a[1]);
+        if (typeEntries.length) {
+            typeEl.innerHTML = typeEntries.map(([t, c]) => {
+                const color = typeColors[t] || '#94a3b8';
+                return `<div class="cat-row"><span><span class="cat-dot" style="background:${color === 'blue' ? '#3b82f6' : color === 'amber' ? '#f59e0b' : color === 'green' ? '#10b981' : color === 'purple' ? '#8b5cf6' : color === 'red' ? '#ef4444' : '#94a3b8'}"></span>${t}</span><span class="v">${c}</span></div>`;
+            }).join('');
         } else {
-            document.getElementById('catBreakdown').innerHTML =
-                '<div class="empty-state" style="padding:var(--tf-sp-3)">No events yet</div>';
+            typeEl.innerHTML = '<div class="empty-state" style="padding:var(--tf-sp-3)">No data</div>';
         }
 
-        // Top users
-        const users = stats.by_actor || {};
-        if (Object.keys(users).length > 0) {
-            document.getElementById('topUsers').innerHTML = Object.entries(users)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10)
-                .map(([user, count]) =>
-                    `<div class="cat-row"><span>${user}</span><span class="v">${count}</span></div>`
-                ).join('');
+        const userEl = document.getElementById('topUsers');
+        const userEntries = Object.entries(userCounts).sort((a,b) => b[1] - a[1]).slice(0, 10);
+        if (userEntries.length) {
+            userEl.innerHTML = userEntries.map(([u, c]) =>
+                `<div class="cat-row"><span>${u}</span><span class="v">${c}</span></div>`
+            ).join('');
         } else {
-            document.getElementById('topUsers').innerHTML =
-                '<div class="empty-state" style="padding:var(--tf-sp-3)">No user data</div>';
+            userEl.innerHTML = '<div class="empty-state" style="padding:var(--tf-sp-3)">No users</div>';
         }
 
-        // Daily chart (simple bars)
-        const days = stats.by_day || {};
-        const dayEntries = Object.entries(days).sort();
-        if (dayEntries.length > 0) {
-            const maxDay = Math.max(...dayEntries.map(d => d[1]), 1);
-            document.getElementById('dailyChart').innerHTML =
-                '<div style="display:flex;align-items:flex-end;gap:2px;height:80px;">' +
-                dayEntries.map(([day, count]) => {
-                    const h = Math.max((count / maxDay) * 70, 2);
-                    return `<div style="flex:1;height:${h}px;background:var(--tf-blue-mid);border-radius:2px 2px 0 0;" title="${day}: ${count}"></div>`;
-                }).join('') + '</div>';
+        const actEl = document.getElementById('recentActions');
+        const actEntries = Object.entries(actionCounts).sort((a,b) => b[1] - a[1]).slice(0, 10);
+        if (actEntries.length) {
+            actEl.innerHTML = actEntries.map(([a, c]) => {
+                const label = actionLabels[a] || a.replace(/_/g, ' ');
+                return `<div class="cat-row"><span>${label}</span><span class="v">${c}</span></div>`;
+            }).join('');
         } else {
-            document.getElementById('dailyChart').innerHTML =
-                '<div class="empty-state" style="padding:var(--tf-sp-3)">No daily data</div>';
-        }
-
-        // Populate category filter
-        const catSelect = document.getElementById('filterCategory');
-        if (catSelect.options.length <= 1) {
-            Object.entries(catLabels).forEach(([k, v]) => {
-                catSelect.innerHTML += `<option value="${k}">${v}</option>`;
-            });
+            actEl.innerHTML = '<div class="empty-state" style="padding:var(--tf-sp-3)">No actions</div>';
         }
     }
 
