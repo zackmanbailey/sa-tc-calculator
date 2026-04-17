@@ -3606,6 +3606,32 @@ class ProjectToolStatusHandler(BaseHandler):
                 "detail": f"v{sa_version}" if sa_version else "Not started",
             }
 
+            # ── TC Estimator ─────────────────────────────────
+            tc_done = False
+            tc_version = 0
+            tc_detail = "Not started"
+            # Check both locations for TC quote data
+            tc_path_proj = os.path.join(proj_dir, "tc_quote.json")
+            tc_path_dir = os.path.join(DATA_DIR, "tc_quotes", f"{safe_name}.json")
+            tc_path = tc_path_proj if os.path.isfile(tc_path_proj) else tc_path_dir
+            if os.path.isfile(tc_path):
+                try:
+                    with open(tc_path) as f:
+                        tc_data = json.load(f)
+                    tc_version = tc_data.get("version", 1)
+                    tc_done = True
+                    tc_detail = f"Done v{tc_version}"
+                except Exception:
+                    tc_done = True
+                    tc_version = 1
+                    tc_detail = "Done v1"
+            tools["tc_estimator"] = {
+                "done": tc_done,
+                "pct": 100 if tc_done else 0,
+                "version": tc_version,
+                "detail": tc_detail,
+            }
+
             # ── BOM ──────────────────────────────────────────
             tools["bom"] = {
                 "done": sa_done,
@@ -3637,19 +3663,24 @@ class ProjectToolStatusHandler(BaseHandler):
                     total_items = 0
                     completed_items = 0
                     for wo_info in wos:
-                        wo_obj = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_info.get("wo_id", ""))
+                        wo_id = wo_info.get("work_order_id") or wo_info.get("wo_id", "")
+                        wo_obj = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
                         if wo_obj:
                             for item in (wo_obj.items if hasattr(wo_obj, 'items') else []):
                                 total_items += 1
                                 st = item.status if hasattr(item, 'status') else ""
                                 if st == STATUS_COMPLETE or (hasattr(item, 'loading_status') and item.loading_status == "delivered"):
                                     completed_items += 1
+                        # Also use summary data if load failed
+                        if not wo_obj and wo_info.get("total_items", 0) > 0:
+                            total_items += wo_info["total_items"]
+                            completed_items += wo_info.get("completed_items", 0)
                     if total_items > 0:
                         wo_pct = int(completed_items / total_items * 100)
                         wo_done = wo_pct == 100
                         wo_detail = f"{completed_items}/{total_items} items"
                     elif wos:
-                        wo_detail = f"{len(wos)} WO{'s' if len(wos)!=1 else ''} (no items)"
+                        wo_detail = f"{len(wos)} WO{'s' if len(wos)!=1 else ''} (loading...)"
             except Exception:
                 pass
             tools["work_orders"] = {
@@ -5804,7 +5835,9 @@ class ColumnInteractiveHandler(BaseHandler):
                 with open(meta_path) as f:
                     meta = json.load(f)
                 config_dict.setdefault("project_name", meta.get("project_name", ""))
-                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+                # customer_name is nested: metadata.customer.name
+                cust_name = meta.get("customer_name", "") or (meta.get("customer", {}).get("name", ""))
+                config_dict.setdefault("customer_name", cust_name)
 
             html = COLUMN_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
@@ -5836,7 +5869,9 @@ class RafterInteractiveHandler(BaseHandler):
                 with open(meta_path) as f:
                     meta = json.load(f)
                 config_dict.setdefault("project_name", meta.get("project_name", ""))
-                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+                # customer_name is nested: metadata.customer.name
+                cust_name = meta.get("customer_name", "") or (meta.get("customer", {}).get("name", ""))
+                config_dict.setdefault("customer_name", cust_name)
 
             html = RAFTER_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
@@ -8564,7 +8599,9 @@ class ShippingPageHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.shipping_page import SHIPPING_PAGE_HTML
-            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
+            safe_jc = _html_escape(job_code)
+            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", safe_jc)
+            html = html.replace("{{TITLE_SUFFIX}}", f" — {safe_jc}" if safe_jc else "")
             self.render_with_nav(html, active_page="shipping")
 
 
@@ -9207,13 +9244,15 @@ class QCDashboardPageHandler(BaseHandler):
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ShippingHubPageHandler(BaseHandler):
-    """GET /shipping — Global shipping hub (no specific project)."""
+    """GET /shipping — Global shipping hub (no specific project).
+    Shows a job selector so the user can pick a project first."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
         try:
             from templates.shipping_page import SHIPPING_PAGE_HTML
             html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", "")
+            html = html.replace("{{TITLE_SUFFIX}}", "")
             self.render_with_nav(html, active_page="shipping")
 
 
@@ -9586,10 +9625,16 @@ class JobCostingAPIHandler(BaseHandler):
             elif endpoint == "overview":
                 self.write(json_encode({
                     "ok": True,
-                    "total_cost": 0,
-                    "total_revenue": 0,
-                    "margin": 0,
-                    "projects": [],
+                    "overview": {
+                        "total_jobs": 0,
+                        "total_contract_value": 0,
+                        "total_actual": 0,
+                        "total_margin": 0,
+                        "margin_pct": 0,
+                        "jobs_over_budget": 0,
+                        "costs_by_category": {},
+                        "jobs": [],
+                    },
                 }))
             else:
                 self.write(json_encode({
@@ -9603,6 +9648,19 @@ class JobCostingAPIHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
+
+    def post(self, endpoint=""):
+        """POST /api/costing/* — Job costing write API (stub)."""
+        try:
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "message": "Job costing data saved (stub — full implementation coming soon).",
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 class ReportsAPIHandler(BaseHandler):
     """GET /api/reports/production — Production reports from real work order data."""
     def get(self):

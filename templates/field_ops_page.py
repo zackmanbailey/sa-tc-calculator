@@ -285,10 +285,16 @@ FIELD_OPS_PAGE_HTML = r"""
             const data = await res.json();
             if (!data.ok) return;
             const sel = document.getElementById('projectSelect');
+            const projects = data.summary.projects || [];
             sel.innerHTML = '<option value="">Select a Project...</option>';
-            (data.summary.projects || []).forEach(p => {
+            projects.forEach(p => {
                 sel.innerHTML += `<option value="${p.job_code}">${p.job_code} — ${p.completion_pct}% complete</option>`;
             });
+            // Auto-select first project if available
+            if (projects.length > 0 && !currentProject) {
+                sel.value = projects[0].job_code;
+                onProjectChange();
+            }
         } catch (e) {}
     }
 

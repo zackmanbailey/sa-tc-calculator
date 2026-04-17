@@ -14,7 +14,7 @@ SHIPPING_PAGE_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shipping Hub — {{JOB_CODE}} | TitanForge</title>
+    <title>Shipping Hub{{TITLE_SUFFIX}} | TitanForge</title>
     <style>
         /* ============================================================
            TitanForge Design System — Shipping Hub
@@ -579,6 +579,23 @@ SHIPPING_PAGE_HTML = """
 </head>
 <body>
 
+    <!-- Job Selector Overlay (shown when no JOB_CODE) -->
+    <div id="job-selector-overlay" style="display:none; position:fixed; inset:0; z-index:9999;
+        background:rgba(15,23,42,0.92); display:flex; align-items:center; justify-content:center;">
+        <div style="background:#1E293B; border:1px solid #334155; border-radius:12px; padding:2rem; width:min(440px,90vw); box-shadow:0 25px 50px rgba(0,0,0,.5);">
+            <h2 style="color:#F8FAFC; margin:0 0 .5rem;">Shipping Hub</h2>
+            <p style="color:#94A3B8; margin:0 0 1.5rem;">Select a project to manage shipping:</p>
+            <select id="ship-job-select" style="width:100%; padding:.75rem 1rem; background:#0F172A;
+                color:#F8FAFC; border:1px solid #475569; border-radius:8px; font-size:1rem; margin-bottom:1.5rem;">
+                <option value="">Loading projects…</option>
+            </select>
+            <button onclick="goToShippingJob()" style="width:100%; padding:.75rem; background:#C89A2E;
+                color:#0F172A; border:none; border-radius:8px; font-weight:700; font-size:1rem; cursor:pointer;">
+                Open Shipping Hub
+            </button>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Page Header -->
         <div class="page-header">
@@ -935,6 +952,32 @@ SHIPPING_PAGE_HTML = """
         // ================================================================
 
         const JOB_CODE = '{{JOB_CODE}}';
+
+        // Show job selector if no job code
+        if (!JOB_CODE) {
+            document.getElementById('job-selector-overlay').style.display = 'flex';
+            fetch('/api/projects').then(r => r.json()).then(data => {
+                const sel = document.getElementById('ship-job-select');
+                const projects = data.projects || [];
+                if (projects.length === 0) {
+                    sel.innerHTML = '<option value="">No projects found</option>';
+                    return;
+                }
+                sel.innerHTML = '<option value="">— Select a project —</option>' +
+                    projects.map(p => {
+                        const jc = p.job_code || p;
+                        const label = p.name ? (jc + ' — ' + p.name) : jc;
+                        return '<option value="' + jc + '">' + label + '</option>';
+                    }).join('');
+            }).catch(() => {
+                document.getElementById('ship-job-select').innerHTML =
+                    '<option value="">Error loading projects</option>';
+            });
+        }
+        function goToShippingJob() {
+            const jc = document.getElementById('ship-job-select').value;
+            if (jc) window.location.href = '/shipping/' + encodeURIComponent(jc);
+        }
 
         function apiCall(endpoint, method = 'GET', data = null) {
             const opts = {

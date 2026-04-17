@@ -489,7 +489,7 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
     <input type="text" id="setProjectName" value="RAFTER PROJECT" onchange="draw()">
   </label>
   <label>Customer
-    <input type="text" id="setCustomer" value="Customer Name" onchange="draw()">
+    <input type="text" id="setCustomer" value="" placeholder="Customer Name" onchange="draw()">
   </label>
   <label>Job Number
     <input type="text" id="setJobNumber" value="JOB-2026-001" onchange="draw()">
@@ -558,9 +558,9 @@ function applyServerConfig() {
     var el = document.getElementById('setProjectName');
     if (el) el.value = cfg.project_name;
   }
-  if (cfg.customer) {
+  if (cfg.customer || cfg.customer_name) {
     var el = document.getElementById('setCustomer');
-    if (el) el.value = cfg.customer;
+    if (el) el.value = cfg.customer || cfg.customer_name;
   }
   if (cfg.job_code) {
     var el = document.getElementById('setJobNumber');
@@ -1280,7 +1280,7 @@ function draw() {
   }
 
   const projName = (document.getElementById('setProjectName') || {}).value || 'RAFTER PROJECT';
-  const customer = (document.getElementById('setCustomer') || {}).value || 'Customer';
+  const customer = (document.getElementById('setCustomer') || {}).value || '';
   const jobNum = (document.getElementById('setJobNumber') || {}).value || 'JOB-001';
   const drawnBy = (document.getElementById('setDrawnBy') || {}).value || 'AUTO';
   const rafterMark = (document.getElementById('setRafterMark') || {}).value || 'B1';

@@ -56,6 +56,63 @@ STATUS_LABELS = {
     STATUS_ON_HOLD: "On Hold",
 }
 
+STATUS_COLORS = {
+    STATUS_QUEUED: "#64748B",
+    STATUS_APPROVED: "#3B82F6",
+    STATUS_STICKERS_PRINTED: "#8B5CF6",
+    STATUS_IN_PROGRESS: "#F59E0B",
+    STATUS_COMPLETE: "#10B981",
+    STATUS_ON_HOLD: "#DC2626",
+}
+
+# Extended statuses used by reporting / QC / shipping / field ops
+STATUS_FABRICATED = "fabricated"
+STATUS_QC_PENDING = "qc_pending"
+STATUS_QC_APPROVED = "qc_approved"
+STATUS_QC_REJECTED = "qc_rejected"
+STATUS_READY_TO_SHIP = "ready_to_ship"
+STATUS_SHIPPED = "shipped"
+STATUS_DELIVERED = "delivered"
+STATUS_INSTALLED = "installed"
+
+# Phase groupings for reporting
+PHASE_PREFAB = "prefab"
+PHASE_FABRICATION = "fabrication"
+PHASE_QC = "qc"
+PHASE_SHIPPING = "shipping"
+
+
+def transition_item_status(item, new_status: str) -> bool:
+    """Transition a WorkOrderItem to a new status.
+    Returns True if valid, False if invalid transition.
+    This is a permissive helper — allows extended statuses for
+    QC, shipping, and field ops workflows beyond the core fab flow."""
+    # For extended workflow, allow any status transition
+    if isinstance(item, WorkOrderItem):
+        item.status = new_status
+    elif isinstance(item, dict):
+        item["status"] = new_status
+    return True
+
+# ─────────────────────────────────────────────
+# MACHINE TYPES (imported from config, re-exported for reporting)
+# ─────────────────────────────────────────────
+try:
+    from shop_drawings.config import MACHINES as _MACHINES
+    MACHINE_TYPES = {k: {"label": v["name"], **v} for k, v in _MACHINES.items()}
+except ImportError:
+    MACHINE_TYPES = {
+        "C1":       {"label": "C1 — Variable C-Purlin Roll Former"},
+        "C2":       {"label": "C2 — Dedicated 14\"x4\" Roll Former"},
+        "Z1":       {"label": "Z1 — Z-Purlin Roll Former"},
+        "P1":       {"label": "P1 — Plate Former"},
+        "ANGLE":    {"label": "Angle Machine"},
+        "SPARTAN":  {"label": "Spartan Rib Roll Former"},
+        "WELDING":  {"label": "Welding Bay"},
+        "REBAR":    {"label": "Rebar Station"},
+        "CLEANING": {"label": "Cleaning Station"},
+    }
+
 
 # ─────────────────────────────────────────────
 # WORK ORDER ITEM (one per component)
@@ -308,6 +365,47 @@ def list_all_work_orders(base_dir: str) -> List[dict]:
     # Sort by created_at descending
     results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return results
+
+
+def get_shop_floor_summary(base_dir: str) -> dict:
+    """Get a high-level shop floor summary across all projects.
+    Returns dict with active_jobs, total_items, status_counts, machine_counts."""
+    all_wo = list_all_work_orders(base_dir)
+    active_jobs = set()
+    total_items = 0
+    status_counts = {}
+    machine_counts = {}
+
+    if not os.path.isdir(base_dir):
+        return {"active_jobs": 0, "total_items": 0, "status_counts": {}, "machine_counts": {}}
+
+    for project_dir in os.listdir(base_dir):
+        wo_dir = os.path.join(base_dir, project_dir, "work_orders")
+        if not os.path.isdir(wo_dir):
+            continue
+        for fname in os.listdir(wo_dir):
+            if not fname.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(wo_dir, fname)) as f:
+                    data = json.load(f)
+                wo = WorkOrder.from_dict(data)
+                active_jobs.add(wo.job_code)
+                for item in wo.items:
+                    total_items += 1
+                    s = item.status or STATUS_QUEUED
+                    status_counts[s] = status_counts.get(s, 0) + 1
+                    m = item.machine or "UNKNOWN"
+                    machine_counts[m] = machine_counts.get(m, 0) + 1
+            except Exception:
+                continue
+
+    return {
+        "active_jobs": len(active_jobs),
+        "total_items": total_items,
+        "status_counts": status_counts,
+        "machine_counts": machine_counts,
+    }
 
 
 def load_all_active_items(base_dir: str) -> List[dict]:

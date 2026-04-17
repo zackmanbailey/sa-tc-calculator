@@ -355,7 +355,7 @@ COLUMN_DRAWING_HTML = r"""
   <button class="settings-x" onclick="this.parentElement.classList.remove('open')">✕</button>
   <h2>Project Settings</h2>
   <label>Project Name<input id="setProjectName" value="SMITH RESIDENCE 40x60"></label>
-  <label>Customer<input id="setCustomer" value="John Smith"></label>
+  <label>Customer<input id="setCustomer" value="" placeholder="Customer Name"></label>
   <label>Job Number<input id="setJobNumber" value="SA-2026-0147"></label>
   <label>Drawn By<input id="setDrawnBy" value="AUTO"></label>
   <label>Column Mark<input id="setColumnMark" value="C1"></label>
@@ -655,7 +655,7 @@ function draw() {
 
   // Project settings from side panel
   const projName = (document.getElementById('setProjectName') || {}).value || 'SMITH RESIDENCE 40x60';
-  const customer = (document.getElementById('setCustomer') || {}).value || 'John Smith';
+  const customer = (document.getElementById('setCustomer') || {}).value || '';
   const jobNum = (document.getElementById('setJobNumber') || {}).value || 'SA-2026-0147';
   const drawnBy = (document.getElementById('setDrawnBy') || {}).value || 'AUTO';
   const colMark = (document.getElementById('setColumnMark') || {}).value || 'C1';
@@ -2608,9 +2608,9 @@ function applyConfigToDrawing(config) {
     const el = document.getElementById('inProject');
     if (el) { el.value = config.project_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
   }
-  if (config.customer_name) {
-    const el = document.getElementById('inCustomer');
-    if (el) { el.value = config.customer_name; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (config.customer_name || config.customer) {
+    const el = document.getElementById('setCustomer');
+    if (el) { el.value = config.customer_name || config.customer; el.dispatchEvent(new Event('input', { bubbles: true })); }
   }
   if (config.job_code) {
     const el = document.getElementById('inJobNo');
