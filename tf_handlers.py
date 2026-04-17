@@ -5821,7 +5821,7 @@ class RafterInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/rafter — Interactive Rafter Drawing."""
     def get(self, job_code):
         try:
-            from templates.rafter_interactive import RAFTER_DRAWING_HTML
+            from templates.rafter_drawing import RAFTER_DRAWING_HTML
 
             # Load project config from saved BOM
             config_dict = _load_shop_config(job_code)
