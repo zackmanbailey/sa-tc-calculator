@@ -179,6 +179,16 @@ QA_HUB_HTML = """
       </div>
     </a>
 
+    <a href="/qa/pqr" class="qa-card">
+      <div class="qc-icon green">&#128221;</div>
+      <h3>Procedure Qualification Records</h3>
+      <p>PQR test records backing each WPS — tensile, bend, macro etch, and impact results per AWS D1.1 &sect;4.8. Links PQR documents to their qualifying WPS and tracks test lab results and approval status.</p>
+      <div class="qc-status">
+        <div class="qc-dot green"></div>
+        <span class="qc-status-text green">PQR Library active</span>
+      </div>
+    </a>
+
     <a href="/qa/inspector-registry" class="qa-card">
       <div class="qc-icon blue">&#128100;</div>
       <h3>Inspector Registry</h3>

@@ -190,6 +190,7 @@ QC_PAGE_HTML = r"""
                 <p style="color:var(--tf-gray-500);font-size:var(--tf-text-sm);">AISC Quality Control &amp; Material Traceability</p>
             </div>
             <div style="display:flex;gap:var(--tf-sp-3);">
+                <button class="btn btn-primary" onclick="exportAuditPackage()" title="Export AISC Audit Package (ZIP)">&#128230; Export Audit Package</button>
                 <button class="btn btn-primary" onclick="openNewInspection()">+ New Inspection</button>
                 <button class="btn btn-outline" style="border-color:var(--tf-danger);color:var(--tf-danger);" onclick="openNewNCR()">+ New NCR</button>
                 <a href="/project/{{JOB_CODE}}" class="btn btn-outline">&#8592; Project</a>
@@ -379,6 +380,13 @@ QC_PAGE_HTML = r"""
                     <input type="text" class="form-input" id="inspMembers" placeholder="C1, B2, W3-A...">
                 </div>
                 <div style="margin-top:var(--tf-sp-4);">
+                    <label class="form-label">Calibrated Instruments Used</label>
+                    <select class="form-input" id="inspInstruments" multiple size="3" style="min-height:68px;">
+                        <option value="">Loading instruments...</option>
+                    </select>
+                    <div style="font-size:11px;color:var(--tf-gray-500);margin-top:4px;">Hold Ctrl/Cmd to select multiple. Links inspection to calibration records for AISC traceability.</div>
+                </div>
+                <div style="margin-top:var(--tf-sp-4);">
                     <label class="form-label">Notes</label>
                     <textarea class="form-input" id="inspNotes" rows="2" placeholder="Initial notes..."></textarea>
                 </div>
@@ -489,11 +497,15 @@ let qcData = null;
 let inspTypes = {};
 let traceData = null;
 
-document.addEventListener('DOMContentLoaded', () => { loadInspTypes(); loadQCData(); loadTraceability(); loadSavedReports(); initReportStageSelector(); });
+document.addEventListener('DOMContentLoaded', () => { loadInspTypes(); loadQCData(); loadTraceability(); loadSavedReports(); initReportStageSelector(); loadCalibrationInstruments(); });
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
     if (e.key==='Escape') { document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open')); _closeGS(); }
 });
+
+function exportAuditPackage() {
+    window.location.href = '/api/qa/audit-package?job_code=' + encodeURIComponent(JOB_CODE);
+}
 
 function switchQCTab(tab) {
     document.querySelectorAll('.qc-tab').forEach(t => t.classList.remove('active'));
@@ -503,6 +515,27 @@ function switchQCTab(tab) {
 }
 
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function loadCalibrationInstruments() {
+    try {
+        const r = await fetch('/api/qa/calibration');
+        const d = await r.json();
+        const sel = document.getElementById('inspInstruments');
+        if (d.ok && d.tools && d.tools.length > 0) {
+            sel.innerHTML = '';
+            d.tools.forEach(t => {
+                const status = t.status === 'current' ? '\\u2705' : '\\u26A0\\uFE0F';
+                const opt = document.createElement('option');
+                opt.value = t.tool_id || t.tool_name;
+                opt.textContent = `${status} ${t.tool_name} (Cal# ${t.cal_number||'N/A'} — Due: ${t.next_cal_date||'N/A'})`;
+                if (t.status !== 'current') opt.style.color = '#F59E0B';
+                sel.appendChild(opt);
+            });
+        } else {
+            sel.innerHTML = '<option value="">No calibrated instruments found — add in QA Hub</option>';
+        }
+    } catch(e) { console.warn('Could not load calibration instruments:', e); }
+}
 
 async function loadInspTypes() {
     const r = await fetch('/api/qc/types');
@@ -953,6 +986,8 @@ async function createInspection() {
     const type = document.getElementById('inspType').value;
     if (!type) { alert('Select an inspection type'); return; }
     const members = document.getElementById('inspMembers').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const instrSel = document.getElementById('inspInstruments');
+    const instruments = Array.from(instrSel.selectedOptions).map(o => o.value).filter(Boolean);
     const r = await fetch('/api/qc/inspection/create', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -960,6 +995,7 @@ async function createInspection() {
             inspector: document.getElementById('inspInspector').value,
             location: document.getElementById('inspLocation').value,
             member_marks: members,
+            calibration_instruments: instruments,
             notes: document.getElementById('inspNotes').value,
         })
     });
@@ -976,12 +1012,16 @@ function openInspDetail(inspId) {
     const checklist = inspTypes[insp.type]?.checklist || [];
     const items = insp.items || {};
 
+    const calInstr = (insp.calibration_instruments||[]).length > 0
+        ? `<div style="margin-top:6px;font-size:12px;color:var(--tf-gray-500);">&#128295; Instruments: ${insp.calibration_instruments.join(', ')}</div>`
+        : '';
     let html = `<div style="margin-bottom:var(--tf-sp-4);">
         <div class="insp-meta">
             <span>&#128100; ${insp.inspector}</span>
             <span>&#128205; ${insp.location||'—'}</span>
             <span class="status-badge ${insp.status}">${insp.status.replace('_',' ')}</span>
         </div>
+        ${calInstr}
     </div>
     <div class="checklist-grid">`;
 
@@ -994,6 +1034,17 @@ function openInspDetail(inspId) {
             html += `<div class="check-item ${cssClass}">
                 <input type="checkbox" ${checked?'checked':''} onchange="updateInspItem('${inspId}','${ci.key}',this.checked)">
                 <label>${ci.label}</label>
+            </div>`;
+        } else if (ci.type === 'measurement') {
+            const unit = ci.unit || '';
+            html += `<div class="check-item measurement-item" style="display:flex;align-items:center;gap:8px;">
+                <label style="flex:1;min-width:180px;">${ci.label}</label>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <input type="number" step="any" value="${val}" placeholder="0.000"
+                        style="width:100px;text-align:right;padding:4px 8px;background:var(--tf-gray-50);border:1px solid var(--tf-gray-300);border-radius:4px;font-size:13px;font-family:monospace;"
+                        onblur="updateInspItem('${inspId}','${ci.key}',this.value)">
+                    ${unit ? '<span style="font-size:11px;color:var(--tf-gray-500);min-width:28px;">'+unit+'</span>' : ''}
+                </div>
             </div>`;
         } else if (ci.type === 'select') {
             html += `<div class="check-item">
@@ -1017,6 +1068,19 @@ function openInspDetail(inspId) {
         <textarea class="form-input" rows="2" id="inspDetailNotes" onblur="updateInspNotes('${inspId}')">${insp.notes||''}</textarea>
     </div>`;
 
+    // Signature pad section
+    html += `<div style="margin-top:var(--tf-sp-4);border-top:1px solid var(--tf-gray-300);padding-top:var(--tf-sp-4);">
+        <label class="form-label">Inspector Signature</label>
+        ${insp.signature ?
+            '<div style="background:#fff;border:1px solid var(--tf-gray-300);border-radius:6px;padding:8px;text-align:center;"><img src="'+insp.signature+'" style="max-height:80px;" alt="Signature"></div>' :
+            '<canvas id="sigPad_'+inspId+'" width="400" height="120" style="border:1px solid var(--tf-gray-300);border-radius:6px;background:#fff;cursor:crosshair;display:block;margin:4px 0;"></canvas>'+
+            '<div style="display:flex;gap:8px;margin-top:4px;">'+
+            '<button class="btn btn-outline" style="font-size:12px;padding:4px 10px;" onclick="clearSigPad(\''+inspId+'\')">Clear</button>'+
+            '<button class="btn btn-primary" style="font-size:12px;padding:4px 10px;" onclick="saveSigPad(\''+inspId+'\')">Save Signature</button>'+
+            '</div>'
+        }
+    </div>`;
+
     document.getElementById('inspDetailBody').innerHTML = html;
     document.getElementById('inspDetailFooter').innerHTML = `
         <button class="btn btn-outline" onclick="closeModal('inspDetailModal')">Close</button>
@@ -1024,6 +1088,8 @@ function openInspDetail(inspId) {
         ${insp.status!=='failed' ? '<button class="btn btn-primary" style="background:var(--tf-danger);" onclick="setInspStatus(\''+inspId+'\',\'failed\')">&#10007; Mark Failed</button>' : ''}
     `;
     document.getElementById('inspDetailModal').classList.add('open');
+    // Initialize signature pad if present
+    setTimeout(() => { initSigPad(inspId); }, 50);
 }
 
 async function updateInspItem(inspId, key, val) {
@@ -1320,6 +1386,46 @@ function quickGenReport(mark, compType, stage) {
         document.getElementById('rptStage').value = stage;
         generateSingleReport();
     }, 100);
+}
+
+// ── Signature Pad ──
+let sigPadCtx = null;
+let sigPadDrawing = false;
+
+function initSigPad(inspId) {
+    const canvas = document.getElementById('sigPad_' + inspId);
+    if (!canvas) return;
+    sigPadCtx = canvas.getContext('2d');
+    sigPadCtx.strokeStyle = '#1E3A5F';
+    sigPadCtx.lineWidth = 2;
+    sigPadCtx.lineCap = 'round';
+
+    canvas.addEventListener('mousedown', e => { sigPadDrawing = true; sigPadCtx.beginPath(); sigPadCtx.moveTo(e.offsetX, e.offsetY); });
+    canvas.addEventListener('mousemove', e => { if (sigPadDrawing) { sigPadCtx.lineTo(e.offsetX, e.offsetY); sigPadCtx.stroke(); } });
+    canvas.addEventListener('mouseup', () => { sigPadDrawing = false; });
+    canvas.addEventListener('mouseleave', () => { sigPadDrawing = false; });
+    // Touch support
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; const r = canvas.getBoundingClientRect(); sigPadDrawing = true; sigPadCtx.beginPath(); sigPadCtx.moveTo(t.clientX-r.left, t.clientY-r.top); });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); if (sigPadDrawing) { const t = e.touches[0]; const r = canvas.getBoundingClientRect(); sigPadCtx.lineTo(t.clientX-r.left, t.clientY-r.top); sigPadCtx.stroke(); } });
+    canvas.addEventListener('touchend', () => { sigPadDrawing = false; });
+}
+
+function clearSigPad(inspId) {
+    const canvas = document.getElementById('sigPad_' + inspId);
+    if (canvas && sigPadCtx) sigPadCtx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+async function saveSigPad(inspId) {
+    const canvas = document.getElementById('sigPad_' + inspId);
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const r = await fetch('/api/qc/inspection/update', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ job_code: JOB_CODE, inspection_id: inspId, signature: dataUrl })
+    });
+    const d = await r.json();
+    if (d.ok) { alert('Signature saved!'); loadQCData(); }
+    else alert(d.error || 'Error saving signature');
 }
 
 // ── Global Search ──

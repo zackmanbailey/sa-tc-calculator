@@ -814,6 +814,121 @@ def get_bom_change_summary(base_dir: str, job_code: str) -> dict:
 # DOCUMENT MANAGEMENT ANALYTICS
 # ─────────────────────────────────────────────
 
+def get_document_revisions(base_dir: str, job_code: str, doc_type: str, doc_id: str) -> list:
+    """Get revision history for a document.
+
+    Returns a list of revision dicts sorted newest-first.  Each revision
+    contains at minimum: rev, changed_by, change_description, markup_notes,
+    status, approved_by, approved_at, created_at.
+    """
+    rev_dir = os.path.join(base_dir, job_code, "revisions")
+    path = os.path.join(rev_dir, f"{doc_id}.json")
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path) as f:
+            revisions = json.load(f)
+        # Ensure sorted newest-first
+        revisions.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+        return revisions
+    except Exception:
+        return []
+
+
+def save_document_revision(base_dir: str, job_code: str, doc_type: str,
+                           doc_id: str, revision: dict) -> dict:
+    """Save a new revision of a document. Bumps revision letter (A, B, C...).
+
+    revision dict should contain:
+      - changed_by: str          (who made the change)
+      - change_description: str  (what changed)
+      - markup_notes: str        (redline / markup comments)
+      - status: str              (pending_review | approved | superseded)
+      - approved_by: str         (empty until approved)
+      - approved_at: str         (empty until approved)
+
+    The function auto-assigns:
+      - rev: next letter (A, B, C, ...)
+      - created_at: current ISO timestamp
+    """
+    rev_dir = os.path.join(base_dir, job_code, "revisions")
+    os.makedirs(rev_dir, exist_ok=True)
+    path = os.path.join(rev_dir, f"{doc_id}.json")
+
+    # Load existing revisions
+    existing = []
+    if os.path.isfile(path):
+        try:
+            with open(path) as f:
+                existing = json.load(f)
+        except Exception:
+            existing = []
+
+    # Determine next revision letter
+    if existing:
+        last_rev = max(r.get("rev", "A") for r in existing)
+        next_rev = chr(ord(last_rev) + 1) if last_rev < "Z" else "Z"
+    else:
+        next_rev = "A"
+
+    # Mark previous latest as superseded
+    for r in existing:
+        if r.get("status") == "approved":
+            r["status"] = "superseded"
+
+    # Build the new revision record
+    now = datetime.datetime.now().isoformat()
+    new_rev = {
+        "rev": revision.get("rev") or next_rev,
+        "changed_by": revision.get("changed_by", ""),
+        "change_description": revision.get("change_description", ""),
+        "markup_notes": revision.get("markup_notes", ""),
+        "status": revision.get("status", "pending_review"),
+        "approved_by": revision.get("approved_by", ""),
+        "approved_at": revision.get("approved_at", ""),
+        "created_at": revision.get("created_at") or now,
+        "doc_type": doc_type,
+        "doc_id": doc_id,
+    }
+
+    existing.append(new_rev)
+
+    with open(path, "w") as f:
+        json.dump(existing, f, indent=2)
+
+    return new_rev
+
+
+def approve_document_revision(base_dir: str, job_code: str, doc_id: str,
+                              rev_letter: str, approved_by: str) -> Optional[dict]:
+    """Approve a specific revision by letter."""
+    rev_dir = os.path.join(base_dir, job_code, "revisions")
+    path = os.path.join(rev_dir, f"{doc_id}.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            revisions = json.load(f)
+    except Exception:
+        return None
+
+    now = datetime.datetime.now().isoformat()
+    target = None
+    for r in revisions:
+        if r.get("rev") == rev_letter:
+            r["status"] = "approved"
+            r["approved_by"] = approved_by
+            r["approved_at"] = now
+            target = r
+        elif r.get("status") == "approved":
+            r["status"] = "superseded"
+
+    if target:
+        with open(path, "w") as f:
+            json.dump(revisions, f, indent=2)
+    return target
+
+
 def get_document_summary(base_dir: str, job_code: str = "") -> dict:
     """Overall document management summary."""
     revisions = list_revisions(base_dir, job_code=job_code)

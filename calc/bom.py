@@ -100,6 +100,18 @@ class BuildingConfig:
     include_labor: bool = True
     labor_daily_rate: float = 960.0      # adjustable base daily rate (4 crew × $30/hr × 8hrs)
     coil_prices: Optional[Dict] = None   # {"c_section_23": 0.85, ...}
+    # Accessories & secondary structural
+    include_base_plates: bool = True     # base plates and anchor bolts
+    include_x_bracing: bool = True       # rod bracing in end bays + every 4th bay
+    include_eave_struts: bool = True     # cee purlin at eave, both sides
+    include_ridge_cap: bool = True       # ridge cap flashing
+    include_gutters: bool = True         # gutters + downspouts
+    include_walk_doors: bool = False     # walk doors
+    walk_door_qty: int = 0              # number of walk doors (0 = none)
+    include_insulation: bool = False     # roof and wall insulation
+    insulation_r_value: str = "R-13"    # R-13, R-19, R-25, etc.
+    include_trim_package: bool = True    # full trim package (corners, base, eave, rake)
+    column_size: str = "HSS 4x4"        # HSS 4x4 or HSS 6x6 (affects base plate size)
 
 
 @dataclass
@@ -416,6 +428,313 @@ class BOMCalculator:
 
     def __init__(self, project: ProjectInfo):
         self.project = project
+
+    # ─────────────────────────────────────────────
+    # ACCESSORIES & SECONDARY STRUCTURAL MEMBERS
+    # ─────────────────────────────────────────────
+
+    def _generate_accessories(self, bldg: BuildingConfig, items: list,
+                              n_struct_cols: int, n_bays: int, n_frames: int,
+                              slope_deg: float, tan_slope: float,
+                              rafter_slope_ft: float,
+                              wall_panel_ht: float, peak_ht: float):
+        """
+        Append accessories and secondary structural members to the BOM items list.
+        Handles: base plates, anchor bolts, X-bracing, eave struts, ridge cap,
+        gutters, downspouts, walk doors, insulation, and trim package.
+        """
+
+        # ── 1. Base Plates (1 per column) ────────────────────────────────
+        if getattr(bldg, 'include_base_plates', True):
+            col_size = getattr(bldg, 'column_size', 'HSS 4x4')
+            if '6x6' in col_size or '6X6' in col_size:
+                bp_desc = "Base Plate 10\"x10\"x3/4\" — HSS 6x6 Column"
+                bp_wt = 42.5   # ~10"x10"x0.75" A36 plate
+            else:
+                bp_desc = "Base Plate 8\"x8\"x3/4\" — HSS 4x4 Column"
+                bp_wt = 27.2   # ~8"x8"x0.75" A36 plate
+
+            n_bp = n_struct_cols
+            for i in range(1, n_bp + 1):
+                pass  # marks generated below as batch
+            items.append(BOMLineItem(
+                category="Accessories",
+                item_id="base_plates",
+                description=f"BP — {bp_desc} ({n_bp} pcs)",
+                qty=n_bp, unit="EA",
+                unit_weight_lbs=bp_wt,
+                total_weight_lbs=round(n_bp * bp_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"1 per column × {n_struct_cols} columns | "
+                       f"Material: A36 Plate | {col_size} columns | "
+                       f"4 anchor bolt holes per plate"),
+                piece_count=n_bp,
+            ))
+
+            # ── 2. Anchor Bolts (4 per base plate) ──────────────────────────
+            n_ab = 4 * n_bp
+            ab_wt = 3.8  # typical 3/4"x18" F1554 anchor bolt + nut + washer
+            items.append(BOMLineItem(
+                category="Accessories",
+                item_id="anchor_bolts",
+                description=f"AB — 3/4\"x18\" F1554 Gr 36 Anchor Bolt Assembly ({n_ab} pcs)",
+                qty=n_ab, unit="EA",
+                unit_weight_lbs=ab_wt,
+                total_weight_lbs=round(n_ab * ab_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"4 per base plate × {n_bp} base plates = {n_ab} bolts | "
+                       f"Material: F1554 Gr 36/55 | "
+                       f"Each: bolt + hex nut + plate washer"),
+                piece_count=n_ab,
+            ))
+
+        # ── 3. X-Bracing (rod bracing in end bays + every 4th bay) ───────
+        if getattr(bldg, 'include_x_bracing', True) and n_bays >= 1:
+            # Determine which bays get bracing: first bay, last bay, every 4th bay
+            braced_bay_indices = set()
+            braced_bay_indices.add(0)           # first bay
+            braced_bay_indices.add(n_bays - 1)  # last bay
+            for b_idx in range(0, n_bays, 4):
+                braced_bay_indices.add(b_idx)
+            n_braced_bays = len(braced_bay_indices)
+
+            # 4 rods per braced bay (2 per sidewall face × 2 sidewalls)
+            n_xb_rods = n_braced_bays * 4
+            # Rod length = diagonal of bay rectangle (bay_width × eave_height)
+            avg_bay_ft = bldg.length_ft / n_bays if n_bays > 0 else bldg.max_bay_ft
+            xb_diag_ft = math.sqrt(avg_bay_ft**2 + bldg.clear_height_ft**2)
+            # 5/8" round bar: ~1.04 lbs/ft
+            xb_rod_wt_per_ft = 1.04
+            xb_wt_each = xb_diag_ft * xb_rod_wt_per_ft
+            xb_total_wt = n_xb_rods * xb_wt_each
+
+            items.append(BOMLineItem(
+                category="Secondary Structural",
+                item_id="x_bracing",
+                description=(f"XB — 5/8\" A36 Round Bar X-Bracing "
+                             f"({n_xb_rods} rods, {xb_diag_ft:.1f}' ea)"),
+                qty=n_xb_rods, unit="EA",
+                unit_weight_lbs=round(xb_wt_each, 2),
+                total_weight_lbs=round(xb_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"{n_braced_bays} braced bays (end bays + every 4th) × "
+                       f"4 rods/bay = {n_xb_rods} rods | "
+                       f"Diagonal: sqrt({avg_bay_ft:.1f}'^2 + {bldg.clear_height_ft:.1f}'^2) "
+                       f"= {xb_diag_ft:.1f}' | Material: A36 Round Bar 5/8\" dia"),
+                piece_count=n_xb_rods,
+                piece_length_in=round(xb_diag_ft * 12, 1),
+            ))
+
+        # ── 4. Eave Struts (2 per building — one each side) ─────────────
+        if getattr(bldg, 'include_eave_struts', True):
+            es_length_ft = bldg.length_ft
+            es_wt_per_ft = 3.5  # Cee purlin at eave, ~3.5 lbs/ft
+            n_eave_struts = 2
+            es_wt_each = es_length_ft * es_wt_per_ft
+            es_total_wt = n_eave_struts * es_wt_each
+
+            items.append(BOMLineItem(
+                category="Secondary Structural",
+                item_id="eave_struts",
+                description=(f"ES — Cee Purlin Eave Strut "
+                             f"({n_eave_struts} pcs, {es_length_ft:.0f}' ea)"),
+                qty=n_eave_struts, unit="EA",
+                unit_weight_lbs=round(es_wt_each, 1),
+                total_weight_lbs=round(es_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"2 per building (one each eave side) × {es_length_ft:.0f}' = "
+                       f"{n_eave_struts * es_length_ft:.0f} LFT | "
+                       f"Material: Cee Purlin (eave) @ {es_wt_per_ft} lbs/ft"),
+                piece_count=n_eave_struts,
+                piece_length_in=round(es_length_ft * 12, 1),
+            ))
+
+        # ── 5. Ridge Cap (1 per building) ────────────────────────────────
+        if getattr(bldg, 'include_ridge_cap', True):
+            rc_length_ft = bldg.length_ft + 2.0  # +2' for overhang
+            rc_wt_per_ft = 0.5
+            rc_total_wt = rc_length_ft * rc_wt_per_ft
+
+            items.append(BOMLineItem(
+                category="Trim & Flashing",
+                item_id="ridge_cap",
+                description=f"RC-1 — 26ga Galvalume Ridge Cap ({rc_length_ft:.0f}')",
+                qty=1, unit="EA",
+                unit_weight_lbs=round(rc_total_wt, 2),
+                total_weight_lbs=round(rc_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"1 per building | Length = {bldg.length_ft:.0f}' + 2' overhang "
+                       f"= {rc_length_ft:.0f}' | "
+                       f"Material: 26ga Galvalume @ {rc_wt_per_ft} lbs/ft"),
+                piece_count=1,
+                piece_length_in=round(rc_length_ft * 12, 1),
+            ))
+
+        # ── 6. Gutters (2 per building, both eaves) ─────────────────────
+        if getattr(bldg, 'include_gutters', True):
+            gt_length_ft = bldg.length_ft
+            gt_wt_per_ft = 1.2
+            n_gutters = 2
+            gt_wt_each = gt_length_ft * gt_wt_per_ft
+            gt_total_wt = n_gutters * gt_wt_each
+
+            items.append(BOMLineItem(
+                category="Trim & Flashing",
+                item_id="gutters",
+                description=(f"GT — 26ga Galvalume Gutter "
+                             f"({n_gutters} pcs, {gt_length_ft:.0f}' ea)"),
+                qty=n_gutters, unit="EA",
+                unit_weight_lbs=round(gt_wt_each, 1),
+                total_weight_lbs=round(gt_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"2 per building (both eaves) × {gt_length_ft:.0f}' = "
+                       f"{n_gutters * gt_length_ft:.0f} LFT | "
+                       f"Material: 26ga Galvalume @ {gt_wt_per_ft} lbs/ft"),
+                piece_count=n_gutters,
+                piece_length_in=round(gt_length_ft * 12, 1),
+            ))
+
+            # ── 7. Downspouts (1 per 40' of gutter, min 2 per side) ─────
+            ds_per_side = max(2, math.ceil(gt_length_ft / 40.0))
+            n_downspouts = ds_per_side * 2  # both sides
+            ds_wt_each = 8.0  # 10' section, 3x4 rectangular
+            ds_total_wt = n_downspouts * ds_wt_each
+
+            items.append(BOMLineItem(
+                category="Trim & Flashing",
+                item_id="downspouts",
+                description=(f"DS — 26ga Galvalume 3\"x4\" Downspout "
+                             f"({n_downspouts} pcs, 10' sections)"),
+                qty=n_downspouts, unit="EA",
+                unit_weight_lbs=ds_wt_each,
+                total_weight_lbs=round(ds_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"{ds_per_side} per side (1 per 40' of gutter, min 2) × "
+                       f"2 sides = {n_downspouts} pcs | "
+                       f"Material: 26ga Galvalume 3\"x4\" rectangular | "
+                       f"10' sections @ {ds_wt_each} lbs each"),
+                piece_count=n_downspouts,
+                piece_length_in=120.0,  # 10' = 120"
+            ))
+
+        # ── 8. Walk Doors (quantity from config or default 0) ────────────
+        wd_qty = getattr(bldg, 'walk_door_qty', 0)
+        if getattr(bldg, 'include_walk_doors', False) and wd_qty > 0:
+            wd_wt_each = 85.0  # 3070 steel walk door w/ frame
+
+            items.append(BOMLineItem(
+                category="Doors & Windows",
+                item_id="walk_doors",
+                description=f"WD — 3070 Steel Walk Door w/ Frame ({wd_qty} pcs)",
+                qty=wd_qty, unit="EA",
+                unit_weight_lbs=wd_wt_each,
+                total_weight_lbs=round(wd_qty * wd_wt_each, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"{wd_qty} walk door(s) | "
+                       f"3'-0\" × 7'-0\" steel door with steel frame | "
+                       f"Includes hinges, lockset, closer, threshold | "
+                       f"@ {wd_wt_each} lbs each"),
+                piece_count=wd_qty,
+            ))
+
+        # ── 9. Insulation (if enabled) ───────────────────────────────────
+        if getattr(bldg, 'include_insulation', False):
+            r_value = getattr(bldg, 'insulation_r_value', 'R-13')
+            # Weight per sqft varies by R-value
+            insulation_weights = {
+                "R-13": 0.06, "R-19": 0.08, "R-25": 0.10, "R-30": 0.12,
+            }
+            ins_wt_per_sqft = insulation_weights.get(r_value, 0.06)
+
+            # Roof insulation: slope area (both sides)
+            half_width = bldg.width_ft / 2.0
+            slope_len = math.sqrt(half_width**2 + (half_width * tan_slope)**2)
+            roof_area_sqft = 2.0 * slope_len * bldg.length_ft
+            roof_ins_wt = roof_area_sqft * ins_wt_per_sqft
+
+            items.append(BOMLineItem(
+                category="Insulation",
+                item_id="insulation_roof",
+                description=(f"INS-R — {r_value} Faced Fiberglass Insulation (Roof) "
+                             f"({roof_area_sqft:.0f} sqft)"),
+                qty=round(roof_area_sqft, 0), unit="SQFT",
+                unit_weight_lbs=ins_wt_per_sqft,
+                total_weight_lbs=round(roof_ins_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"Roof area: 2 × {slope_len:.1f}' slope × {bldg.length_ft:.0f}' length "
+                       f"= {roof_area_sqft:.0f} sqft | "
+                       f"Material: {r_value} Faced Fiberglass @ {ins_wt_per_sqft} lbs/sqft"),
+                piece_count=1,
+            ))
+
+            # Wall insulation: total wall area for enclosed walls only
+            wall_area_sqft = 0.0
+            wall_note_parts = []
+            if bldg.include_back_wall:
+                area = bldg.length_ft * wall_panel_ht
+                wall_area_sqft += area
+                wall_note_parts.append(f"Back wall: {area:.0f} sqft")
+            if bldg.include_end_walls:
+                area = bldg.width_ft * peak_ht * 2  # both end walls
+                wall_area_sqft += area
+                wall_note_parts.append(f"End walls (×2): {area:.0f} sqft")
+            if bldg.include_side_walls:
+                area = bldg.length_ft * wall_panel_ht * 2  # both side walls
+                wall_area_sqft += area
+                wall_note_parts.append(f"Side walls (×2): {area:.0f} sqft")
+
+            if wall_area_sqft > 0:
+                wall_ins_wt = wall_area_sqft * ins_wt_per_sqft
+                items.append(BOMLineItem(
+                    category="Insulation",
+                    item_id="insulation_walls",
+                    description=(f"INS-W — {r_value} Faced Fiberglass Insulation (Walls) "
+                                 f"({wall_area_sqft:.0f} sqft)"),
+                    qty=round(wall_area_sqft, 0), unit="SQFT",
+                    unit_weight_lbs=ins_wt_per_sqft,
+                    total_weight_lbs=round(wall_ins_wt, 1),
+                    unit_cost=0.0, total_cost=0.0,
+                    notes=(f"{' | '.join(wall_note_parts)} | "
+                           f"Total: {wall_area_sqft:.0f} sqft | "
+                           f"Material: {r_value} Faced Fiberglass @ {ins_wt_per_sqft} lbs/sqft"),
+                    piece_count=1,
+                ))
+
+        # ── 10. Trim Package (1 per building) ────────────────────────────
+        if getattr(bldg, 'include_trim_package', True):
+            trim_wt_per_ft = 0.8
+            # Base trim: full perimeter
+            perimeter_ft = 2.0 * (bldg.length_ft + bldg.width_ft)
+            # Eave trim: both long sides
+            eave_trim_ft = 2.0 * bldg.length_ft
+            # Rake trim: both gable ends (slope length × 2 sides × 2 ends)
+            half_width = bldg.width_ft / 2.0
+            rake_slope_ft = math.sqrt(half_width**2 + (half_width * tan_slope)**2)
+            rake_trim_ft = 4.0 * rake_slope_ft  # 2 slopes × 2 ends
+            # Corner trim: 4 corners × eave height
+            corner_trim_ft = 4.0 * bldg.clear_height_ft
+
+            total_trim_ft = perimeter_ft + eave_trim_ft + rake_trim_ft + corner_trim_ft
+            trim_total_wt = total_trim_ft * trim_wt_per_ft
+
+            items.append(BOMLineItem(
+                category="Trim & Flashing",
+                item_id="trim_package",
+                description=(f"TRIM-PKG — 26ga Galvalume Trim Package "
+                             f"({total_trim_ft:.0f} LFT)"),
+                qty=1, unit="EA",
+                unit_weight_lbs=round(trim_total_wt, 1),
+                total_weight_lbs=round(trim_total_wt, 1),
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"Base: {perimeter_ft:.0f}' (perimeter) | "
+                       f"Eave: {eave_trim_ft:.0f}' (both sides) | "
+                       f"Rake: {rake_trim_ft:.0f}' (4 gable slopes) | "
+                       f"Corner: {corner_trim_ft:.0f}' (4 corners) | "
+                       f"Total: {total_trim_ft:.0f} LFT @ {trim_wt_per_ft} lbs/ft | "
+                       f"Material: 26ga Galvalume"),
+                piece_count=1,
+                piece_length_in=round(total_trim_ft * 12, 1),
+            ))
 
     def calculate_building(self, bldg: BuildingConfig) -> BuildingBOM:
         result = BuildingBOM(building=bldg)
@@ -1287,6 +1606,11 @@ class BOMCalculator:
                 notes=(f"Front+Back: {fb} sticks | Ends: {ends} sticks | "
                        f"All 4 sides with 3\" overlap. Priced separately."),
             ))
+
+        # ── ACCESSORIES & SECONDARY STRUCTURAL ─────────────────────────────
+        self._generate_accessories(bldg, items, n_struct_cols, n_bays, n_frames,
+                                   slope_deg, tan_slope, rafter_slope_ft,
+                                   wall_panel_ht, peak_ht)
 
         # ── Welding & Finishing Consumables ──────────────────────────────
         sqft = bldg.width_ft * bldg.length_ft

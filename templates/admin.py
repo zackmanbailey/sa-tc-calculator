@@ -330,35 +330,27 @@ ADMIN_HTML = r"""
             width: fit-content;
         }
 
-        .role-admin {
-            background: rgba(245, 158, 11, 0.2);
-            color: #F59E0B;
-            border: 1px solid #F59E0B;
-        }
-
-        .role-estimator {
-            background: rgba(30, 64, 175, 0.2);
-            color: #60a5fa;
-            border: 1px solid #60a5fa;
-        }
-
-        .role-shop {
-            background: rgba(34, 197, 94, 0.2);
-            color: #86efac;
-            border: 1px solid #86efac;
-        }
-
-        .role-viewer {
-            background: rgba(107, 114, 128, 0.2);
-            color: #d1d5db;
-            border: 1px solid #6b7280;
-        }
-
-        .role-tc_limited {
-            background: rgba(245, 158, 11, 0.15);
-            color: #fbbf24;
-            border: 1px solid #fbbf24;
-        }
+        .role-god_mode { background: rgba(239, 68, 68, 0.25); color: #FCA5A5; border: 1px solid #EF4444; }
+        .role-admin { background: rgba(245, 158, 11, 0.2); color: #F59E0B; border: 1px solid #F59E0B; }
+        .role-project_manager { background: rgba(168, 85, 247, 0.2); color: #C4B5FD; border: 1px solid #A855F7; }
+        .role-estimator { background: rgba(30, 64, 175, 0.2); color: #60a5fa; border: 1px solid #60a5fa; }
+        .role-sales { background: rgba(236, 72, 153, 0.2); color: #F9A8D4; border: 1px solid #EC4899; }
+        .role-purchasing { background: rgba(251, 146, 60, 0.2); color: #FDBA74; border: 1px solid #FB923C; }
+        .role-inventory_manager { background: rgba(20, 184, 166, 0.2); color: #5EEAD4; border: 1px solid #14B8A6; }
+        .role-accounting { background: rgba(99, 102, 241, 0.2); color: #A5B4FC; border: 1px solid #6366F1; }
+        .role-shop_foreman { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid #22C55E; }
+        .role-qc_inspector { background: rgba(6, 182, 212, 0.2); color: #67E8F9; border: 1px solid #06B6D4; }
+        .role-engineer { background: rgba(59, 130, 246, 0.2); color: #93C5FD; border: 1px solid #3B82F6; }
+        .role-roll_forming_operator { background: rgba(132, 204, 22, 0.2); color: #BEF264; border: 1px solid #84CC16; }
+        .role-welder { background: rgba(249, 115, 22, 0.2); color: #FDBA74; border: 1px solid #F97316; }
+        .role-shipping_coordinator { background: rgba(14, 165, 233, 0.2); color: #7DD3FC; border: 1px solid #0EA5E9; }
+        .role-laborer { background: rgba(107, 114, 128, 0.2); color: #D1D5DB; border: 1px solid #6B7280; }
+        .role-field_crew { background: rgba(101, 163, 13, 0.2); color: #BEF264; border: 1px solid #65A30D; }
+        .role-safety_officer { background: rgba(234, 179, 8, 0.2); color: #FDE047; border: 1px solid #EAB308; }
+        .role-customer { background: rgba(148, 163, 184, 0.15); color: #CBD5E1; border: 1px solid #94A3B8; }
+        .role-shop { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid #86efac; }
+        .role-viewer { background: rgba(107, 114, 128, 0.2); color: #d1d5db; border: 1px solid #6b7280; }
+        .role-tc_limited { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #fbbf24; }
 
         .empty-state {
             text-align: center;
@@ -500,11 +492,34 @@ ADMIN_HTML = r"""
                             <label for="newRole">Role</label>
                             <select id="newRole" required>
                                 <option value="">Select a role</option>
-                                <option value="admin">Admin</option>
-                                <option value="estimator">Estimator</option>
-                                <option value="shop">Shop</option>
-                                <option value="viewer">Viewer</option>
-                                <option value="tc_limited">TC Limited</option>
+                                <optgroup label="Management">
+                                    <option value="god_mode">God Mode (Full Access)</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="project_manager">Project Manager</option>
+                                </optgroup>
+                                <optgroup label="Office">
+                                    <option value="estimator">Estimator</option>
+                                    <option value="sales">Sales / Business Dev</option>
+                                    <option value="purchasing">Purchasing</option>
+                                    <option value="accounting">Accounting</option>
+                                    <option value="engineer">Engineer / Detailer</option>
+                                </optgroup>
+                                <optgroup label="Shop Floor">
+                                    <option value="shop_foreman">Shop Foreman</option>
+                                    <option value="qc_inspector">QA/QC Inspector</option>
+                                    <option value="roll_forming_operator">Roll Forming Operator</option>
+                                    <option value="welder">Welder</option>
+                                    <option value="laborer">Laborer</option>
+                                    <option value="inventory_manager">Inventory Manager</option>
+                                    <option value="shipping_coordinator">Shipping Coordinator</option>
+                                </optgroup>
+                                <optgroup label="Field &amp; Safety">
+                                    <option value="field_crew">Field Crew</option>
+                                    <option value="safety_officer">Safety Officer</option>
+                                </optgroup>
+                                <optgroup label="External">
+                                    <option value="customer">Customer Portal</option>
+                                </optgroup>
                             </select>
                         </div>
                     </div>
@@ -561,11 +576,34 @@ ADMIN_HTML = r"""
             <div style="margin-bottom:12px;">
                 <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">Role</label>
                 <select id="editRole" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;">
-                    <option value="admin">Admin</option>
-                    <option value="estimator">Estimator</option>
-                    <option value="shop">Shop</option>
-                    <option value="viewer">Viewer</option>
-                    <option value="tc_limited">TC Limited</option>
+                    <optgroup label="Management">
+                        <option value="god_mode">God Mode (Full Access)</option>
+                        <option value="admin">Admin</option>
+                        <option value="project_manager">Project Manager</option>
+                    </optgroup>
+                    <optgroup label="Office">
+                        <option value="estimator">Estimator</option>
+                        <option value="sales">Sales / Business Dev</option>
+                        <option value="purchasing">Purchasing</option>
+                        <option value="accounting">Accounting</option>
+                        <option value="engineer">Engineer / Detailer</option>
+                    </optgroup>
+                    <optgroup label="Shop Floor">
+                        <option value="shop_foreman">Shop Foreman</option>
+                        <option value="qc_inspector">QA/QC Inspector</option>
+                        <option value="roll_forming_operator">Roll Forming Operator</option>
+                        <option value="welder">Welder</option>
+                        <option value="laborer">Laborer</option>
+                        <option value="inventory_manager">Inventory Manager</option>
+                        <option value="shipping_coordinator">Shipping Coordinator</option>
+                    </optgroup>
+                    <optgroup label="Field &amp; Safety">
+                        <option value="field_crew">Field Crew</option>
+                        <option value="safety_officer">Safety Officer</option>
+                    </optgroup>
+                    <optgroup label="External">
+                        <option value="customer">Customer Portal</option>
+                    </optgroup>
                 </select>
             </div>
             <div style="margin-bottom:16px;">

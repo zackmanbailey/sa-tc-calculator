@@ -116,7 +116,7 @@ except Exception:
 DATA_DIR = os.environ.get("TITANFORGE_DATA_DIR", os.path.join(BASE_DIR, "data"))
 
 # Ensure data directories exist on first run (critical for persistent volumes)
-for _subdir in ["projects", "certs", "quotes", "qc", "shop_drawings", "customer_docs"]:
+for _subdir in ["projects", "certs", "quotes", "qc", "shop_drawings", "customer_docs", "notifications"]:
     os.makedirs(os.path.join(DATA_DIR, _subdir), exist_ok=True)
 
 # Seed default files if they don't exist (first deploy with new volume)
@@ -142,25 +142,38 @@ COOKIE_SECRET = None   # Set at startup from env or auto-generated
 # Auth is enabled by default for hosted deployments; disabled for localhost dev.
 AUTH_ENABLED = False   # Set at startup
 
-# 4-Tier Role System
-ROLE_PERMISSIONS = {
-    "admin": [
-        "quotes", "pricing", "bom", "inventory", "projects", "labels",
-        "price_overrides", "user_management", "project_documents", "project_status"
-    ],
-    "estimator": [
-        "quotes", "pricing", "bom", "inventory", "projects", "labels", "price_overrides"
-    ],
-    "shop": [
-        "work_orders", "inventory", "quality", "labels", "project_documents"
-    ],
-    "viewer": [
-        "quotes", "bom", "projects", "labels"
-    ],
-    "tc_limited": [
-        "project_status", "shipping", "install_schedules"
-    ]
-}
+# 18-Role RBAC System (from auth/roles.py)
+try:
+    from auth.roles import ROLES, ROLE_ORDER, P, get_role
+    from auth.permissions import merge_permissions, PermissionSet
+    HAS_RBAC = True
+except ImportError:
+    HAS_RBAC = False
+
+# Backwards-compatible role list for user creation UI
+ROLE_PERMISSIONS = {}
+if HAS_RBAC:
+    for _rid, _rdef in ROLES.items():
+        ROLE_PERMISSIONS[_rid] = list(_rdef.permissions)
+else:
+    ROLE_PERMISSIONS = {
+        "admin": [
+            "quotes", "pricing", "bom", "inventory", "projects", "labels",
+            "price_overrides", "user_management", "project_documents", "project_status"
+        ],
+        "estimator": [
+            "quotes", "pricing", "bom", "inventory", "projects", "labels", "price_overrides"
+        ],
+        "shop": [
+            "work_orders", "inventory", "quality", "labels", "project_documents"
+        ],
+        "viewer": [
+            "quotes", "bom", "projects", "labels"
+        ],
+        "tc_limited": [
+            "project_status", "shipping", "install_schedules"
+        ]
+    }
 
 PROJECT_DOC_CATEGORIES = [
     "quotes", "contracts", "engineering", "shop_drawings",
@@ -480,7 +493,11 @@ AISC_INSPECTION_TYPES = {
             {"key": "filler_metal", "label": "Filler metal matches WPS requirements (E70XX, etc.)", "type": "text"},
             {"key": "preheat", "label": "Preheat temperature met per WPS", "type": "check"},
             {"key": "interpass_temp", "label": "Interpass temperature within limits", "type": "check"},
+            {"key": "weld_size_required", "label": "Required weld size (in)", "type": "measurement", "unit": "in"},
+            {"key": "weld_size_actual", "label": "Measured weld size (in)", "type": "measurement", "unit": "in"},
             {"key": "weld_size", "label": "Weld size meets drawing requirements", "type": "check"},
+            {"key": "weld_length_required", "label": "Required weld length (in)", "type": "measurement", "unit": "in"},
+            {"key": "weld_length_actual", "label": "Measured weld length (in)", "type": "measurement", "unit": "in"},
             {"key": "weld_length", "label": "Weld length meets drawing requirements", "type": "check"},
             {"key": "profile_acceptable", "label": "Weld profile acceptable per AWS D1.1 Figure 5.4", "type": "check"},
             {"key": "undercut", "label": "Undercut within acceptable limits (1/32\" max)", "type": "check"},
@@ -495,12 +512,22 @@ AISC_INSPECTION_TYPES = {
         "label": "Dimensional / Fit-Up Inspection",
         "standard": "AISC Code of Standard Practice (COSP) / AISC 303",
         "checklist": [
+            {"key": "member_length_required", "label": "Required length (in)", "type": "measurement", "unit": "in"},
+            {"key": "member_length_actual", "label": "Actual measured length (in)", "type": "measurement", "unit": "in"},
             {"key": "member_length", "label": "Member length within tolerance (AISC 303 Sec 6.4.1)", "type": "check"},
+            {"key": "sweep_actual", "label": "Measured sweep (in)", "type": "measurement", "unit": "in"},
+            {"key": "camber_actual", "label": "Measured camber (in)", "type": "measurement", "unit": "in"},
             {"key": "sweep_camber", "label": "Sweep and camber within tolerance", "type": "check"},
+            {"key": "depth_actual", "label": "Measured cross-section depth (in)", "type": "measurement", "unit": "in"},
+            {"key": "flange_width_actual", "label": "Measured flange width (in)", "type": "measurement", "unit": "in"},
             {"key": "cross_section", "label": "Cross-section dimensions verified", "type": "check"},
+            {"key": "hole_location_deviation", "label": "Max hole location deviation (in)", "type": "measurement", "unit": "in"},
             {"key": "hole_location", "label": "Hole locations within 1/16\" tolerance", "type": "check"},
+            {"key": "hole_diameter_actual", "label": "Measured hole diameter (in)", "type": "measurement", "unit": "in"},
             {"key": "hole_diameter", "label": "Hole diameters per specification", "type": "check"},
+            {"key": "fit_up_gap_actual", "label": "Measured fit-up gap / root opening (in)", "type": "measurement", "unit": "in"},
             {"key": "fit_up_gap", "label": "Fit-up gap within WPS limits (root opening)", "type": "check"},
+            {"key": "squareness_deviation", "label": "Squareness deviation (in)", "type": "measurement", "unit": "in"},
             {"key": "alignment", "label": "Member alignment and squareness verified", "type": "check"},
             {"key": "bearing", "label": "Bearing surfaces in full contact", "type": "check"},
         ],
@@ -512,8 +539,11 @@ AISC_INSPECTION_TYPES = {
             {"key": "blast_profile", "label": "Surface profile meets SSPC-SP requirements", "type": "check"},
             {"key": "cleanliness", "label": "Surface cleanliness verified (SSPC-SP6/SP10)", "type": "select",
              "options": ["SSPC-SP6 (Commercial)", "SSPC-SP10 (Near-White)", "SSPC-SP5 (White Metal)", "N/A"]},
-            {"key": "dft_primer", "label": "Primer DFT (dry film thickness) within spec", "type": "text"},
-            {"key": "dft_topcoat", "label": "Topcoat DFT within spec (if applicable)", "type": "text"},
+            {"key": "profile_depth", "label": "Surface profile depth (mils)", "type": "measurement", "unit": "mils"},
+            {"key": "dft_primer_spec", "label": "Primer DFT specification (mils)", "type": "measurement", "unit": "mils"},
+            {"key": "dft_primer", "label": "Primer DFT actual measured (mils)", "type": "measurement", "unit": "mils"},
+            {"key": "dft_topcoat_spec", "label": "Topcoat DFT specification (mils)", "type": "measurement", "unit": "mils"},
+            {"key": "dft_topcoat", "label": "Topcoat DFT actual measured (mils)", "type": "measurement", "unit": "mils"},
             {"key": "coverage", "label": "Full coverage with no holidays", "type": "check"},
             {"key": "galvanizing", "label": "Hot-dip galvanizing meets ASTM A123 (if applicable)", "type": "check"},
             {"key": "cure_time", "label": "Adequate cure/recoat time observed", "type": "check"},
@@ -691,10 +721,21 @@ def hash_password(password: str) -> str:
 
 def check_role(user_role: str, required_roles: list) -> bool:
     """Check if user role has permission for required roles."""
-    return user_role in required_roles
+    if user_role in required_roles:
+        return True
+    # Also check if the role has equivalent permissions via RBAC
+    if HAS_RBAC:
+        perm_set = merge_permissions([user_role])
+        # God mode and admin can access anything
+        if user_role in ("god_mode", "admin"):
+            return True
+    return False
 
 def get_user_permissions(user_role: str) -> list:
     """Get list of permissions for a user role."""
+    if HAS_RBAC:
+        perm_set = merge_permissions([user_role])
+        return sorted(perm_set.permissions)
     return ROLE_PERMISSIONS.get(user_role, [])
 
 
@@ -735,7 +776,19 @@ class BaseHandler(tornado.web.RequestHandler):
         role = self.get_user_role()
         if not role:
             return False
+        if HAS_RBAC:
+            perm_set = merge_permissions([role])
+            return perm_set.can(permission)
         return permission in get_user_permissions(role)
+
+    def get_permission_set(self) -> 'PermissionSet':
+        """Get the full PermissionSet for the current user."""
+        role = self.get_user_role()
+        if HAS_RBAC and role:
+            return merge_permissions([role])
+        # Fallback: create a minimal PermissionSet
+        ps = PermissionSet() if HAS_RBAC else None
+        return ps
 
     def prepare(self):
         """Check auth before handling request."""
@@ -758,6 +811,10 @@ class BaseHandler(tornado.web.RequestHandler):
         if self.required_roles is not None:
             role = self.get_user_role()
             if not check_role(role, self.required_roles):
+                # For page requests, redirect to dashboard with message
+                if self.request.method == "GET" and not self.request.path.startswith("/api/"):
+                    self.redirect("/?msg=insufficient_permissions")
+                    raise tornado.web.Finish()
                 self.set_status(403)
                 self.write(json_encode({"error": "Insufficient permissions for this action"}))
                 raise tornado.web.Finish()
@@ -963,7 +1020,9 @@ class UserAddHandler(BaseHandler):
                 return
             role = body.get("role", "viewer")
             if role not in ROLE_PERMISSIONS:
-                self.write(json_encode({"ok": False, "error": f"Invalid role: {role}"}))
+                # Check if it's a valid RBAC role
+                valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
+                self.write(json_encode({"ok": False, "error": f"Invalid role: {role}. Valid roles: {', '.join(valid_roles)}"}))
                 return
 
             users = load_users()
@@ -1005,8 +1064,14 @@ class UserEditHandler(BaseHandler):
 
             if "display_name" in body and body["display_name"].strip():
                 users[username]["display_name"] = body["display_name"].strip()
-            if "role" in body and body["role"] in ROLE_PERMISSIONS:
-                users[username]["role"] = body["role"]
+            if "role" in body:
+                new_role = body["role"]
+                if new_role in ROLE_PERMISSIONS:
+                    users[username]["role"] = new_role
+                else:
+                    valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
+                    self.write(json_encode({"ok": False, "error": f"Invalid role: {new_role}. Valid roles: {', '.join(valid_roles)}"}))
+                    return
             if "password" in body and body["password"]:
                 users[username]["password"] = hash_password(body["password"])
 
@@ -4848,6 +4913,7 @@ class QCInspectionCreateHandler(BaseHandler):
                 "inspector": body.get("inspector", self.get_current_user() or ""),
                 "location": body.get("location", ""),
                 "member_marks": body.get("member_marks", []),
+                "calibration_instruments": body.get("calibration_instruments", []),
                 "items": {},  # checklist item responses
                 "notes": body.get("notes", ""),
                 "photos": [],
@@ -4877,7 +4943,7 @@ class QCInspectionUpdateHandler(BaseHandler):
             found = False
             for i, insp in enumerate(qc["inspections"]):
                 if insp["id"] == insp_id:
-                    for k in ["items", "notes", "status", "location", "member_marks", "photos"]:
+                    for k in ["items", "notes", "status", "location", "member_marks", "photos", "signature"]:
                         if k in body:
                             qc["inspections"][i][k] = body[k]
                     if body.get("status") in ["passed", "failed"]:
@@ -5649,6 +5715,64 @@ class InspectorValidateAPIHandler(BaseHandler):
                 return
             result = validate_inspector_for_scope(sd_dir, inspector_name, inspection_type)
             self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PQRPageHandler(BaseHandler):
+    """GET /qa/pqr — PQR (Procedure Qualification Record) management page."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from templates.qa_pqr_page import PQR_PAGE_HTML
+            self.render_with_nav(PQR_PAGE_HTML, active_page="pqr")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class PQRAPIHandler(BaseHandler):
+    """GET/POST/DELETE /api/qa/pqr — CRUD for Procedure Qualification Records."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.qa_system import get_pqr_library
+            sd_dir = SHOP_DRAWINGS_DIR
+            pqrs = get_pqr_library(sd_dir)
+            self.write(json_encode({"ok": True, "pqrs": pqrs}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            from shop_drawings.qa_system import save_pqr
+            sd_dir = SHOP_DRAWINGS_DIR
+            body = json_decode(self.request.body)
+            record = save_pqr(sd_dir, body)
+            self._log("saved_pqr", "pqr", record.get("pqr_id", ""), {"pqr_number": body.get("pqr_number", ""), "process": body.get("process", "")})
+            self.write(json_encode({"ok": True, "record": record}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def delete(self):
+        try:
+            from shop_drawings.qa_system import delete_pqr
+            sd_dir = SHOP_DRAWINGS_DIR
+            body = json_decode(self.request.body)
+            pqr_id = body.get("pqr_id", "")
+            if not pqr_id:
+                self.write(json_encode({"ok": False, "error": "Missing pqr_id"}))
+                return
+            deleted = delete_pqr(sd_dir, pqr_id)
+            if deleted:
+                self._log("deleted_pqr", "pqr", pqr_id, {})
+            self.write(json_encode({"ok": deleted}))
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
@@ -9570,6 +9694,295 @@ class InspectionReportServeHandler(BaseHandler):
             self.write("Error serving report")
 
 
+class AuditPackageExportHandler(BaseHandler):
+    """GET /api/qa/audit-package?job_code=XXX — Generate AISC audit package ZIP."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        import zipfile
+        import io
+
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.set_status(400)
+                self.write(json_encode({"error": "job_code is required"}))
+                return
+
+            safe_jc = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+            now = datetime.datetime.now()
+
+            # ── Load project metadata ─────────────────────────────
+            project_name = ""
+            customer_name = ""
+            location = ""
+            meta_path = os.path.join(PROJECTS_DIR, safe_jc, "metadata.json")
+            project_meta = {}
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    project_meta = json.load(f)
+                project_name = project_meta.get("project_name", "")
+                cust = project_meta.get("customer", {})
+                customer_name = cust.get("name", "") if isinstance(cust, dict) else str(cust)
+                loc = project_meta.get("location", {})
+                if isinstance(loc, dict):
+                    location = ", ".join(filter(None, [loc.get("city", ""), loc.get("state", "")]))
+
+            # ── Load QC data (inspections, NCRs, traceability) ────
+            qc_data = load_project_qc(job_code)
+            inspections = qc_data.get("inspections", [])
+            ncrs = qc_data.get("ncrs", [])
+            traceability = qc_data.get("traceability", [])
+
+            # ── Load QA data ──────────────────────────────────────
+            sd_dir = SHOP_DRAWINGS_DIR
+            wps_data = {}
+            welder_certs = []
+            calibration_records = []
+            inspector_quals = []
+            pqr_data = []
+            try:
+                from shop_drawings.qa_system import (
+                    get_wps_library, get_welder_certs,
+                    get_calibration_log, get_inspector_quals,
+                    get_pqr_library,
+                )
+                wps_data = get_wps_library(sd_dir)
+                welder_certs = get_welder_certs(sd_dir)
+                calibration_records = get_calibration_log(sd_dir)
+                inspector_quals = get_inspector_quals(sd_dir)
+                pqr_data = get_pqr_library(sd_dir)
+            except Exception as e:
+                logger.warning(f"AuditPackageExport: could not load QA data: {e}")
+
+            # ── Filter WPS references used on this job ────────────
+            # Collect WPS IDs referenced from inspections
+            referenced_wps_ids = set()
+            for insp in inspections:
+                wps_ref = insp.get("wps", "") or insp.get("wps_id", "")
+                if wps_ref:
+                    referenced_wps_ids.add(wps_ref)
+            # Filter WPS library to referenced ones (or include all if none referenced)
+            wps_refs = {}
+            if isinstance(wps_data, dict):
+                all_wps = wps_data.get("wps_documents", wps_data.get("documents", []))
+                if isinstance(all_wps, list):
+                    if referenced_wps_ids:
+                        wps_refs = [w for w in all_wps if w.get("id", "") in referenced_wps_ids or w.get("wps_number", "") in referenced_wps_ids]
+                    else:
+                        wps_refs = all_wps
+                elif isinstance(all_wps, dict):
+                    wps_refs = all_wps
+                else:
+                    wps_refs = wps_data
+
+            # ── Filter welder certs for welders who worked on this job ──
+            job_welders = set()
+            for insp in inspections:
+                welder = insp.get("welder", "") or insp.get("welder_id", "")
+                if welder:
+                    job_welders.add(welder.lower())
+            if job_welders:
+                job_welder_certs = [w for w in welder_certs
+                                    if (w.get("name", "").lower() in job_welders
+                                        or w.get("welder_id", "").lower() in job_welders
+                                        or w.get("id", "").lower() in job_welders)]
+            else:
+                job_welder_certs = welder_certs
+
+            # ── Filter inspector quals for inspectors who worked on this job ──
+            job_inspectors = set()
+            for insp in inspections:
+                inspector = insp.get("inspector", "") or insp.get("inspector_id", "")
+                if inspector:
+                    job_inspectors.add(inspector.lower())
+            for ncr in ncrs:
+                inspector = ncr.get("inspector", "") or ncr.get("reported_by", "")
+                if inspector:
+                    job_inspectors.add(inspector.lower())
+            if job_inspectors:
+                job_inspector_quals = [i for i in inspector_quals
+                                       if (i.get("name", "").lower() in job_inspectors
+                                           or i.get("inspector_id", "").lower() in job_inspectors
+                                           or i.get("id", "").lower() in job_inspectors)]
+            else:
+                job_inspector_quals = inspector_quals
+
+            # ── Filter PQR references ─────────────────────────────
+            referenced_pqr_ids = set()
+            if isinstance(wps_refs, list):
+                for w in wps_refs:
+                    pqr_ref = w.get("pqr_number", "") or w.get("pqr_id", "")
+                    if pqr_ref:
+                        referenced_pqr_ids.add(pqr_ref)
+            if referenced_pqr_ids:
+                job_pqrs = [p for p in pqr_data
+                            if (p.get("id", "") in referenced_pqr_ids
+                                or p.get("pqr_number", "") in referenced_pqr_ids)]
+            else:
+                job_pqrs = pqr_data
+
+            # ── Load work orders for this job ─────────────────────
+            work_order_summary = []
+            try:
+                from shop_drawings.work_orders import list_work_orders, load_work_order
+                wo_list = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+                for wo_s in wo_list:
+                    wo_id = wo_s.get("work_order_id", "")
+                    wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+                    if wo:
+                        wo_detail = wo.summary()
+                        # Include QC results from items
+                        items_detail = []
+                        for item in getattr(wo, "items", []):
+                            items_detail.append({
+                                "ship_mark": getattr(item, "ship_mark", ""),
+                                "component_type": getattr(item, "component_type", ""),
+                                "status": getattr(item, "status", ""),
+                                "qc_status": getattr(item, "qc_status", ""),
+                                "machine": getattr(item, "machine", ""),
+                                "started_by": getattr(item, "started_by", ""),
+                                "finished_by": getattr(item, "finished_by", ""),
+                            })
+                        wo_detail["items"] = items_detail
+                        work_order_summary.append(wo_detail)
+            except Exception as e:
+                logger.warning(f"AuditPackageExport: could not load work orders: {e}")
+
+            # ── Build cover sheet ─────────────────────────────────
+            toc_lines = [
+                "AISC AUDIT PACKAGE",
+                "=" * 50,
+                f"Job Code:     {job_code}",
+                f"Project:      {project_name}",
+                f"Customer:     {customer_name}",
+                f"Location:     {location}",
+                f"Generated:    {now.strftime('%Y-%m-%d %H:%M:%S')}",
+                f"Generated By: {self.get_current_user() or 'System'}",
+                "",
+                "TABLE OF CONTENTS",
+                "-" * 50,
+                f"  1. Inspections ({len(inspections)} records)        — inspections/",
+                f"  2. Non-Conformance Reports ({len(ncrs)} records)   — ncrs/",
+                f"  3. Material Traceability ({len(traceability)} heat numbers) — traceability/",
+                f"  4. WPS References ({len(wps_refs) if isinstance(wps_refs, list) else 'N/A'})            — wps_references.json",
+                f"  5. Welder Certifications ({len(job_welder_certs)})     — welder_certs.json",
+                f"  6. Calibration Records ({len(calibration_records)})      — calibration_records.json",
+                f"  7. Inspector Qualifications ({len(job_inspector_quals)})  — inspector_qualifications.json",
+                f"  8. PQR References ({len(job_pqrs)})            — pqr_references.json",
+                f"  9. Work Order Summary ({len(work_order_summary)})       — work_order_summary.json",
+                "",
+                "This package contains all QA/QC documentation required for",
+                "AISC audit compliance for the referenced job.",
+            ]
+            cover_text = "\n".join(toc_lines)
+
+            # ── Build the ZIP file ────────────────────────────────
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("cover_sheet.txt", cover_text)
+
+                # Inspections folder
+                zf.writestr("inspections/summary.json", json.dumps(inspections, indent=2, default=str))
+                for idx, insp in enumerate(inspections):
+                    insp_id = insp.get("id", f"inspection_{idx+1}")
+                    insp_text_lines = [
+                        f"Inspection: {insp.get('title', insp.get('type', 'Unknown'))}",
+                        f"ID: {insp_id}",
+                        f"Status: {insp.get('status', 'N/A')}",
+                        f"Inspector: {insp.get('inspector', 'N/A')}",
+                        f"Date: {insp.get('created_at', insp.get('date', 'N/A'))}",
+                        f"Standard: {insp.get('standard', 'N/A')}",
+                        f"Ship Mark: {insp.get('ship_mark', 'N/A')}",
+                        f"Component: {insp.get('component_type', 'N/A')}",
+                        f"Stage: {insp.get('stage', 'N/A')}",
+                        f"WPS: {insp.get('wps', insp.get('wps_id', 'N/A'))}",
+                        f"Welder: {insp.get('welder', insp.get('welder_id', 'N/A'))}",
+                        "",
+                        "Checklist Items:",
+                        "-" * 40,
+                    ]
+                    for ci in insp.get("items", []):
+                        label = ci.get("label", ci.get("name", ""))
+                        checked = ci.get("checked", ci.get("pass", False))
+                        measured = ci.get("measured_value", "")
+                        status = "PASS" if checked else "FAIL/OPEN"
+                        line = f"  [{status}] {label}"
+                        if measured:
+                            line += f"  (measured: {measured})"
+                        insp_text_lines.append(line)
+                    if insp.get("notes"):
+                        insp_text_lines.extend(["", "Notes:", insp["notes"]])
+                    if insp.get("signature"):
+                        insp_text_lines.extend(["", "Signature: [captured digitally]"])
+                    zf.writestr(f"inspections/{insp_id}.txt", "\n".join(insp_text_lines))
+
+                # NCRs folder
+                zf.writestr("ncrs/summary.json", json.dumps(ncrs, indent=2, default=str))
+                for idx, ncr in enumerate(ncrs):
+                    ncr_id = ncr.get("id", f"ncr_{idx+1}")
+                    ncr_text_lines = [
+                        f"Non-Conformance Report: {ncr.get('title', 'NCR')}",
+                        f"ID: {ncr_id}",
+                        f"Status: {ncr.get('status', 'N/A')}",
+                        f"Severity: {ncr.get('severity', 'N/A')}",
+                        f"Reported By: {ncr.get('reported_by', ncr.get('inspector', 'N/A'))}",
+                        f"Date: {ncr.get('created_at', ncr.get('date', 'N/A'))}",
+                        f"Ship Mark: {ncr.get('ship_mark', 'N/A')}",
+                        f"Description: {ncr.get('description', 'N/A')}",
+                    ]
+                    if ncr.get("root_cause"):
+                        ncr_text_lines.extend(["", f"Root Cause: {ncr['root_cause']}"])
+                    if ncr.get("corrective_action"):
+                        ncr_text_lines.extend(["", f"Corrective Action: {ncr['corrective_action']}"])
+                    if ncr.get("verification"):
+                        ncr_text_lines.extend(["", f"Verification: {ncr['verification']}"])
+                    if ncr.get("disposition"):
+                        ncr_text_lines.extend(["", f"Disposition: {ncr['disposition']}"])
+                    if ncr.get("closed_at"):
+                        ncr_text_lines.append(f"Closed: {ncr['closed_at']}")
+                    zf.writestr(f"ncrs/{ncr_id}.txt", "\n".join(ncr_text_lines))
+
+                # Traceability folder
+                zf.writestr("traceability/heat_traceability.json", json.dumps(traceability, indent=2, default=str))
+                for idx, tr in enumerate(traceability):
+                    hn = tr.get("heat_number", f"heat_{idx+1}")
+                    tr_text_lines = [
+                        f"Heat Number: {hn}",
+                        f"Material: {tr.get('material', tr.get('grade', 'N/A'))}",
+                        f"Supplier: {tr.get('supplier', 'N/A')}",
+                        f"Coil ID: {tr.get('coil_id', 'N/A')}",
+                        f"Mill Cert: {tr.get('mill_cert', tr.get('cert_number', 'N/A'))}",
+                        f"Registered: {tr.get('registered_at', tr.get('date', 'N/A'))}",
+                        "",
+                        "Assigned Members:",
+                        "-" * 30,
+                    ]
+                    for m in tr.get("members", []):
+                        tr_text_lines.append(f"  - {m.get('mark', 'N/A')} ({m.get('component', m.get('type', 'N/A'))})")
+                    zf.writestr(f"traceability/{hn}.txt", "\n".join(tr_text_lines))
+
+                # QA reference documents
+                zf.writestr("wps_references.json", json.dumps(wps_refs, indent=2, default=str))
+                zf.writestr("welder_certs.json", json.dumps(job_welder_certs, indent=2, default=str))
+                zf.writestr("calibration_records.json", json.dumps(calibration_records, indent=2, default=str))
+                zf.writestr("inspector_qualifications.json", json.dumps(job_inspector_quals, indent=2, default=str))
+                zf.writestr("pqr_references.json", json.dumps(job_pqrs, indent=2, default=str))
+                zf.writestr("work_order_summary.json", json.dumps(work_order_summary, indent=2, default=str))
+
+            buffer.seek(0)
+            self.set_header("Content-Type", "application/zip")
+            self.set_header("Content-Disposition",
+                            f'attachment; filename="audit_package_{safe_jc}_{now.strftime("%Y%m%d")}.zip"')
+            self.write(buffer.read())
+
+        except Exception as e:
+            logger.error(f"AuditPackageExportHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
 # ─────────────────────────────────────────────
 # GANTT / SCHEDULING HANDLERS
 # ─────────────────────────────────────────────
@@ -10392,6 +10805,225 @@ class ReportsExportCSVHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# NOTIFICATION SYSTEM HANDLERS
+# ─────────────────────────────────────────────
+
+class NotificationsAPIHandler(BaseHandler):
+    """GET/POST /api/notifications — In-app notification system.
+    GET: Returns recent activity log entries relevant to current user (last 50).
+    POST: Marks notification(s) as read."""
+
+    def _get_read_status_path(self, username):
+        """Get path to user's notification read status file."""
+        notif_dir = os.path.join(DATA_DIR, "notifications")
+        os.makedirs(notif_dir, exist_ok=True)
+        return os.path.join(notif_dir, f"{username}.json")
+
+    def _load_read_status(self, username):
+        """Load set of read notification IDs for a user."""
+        path = self._get_read_status_path(username)
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                return set(data.get("read_ids", []))
+            except Exception:
+                return set()
+        return set()
+
+    def _save_read_status(self, username, read_ids):
+        """Save read notification IDs for a user."""
+        path = self._get_read_status_path(username)
+        with open(path, "w") as f:
+            json.dump({"read_ids": list(read_ids)[-500:]}, f)
+
+    def get(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            limit = int(self.get_argument("limit", "50"))
+
+            notifications = []
+            if USE_SQLITE:
+                import db as _db
+                entries = _db.get_activity_log(limit=min(limit, 100), offset=0)
+            else:
+                entries = []
+
+            read_ids = self._load_read_status(username)
+
+            for entry in entries:
+                eid = str(entry.get("id", entry.get("timestamp", "")))
+                is_read = eid in read_ids
+                notifications.append({
+                    "id": eid,
+                    "user": entry.get("user", ""),
+                    "action": entry.get("action", ""),
+                    "entity_type": entry.get("entity_type", ""),
+                    "entity_id": entry.get("entity_id", ""),
+                    "details": entry.get("details", ""),
+                    "timestamp": entry.get("timestamp", entry.get("created_at", "")),
+                    "message": self._format_message(entry),
+                    "is_read": is_read,
+                })
+
+            unread_count = sum(1 for n in notifications if not n["is_read"])
+
+            self.write(json_encode({
+                "ok": True,
+                "notifications": notifications,
+                "unread_count": unread_count,
+                "total": len(notifications),
+            }))
+        except Exception as e:
+            logger.error(f"NotificationsAPIHandler.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            body = json_decode(self.request.body)
+            action = body.get("action", "")
+
+            read_ids = self._load_read_status(username)
+
+            if action == "mark_read":
+                nid = str(body.get("id", ""))
+                if nid:
+                    read_ids.add(nid)
+                    self._save_read_status(username, read_ids)
+            elif action == "mark_all_read":
+                if USE_SQLITE:
+                    import db as _db
+                    entries = _db.get_activity_log(limit=100, offset=0)
+                    for entry in entries:
+                        eid = str(entry.get("id", entry.get("timestamp", "")))
+                        read_ids.add(eid)
+                    self._save_read_status(username, read_ids)
+
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            logger.error(f"NotificationsAPIHandler.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def _format_message(self, entry):
+        """Format an activity log entry into a human-readable notification message."""
+        user = entry.get("user", "Someone")
+        action = entry.get("action", "").replace("_", " ")
+        entity_type = entry.get("entity_type", "").replace("_", " ")
+        entity_id = entry.get("entity_id", "")
+
+        msg = f"{user} {action}"
+        if entity_type:
+            msg += f" {entity_type}"
+        if entity_id:
+            msg += f" {entity_id}"
+
+        if len(msg) > 120:
+            msg = msg[:117] + "..."
+        return msg
+
+
+# ─────────────────────────────────────────────
+# MY QUEUE HANDLERS
+# ─────────────────────────────────────────────
+
+class MyQueuePageHandler(BaseHandler):
+    """GET /work-station/mine — My Queue: work items assigned to current user."""
+
+    def get(self):
+        try:
+            from templates.my_queue_page import MY_QUEUE_HTML
+            self.render_with_nav(MY_QUEUE_HTML, active_page="workstation")
+        except Exception as e:
+            logger.error(f"MyQueuePageHandler.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e)}</p>")
+
+
+class MyQueueAPIHandler(BaseHandler):
+    """GET /api/my-queue — Returns work items assigned to the current user, grouped by status."""
+
+    def get(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+
+            from shop_drawings.work_orders import WorkOrder
+            import os as _os
+            from datetime import datetime, timedelta
+
+            in_progress = []
+            up_next = []
+            recently_completed = []
+            seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+
+            if _os.path.isdir(SHOP_DRAWINGS_DIR):
+                for project_dir in _os.listdir(SHOP_DRAWINGS_DIR):
+                    wo_dir = _os.path.join(SHOP_DRAWINGS_DIR, project_dir, "work_orders")
+                    if not _os.path.isdir(wo_dir):
+                        continue
+                    for fname in _os.listdir(wo_dir):
+                        if not fname.endswith(".json"):
+                            continue
+                        try:
+                            wo_path = _os.path.join(wo_dir, fname)
+                            with open(wo_path) as f:
+                                data = json.load(f)
+                            wo = WorkOrder.from_dict(data)
+
+                            for item in wo.items:
+                                assigned = (item.assigned_to or "").strip().lower()
+                                started = (item.started_by or "").strip().lower()
+                                finished = (item.finished_by or "").strip().lower()
+                                uname_lower = username.lower()
+
+                                is_mine = (
+                                    assigned == uname_lower or
+                                    started == uname_lower or
+                                    finished == uname_lower
+                                )
+                                if not is_mine:
+                                    continue
+
+                                d = item.to_dict()
+                                d["job_code"] = wo.job_code or project_dir
+                                d["work_order_id"] = wo.work_order_id
+                                d["project_name"] = wo.project_name
+                                d["customer_name"] = wo.customer_name
+
+                                if item.status == "in_progress":
+                                    in_progress.append(d)
+                                elif item.status == "complete":
+                                    if item.finished_at and item.finished_at >= seven_days_ago:
+                                        recently_completed.append(d)
+                                else:
+                                    up_next.append(d)
+                        except Exception:
+                            continue
+
+            in_progress.sort(key=lambda x: x.get("started_at", ""), reverse=True)
+            up_next.sort(key=lambda x: x.get("ship_mark", ""))
+            recently_completed.sort(key=lambda x: x.get("finished_at", ""), reverse=True)
+
+            self.write(json_encode({
+                "ok": True,
+                "username": username,
+                "in_progress": in_progress,
+                "up_next": up_next,
+                "recently_completed": recently_completed,
+                "total": len(in_progress) + len(up_next) + len(recently_completed),
+            }))
+        except Exception as e:
+            logger.error(f"MyQueueAPIHandler.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
 # PWA SUPPORT HANDLERS
 # ─────────────────────────────────────────────
 
@@ -10439,6 +11071,86 @@ class PWAOfflineHandler(tornado.web.RequestHandler):
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
+# DOCUMENT REVISION CONTROL HANDLERS
+# ─────────────────────────────────────────────
+class DocumentRevisionListHandler(BaseHandler):
+    """GET /api/documents/revisions — List revisions for a document."""
+    required_roles = ["admin", "estimator", "shop", "engineer", "qc_inspector"]
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            doc_type = self.get_argument("doc_type", "shop_drawing")
+            doc_id = self.get_argument("doc_id", "")
+            if not job_code or not doc_id:
+                self.write(json_encode({"ok": False, "error": "job_code and doc_id required"}))
+                return
+            from shop_drawings.documents import get_document_revisions
+            sd_dir = os.path.join(DATA_DIR, "shop_drawings")
+            revisions = get_document_revisions(sd_dir, job_code, doc_type, doc_id)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "revisions": revisions}))
+        except Exception as e:
+            logger.error(f"DocumentRevisionListHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+class DocumentRevisionSaveHandler(BaseHandler):
+    """POST /api/documents/revisions/save — Save a new document revision."""
+    required_roles = ["admin", "estimator", "engineer"]
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            doc_type = body.get("doc_type", "shop_drawing")
+            doc_id = body.get("doc_id", "")
+            if not job_code or not doc_id:
+                self.write(json_encode({"ok": False, "error": "job_code and doc_id required"}))
+                return
+            from shop_drawings.documents import save_document_revision
+            sd_dir = os.path.join(DATA_DIR, "shop_drawings")
+            revision = {
+                "changed_by": body.get("changed_by", self.get_current_user() or ""),
+                "change_description": body.get("change_description", ""),
+                "markup_notes": body.get("markup_notes", ""),
+                "status": body.get("status", "pending_review"),
+                "approved_by": body.get("approved_by", ""),
+                "approved_at": body.get("approved_at", ""),
+            }
+            result = save_document_revision(sd_dir, job_code, doc_type, doc_id, revision)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "revision": result}))
+        except Exception as e:
+            logger.error(f"DocumentRevisionSaveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+class DocumentRevisionApproveHandler(BaseHandler):
+    """POST /api/documents/revisions/approve — Approve a document revision."""
+    required_roles = ["admin", "engineer"]
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            doc_id = body.get("doc_id", "")
+            rev_letter = body.get("rev", "")
+            if not job_code or not doc_id or not rev_letter:
+                self.write(json_encode({"ok": False, "error": "job_code, doc_id, and rev required"}))
+                return
+            from shop_drawings.documents import approve_document_revision
+            sd_dir = os.path.join(DATA_DIR, "shop_drawings")
+            approved_by = body.get("approved_by", self.get_current_user() or "")
+            result = approve_document_revision(sd_dir, job_code, doc_id, rev_letter, approved_by)
+            if result:
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": True, "revision": result}))
+            else:
+                self.write(json_encode({"ok": False, "error": "Revision not found"}))
+        except Exception as e:
+            logger.error(f"DocumentRevisionApproveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -10449,7 +11161,7 @@ def get_routes():
         # ── Auth routes ────────────────────────────────────────
         (r"/auth/login",         LoginHandler),
         (r"/auth/logout",        LogoutHandler),
-        (r"/admin",              AdminPageHandler),
+        (r"/admin/?",             AdminPageHandler),
         (r"/auth/users",         UsersListHandler),
         (r"/auth/users/add",     UserAddHandler),
         (r"/auth/users/edit",    UserEditHandler),
@@ -10594,6 +11306,13 @@ def get_routes():
         (r"/shop-floor",                         ShopFloorPageHandler),
         (r"/api/shop-floor/data",                ShopFloorDataHandler),
 
+        # ── My Queue ─────────────────────────────────────────
+        (r"/work-station/mine",                  MyQueuePageHandler),
+        (r"/api/my-queue",                       MyQueueAPIHandler),
+
+        # ── Notifications ────────────────────────────────────
+        (r"/api/notifications",                  NotificationsAPIHandler),
+
         # ── Work Station (tablet/phone) ───────────────────────
         (r"/work-station/([^/]+)",               WorkStationPageHandler),
         (r"/api/work-station/data",              WorkStationDataHandler),
@@ -10665,6 +11384,8 @@ def get_routes():
         (r"/qa/inspector-registry",      InspectorRegistryPageHandler),
         (r"/api/qa/inspector-registry",  InspectorRegistryAPIHandler),
         (r"/api/qa/inspector-validate",  InspectorValidateAPIHandler),
+        (r"/qa/pqr",                     PQRPageHandler),
+        (r"/api/qa/pqr",                 PQRAPIHandler),
         (r"/qa/ncr-log",                 NCRLogPageHandler),
         (r"/api/qa/ncr-log",             NCRLogAPIHandler),
 
@@ -10697,12 +11418,20 @@ def get_routes():
         (r"/api/qc/photos/delete",               QCPhotoDeleteHandler),
         (r"/qc-photos/([^/]+)/([^/]+)/([^/]+)",  QCPhotoServeHandler),
 
+        # ── AISC Audit Package Export ─────────────────────────
+        (r"/api/qa/audit-package",               AuditPackageExportHandler),
+
         # ── AISC Inspection Report PDFs ───────────────────────
         (r"/api/qc/inspection-report/pdf",       InspectionReportPDFHandler),
         (r"/api/qc/inspection-packet/pdf",       InspectionPacketPDFHandler),
         (r"/api/qc/inspection-requirements",     InspectionRequirementsHandler),
         (r"/api/qc/inspection-reports",          InspectionReportsListHandler),
         (r"/qc-reports/([^/]+)/([^/]+)",         InspectionReportServeHandler),
+
+        # ── Document Revision Control ─────────────────────────
+        (r"/api/documents/revisions",            DocumentRevisionListHandler),
+        (r"/api/documents/revisions/save",       DocumentRevisionSaveHandler),
+        (r"/api/documents/revisions/approve",    DocumentRevisionApproveHandler),
 
         # ── Production Schedule / Gantt ───────────────────────
         (r"/schedule",                           GanttPageHandler),
@@ -10762,6 +11491,8 @@ from templates.shop_drawings import SHOP_DRAWINGS_HTML
 from templates.work_orders import WORK_ORDERS_HTML
 from templates.shop_floor import SHOP_FLOOR_HTML
 from templates.work_station import WORK_STATION_HTML
+from templates.my_queue_page import MY_QUEUE_HTML
+from templates.qa_pqr_page import PQR_PAGE_HTML
 
 # Aliases used by handlers
 MAIN_HTML = SA_CALC_HTML

@@ -444,19 +444,91 @@ body.sidebar-collapsed .tf-main {
 /* ── Mobile responsive ─── */
 @media (max-width: 768px) {
     .tf-sidebar {
-        transform: translateX(-100%);
+        position: fixed !important;
+        left: -280px;
+        top: 0;
+        height: 100vh;
+        z-index: 1000;
+        transition: left 0.3s ease;
+        width: 260px;
+        transform: none !important;
+    }
+    .tf-sidebar.mobile-open {
+        left: 0;
+    }
+    .tf-sidebar.collapsed {
+        left: -280px;
+        width: 260px;
+        transform: none !important;
+    }
+    .tf-sidebar.collapsed.mobile-open {
+        left: 0;
         width: 260px;
     }
-    .tf-sidebar.mobile-open { transform: translateX(0); }
-    .tf-sidebar.collapsed { transform: translateX(-100%); }
-    .tf-main { margin-left: 0 !important; }
-    .tf-sidebar-toggle { display: none; }
+    .tf-main {
+        margin-left: 0 !important;
+        padding: 12px !important;
+        padding-top: 56px !important;
+    }
+    .tf-main-content {
+        margin-left: 0 !important;
+        padding: 12px !important;
+    }
+    .tf-sidebar-toggle { display: none !important; }
     .tf-mobile-hamburger { display: flex !important; }
+    .tf-contextbar {
+        padding: 0 12px 0 48px;
+    }
+    /* Fixed hamburger menu button for mobile */
+    .mobile-menu-btn {
+        display: block !important;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 999;
+        background: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #E2E8F0;
+        font-size: 20px;
+        cursor: pointer;
+    }
+    .mobile-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 999;
+    }
     .tf-mobile-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-        z-index: 199; display: none;
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        z-index: 999; display: none;
     }
     .tf-mobile-overlay.show { display: block; }
+
+    /* Tables scroll horizontally on mobile */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* Touch-friendly buttons */
+    .btn, button:not(.tf-sidebar-toggle):not(.mobile-menu-btn) {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    /* Cards stack vertically on mobile */
+    .grid-2col, .grid-3col, [style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+    /* Modals full-width on mobile */
+    .modal-box, .tf-search-box { width: 95vw !important; max-height: 90vh; overflow-y: auto; }
+    /* Form inputs bigger for touch (prevents iOS zoom) */
+    input, select, textarea { font-size: 16px !important; }
+    /* Search overlay adjustments for mobile */
+    .tf-search-overlay { padding-top: 60px; }
+}
+
+@media (min-width: 769px) {
+    .mobile-menu-btn { display: none !important; }
+    .mobile-overlay { display: none !important; }
 }
 
 .tf-mobile-hamburger {
@@ -481,7 +553,10 @@ body.sidebar-collapsed .tf-main {
 # The {{JOB_CODE}} placeholder is replaced if in a project context.
 
 NAV_HTML = """
+<!-- Mobile hamburger button (fixed, visible only on mobile) -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
 <!-- Mobile overlay -->
+<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->
@@ -629,13 +704,31 @@ function toggleSidebar() {
 })();
 
 // ── Mobile Sidebar ──
+function toggleMobileSidebar() {
+    const sb = document.querySelector('.tf-sidebar');
+    const ov = document.getElementById('mobileOverlayFixed');
+    const legacyOv = document.getElementById('mobileOverlay');
+    if (sb.classList.contains('mobile-open')) {
+        sb.classList.remove('mobile-open');
+        if (ov) ov.style.display = 'none';
+        if (legacyOv) legacyOv.classList.remove('show');
+    } else {
+        sb.classList.add('mobile-open');
+        if (ov) ov.style.display = 'block';
+        if (legacyOv) legacyOv.classList.add('show');
+    }
+}
 function openMobileSidebar() {
     document.getElementById('tfSidebar').classList.add('mobile-open');
     document.getElementById('mobileOverlay').classList.add('show');
+    var ov = document.getElementById('mobileOverlayFixed');
+    if (ov) ov.style.display = 'block';
 }
 function closeMobileSidebar() {
     document.getElementById('tfSidebar').classList.remove('mobile-open');
     document.getElementById('mobileOverlay').classList.remove('show');
+    var ov = document.getElementById('mobileOverlayFixed');
+    if (ov) ov.style.display = 'none';
 }
 
 // ── Project Context ──
@@ -1060,7 +1153,10 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     nav_items_html += project_section
 
     sidebar = f"""
+<!-- Mobile hamburger button (fixed, visible only on mobile) -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
 <!-- Mobile overlay -->
+<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->

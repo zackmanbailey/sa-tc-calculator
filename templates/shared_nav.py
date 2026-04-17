@@ -444,19 +444,95 @@ body.sidebar-collapsed .tf-main {
 /* ── Mobile responsive ─── */
 @media (max-width: 768px) {
     .tf-sidebar {
-        transform: translateX(-100%);
+        position: fixed !important;
+        left: -280px;
+        top: 0;
+        height: 100vh;
+        z-index: 1000;
+        transition: left 0.3s ease;
+        width: 260px;
+        transform: none !important;
+    }
+    .tf-sidebar.mobile-open {
+        left: 0;
+    }
+    .tf-sidebar.collapsed {
+        left: -280px;
+        width: 260px;
+        transform: none !important;
+    }
+    .tf-sidebar.collapsed.mobile-open {
+        left: 0;
         width: 260px;
     }
-    .tf-sidebar.mobile-open { transform: translateX(0); }
-    .tf-sidebar.collapsed { transform: translateX(-100%); }
-    .tf-main { margin-left: 0 !important; }
-    .tf-sidebar-toggle { display: none; }
+    .tf-main {
+        margin-left: 0 !important;
+        padding: 12px !important;
+        padding-top: 56px !important;
+    }
+    .tf-main-content {
+        margin-left: 0 !important;
+        padding: 12px !important;
+    }
+    .tf-sidebar-toggle { display: none !important; }
     .tf-mobile-hamburger { display: flex !important; }
+    .tf-contextbar {
+        padding: 0 12px 0 48px;
+    }
+    /* Fixed hamburger menu button for mobile */
+    .mobile-menu-btn {
+        display: block !important;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 999;
+        background: #1E293B;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #E2E8F0;
+        font-size: 20px;
+        cursor: pointer;
+    }
+    .mobile-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 999;
+    }
     .tf-mobile-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-        z-index: 199; display: none;
+        position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+        z-index: 999; display: none;
     }
     .tf-mobile-overlay.show { display: block; }
+
+    /* Tables scroll horizontally on mobile */
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* Touch-friendly buttons */
+    .btn, button:not(.tf-sidebar-toggle):not(.mobile-menu-btn):not(.tf-notif-bell):not(.tf-notif-mark-all):not(.tf-notif-read-btn) {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    /* Cards stack vertically on mobile */
+    .grid-2col, .grid-3col, [style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+    /* Modals full-width on mobile */
+    .modal-box, .tf-search-box { width: 95vw !important; max-height: 90vh; overflow-y: auto; }
+    /* Form inputs bigger for touch (prevents iOS zoom) */
+    input, select, textarea { font-size: 16px !important; }
+    /* Search overlay adjustments for mobile */
+    .tf-search-overlay { padding-top: 60px; }
+    /* Notification dropdown full-width on mobile */
+    .tf-notif-dropdown { width: 90vw; right: -60px; }
+    /* XP Panel repositioning for mobile */
+    #xpPanel { left: 8px !important; right: 8px !important; width: auto !important; bottom: 60px !important; }
+}
+
+@media (min-width: 769px) {
+    .mobile-menu-btn { display: none !important; }
+    .mobile-overlay { display: none !important; }
 }
 
 .tf-mobile-hamburger {
@@ -471,6 +547,141 @@ body.sidebar-collapsed .tf-main {
 }
 
 .tf-mobile-hamburger:hover { background: var(--tf-gray-100); }
+
+/* ── Notification Bell ─────────────────────── */
+.tf-notif-bell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.55);
+    transition: all 0.15s;
+    border: none;
+    background: none;
+    font-size: 1.2rem;
+}
+.tf-notif-bell:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.9);
+}
+.tf-notif-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #EF4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.tf-notif-badge.hidden { display: none; }
+.tf-notif-dropdown {
+    display: none;
+    position: absolute;
+    top: 44px;
+    right: 0;
+    width: 360px;
+    max-height: 440px;
+    background: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    z-index: 500;
+    overflow: hidden;
+}
+.tf-notif-dropdown.show { display: block; }
+.tf-notif-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #334155;
+}
+.tf-notif-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #F8FAFC;
+    font-weight: 700;
+}
+.tf-notif-mark-all {
+    font-size: 11px;
+    color: #60A5FA;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-weight: 600;
+}
+.tf-notif-mark-all:hover { text-decoration: underline; }
+.tf-notif-list {
+    overflow-y: auto;
+    max-height: 360px;
+    padding: 4px 0;
+}
+.tf-notif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 16px;
+    transition: background 0.1s;
+    cursor: default;
+}
+.tf-notif-item:hover { background: rgba(255,255,255,0.04); }
+.tf-notif-item.unread { background: rgba(59,130,246,0.06); }
+.tf-notif-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    background: rgba(255,255,255,0.06);
+}
+.tf-notif-body { flex: 1; min-width: 0; }
+.tf-notif-msg {
+    font-size: 12px;
+    color: #CBD5E1;
+    line-height: 1.4;
+}
+.tf-notif-time {
+    font-size: 10px;
+    color: #64748B;
+    margin-top: 2px;
+}
+.tf-notif-read-btn {
+    background: none;
+    border: none;
+    color: #64748B;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.tf-notif-read-btn:hover { color: #60A5FA; background: rgba(96,165,250,0.1); }
+.tf-notif-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #64748B;
+    font-size: 13px;
+}
+.tf-notif-wrap {
+    position: relative;
+    display: inline-flex;
+}
 """
 
 # ─────────────────────────────────────────────
@@ -481,7 +692,10 @@ body.sidebar-collapsed .tf-main {
 # The {{JOB_CODE}} placeholder is replaced if in a project context.
 
 NAV_HTML = """
+<!-- Mobile hamburger button (fixed, visible only on mobile) -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
 <!-- Mobile overlay -->
+<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->
@@ -513,6 +727,10 @@ NAV_HTML = """
             <a href="/shop-floor" class="tf-nav-item {{ACTIVE_shopfloor}}">
                 <span class="tf-nav-icon">&#9881;</span>
                 <span class="tf-nav-label">Shop Floor</span>
+            </a>
+            <a href="/work-station/mine" class="tf-nav-item {{ACTIVE_myqueue}}">
+                <span class="tf-nav-icon">&#128190;</span>
+                <span class="tf-nav-label">My Queue</span>
             </a>
             <a href="/customers" class="tf-nav-item {{ACTIVE_customers}}">
                 <span class="tf-nav-icon">&#128101;</span>
@@ -568,6 +786,23 @@ NAV_HTML = """
             </a>
         </div>
     </nav>
+
+    <!-- Notification Bell (positioned in sidebar footer area) -->
+    <div style="padding:4px 12px 0;display:flex;justify-content:flex-end;">
+        <div class="tf-notif-wrap" id="notifWrap">
+            <button class="tf-notif-bell" onclick="toggleNotifDropdown()" title="Notifications">&#128276;</button>
+            <span class="tf-notif-badge hidden" id="notifBadge">0</span>
+            <div class="tf-notif-dropdown" id="notifDropdown">
+                <div class="tf-notif-header">
+                    <h3>Notifications</h3>
+                    <button class="tf-notif-mark-all" onclick="markAllNotifRead()">Mark all read</button>
+                </div>
+                <div class="tf-notif-list" id="notifList">
+                    <div class="tf-notif-empty">No notifications</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="tf-sidebar-footer" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
         <!-- XP Level Bar -->
@@ -781,13 +1016,31 @@ function toggleSidebar() {
 })();
 
 // ── Mobile Sidebar ──
+function toggleMobileSidebar() {
+    const sb = document.querySelector('.tf-sidebar');
+    const ov = document.getElementById('mobileOverlayFixed');
+    const legacyOv = document.getElementById('mobileOverlay');
+    if (sb.classList.contains('mobile-open')) {
+        sb.classList.remove('mobile-open');
+        if (ov) ov.style.display = 'none';
+        if (legacyOv) legacyOv.classList.remove('show');
+    } else {
+        sb.classList.add('mobile-open');
+        if (ov) ov.style.display = 'block';
+        if (legacyOv) legacyOv.classList.add('show');
+    }
+}
 function openMobileSidebar() {
     document.getElementById('tfSidebar').classList.add('mobile-open');
     document.getElementById('mobileOverlay').classList.add('show');
+    var ov = document.getElementById('mobileOverlayFixed');
+    if (ov) ov.style.display = 'block';
 }
 function closeMobileSidebar() {
     document.getElementById('tfSidebar').classList.remove('mobile-open');
     document.getElementById('mobileOverlay').classList.remove('show');
+    var ov = document.getElementById('mobileOverlayFixed');
+    if (ov) ov.style.display = 'none';
 }
 
 // ── Project Context ──
@@ -924,6 +1177,155 @@ function escNavHtml(s) {
         avatar.textContent = parts.map(p => p[0]).join('').toUpperCase().slice(0,2) || 'U';
     }
 })();
+
+// ── Notification Bell System ──
+(function(){
+    let notifOpen = false;
+
+    window.toggleNotifDropdown = function() {
+        notifOpen = !notifOpen;
+        const dd = document.getElementById('notifDropdown');
+        if (dd) {
+            dd.classList.toggle('show', notifOpen);
+            if (notifOpen) loadNotifications();
+        }
+    };
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const wrap = document.getElementById('notifWrap');
+        if (wrap && !wrap.contains(e.target)) {
+            notifOpen = false;
+            const dd = document.getElementById('notifDropdown');
+            if (dd) dd.classList.remove('show');
+        }
+    });
+
+    async function loadNotifications() {
+        try {
+            const resp = await fetch('/api/notifications');
+            const data = await resp.json();
+            if (!data.ok) return;
+            renderNotifications(data.notifications || [], data.unread_count || 0);
+        } catch(e) {
+            console.debug('Notification load failed', e);
+        }
+    }
+
+    function renderNotifications(notifs, unreadCount) {
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        const list = document.getElementById('notifList');
+        if (!list) return;
+
+        if (notifs.length === 0) {
+            list.innerHTML = '<div class="tf-notif-empty">No recent notifications</div>';
+            return;
+        }
+
+        let html = '';
+        for (const n of notifs) {
+            const unread = n.is_read ? '' : ' unread';
+            const icon = notifIcon(n.action || '');
+            const ago = timeAgo(n.timestamp || n.created_at || '');
+            html += '<div class="tf-notif-item' + unread + '" data-id="' + (n.id || '') + '">';
+            html += '  <div class="tf-notif-icon">' + icon + '</div>';
+            html += '  <div class="tf-notif-body">';
+            html += '    <div class="tf-notif-msg">' + escNavHtml(n.message || formatNotifMsg(n)) + '</div>';
+            html += '    <div class="tf-notif-time">' + ago + '</div>';
+            html += '  </div>';
+            if (!n.is_read) {
+                html += '  <button class="tf-notif-read-btn" onclick="markNotifRead(\'' + (n.id || '') + '\', this)" title="Mark read">&#10003;</button>';
+            }
+            html += '</div>';
+        }
+        list.innerHTML = html;
+    }
+
+    function notifIcon(action) {
+        const icons = {
+            'qr_scan_start': '&#9654;',
+            'qr_scan_finish': '&#10003;',
+            'create_work_order': '&#128203;',
+            'approve_work_order': '&#128077;',
+            'generate_shop_drawing': '&#128208;',
+            'update_item_status': '&#9881;',
+            'create_project': '&#128194;',
+            'add_customer': '&#128101;',
+            'upload_document': '&#128196;',
+            'qc_inspection': '&#128737;',
+        };
+        return icons[action] || '&#128276;';
+    }
+
+    function formatNotifMsg(n) {
+        const user = n.user || 'Someone';
+        const action = (n.action || '').replace(/_/g, ' ');
+        const entity = n.entity_type ? (' on ' + n.entity_type.replace(/_/g, ' ')) : '';
+        const eid = n.entity_id ? (' ' + n.entity_id) : '';
+        return user + ' ' + action + entity + eid;
+    }
+
+    function timeAgo(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const now = new Date();
+        const diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+        if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+        return d.toLocaleDateString();
+    }
+
+    window.markNotifRead = async function(id, btn) {
+        try {
+            await fetch('/api/notifications', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'mark_read', id: id})
+            });
+            if (btn) {
+                const item = btn.closest('.tf-notif-item');
+                if (item) item.classList.remove('unread');
+                btn.remove();
+            }
+            // Refresh count
+            loadNotifications();
+        } catch(e) { console.debug('Mark read failed', e); }
+    };
+
+    window.markAllNotifRead = async function() {
+        try {
+            await fetch('/api/notifications', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'mark_all_read'})
+            });
+            loadNotifications();
+        } catch(e) { console.debug('Mark all read failed', e); }
+    };
+
+    // Poll notifications every 60 seconds + initial load
+    function initNotif() {
+        loadNotifications();
+        setInterval(loadNotifications, 60000);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initNotif);
+    } else {
+        initNotif();
+    }
+})();
 """
 
 
@@ -1037,7 +1439,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     # If auth not available, fall back to static NAV_HTML
     if not perm:
         html = NAV_HTML
-        pages = ["dashboard", "workorders_global", "shopfloor", "customers", "sa", "tc",
+        pages = ["dashboard", "workorders_global", "shopfloor", "myqueue", "customers", "sa", "tc",
                  "project", "shopdrw", "workorders", "workstation", "qc", "quote", "admin"]
         for p in pages:
             html = html.replace("{{ACTIVE_" + p + "}}", "active" if p == active_page else "")
@@ -1212,7 +1614,10 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     nav_items_html += project_section
 
     sidebar = f"""
+<!-- Mobile hamburger button (fixed, visible only on mobile) -->
+<button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
 <!-- Mobile overlay -->
+<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->
@@ -1233,6 +1638,23 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     <nav class="tf-sidebar-nav">
 {nav_items_html}
     </nav>
+
+    <!-- Notification Bell -->
+    <div style="padding:4px 12px 0;display:flex;justify-content:flex-end;">
+        <div class="tf-notif-wrap" id="notifWrap">
+            <button class="tf-notif-bell" onclick="toggleNotifDropdown()" title="Notifications">&#128276;</button>
+            <span class="tf-notif-badge hidden" id="notifBadge">0</span>
+            <div class="tf-notif-dropdown" id="notifDropdown">
+                <div class="tf-notif-header">
+                    <h3>Notifications</h3>
+                    <button class="tf-notif-mark-all" onclick="markAllNotifRead()">Mark all read</button>
+                </div>
+                <div class="tf-notif-list" id="notifList">
+                    <div class="tf-notif-empty">No notifications</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="tf-sidebar-footer">
         <a href="/profile" class="tf-footer-user" title="Edit Profile" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">

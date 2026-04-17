@@ -1236,7 +1236,7 @@ PROJECT_PAGE_HTML = r"""
                 html += '<div style="text-align:center;padding:var(--tf-sp-6);color:var(--tf-gray-400);font-size:var(--tf-text-sm);">No files in this category yet</div>';
             } else {
                 html += '<table class="file-list-table"><thead><tr>';
-                html += '<th>File</th><th>Size</th><th>Uploaded</th>';
+                html += '<th>File</th><th>Rev</th><th>Size</th><th>Uploaded</th>';
                 if (canEdit) html += '<th>Actions</th>';
                 html += '</tr></thead><tbody>';
 
@@ -1245,9 +1245,11 @@ PROJECT_PAGE_HTML = r"""
                     var icon = FILE_ICONS[ext] || '&#128193;';
                     var size = formatSize(f.size || 0);
                     var date = f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString() : '';
+                    var docId = (f.filename || '').replace(/\.[^.]+$/, '');
 
                     html += '<tr>';
                     html += '<td><span style="margin-right:8px;">' + icon + '</span><a href="' + esc(f.url || '#') + '" class="file-link" target="_blank">' + esc(f.filename) + '</a></td>';
+                    html += '<td><span class="rev-badge" id="revBadge-' + esc(docId) + '" style="display:inline-block;background:var(--tf-blue-light,#DBEAFE);color:var(--tf-blue,#2563EB);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="toggleRevHistory(\'' + esc(docId) + '\',\'' + catKey + '\')">--</span></td>';
                     html += '<td>' + size + '</td>';
                     html += '<td>' + date + '</td>';
                     if (canEdit) {
@@ -1256,9 +1258,20 @@ PROJECT_PAGE_HTML = r"""
                         html += '</td>';
                     }
                     html += '</tr>';
+                    html += '<tr id="revRow-' + esc(docId) + '" style="display:none;"><td colspan="' + (canEdit ? 5 : 4) + '" style="padding:0;">';
+                    html += '<div id="revHistory-' + esc(docId) + '" style="background:var(--tf-gray-50,#F8FAFC);border:1px solid var(--tf-border);border-radius:6px;padding:12px;margin:4px 0 8px;"></div>';
+                    html += '</td></tr>';
                 });
 
                 html += '</tbody></table>';
+            }
+
+            // Load revision badges for all files
+            if (files.length > 0) {
+                files.forEach(function(f) {
+                    var docId = (f.filename || '').replace(/\.[^.]+$/, '');
+                    loadRevBadge(docId, catKey);
+                });
             }
 
             // Archived toggle
@@ -1664,6 +1677,140 @@ PROJECT_PAGE_HTML = r"""
 
         function openQCDashboard() {
             window.location.href = '/qc/' + encodeURIComponent(JOB_CODE);
+        }
+
+        // ── Document Revision Helpers ─────────────────────
+        function loadRevBadge(docId, catKey) {
+            fetch('/api/documents/revisions?job_code=' + encodeURIComponent(JOB_CODE) + '&doc_id=' + encodeURIComponent(docId) + '&doc_type=' + encodeURIComponent(catKey))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var badge = document.getElementById('revBadge-' + docId);
+                if (!badge) return;
+                var revs = data.revisions || [];
+                if (revs.length > 0) {
+                    var latest = revs[0];
+                    var color = latest.status === 'approved' ? 'background:var(--tf-success-bg,#D1FAE5);color:var(--tf-success,#059669);' :
+                                latest.status === 'superseded' ? 'background:#EDE9FE;color:#7C3AED;' :
+                                'background:var(--tf-amber-light,#FEF3C7);color:var(--tf-warning,#D97706);';
+                    badge.style.cssText = 'display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;' + color;
+                    badge.textContent = 'Rev ' + latest.rev;
+                } else {
+                    badge.textContent = '--';
+                }
+            })
+            .catch(function() {});
+        }
+
+        function toggleRevHistory(docId, catKey) {
+            var row = document.getElementById('revRow-' + docId);
+            if (!row) return;
+            if (row.style.display === 'none') {
+                row.style.display = '';
+                loadRevHistory(docId, catKey);
+            } else {
+                row.style.display = 'none';
+            }
+        }
+
+        function loadRevHistory(docId, catKey) {
+            var container = document.getElementById('revHistory-' + docId);
+            if (!container) return;
+            container.innerHTML = '<div style="text-align:center;padding:8px;color:var(--tf-gray-400);font-size:12px;">Loading revision history...</div>';
+            fetch('/api/documents/revisions?job_code=' + encodeURIComponent(JOB_CODE) + '&doc_id=' + encodeURIComponent(docId) + '&doc_type=' + encodeURIComponent(catKey))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var revs = data.revisions || [];
+                var canEdit = (USER_ROLE === 'admin' || USER_ROLE === 'estimator' || USER_ROLE === 'engineer');
+                var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+                h += '<strong style="font-size:13px;color:var(--tf-gray-700);">Revision History</strong>';
+                if (canEdit) {
+                    h += '<button class="tf-btn tf-btn-primary tf-btn-sm" style="font-size:11px;padding:3px 10px;" onclick="showNewRevisionForm(\'' + esc(docId) + '\',\'' + esc(catKey) + '\')">+ New Revision</button>';
+                }
+                h += '</div>';
+                if (revs.length === 0) {
+                    h += '<div style="text-align:center;padding:12px;color:var(--tf-gray-400);font-size:12px;">No revisions recorded yet</div>';
+                } else {
+                    revs.forEach(function(rv) {
+                        var statusColor = rv.status === 'approved' ? 'background:var(--tf-success-bg);color:var(--tf-success);' :
+                                          rv.status === 'superseded' ? 'background:#EDE9FE;color:#7C3AED;' :
+                                          'background:var(--tf-amber-light);color:var(--tf-warning);';
+                        h += '<div style="border:1px solid var(--tf-border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--tf-surface,#fff);">';
+                        h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+                        h += '<span style="font-weight:700;font-size:13px;">Rev ' + esc(rv.rev) + '</span>';
+                        h += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;' + statusColor + '">' + esc(rv.status || 'pending_review').replace('_', ' ') + '</span>';
+                        h += '</div>';
+                        h += '<div style="font-size:12px;color:var(--tf-gray-600);margin-top:4px;">' + esc(rv.change_description || 'No description') + '</div>';
+                        if (rv.markup_notes) h += '<div style="font-size:11px;color:var(--tf-gray-500);margin-top:2px;font-style:italic;">Markup: ' + esc(rv.markup_notes) + '</div>';
+                        h += '<div style="font-size:11px;color:var(--tf-gray-400);margin-top:4px;">By ' + esc(rv.changed_by || 'Unknown') + ' on ' + (rv.created_at ? new Date(rv.created_at).toLocaleDateString() : '-') + '</div>';
+                        if (rv.approved_by) h += '<div style="font-size:11px;color:var(--tf-success);margin-top:2px;">Approved by ' + esc(rv.approved_by) + '</div>';
+                        if (canEdit && rv.status === 'pending_review') {
+                            h += '<div style="margin-top:4px;"><button class="tf-btn tf-btn-primary tf-btn-sm" style="font-size:10px;padding:2px 8px;background:var(--tf-success);" onclick="approveRevision(\'' + esc(docId) + '\',\'' + esc(rv.rev) + '\',\'' + esc(catKey) + '\')">Approve</button></div>';
+                        }
+                        h += '</div>';
+                    });
+                }
+                h += '<div id="newRevForm-' + docId + '" style="display:none;margin-top:8px;border:1px solid var(--tf-border);border-radius:6px;padding:10px;background:var(--tf-surface,#fff);">';
+                h += '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">New Revision</div>';
+                h += '<input type="text" id="revDesc-' + docId + '" placeholder="Change description..." style="width:100%;padding:6px 8px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px;margin-bottom:4px;">';
+                h += '<input type="text" id="revMarkup-' + docId + '" placeholder="Markup notes (optional)..." style="width:100%;padding:6px 8px;border:1px solid var(--tf-border);border-radius:4px;font-size:12px;margin-bottom:6px;">';
+                h += '<button class="tf-btn tf-btn-primary tf-btn-sm" style="font-size:11px;" onclick="saveNewRevision(\'' + esc(docId) + '\',\'' + esc(catKey) + '\')">Save Revision</button>';
+                h += '</div>';
+                container.innerHTML = h;
+            })
+            .catch(function() {
+                container.innerHTML = '<div style="text-align:center;padding:8px;color:var(--tf-danger);font-size:12px;">Error loading revisions</div>';
+            });
+        }
+
+        function showNewRevisionForm(docId, catKey) {
+            var form = document.getElementById('newRevForm-' + docId);
+            if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+        }
+
+        function saveNewRevision(docId, catKey) {
+            var desc = document.getElementById('revDesc-' + docId);
+            var markup = document.getElementById('revMarkup-' + docId);
+            if (!desc || !desc.value.trim()) { alert('Please enter a change description'); return; }
+            fetch('/api/documents/revisions/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    job_code: JOB_CODE,
+                    doc_type: catKey,
+                    doc_id: docId,
+                    change_description: desc.value.trim(),
+                    markup_notes: markup ? markup.value.trim() : ''
+                })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    loadRevHistory(docId, catKey);
+                    loadRevBadge(docId, catKey);
+                } else {
+                    alert(data.error || 'Error saving revision');
+                }
+            })
+            .catch(function(e) { alert('Error: ' + e.message); });
+        }
+
+        function approveRevision(docId, rev, catKey) {
+            if (!confirm('Approve revision ' + rev + '?')) return;
+            fetch('/api/documents/revisions/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_code: JOB_CODE, doc_id: docId, rev: rev })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ok) {
+                    loadRevHistory(docId, catKey);
+                    loadRevBadge(docId, catKey);
+                } else {
+                    alert(data.error || 'Error approving revision');
+                }
+            })
+            .catch(function(e) { alert('Error: ' + e.message); });
         }
 
         function openShopDrawings() {

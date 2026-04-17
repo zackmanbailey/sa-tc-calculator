@@ -650,6 +650,54 @@ def get_inspector_registry_summary(base_dir: str) -> dict:
 
 
 # ═══════════════════════════════════════════════
+# PROCEDURE QUALIFICATION RECORDS (PQR)
+# ═══════════════════════════════════════════════
+
+def _pqr_path(base_dir: str) -> str:
+    return os.path.join(_qa_dir(base_dir), "pqr_library.json")
+
+
+def get_pqr_library(base_dir: str) -> List[dict]:
+    """Get all PQR records."""
+    data = _load(_pqr_path(base_dir))
+    return data.get("pqrs", [])
+
+
+def save_pqr(base_dir: str, record: dict) -> dict:
+    """Add or update a PQR record."""
+    path = _pqr_path(base_dir)
+    data = _load(path)
+    if "pqrs" not in data:
+        data["pqrs"] = []
+
+    pqr_id = record.get("pqr_id", "")
+    existing = [i for i, p in enumerate(data["pqrs"]) if p.get("pqr_id") == pqr_id]
+    if existing:
+        record["updated_at"] = datetime.datetime.now().isoformat()
+        data["pqrs"][existing[0]] = record
+    else:
+        record["pqr_id"] = "PQR-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        record["created_at"] = datetime.datetime.now().isoformat()
+        record["updated_at"] = record["created_at"]
+        data["pqrs"].append(record)
+
+    _save(path, data)
+    return record
+
+
+def delete_pqr(base_dir: str, pqr_id: str) -> bool:
+    """Remove a PQR record."""
+    path = _pqr_path(base_dir)
+    data = _load(path)
+    before = len(data.get("pqrs", []))
+    data["pqrs"] = [p for p in data.get("pqrs", []) if p.get("pqr_id") != pqr_id]
+    if len(data["pqrs"]) < before:
+        _save(path, data)
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════════
 # QA DASHBOARD STATS
 # ═══════════════════════════════════════════════
 
