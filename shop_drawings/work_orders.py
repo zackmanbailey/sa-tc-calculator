@@ -276,6 +276,9 @@ class WorkOrder:
             "building_specs": self.building_specs,
             "qc_pending": sum(1 for i in self.items if i.qc_status == "pending" and i.status == STATUS_COMPLETE),
             "qc_passed": sum(1 for i in self.items if i.qc_status == "passed"),
+            "qc_hold_items": sum(1 for i in self.items if i.status == STATUS_COMPLETE
+                                 and i.qc_status == "pending"
+                                 and (i.component_type or "").lower() in QC_HOLD_COMPONENT_TYPES),
             "loading_ready": sum(1 for i in self.items if i.loading_status == "staged"),
             "loading_loaded": sum(1 for i in self.items if i.loading_status == "loaded"),
         }
@@ -871,6 +874,15 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
     except Exception:
         item.duration_minutes = 0.0
 
+    # ── QC HOLD POINT: Auto-advance to qc_pending for QC inspection gate ──
+    # Columns and rafters (primary structural members) require mandatory QC
+    # before they can be approved for shipping.
+    qc_hold = _needs_qc_hold_point(item)
+    if qc_hold:
+        item.qc_status = "pending"  # Ensure QC status is pending
+        # Note: item.status stays as STATUS_COMPLETE (fabrication complete)
+        # The qc_hold flag signals the UI to show the QC gate
+
     # Check if all items are complete → mark WO complete
     if all(i.status == STATUS_COMPLETE for i in wo.items):
         wo.status = STATUS_COMPLETE
@@ -884,9 +896,55 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
         "work_order_id": wo.work_order_id,
         "duration_minutes": item.duration_minutes,
         "message": (f"Finished {item.ship_mark}: {item.description} "
-                    f"({item.duration_minutes:.1f} min)"),
+                    f"({item.duration_minutes:.1f} min)"
+                    + (" — QC inspection required before shipping" if qc_hold else "")),
         "wo_complete": wo.status == STATUS_COMPLETE,
+        "qc_hold": qc_hold,
         "progress": wo.summary(),
+    }
+
+
+# ─────────────────────────────────────────────
+# QC HOLD POINTS
+# ─────────────────────────────────────────────
+
+# Component types that require mandatory QC inspection before shipping.
+# Per AISC 360 Chapter N / AISC Quality Manual, primary structural members
+# must be inspected and approved before release.
+QC_HOLD_COMPONENT_TYPES = {
+    "column", "rafter", "splice",
+}
+
+def _needs_qc_hold_point(item) -> bool:
+    """Check if a completed item requires a mandatory QC hold point.
+
+    Returns True if the item's component type is in the mandatory QC list.
+    All completed items show up in QC queue, but hold-point items CANNOT
+    be loaded or shipped until QC passes.
+    """
+    ctype = (item.component_type or "").lower()
+    return ctype in QC_HOLD_COMPONENT_TYPES
+
+
+def check_qc_hold_for_loading(item) -> Optional[dict]:
+    """Enforce QC hold point before loading/shipping.
+
+    Returns an error dict if the item requires QC but hasn't been approved,
+    or None if loading can proceed.
+    """
+    if not _needs_qc_hold_point(item):
+        return None  # No hold point required for this component type
+
+    if item.qc_status == "passed":
+        return None  # QC approved, can proceed
+
+    ctype = (item.component_type or "component").title()
+    return {
+        "ok": False,
+        "error": (f"QC HOLD POINT: {ctype} {item.ship_mark} requires QC inspection "
+                  f"before loading/shipping. Current QC status: {item.qc_status}. "
+                  f"Have a QC inspector approve this item first."),
+        "qc_hold": True,
     }
 
 
@@ -924,6 +982,7 @@ def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
         "ok": True,
         "item": item.to_dict(),
         "message": f"QC {qc_status.upper()} for {item.ship_mark} by {inspector}",
+        "qc_hold_released": (qc_status == "passed" and _needs_qc_hold_point(item)),
     }
 
 

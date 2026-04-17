@@ -208,6 +208,7 @@ QC_PAGE_HTML = r"""
         <!-- Tabs -->
         <div class="qc-tabs">
             <button class="qc-tab active" onclick="switchQCTab('inspections')">Inspections <span class="count-badge" id="inspCount">0</span></button>
+            <button class="qc-tab" onclick="switchQCTab('holdpoints')">&#128721; Hold Points <span class="count-badge" id="holdCount" style="background:#FEF3C7;color:#92400E;">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('ncrs')">NCRs <span class="count-badge" id="ncrCount">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('traceability')">Material Traceability</button>
             <button class="qc-tab" onclick="switchQCTab('reports')">&#128196; Inspection Reports <span class="count-badge" id="reportsCount">0</span></button>
@@ -216,6 +217,18 @@ QC_PAGE_HTML = r"""
         <!-- INSPECTIONS TAB -->
         <div class="qc-section active" id="sec-inspections">
             <div id="inspectionsList"></div>
+        </div>
+
+        <!-- QC HOLD POINTS TAB -->
+        <div class="qc-section" id="sec-holdpoints">
+            <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--tf-radius-lg);padding:14px 18px;margin-bottom:var(--tf-sp-4);">
+                <div style="font-weight:700;font-size:14px;color:#92400E;margin-bottom:4px;">&#128721; QC Hold Points — Mandatory Inspection Gates</div>
+                <div style="font-size:12px;color:#78350F;">
+                    These items have completed fabrication but require QC inspection before they can be loaded or shipped.
+                    Per AISC 360 Chapter N, primary structural members (columns, rafters, splices) must pass QC before release.
+                </div>
+            </div>
+            <div id="holdPointsList"></div>
         </div>
 
         <!-- NCRs TAB -->
@@ -526,7 +539,114 @@ async function loadTraceability() {
 function renderAll() {
     renderInspections();
     renderNCRs();
+    loadHoldPoints();
     updateStats();
+}
+
+// QC Hold Points — items that completed fab but need QC before shipping
+const QC_HOLD_TYPES = new Set(['column','rafter','splice']);
+var holdPointItems = [];
+
+async function loadHoldPoints() {
+    try {
+        const r = await fetch('/api/work-orders/list?job_code=' + encodeURIComponent(JOB_CODE));
+        const d = await r.json();
+        holdPointItems = [];
+        const wos = d.work_orders || [];
+        for (const wo of wos) {
+            const woId = wo.work_order_id || wo.wo_id;
+            try {
+                const r2 = await fetch('/api/work-orders/detail?job_code=' + encodeURIComponent(JOB_CODE) + '&wo_id=' + encodeURIComponent(woId));
+                const d2 = await r2.json();
+                if (d2.ok && d2.work_order) {
+                    (d2.work_order.items||[]).forEach(item => {
+                        // Items that completed fab AND need QC hold
+                        if (item.status === 'complete' && item.qc_status !== 'passed') {
+                            const ctype = (item.component_type||'').toLowerCase();
+                            if (QC_HOLD_TYPES.has(ctype)) {
+                                item._wo_id = woId;
+                                holdPointItems.push(item);
+                            }
+                        }
+                    });
+                }
+            } catch(e) {}
+        }
+        renderHoldPoints();
+    } catch(e) { console.error('loadHoldPoints error:', e); }
+}
+
+function renderHoldPoints() {
+    const list = document.getElementById('holdPointsList');
+    document.getElementById('holdCount').textContent = holdPointItems.length;
+    if (!holdPointItems.length) {
+        list.innerHTML = '<div class="empty-state"><div class="icon">&#10003;</div><div>No items awaiting QC hold point release. All structural members are either still in fabrication or have been QC approved.</div></div>';
+        return;
+    }
+    list.innerHTML = holdPointItems.map(item => {
+        const ctype = (item.component_type||'').charAt(0).toUpperCase() + (item.component_type||'').slice(1);
+        const isPending = item.qc_status === 'pending' || !item.qc_status;
+        const isFailed = item.qc_status === 'failed';
+        return `
+        <div style="background:var(--tf-surface);border:1px solid ${isFailed?'var(--tf-danger)':'#F59E0B'};border-left:4px solid ${isFailed?'var(--tf-danger)':'#F59E0B'};border-radius:var(--tf-radius-lg);padding:14px 18px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div>
+                    <div style="font-weight:700;font-size:15px;color:var(--tf-gray-900);">
+                        ${item.ship_mark} — ${ctype}
+                        ${isFailed ? '<span style="color:var(--tf-danger);font-size:12px;margin-left:8px;">&#10060; QC FAILED — requires re-inspection</span>' : ''}
+                    </div>
+                    <div style="font-size:12px;color:var(--tf-gray-500);margin-top:2px;">
+                        ${item.description||''} &middot; Finished ${item.finished_at ? new Date(item.finished_at).toLocaleString() : 'N/A'}
+                        ${item.finished_by ? ' by '+item.finished_by : ''}
+                    </div>
+                </div>
+                <span style="padding:4px 12px;border-radius:10px;font-size:11px;font-weight:700;background:${isFailed?'#FEE2E2;color:#DC2626':'#FEF3C7;color:#92400E'};">
+                    ${isFailed ? 'FAILED' : 'QC HOLD'}
+                </span>
+            </div>
+            ${item.qc_notes ? '<div style="font-size:12px;color:var(--tf-gray-600);margin-top:6px;padding:6px 10px;background:var(--tf-gray-50);border-radius:6px;"><b>QC Notes:</b> '+item.qc_notes+'</div>' : ''}
+            <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+                <input type="text" id="hold-insp-${item.item_id}" placeholder="Inspector name" class="form-input" style="max-width:180px;font-size:13px;padding:6px 10px;">
+                <input type="text" id="hold-notes-${item.item_id}" placeholder="QC notes (optional)" class="form-input" style="max-width:240px;font-size:13px;padding:6px 10px;">
+                <button class="btn btn-primary btn-sm" style="background:var(--tf-success);" onclick="approveHoldPoint('${item.item_id}')">&#10003; Approve</button>
+                <button class="btn btn-outline btn-sm" style="color:var(--tf-danger);border-color:var(--tf-danger);" onclick="rejectHoldPoint('${item.item_id}')">&#10060; Reject / NCR</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function approveHoldPoint(itemId) {
+    const insp = document.getElementById('hold-insp-'+itemId);
+    if (!insp || !insp.value.trim()) { alert('Inspector name is required to approve.'); return; }
+    const notes = document.getElementById('hold-notes-'+itemId);
+    const r = await fetch('/api/qc/item-inspect', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            job_code: JOB_CODE, item_id: itemId,
+            inspector: insp.value.trim(),
+            qc_status: 'passed',
+            qc_notes: (notes ? notes.value.trim() : '') || 'QC hold point approved'
+        })
+    });
+    const d = await r.json();
+    if (d.ok) { loadHoldPoints(); loadQCData(); } else { alert(d.error || 'Error approving item'); }
+}
+
+async function rejectHoldPoint(itemId) {
+    const insp = document.getElementById('hold-insp-'+itemId);
+    if (!insp || !insp.value.trim()) { alert('Inspector name is required.'); return; }
+    const notes = document.getElementById('hold-notes-'+itemId);
+    const r = await fetch('/api/qc/item-inspect', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+            job_code: JOB_CODE, item_id: itemId,
+            inspector: insp.value.trim(),
+            qc_status: 'failed',
+            qc_notes: (notes ? notes.value.trim() : '') || 'QC hold point rejected'
+        })
+    });
+    const d = await r.json();
+    if (d.ok) { loadHoldPoints(); loadQCData(); } else { alert(d.error || 'Error'); }
 }
 
 function updateStats() {

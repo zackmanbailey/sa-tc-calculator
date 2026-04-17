@@ -5648,6 +5648,7 @@ try:
         find_work_order_by_item,
         qr_scan_start, qr_scan_finish, qr_scan_batch,
         qc_inspect_item, update_loading_status,
+        check_qc_hold_for_loading,
         init_fab_checklist, check_fab_step,
         LOADING_FLOW, LOADING_LABELS,
     )
@@ -7483,6 +7484,16 @@ class WorkOrderLoadingHandler(BaseHandler):
             if not job_code or not item_id or not new_status:
                 self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or loading_status"}))
                 return
+
+            # ── QC HOLD POINT: Check if item requires QC approval before loading ──
+            if HAS_SHOP_DRAWINGS:
+                wo, item_obj = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+                if item_obj:
+                    hold_check = check_qc_hold_for_loading(item_obj)
+                    if hold_check is not None:
+                        self.set_header("Content-Type", "application/json")
+                        self.write(json_encode(hold_check))
+                        return
 
             result = update_loading_status(SHOP_DRAWINGS_DIR, job_code, item_id,
                                             new_status, updated_by, truck_number)
@@ -10200,6 +10211,7 @@ def get_routes():
         (r"/api/work-orders/item-edit",          WorkOrderItemEditHandler),
         (r"/api/work-orders/checklist",          WorkOrderChecklistHandler),
         (r"/api/work-orders/qc",                 WorkOrderQCHandler),
+        (r"/api/qc/item-inspect",                WorkOrderQCHandler),  # Alias for hold point UI
         (r"/api/work-orders/qc-photo",           WorkOrderQCPhotoHandler),
         (r"/api/work-orders/qc-photo/file",      WorkOrderQCPhotoServeHandler),
         (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
