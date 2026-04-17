@@ -858,6 +858,20 @@ async function scanItem(itemId, action) {
     return data;
 }
 
+async function pickPurchasedItem(itemId, pickStatus) {
+    const data = await apiCall('/api/work-orders/purchased', 'POST', {
+        job_code: JOB_CODE, item_id: itemId, pick_status: pickStatus
+    });
+    if (data.ok) {
+        showToast(`Item ${pickStatus.replace(/_/g,' ')}`, 'success');
+        if (currentWO) {
+            await loadWODetail(currentWO.work_order_id);
+        }
+    } else {
+        showToast(data.error || 'Pick update failed', 'error');
+    }
+}
+
 async function toggleChecklist(itemId, compType) {
     const rowId = 'checklist-' + itemId.replace(/[^a-zA-Z0-9]/g, '_');
     let existing = document.getElementById(rowId);
@@ -987,6 +1001,8 @@ function renderOverview() {
                 <span>Created: ${new Date(wo.created_at).toLocaleDateString()}</span>
                 <span>Items: <strong>${wo.completed_items}/${wo.total_items}</strong></span>
                 ${wo.total_fab_minutes > 0 ? `<span>Fab Time: <strong>${wo.total_fab_minutes} min</strong></span>` : ''}
+                ${wo.purchased_items > 0 ? `<span>Purchased: <strong>${wo.purchased_picked||0}/${wo.purchased_items}</strong> picked</span>` : ''}
+                ${wo.purchased_cost > 0 ? `<span style="color:var(--tf-gold);">Hardware: <strong>$${wo.purchased_cost.toFixed(2)}</strong></span>` : ''}
             </div>
             <div class="progress-bar-wrap">
                 <div class="progress-bar-fill" style="width:${wo.progress_pct}%"></div>
@@ -1095,8 +1111,13 @@ function renderDetail() {
         <button class="btn-wo" style="background:#dc3545;color:#fff;margin-left:4px;${canDelete?'':'opacity:0.4;pointer-events:none;'}" onclick="deleteWO('${wo.work_order_id}')">&#128465; Delete</button>
     `;
 
-    // Items table
+    // Split items into fabricated vs purchased
+    const fabItems = items.filter(i => (i.item_category || 'fabricated') === 'fabricated');
+    const purchItems = items.filter(i => (i.item_category || 'fabricated') === 'purchased');
+
+    // ── Fabricated Items table ──
     let itemsHtml = `
+    <h4 style="font-size:0.9rem;color:var(--tf-slate);margin-bottom:8px;">Fabricated Items (${fabItems.length})</h4>
     <table class="items-table">
     <thead>
         <tr>
@@ -1114,7 +1135,7 @@ function renderDetail() {
     </thead>
     <tbody>`;
 
-    items.forEach(item => {
+    fabItems.forEach(item => {
         const iStatus = item.status || 'queued';
         const iStatusClass = iStatus.replace(/ /g, '_');
         const canStart = (wo.status === 'stickers_printed' || wo.status === 'in_progress')
@@ -1148,6 +1169,58 @@ function renderDetail() {
         </tr>`;
     });
     itemsHtml += '</tbody></table>';
+
+    // ── Purchased Items table ──
+    if (purchItems.length > 0) {
+        const totalPurchCost = purchItems.reduce((s,i) => s + (i.unit_cost||0) * (i.quantity||0), 0);
+        const pickedCount = purchItems.filter(i => i.pick_status === 'picked' || i.pick_status === 'staged').length;
+        itemsHtml += `
+        <div style="margin-top:20px;">
+        <h4 style="font-size:0.9rem;color:var(--tf-slate);margin-bottom:4px;">
+            Purchased Items (${purchItems.length})
+            <span style="font-size:0.78rem;color:var(--tf-gold);margin-left:12px;">$${totalPurchCost.toFixed(2)} total</span>
+            <span style="font-size:0.78rem;color:#10B981;margin-left:12px;">${pickedCount}/${purchItems.length} picked</span>
+        </h4>
+        <table class="items-table">
+        <thead>
+            <tr>
+                <th>Mark</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>Ext. Cost</th>
+                <th>SKU</th>
+                <th>Pick Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>`;
+        purchItems.forEach(item => {
+            const pickSt = item.pick_status || 'not_picked';
+            const pickColor = pickSt === 'staged' ? 'complete' : (pickSt === 'picked' ? 'in_progress' : 'queued');
+            const extCost = ((item.unit_cost||0) * (item.quantity||0)).toFixed(2);
+            itemsHtml += `
+            <tr>
+                <td><span class="ship-mark">${item.ship_mark}</span></td>
+                <td><span class="component-type-badge" style="background:#1E3A5F;color:#93C5FD;font-size:0.7rem;">${(item.component_type||'').replace(/_/g,' ')}</span></td>
+                <td>${item.description}</td>
+                <td>${item.quantity}</td>
+                <td>$${(item.unit_cost||0).toFixed(2)}</td>
+                <td style="font-weight:600;">$${extCost}</td>
+                <td style="font-family:'SF Mono',monospace;font-size:0.75rem;color:var(--tf-slate);">${item.sku||'—'}</td>
+                <td><span class="status-badge ${pickColor}" style="font-size:0.7rem;">${pickSt.replace(/_/g,' ').toUpperCase()}</span></td>
+                <td class="item-actions">
+                    <button class="btn-item" style="background:#10B981;color:white;${pickSt==='picked'||pickSt==='staged'?'opacity:0.4;pointer-events:none;':''}"
+                        onclick="pickPurchasedItem('${item.item_id}','picked')">Pick</button>
+                    <button class="btn-item" style="background:var(--tf-blue);color:white;${pickSt==='staged'?'opacity:0.4;pointer-events:none;':''}"
+                        onclick="pickPurchasedItem('${item.item_id}','staged')">Stage</button>
+                    ${pickSt !== 'not_picked' ? '<button class="btn-item" style="background:#6B7280;color:white;" onclick="pickPurchasedItem(\\''+item.item_id+'\\',\\'not_picked\\')">Undo</button>' : ''}
+                </td>
+            </tr>`;
+        });
+        itemsHtml += '</tbody></table></div>';
+    }
 
     area.innerHTML = `
         <div class="wo-card-header" style="margin-bottom:16px;">

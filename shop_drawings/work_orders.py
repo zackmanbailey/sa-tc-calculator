@@ -243,15 +243,20 @@ class WorkOrder:
 
     @property
     def total_items(self) -> int:
-        return len(self.items)
+        """Total fabricated items (purchased tracked separately)."""
+        return sum(1 for i in self.items if getattr(i, "item_category", "fabricated") == "fabricated")
 
     @property
     def completed_items(self) -> int:
-        return sum(1 for i in self.items if i.status == STATUS_COMPLETE)
+        return sum(1 for i in self.items
+                   if getattr(i, "item_category", "fabricated") == "fabricated"
+                   and i.status == STATUS_COMPLETE)
 
     @property
     def in_progress_items(self) -> int:
-        return sum(1 for i in self.items if i.status == STATUS_IN_PROGRESS)
+        return sum(1 for i in self.items
+                   if getattr(i, "item_category", "fabricated") == "fabricated"
+                   and i.status == STATUS_IN_PROGRESS)
 
     @property
     def progress_pct(self) -> float:
@@ -261,7 +266,9 @@ class WorkOrder:
 
     @property
     def total_fab_minutes(self) -> float:
-        return sum(i.duration_minutes for i in self.items if i.status == STATUS_COMPLETE)
+        return sum(i.duration_minutes for i in self.items
+                   if getattr(i, "item_category", "fabricated") == "fabricated"
+                   and i.status == STATUS_COMPLETE)
 
     def summary(self) -> dict:
         return {
@@ -290,6 +297,13 @@ class WorkOrder:
                                  and (i.component_type or "").lower() in QC_HOLD_COMPONENT_TYPES),
             "loading_ready": sum(1 for i in self.items if i.loading_status == "staged"),
             "loading_loaded": sum(1 for i in self.items if i.loading_status == "loaded"),
+            # Purchased item stats
+            "purchased_items": sum(1 for i in self.items if getattr(i, "item_category", "fabricated") == "purchased"),
+            "purchased_picked": sum(1 for i in self.items if getattr(i, "item_category", "fabricated") == "purchased"
+                                    and getattr(i, "pick_status", "") in ("picked", "staged")),
+            "purchased_cost": round(sum(getattr(i, "unit_cost", 0) * i.quantity
+                                        for i in self.items
+                                        if getattr(i, "item_category", "fabricated") == "purchased"), 2),
         }
 
 
@@ -404,6 +418,9 @@ def get_shop_floor_summary(base_dir: str) -> dict:
                 wo = WorkOrder.from_dict(data)
                 active_jobs.add(wo.job_code)
                 for item in wo.items:
+                    # Only count fabricated items in shop floor summary
+                    if getattr(item, "item_category", "fabricated") != "fabricated":
+                        continue
                     total_items += 1
                     s = item.status or STATUS_QUEUED
                     status_counts[s] = status_counts.get(s, 0) + 1
@@ -1007,8 +1024,10 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
         # Note: item.status stays as STATUS_COMPLETE (fabrication complete)
         # The qc_hold flag signals the UI to show the QC gate
 
-    # Check if all items are complete → mark WO complete
-    if all(i.status == STATUS_COMPLETE for i in wo.items):
+    # Check if all fabricated items are complete → mark WO complete
+    # (Purchased items are tracked separately via pick_status, not fab status)
+    fab_items = [i for i in wo.items if getattr(i, "item_category", "fabricated") == "fabricated"]
+    if fab_items and all(i.status == STATUS_COMPLETE for i in fab_items):
         wo.status = STATUS_COMPLETE
 
     save_work_order(base_dir, wo)
@@ -1108,6 +1127,60 @@ def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
         "message": f"QC {qc_status.upper()} for {item.ship_mark} by {inspector}",
         "qc_hold_released": (qc_status == "passed" and _needs_qc_hold_point(item)),
     }
+
+
+# ─────────────────────────────────────────────
+# PURCHASED ITEM PICK / STAGE
+# ─────────────────────────────────────────────
+
+def pick_purchased_item(base_dir: str, job_code: str, item_id: str,
+                        picked_by: str, pick_status: str = "picked") -> dict:
+    """Update pick status for a purchased item (picked, staged, not_picked)."""
+    wo, item = find_work_order_by_item(base_dir, job_code, item_id)
+    if wo is None or item is None:
+        return {"ok": False, "error": "Work order item not found"}
+
+    if getattr(item, "item_category", "fabricated") != "purchased":
+        return {"ok": False, "error": "Item is not a purchased item"}
+
+    valid_statuses = ("not_picked", "picked", "staged")
+    if pick_status not in valid_statuses:
+        return {"ok": False, "error": f"Invalid pick_status. Must be one of: {valid_statuses}"}
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    item.pick_status = pick_status
+    if pick_status in ("picked", "staged"):
+        item.picked_by = picked_by
+        item.picked_at = now
+    else:
+        item.picked_by = ""
+        item.picked_at = ""
+
+    save_work_order(base_dir, wo)
+
+    return {
+        "ok": True,
+        "item_id": item.item_id,
+        "pick_status": item.pick_status,
+        "picked_by": item.picked_by,
+        "picked_at": item.picked_at,
+    }
+
+
+def get_purchased_items_for_job(base_dir: str, job_code: str) -> list:
+    """Get all purchased items across all work orders for a job."""
+    work_orders = list_work_orders(base_dir, job_code)
+    purchased = []
+    for wo_summary in work_orders:
+        wo = load_work_order(base_dir, job_code, wo_summary["work_order_id"])
+        if wo is None:
+            continue
+        for item in wo.items:
+            if getattr(item, "item_category", "fabricated") == "purchased":
+                d = item.to_dict()
+                d["work_order_id"] = wo.work_order_id
+                purchased.append(d)
+    return purchased
 
 
 # ─────────────────────────────────────────────

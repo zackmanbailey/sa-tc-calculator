@@ -7758,6 +7758,53 @@ class WorkOrderQCPhotoServeHandler(BaseHandler):
             self.write(f.read())
 
 
+class PurchasedItemsAPIHandler(BaseHandler):
+    """GET /api/work-orders/purchased — List purchased items for a job.
+       POST /api/work-orders/purchased/pick — Update pick status."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+            from shop_drawings.work_orders import get_purchased_items_for_job
+            items = get_purchased_items_for_job(SHOP_DRAWINGS_DIR, job_code)
+            total_cost = round(sum(i.get("unit_cost", 0) * i.get("quantity", 0) for i in items), 2)
+            picked = sum(1 for i in items if i.get("pick_status") in ("picked", "staged"))
+            self.write(json_encode({
+                "ok": True,
+                "items": items,
+                "total_cost": total_cost,
+                "total_items": len(items),
+                "picked_items": picked,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            pick_status = body.get("pick_status", "picked").strip()
+            picked_by = body.get("picked_by", self.get_current_user() or "shop")
+
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            from shop_drawings.work_orders import pick_purchased_item
+            result = pick_purchased_item(SHOP_DRAWINGS_DIR, job_code, item_id,
+                                          picked_by, pick_status)
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class WorkOrderLoadingHandler(BaseHandler):
     """POST /api/work-orders/loading — Update loading/shipping status for an item."""
     required_roles = ["admin", "estimator", "shop"]
@@ -10504,6 +10551,7 @@ def get_routes():
         (r"/api/qc/item-inspect",                WorkOrderQCHandler),  # Alias for hold point UI
         (r"/api/work-orders/qc-photo",           WorkOrderQCPhotoHandler),
         (r"/api/work-orders/qc-photo/file",      WorkOrderQCPhotoServeHandler),
+        (r"/api/work-orders/purchased",          PurchasedItemsAPIHandler),
         (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
         (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),
         (r"/api/work-orders/stickers/zpl",       WorkOrderStickerZPLHandler),
