@@ -896,7 +896,7 @@ class BaseHandler(tornado.web.RequestHandler):
 
         result = inject_nav(html, active_page=active_page, job_code=job_code,
                             user_name=display, user_role=role)
-        self.set_header("Content-Type", "text/html")
+        self.set_header("Content-Type", "text/html; charset=utf-8")
         self.write(result)
 
 
