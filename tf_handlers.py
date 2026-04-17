@@ -4945,8 +4945,20 @@ class NCRCreateHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class NCRUpdateHandler(BaseHandler):
-    """POST /api/qc/ncr/update — Update an NCR (status, corrective action, disposition, etc.)."""
+    """POST /api/qc/ncr/update — Update an NCR (status, corrective action, disposition, etc.).
+
+    Supports full AISC corrective action workflow:
+      open → under_review (root cause) → corrective_action (CA/PA/disposition) → re_inspect → closed
+    """
     required_roles = ["admin", "estimator", "shop"]
+
+    UPDATABLE_FIELDS = [
+        "severity", "status", "title", "description", "root_cause",
+        "corrective_action", "preventive_action", "disposition",
+        "assigned_to", "member_marks", "photos",
+        "verification_inspector", "verification_notes", "verification_result",
+    ]
+
     def post(self):
         try:
             body = json_decode(self.request.body)
@@ -4954,19 +4966,42 @@ class NCRUpdateHandler(BaseHandler):
             ncr_id = body.get("ncr_id", "")
             qc = load_project_qc(job_code)
             found = False
+            now = datetime.datetime.now().isoformat()
+            user = self.get_current_user() or ""
             for i, ncr in enumerate(qc["ncrs"]):
                 if ncr["id"] == ncr_id:
-                    for k in ["severity", "status", "title", "description", "root_cause",
-                               "corrective_action", "preventive_action", "disposition",
-                               "assigned_to", "member_marks", "photos"]:
+                    old_status = ncr.get("status", "open")
+                    # Update allowed fields
+                    for k in self.UPDATABLE_FIELDS:
                         if k in body:
                             qc["ncrs"][i][k] = body[k]
-                    if body.get("status") == "closed":
-                        qc["ncrs"][i]["closed_at"] = datetime.datetime.now().isoformat()
-                    qc["ncrs"][i]["history"].append({
-                        "action": f"updated ({', '.join(k for k in body if k not in ['job_code','ncr_id'])})",
-                        "by": self.get_current_user() or "",
-                        "at": datetime.datetime.now().isoformat(),
+
+                    new_status = body.get("status", old_status)
+
+                    # Auto-set timestamps based on status transitions
+                    if new_status == "closed" and old_status != "closed":
+                        qc["ncrs"][i]["closed_at"] = now
+                    if new_status == "voided" and old_status != "voided":
+                        qc["ncrs"][i]["closed_at"] = now
+
+                    # Build descriptive history action
+                    changed = [k for k in body if k not in ["job_code", "ncr_id"]]
+                    if old_status != new_status:
+                        action = f"status changed: {old_status} → {new_status}"
+                    elif "root_cause" in body:
+                        action = "root cause documented"
+                    elif "corrective_action" in body:
+                        action = "corrective action recorded"
+                    elif "verification_result" in body:
+                        result = body["verification_result"]
+                        action = f"verification completed: {result}"
+                    else:
+                        action = f"updated ({', '.join(changed)})"
+
+                    qc["ncrs"][i].setdefault("history", []).append({
+                        "action": action,
+                        "by": user,
+                        "at": now,
                     })
                     found = True
                     break
@@ -5536,13 +5571,16 @@ class NCRLogPageHandler(BaseHandler):
                 var stc=statColors[n.status]||'#64748B';
                 html+='<div style="background:#111827;border:1px solid #1E293B;border-left:3px solid '+sc+';border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px;">'
                   +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
-                  +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+(n.ncr_id||'—')+' — '+(n.title||'Untitled')+'</div>'
+                  +'<div><div style="font-size:15px;font-weight:700;color:#FFF;">'+(n.id||n.ncr_id||'—')+' — '+(n.title||'Untitled')+'</div>'
                   +'<div style="font-size:12px;color:#94A3B8;margin-top:4px;">Job: '+(n.job_code||'—')+' | Reported: '+(n.created_at||'—').slice(0,10)+'</div></div>'
                   +'<div style="display:flex;gap:6px;">'
                   +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+sc+'22;color:'+sc+';">'+(n.severity||'—').toUpperCase()+'</span>'
                   +'<span style="padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;background:'+stc+'22;color:'+stc+';">'+(n.status||'—').replace('_',' ').toUpperCase()+'</span>'
                   +'</div></div>';
                 if(n.description) html+='<div style="font-size:13px;color:#94A3B8;margin-top:8px;">'+n.description+'</div>';
+                if(n.root_cause) html+='<div style="font-size:12px;color:#FCD34D;margin-top:6px;padding:6px 10px;background:#78350F22;border-radius:6px;"><b>Root Cause:</b> '+n.root_cause+'</div>';
+                if(n.corrective_action) html+='<div style="font-size:12px;color:#93C5FD;margin-top:4px;padding:6px 10px;background:#1E3A5F22;border-radius:6px;"><b>Corrective Action:</b> '+n.corrective_action+'</div>';
+                if(n.disposition) html+='<div style="font-size:12px;color:#6EE7B7;margin-top:4px;padding:6px 10px;background:#064E3B22;border-radius:6px;"><b>Disposition:</b> '+n.disposition.replace('-',' ')+'</div>';
                 html+='</div>';
               });
               document.getElementById('ncrList').innerHTML=html||'<div style="color:#475569;padding:40px;text-align:center;">No NCRs found. That\\'s a good thing!</div>';
@@ -9556,20 +9594,52 @@ class QCDashboardAPIHandler(BaseHandler):
                 t = ri.get("type", "general")
                 inspections_by_type[t] = inspections_by_type.get(t, 0) + 1
 
+            # Aggregate NCR data across all projects
+            open_ncrs = 0
+            critical_ncrs = 0
+            ncrs_by_severity = {"minor": 0, "major": 0, "critical": 0}
+            ncrs_by_status = {}
+            all_ncrs = []
+            qc_dir = os.path.join(DATA_DIR, "qc")
+            if os.path.isdir(qc_dir):
+                for qc_file in os.listdir(qc_dir):
+                    if not qc_file.endswith(".json"):
+                        continue
+                    try:
+                        qc_job = qc_file.replace(".json", "")
+                        qc_data = load_project_qc(qc_job)
+                        for ncr in qc_data.get("ncrs", []):
+                            st = ncr.get("status", "open")
+                            sev = ncr.get("severity", "minor")
+                            ncrs_by_status[st] = ncrs_by_status.get(st, 0) + 1
+                            if sev in ncrs_by_severity:
+                                ncrs_by_severity[sev] += 1
+                            if st not in ("closed", "voided"):
+                                open_ncrs += 1
+                                if sev == "critical":
+                                    critical_ncrs += 1
+                            ncr_copy = dict(ncr)
+                            ncr_copy["job_code"] = qc_job
+                            all_ncrs.append(ncr_copy)
+                    except Exception:
+                        continue
+            # Sort NCRs by creation date, newest first
+            all_ncrs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
             self.write(json_encode({
                 "ok": True,
                 "metrics": {
                     "total_inspections": total_inspections,
                     "passed": passed,
                     "failed": failed,
-                    "open_ncrs": 0,
-                    "critical_ncrs": 0,
+                    "open_ncrs": open_ncrs,
+                    "critical_ncrs": critical_ncrs,
                     "items_awaiting_qc": items_awaiting_qc,
                     "pass_rate": pass_rate,
                     "inspections_by_type": inspections_by_type,
-                    "ncrs_by_severity": {},
-                    "ncrs_by_status": {},
-                    "recent_ncrs": [],
+                    "ncrs_by_severity": ncrs_by_severity,
+                    "ncrs_by_status": ncrs_by_status,
+                    "recent_ncrs": all_ncrs[:20],
                     "inspector_workload": inspector_workload,
                     "recent_inspections": recent_inspections[:20],
                 },
