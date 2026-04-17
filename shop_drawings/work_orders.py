@@ -515,7 +515,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
 # QR SCAN ACTIONS
 # ─────────────────────────────────────────────
 
-def _check_rafter_before_column(wo, item, action: str) -> dict | None:
+def _check_rafter_before_column(wo, item, action: str) -> Optional[dict]:
     """Enforce rule: all rafters must be started/finished BEFORE any column.
 
     Returns an error dict if the rule is violated, or None if OK.
@@ -553,7 +553,7 @@ def _check_rafter_before_column(wo, item, action: str) -> dict | None:
     return None
 
 
-def _check_rebar_inspection_before_finish(wo, item) -> dict | None:
+def _check_rebar_inspection_before_finish(wo, item) -> Optional[dict]:
     """Enforce rule: reinforced members must have rebar inspected (QC passed)
     BEFORE the item can be finished.
 
