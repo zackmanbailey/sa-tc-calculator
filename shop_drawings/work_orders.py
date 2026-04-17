@@ -743,8 +743,10 @@ def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
     if wo is None or item is None:
         return {"ok": False, "error": "Work order item not found"}
 
-    if item.status != STATUS_COMPLETE:
-        return {"ok": False, "error": "Item must be complete before QC inspection"}
+    # Allow QC on in_progress items (e.g., rebar inspection before tack welding)
+    # and on complete items (final QC check)
+    if item.status not in (STATUS_IN_PROGRESS, STATUS_COMPLETE):
+        return {"ok": False, "error": "Item must be in progress or complete before QC inspection"}
 
     if qc_status not in ("passed", "failed"):
         return {"ok": False, "error": "qc_status must be 'passed' or 'failed'"}
