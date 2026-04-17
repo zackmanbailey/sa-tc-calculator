@@ -185,6 +185,7 @@ QC_PAGE_HTML = r"""
             <button class="qc-tab active" onclick="switchQCTab('inspections')">Inspections <span class="count-badge" id="inspCount">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('ncrs')">NCRs <span class="count-badge" id="ncrCount">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('traceability')">Material Traceability</button>
+            <button class="qc-tab" onclick="switchQCTab('reports')">&#128196; Inspection Reports <span class="count-badge" id="reportsCount">0</span></button>
         </div>
 
         <!-- INSPECTIONS TAB -->
@@ -204,6 +205,98 @@ QC_PAGE_HTML = r"""
                 <button class="btn btn-outline btn-sm" onclick="openAssignMember()">+ Assign Member</button>
             </div>
             <div id="traceabilityTable"></div>
+        </div>
+
+        <!-- INSPECTION REPORTS TAB -->
+        <div class="qc-section" id="sec-reports">
+
+            <!-- Report Generator Panel -->
+            <div style="background:var(--tf-surface);border:1px solid var(--tf-border);border-radius:var(--tf-radius-lg);padding:var(--tf-sp-5);margin-bottom:var(--tf-sp-5);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--tf-sp-4);">
+                    <div>
+                        <h3 style="font-size:var(--tf-text-lg);font-weight:700;color:var(--tf-gray-900);margin:0;">AISC Inspection Report Generator</h3>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin:4px 0 0;">Generate printable inspection reports with auto-populated project data. Print, inspect, sign, and file.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-outline btn-sm" onclick="loadInspRequirements()" title="View required inspections for this job">&#128203; View Requirements</button>
+                    </div>
+                </div>
+
+                <!-- Single Report Generator -->
+                <div style="background:var(--tf-gray-50);border:1px solid var(--tf-border);border-radius:var(--tf-radius);padding:var(--tf-sp-4);margin-bottom:var(--tf-sp-3);">
+                    <h4 style="font-size:var(--tf-text-sm);font-weight:700;margin:0 0 12px;">Generate Single Inspection Report</h4>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:var(--tf-sp-3);align-items:end;">
+                        <div>
+                            <label class="form-label" style="font-size:11px;">Ship Mark *</label>
+                            <input type="text" class="form-input" id="rptShipMark" placeholder="C1, B1, PG-A1..." style="font-size:13px;">
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:11px;">Component Type *</label>
+                            <select class="form-input" id="rptCompType" style="font-size:13px;">
+                                <option value="">Select...</option>
+                                <option value="column">Column (Box Beam)</option>
+                                <option value="rafter">Rafter (Box Beam)</option>
+                                <option value="purlin">Purlin (Z/C Section)</option>
+                                <option value="sag_rod">Sag Rod</option>
+                                <option value="strap">Hurricane Strap</option>
+                                <option value="endcap">Endcap U-Channel</option>
+                                <option value="p1clip">P1 Interior Clip</option>
+                                <option value="p2plate">P2 Eave Plate</option>
+                                <option value="splice">Splice Plate</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:11px;">Inspection Stage *</label>
+                            <select class="form-input" id="rptStage" style="font-size:13px;">
+                                <option value="">Select type first...</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="generateSingleReport()" style="white-space:nowrap;">
+                            &#128196; Generate PDF
+                        </button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--tf-sp-3);margin-top:var(--tf-sp-3);">
+                        <div>
+                            <label class="form-label" style="font-size:11px;">Description (optional)</label>
+                            <input type="text" class="form-input" id="rptDesc" placeholder="14x4x10GA Box Beam, 19'-6 3/8&quot;" style="font-size:13px;">
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:11px;">Heat Number (optional — auto-pulls from traceability)</label>
+                            <input type="text" class="form-input" id="rptHeatNum" placeholder="Auto-populated if registered" style="font-size:13px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Full Packet Generator -->
+                <div style="background:linear-gradient(135deg,#0F172A,#1E293B);border-radius:var(--tf-radius);padding:var(--tf-sp-4);color:#fff;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <h4 style="font-size:var(--tf-text-sm);font-weight:700;margin:0;color:#FFF;">&#128230; Full Inspection Packet</h4>
+                            <p style="font-size:11px;color:#94A3B8;margin:4px 0 0;">Generates ALL required inspection reports for a member in one PDF — material receiving, dimensional, weld VT, and final QC release. Print the whole packet and hand it to the inspector.</p>
+                        </div>
+                        <button class="btn btn-sm" style="background:#C89A2E;color:#000;font-weight:700;white-space:nowrap;" onclick="generateFullPacket()">
+                            &#128230; Generate Full Packet
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Requirements Matrix (loaded dynamically) -->
+            <div id="requirementsMatrix" style="display:none;background:var(--tf-surface);border:1px solid var(--tf-border);border-radius:var(--tf-radius-lg);padding:var(--tf-sp-5);margin-bottom:var(--tf-sp-5);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--tf-sp-4);">
+                    <h3 style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin:0;">&#128203; Inspection Requirements Matrix</h3>
+                    <button class="btn btn-outline btn-sm" onclick="document.getElementById('requirementsMatrix').style.display='none'">Close</button>
+                </div>
+                <div id="requirementsContent"></div>
+            </div>
+
+            <!-- Saved Reports List -->
+            <div style="background:var(--tf-surface);border:1px solid var(--tf-border);border-radius:var(--tf-radius-lg);padding:var(--tf-sp-5);">
+                <h3 style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin:0 0 var(--tf-sp-4);">Saved Inspection Reports</h3>
+                <div id="savedReportsList">
+                    <div class="empty-state"><div class="icon">&#128196;</div>No inspection reports generated yet.<br>Use the generator above to create reports.</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -341,7 +434,7 @@ let qcData = null;
 let inspTypes = {};
 let traceData = null;
 
-document.addEventListener('DOMContentLoaded', () => { loadInspTypes(); loadQCData(); loadTraceability(); });
+document.addEventListener('DOMContentLoaded', () => { loadInspTypes(); loadQCData(); loadTraceability(); loadSavedReports(); initReportStageSelector(); });
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); openGlobalSearch(); }
     if (e.key==='Escape') { document.querySelectorAll('.modal-bg.open').forEach(m=>m.classList.remove('open')); _closeGS(); }
@@ -667,6 +760,216 @@ async function assignMember() {
         })
     });
     closeModal('assignModal'); loadTraceability(); loadQCData();
+}
+
+// ═══════════════════════════════════════════════════
+// AISC INSPECTION REPORT GENERATION
+// ═══════════════════════════════════════════════════
+
+const COMP_STAGES = {
+    column:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional / Fit-Up'},{v:'weld_visual',l:'Weld Visual (VT)'},{v:'surface_prep',l:'Surface Prep / Coating'},{v:'final_inspection',l:'Final QC Release'}],
+    rafter:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional / Fit-Up'},{v:'weld_visual',l:'Weld Visual (VT)'},{v:'surface_prep',l:'Surface Prep / Coating'},{v:'final_inspection',l:'Final QC Release'}],
+    purlin:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'},{v:'final_inspection',l:'Final QC Release'}],
+    sag_rod:  [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+    strap:    [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+    endcap:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+    p1clip:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+    p2plate:  [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+    splice:   [{v:'material_receiving',l:'Material Receiving'},{v:'dimensional',l:'Dimensional'}],
+};
+
+function initReportStageSelector() {
+    const compSel = document.getElementById('rptCompType');
+    const stageSel = document.getElementById('rptStage');
+    compSel.addEventListener('change', function() {
+        stageSel.innerHTML = '<option value="">Select stage...</option>';
+        const stages = COMP_STAGES[this.value] || [];
+        stages.forEach(s => {
+            stageSel.innerHTML += '<option value="' + s.v + '">' + s.l + '</option>';
+        });
+    });
+}
+
+async function generateSingleReport() {
+    const shipMark = document.getElementById('rptShipMark').value.trim();
+    const compType = document.getElementById('rptCompType').value;
+    const stage = document.getElementById('rptStage').value;
+    const desc = document.getElementById('rptDesc').value.trim();
+    const heatNum = document.getElementById('rptHeatNum').value.trim();
+
+    if (!shipMark || !compType || !stage) {
+        alert('Please fill in Ship Mark, Component Type, and Inspection Stage.');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/qc/inspection-report/pdf', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_code: JOB_CODE,
+                ship_mark: shipMark,
+                component_type: compType,
+                stage: stage,
+                description: desc,
+                heat_number: heatNum,
+            })
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            alert('Error: ' + (err.error || 'Failed to generate report'));
+            return;
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const cd = resp.headers.get('content-disposition') || '';
+        const fnMatch = cd.match(/filename="?([^"]+)"?/);
+        a.download = fnMatch ? fnMatch[1] : 'inspection_report.pdf';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        loadSavedReports();
+    } catch (e) {
+        alert('Error generating report: ' + e.message);
+    }
+}
+
+async function generateFullPacket() {
+    const shipMark = document.getElementById('rptShipMark').value.trim();
+    const compType = document.getElementById('rptCompType').value;
+    const desc = document.getElementById('rptDesc').value.trim();
+    const heatNum = document.getElementById('rptHeatNum').value.trim();
+
+    if (!shipMark || !compType) {
+        alert('Please fill in Ship Mark and Component Type to generate a full packet.');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/qc/inspection-packet/pdf', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                job_code: JOB_CODE,
+                ship_mark: shipMark,
+                component_type: compType,
+                description: desc,
+                heat_number: heatNum,
+                required_only: true,
+            })
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            alert('Error: ' + (err.error || 'Failed to generate packet'));
+            return;
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const cd = resp.headers.get('content-disposition') || '';
+        const fnMatch = cd.match(/filename="?([^"]+)"?/);
+        a.download = fnMatch ? fnMatch[1] : 'inspection_packet.pdf';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        loadSavedReports();
+    } catch (e) {
+        alert('Error generating packet: ' + e.message);
+    }
+}
+
+async function loadSavedReports() {
+    try {
+        const r = await fetch('/api/qc/inspection-reports?job_code=' + encodeURIComponent(JOB_CODE));
+        const d = await r.json();
+        if (!d.ok) return;
+        const list = document.getElementById('savedReportsList');
+        const badge = document.getElementById('reportsCount');
+        badge.textContent = d.reports.length;
+        if (!d.reports.length) {
+            list.innerHTML = '<div class="empty-state"><div class="icon">&#128196;</div>No inspection reports generated yet.<br>Use the generator above to create reports.</div>';
+            return;
+        }
+        list.innerHTML = d.reports.map(r => {
+            const dt = new Date(r.created_at);
+            const timeStr = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+            const parts = r.filename.replace('.pdf','').split('_');
+            const reportType = parts[0] === 'IR' ? 'Single Report' : 'Full Packet';
+            const mark = parts[1] || '';
+            const stage = parts.length > 2 ? parts[2].replace(/_/g,' ') : '';
+            const icon = parts[0] === 'IP' ? '&#128230;' : '&#128196;';
+            const badgeClass = parts[0] === 'IP' ? 'background:#C89A2E;color:#000;' : 'background:var(--tf-blue-light);color:var(--tf-blue);';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--tf-border);border-radius:var(--tf-radius);margin-bottom:6px;background:var(--tf-surface);transition:all 0.15s;" onmouseover="this.style.boxShadow=\'var(--tf-shadow-md)\'" onmouseout="this.style.boxShadow=\'\'">' +
+                '<div style="display:flex;align-items:center;gap:12px;">' +
+                    '<span style="font-size:1.4rem;">' + icon + '</span>' +
+                    '<div>' +
+                        '<div style="font-weight:600;font-size:var(--tf-text-sm);color:var(--tf-gray-900);">' + mark + ' — ' + stage + '</div>' +
+                        '<div style="font-size:11px;color:var(--tf-gray-500);">' +
+                            '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;margin-right:6px;' + badgeClass + '">' + reportType + '</span>' +
+                            timeStr + ' &middot; ' + r.size_kb + ' KB' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<a href="' + r.url + '" target="_blank" class="btn btn-outline btn-sm" style="font-size:11px;">&#128065; View</a>' +
+                    '<a href="' + r.url + '" download class="btn btn-primary btn-sm" style="font-size:11px;">&#11015; Download</a>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    } catch (e) {
+        console.error('Failed to load saved reports:', e);
+    }
+}
+
+async function loadInspRequirements() {
+    try {
+        const r = await fetch('/api/qc/inspection-requirements?job_code=' + encodeURIComponent(JOB_CODE));
+        const d = await r.json();
+        if (!d.ok) { alert('Could not load requirements'); return; }
+        const container = document.getElementById('requirementsMatrix');
+        const content = document.getElementById('requirementsContent');
+        container.style.display = 'block';
+
+        const summary = d.summary;
+        if (!summary || !summary.summary_table || summary.summary_table.length === 0) {
+            content.innerHTML = '<div class="empty-state"><div class="icon">&#128203;</div>No work order items found for this job.<br>Create a work order first to see required inspections.</div>';
+            return;
+        }
+
+        let html = '<div style="margin-bottom:12px;font-size:var(--tf-text-sm);color:var(--tf-gray-700);">' +
+            '<strong>' + summary.total_inspections + '</strong> total inspections required across all members.</div>';
+
+        html += '<table class="trace-table"><thead><tr>' +
+            '<th>Ship Mark</th><th>Component</th><th>Inspection Stage</th><th>When</th><th>Actions</th><th>Qty</th><th>Generate</th>' +
+            '</tr></thead><tbody>';
+
+        summary.summary_table.forEach(row => {
+            html += '<tr>' +
+                '<td><span class="trace-tag">' + row.ship_mark + '</span></td>' +
+                '<td>' + row.component_label + '</td>' +
+                '<td style="font-weight:600;">' + row.stage_label + '</td>' +
+                '<td style="font-size:11px;color:var(--tf-gray-500);">' + row.when + '</td>' +
+                '<td style="text-align:center;">' + row.action_count + '</td>' +
+                '<td style="text-align:center;">' + row.quantity + '</td>' +
+                '<td><button class="btn btn-outline btn-sm" style="font-size:10px;padding:2px 8px;" onclick="quickGenReport(\'' + row.ship_mark + '\',\'' + row.component_type + '\',\'' + row.stage + '\')">&#128196; PDF</button></td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        content.innerHTML = html;
+    } catch (e) {
+        alert('Error loading requirements: ' + e.message);
+    }
+}
+
+function quickGenReport(mark, compType, stage) {
+    document.getElementById('rptShipMark').value = mark;
+    document.getElementById('rptCompType').value = compType;
+    document.getElementById('rptCompType').dispatchEvent(new Event('change'));
+    setTimeout(() => {
+        document.getElementById('rptStage').value = stage;
+        generateSingleReport();
+    }, 100);
 }
 
 // ── Global Search ──

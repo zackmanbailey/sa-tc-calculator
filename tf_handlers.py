@@ -8841,6 +8841,293 @@ class QCPhotoServeHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 # ─────────────────────────────────────────────
+# AISC INSPECTION REPORT PDF GENERATORS
+# ─────────────────────────────────────────────
+
+class InspectionReportPDFHandler(BaseHandler):
+    """POST /api/qc/inspection-report/pdf — Generate a single inspection report PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            from shop_drawings.inspection_reports import (
+                generate_inspection_report_pdf,
+                normalize_component_type,
+            )
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            ship_mark = body.get("ship_mark", "")
+            component_type = body.get("component_type", "")
+            stage = body.get("stage", "")
+
+            if not all([job_code, ship_mark, component_type, stage]):
+                self.write(json_encode({"ok": False, "error": "job_code, ship_mark, component_type, and stage are required"}))
+                return
+
+            # Load project metadata for auto-population
+            project_name = body.get("project_name", "")
+            customer_name = body.get("customer_name", "")
+            location = body.get("location", "")
+            description = body.get("description", "")
+            heat_number = body.get("heat_number", "")
+            inspector = body.get("inspector", self.get_current_user() or "")
+
+            # Auto-populate from project metadata if not provided
+            if not project_name or not customer_name:
+                meta_path = os.path.join(PROJECTS_DIR, job_code, "metadata.json")
+                if os.path.isfile(meta_path):
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                    if not project_name:
+                        project_name = meta.get("project_name", "")
+                    if not customer_name:
+                        cust = meta.get("customer", {})
+                        customer_name = cust.get("name", "") if isinstance(cust, dict) else str(cust)
+                    if not location:
+                        loc = meta.get("location", {})
+                        if isinstance(loc, dict):
+                            location = ", ".join(filter(None, [loc.get("city", ""), loc.get("state", "")]))
+                        else:
+                            location = str(loc)
+
+            # Auto-populate heat number from traceability if available
+            if not heat_number:
+                qc = load_project_qc(job_code)
+                for t in qc.get("traceability", []):
+                    for m in t.get("members", []):
+                        if m.get("mark", "").upper() == ship_mark.upper():
+                            heat_number = t.get("heat_number", "")
+                            break
+
+            # Check if there's existing inspection data to reference
+            existing_inspection = None
+            if body.get("inspection_id"):
+                qc = load_project_qc(job_code)
+                for insp in qc.get("inspections", []):
+                    if insp["id"] == body["inspection_id"]:
+                        existing_inspection = insp
+                        break
+
+            pdf_bytes = generate_inspection_report_pdf(
+                job_code=job_code,
+                ship_mark=ship_mark,
+                component_type=component_type,
+                stage=stage,
+                inspector=inspector,
+                project_name=project_name,
+                customer_name=customer_name,
+                location=location,
+                description=description,
+                heat_number=heat_number,
+                existing_inspection=existing_inspection,
+            )
+
+            # Save a copy to the project's QC reports folder
+            report_dir = os.path.join(PROJECTS_DIR, job_code, "qc_reports")
+            os.makedirs(report_dir, exist_ok=True)
+            ct = normalize_component_type(component_type)
+            now = datetime.datetime.now()
+            filename = f"IR_{ship_mark}_{stage}_{now.strftime('%Y%m%d_%H%M%S')}.pdf"
+            filepath = os.path.join(report_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(pdf_bytes)
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.write(pdf_bytes)
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
+class InspectionPacketPDFHandler(BaseHandler):
+    """POST /api/qc/inspection-packet/pdf — Generate full inspection packet for a member (all stages)."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            from shop_drawings.inspection_reports import generate_full_inspection_packet, normalize_component_type
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            ship_mark = body.get("ship_mark", "")
+            component_type = body.get("component_type", "")
+
+            if not all([job_code, ship_mark, component_type]):
+                self.write(json_encode({"ok": False, "error": "job_code, ship_mark, and component_type are required"}))
+                return
+
+            # Auto-populate from project metadata
+            project_name = body.get("project_name", "")
+            customer_name = body.get("customer_name", "")
+            location = body.get("location", "")
+            description = body.get("description", "")
+            heat_number = body.get("heat_number", "")
+            inspector = body.get("inspector", self.get_current_user() or "")
+
+            meta_path = os.path.join(PROJECTS_DIR, job_code, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                if not project_name:
+                    project_name = meta.get("project_name", "")
+                if not customer_name:
+                    cust = meta.get("customer", {})
+                    customer_name = cust.get("name", "") if isinstance(cust, dict) else str(cust)
+                if not location:
+                    loc = meta.get("location", {})
+                    if isinstance(loc, dict):
+                        location = ", ".join(filter(None, [loc.get("city", ""), loc.get("state", "")]))
+                    else:
+                        location = str(loc)
+
+            # Auto-populate heat number from traceability
+            if not heat_number:
+                qc = load_project_qc(job_code)
+                for t in qc.get("traceability", []):
+                    for m in t.get("members", []):
+                        if m.get("mark", "").upper() == ship_mark.upper():
+                            heat_number = t.get("heat_number", "")
+                            break
+
+            pdf_bytes = generate_full_inspection_packet(
+                job_code=job_code,
+                ship_mark=ship_mark,
+                component_type=component_type,
+                inspector=inspector,
+                project_name=project_name,
+                customer_name=customer_name,
+                location=location,
+                description=description,
+                heat_number=heat_number,
+                required_only=body.get("required_only", True),
+            )
+
+            # Save to project
+            report_dir = os.path.join(PROJECTS_DIR, job_code, "qc_reports")
+            os.makedirs(report_dir, exist_ok=True)
+            ct = normalize_component_type(component_type)
+            now = datetime.datetime.now()
+            filename = f"IP_{ship_mark}_full_packet_{now.strftime('%Y%m%d_%H%M%S')}.pdf"
+            filepath = os.path.join(report_dir, filename)
+            with open(filepath, "wb") as f:
+                f.write(pdf_bytes)
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.write(pdf_bytes)
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"error": str(e)}))
+
+
+class InspectionRequirementsHandler(BaseHandler):
+    """GET /api/qc/inspection-requirements — Get required inspections for a component type or full job."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.inspection_reports import (
+                get_required_inspections,
+                get_all_component_requirements,
+                generate_job_inspection_summary,
+                STAGE_LABELS,
+            )
+            component_type = self.get_argument("component_type", "")
+            job_code = self.get_argument("job_code", "")
+
+            if component_type:
+                reqs = get_required_inspections(component_type)
+                self.write(json_encode({"ok": True, "requirements": reqs, "stage_labels": STAGE_LABELS}))
+            elif job_code:
+                # Load work order items for this job
+                from shop_drawings.work_orders import load_work_order
+                wo_dir = os.path.join(SHOP_DRAWINGS_DIR, job_code, "work_orders")
+                items = []
+                if os.path.isdir(wo_dir):
+                    for fn in os.listdir(wo_dir):
+                        if fn.endswith(".json"):
+                            wo = load_work_order(os.path.join(wo_dir, fn))
+                            if wo:
+                                items.extend([i.to_dict() for i in wo.items])
+                summary = generate_job_inspection_summary(job_code, items)
+                self.write(json_encode({"ok": True, "summary": summary, "stage_labels": STAGE_LABELS}))
+            else:
+                all_reqs = get_all_component_requirements()
+                self.write(json_encode({"ok": True, "all_requirements": {k: v["label"] for k, v in all_reqs.items()}, "stage_labels": STAGE_LABELS}))
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+
+class InspectionReportsListHandler(BaseHandler):
+    """GET /api/qc/inspection-reports — List saved inspection report PDFs for a job."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            report_dir = os.path.join(PROJECTS_DIR, job_code, "qc_reports")
+            reports = []
+            if os.path.isdir(report_dir):
+                for fn in sorted(os.listdir(report_dir), reverse=True):
+                    if fn.endswith(".pdf"):
+                        fpath = os.path.join(report_dir, fn)
+                        stat = os.stat(fpath)
+                        reports.append({
+                            "filename": fn,
+                            "size_kb": round(stat.st_size / 1024, 1),
+                            "created_at": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "url": f"/qc-reports/{job_code}/{fn}",
+                        })
+            self.write(json_encode({"ok": True, "reports": reports}))
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+
+class InspectionReportServeHandler(BaseHandler):
+    """GET /qc-reports/{job_code}/{filename} — Serve a saved inspection report PDF."""
+
+    def get(self, job_code, filename):
+        try:
+            import mimetypes
+            safe_job = re.sub(r'[^A-Za-z0-9_-]', '_', job_code)
+            safe_fn = os.path.basename(filename)
+            fpath = os.path.join(PROJECTS_DIR, safe_job, "qc_reports", safe_fn)
+            if not os.path.isfile(fpath):
+                self.set_status(404)
+                self.write("Report not found")
+                return
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'inline; filename="{safe_fn}"')
+            with open(fpath, "rb") as f:
+                self.write(f.read())
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write("Error serving report")
+
+
+# ─────────────────────────────────────────────
 # GANTT / SCHEDULING HANDLERS
 # ─────────────────────────────────────────────
 
@@ -9908,6 +10195,13 @@ def get_routes():
         (r"/api/qc/photos",                      QCPhotoListHandler),
         (r"/api/qc/photos/delete",               QCPhotoDeleteHandler),
         (r"/qc-photos/([^/]+)/([^/]+)/([^/]+)",  QCPhotoServeHandler),
+
+        # ── AISC Inspection Report PDFs ───────────────────────
+        (r"/api/qc/inspection-report/pdf",       InspectionReportPDFHandler),
+        (r"/api/qc/inspection-packet/pdf",       InspectionPacketPDFHandler),
+        (r"/api/qc/inspection-requirements",     InspectionRequirementsHandler),
+        (r"/api/qc/inspection-reports",          InspectionReportsListHandler),
+        (r"/qc-reports/([^/]+)/([^/]+)",         InspectionReportServeHandler),
 
         # ── Production Schedule / Gantt ───────────────────────
         (r"/schedule",                           GanttPageHandler),
