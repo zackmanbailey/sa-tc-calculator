@@ -295,11 +295,10 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
                 const d = mu[m];
                 const cls = d.active > 0 ? 'has-active' : '';
                 return `<div class="machine-card ${cls}">
-                    <div class="name">${d.label}</div>
+                    <div class="name">${m}</div>
                     <div class="stat-row"><span>Active</span><span class="v">${d.active}</span></div>
                     <div class="stat-row"><span>Queued</span><span class="v">${d.queued}</span></div>
-                    <div class="stat-row"><span>Completed</span><span class="v">${d.completed}</span></div>
-                    <div class="stat-row"><span>Total Min</span><span class="v">${d.total_minutes}</span></div>
+                    <div class="stat-row"><span>Completed</span><span class="v">${d.done}</span></div>
                 </div>`;
             }).join('');
         }
