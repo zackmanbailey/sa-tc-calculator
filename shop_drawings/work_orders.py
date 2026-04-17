@@ -515,6 +515,86 @@ def create_work_order(job_code: str, revision: str, created_by: str,
 # QR SCAN ACTIONS
 # ─────────────────────────────────────────────
 
+def _check_rafter_before_column(wo, item, action: str) -> dict | None:
+    """Enforce rule: all rafters must be started/finished BEFORE any column.
+
+    Returns an error dict if the rule is violated, or None if OK.
+    """
+    if item.component_type.lower() != "column":
+        return None  # Only columns are gated
+
+    # Check that ALL rafters in this WO are complete (for start) or at least started
+    rafters = [i for i in wo.items if i.component_type.lower() == "rafter"]
+    if not rafters:
+        return None  # No rafters in this WO, no constraint
+
+    if action == "start":
+        # All rafters must be complete before any column can start
+        incomplete = [r for r in rafters if r.status != STATUS_COMPLETE]
+        if incomplete:
+            marks = ", ".join(r.ship_mark for r in incomplete)
+            return {
+                "ok": False,
+                "error": (f"Cannot start column {item.ship_mark} — "
+                          f"all rafters must be completed first. "
+                          f"Incomplete rafters: {marks}"),
+            }
+    elif action == "finish":
+        # Same rule — all rafters must be complete before column can finish
+        incomplete = [r for r in rafters if r.status != STATUS_COMPLETE]
+        if incomplete:
+            marks = ", ".join(r.ship_mark for r in incomplete)
+            return {
+                "ok": False,
+                "error": (f"Cannot finish column {item.ship_mark} — "
+                          f"all rafters must be completed first. "
+                          f"Incomplete rafters: {marks}"),
+            }
+    return None
+
+
+def _check_rebar_inspection_before_finish(wo, item) -> dict | None:
+    """Enforce rule: reinforced members must have rebar inspected (QC passed)
+    BEFORE the item can be finished.
+
+    For reinforced rafters and columns, the rebar inside must be inspected
+    before the two C-purlins are tack welded and stitch welded together.
+    """
+    # Only applies to columns and rafters (reinforced members)
+    ctype = item.component_type.lower()
+    if ctype not in ("column", "rafter"):
+        return None
+
+    # Check if item description or drawing indicates reinforced
+    desc_lower = (item.description + " " + item.notes).lower()
+    is_reinforced = ("reinforced" in desc_lower or "rebar" in desc_lower)
+
+    # Also check drawing_ref for reinforced indicator
+    if not is_reinforced and item.drawing_ref:
+        is_reinforced = "reinforced" in item.drawing_ref.lower()
+
+    # For this project, if rebar quantity > 0 or description mentions rebar, it's reinforced
+    # Default: assume all columns and rafters in a reinforced project are reinforced
+    # Check the WO notes or config for reinforced flag
+    wo_notes = (wo.notes or "").lower()
+    if "reinforced" in wo_notes:
+        is_reinforced = True
+
+    if not is_reinforced:
+        return None  # Non-reinforced member, no inspection gate
+
+    # Reinforced member — require QC inspection passed before finish
+    if item.qc_status != "passed":
+        return {
+            "ok": False,
+            "error": (f"Cannot finish reinforced {ctype} {item.ship_mark} — "
+                      f"rebar inspection required BEFORE tack welding. "
+                      f"Current QC status: {item.qc_status}. "
+                      f"Have a QC inspector verify rebar placement first."),
+        }
+    return None
+
+
 def qr_scan_start(base_dir: str, job_code: str, item_id: str,
                    scanned_by: str) -> dict:
     """Process a QR 'start_job' scan.
@@ -538,6 +618,11 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
     # Must be in approved or stickers_printed state at minimum
     if wo.status not in [STATUS_APPROVED, STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS]:
         return {"ok": False, "error": f"Work order not ready (status: {wo.status})"}
+
+    # ── RULE: Rafters must be completed before columns can start ──
+    rafter_check = _check_rafter_before_column(wo, item, "start")
+    if rafter_check is not None:
+        return rafter_check
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     item.status = STATUS_IN_PROGRESS
@@ -577,6 +662,16 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
     if item.status != STATUS_IN_PROGRESS:
         return {"ok": False, "error": "Item not started yet — scan Start first",
                 "item": item.to_dict()}
+
+    # ── RULE: Rafters must be completed before columns can finish ──
+    rafter_check = _check_rafter_before_column(wo, item, "finish")
+    if rafter_check is not None:
+        return rafter_check
+
+    # ── RULE: Reinforced members need rebar inspection before finish ──
+    rebar_check = _check_rebar_inspection_before_finish(wo, item)
+    if rebar_check is not None:
+        return rebar_check
 
     now = datetime.datetime.now(datetime.timezone.utc)
     item.status = STATUS_COMPLETE
