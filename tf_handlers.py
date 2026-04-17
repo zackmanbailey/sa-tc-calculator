@@ -4153,6 +4153,71 @@ class QuotePDFHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+class TCSaveHandler(BaseHandler):
+    """POST /api/tc/save — Save TC quote data for a project."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            safe_jc = re.sub(r"[^A-Za-z0-9_-]", "_", job_code)
+            tc_dir = os.path.join(DATA_DIR, "tc_quotes")
+            os.makedirs(tc_dir, exist_ok=True)
+            tc_path = os.path.join(tc_dir, f"{safe_jc}.json")
+            # Load existing to track versions
+            version = 1
+            if os.path.isfile(tc_path):
+                try:
+                    with open(tc_path) as f:
+                        old = json.load(f)
+                    version = old.get("version", 0) + 1
+                except Exception:
+                    pass
+            body["version"] = version
+            body["saved_at"] = datetime.datetime.now().isoformat()
+            with open(tc_path, "w") as f:
+                json.dump(body, f, indent=2)
+            try:
+                self._log("saved_tc_quote", "tc_quote", job_code)
+            except Exception:
+                pass
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "version": version}))
+        except Exception as e:
+            logger.error(f"TCSaveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class TCLoadHandler(BaseHandler):
+    """POST /api/tc/load — Load TC quote data for a project."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            safe_jc = re.sub(r"[^A-Za-z0-9_-]", "_", job_code)
+            tc_path = os.path.join(DATA_DIR, "tc_quotes", f"{safe_jc}.json")
+            if not os.path.isfile(tc_path):
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "No saved TC data"}))
+                return
+            with open(tc_path) as f:
+                data = json.load(f)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
+        except Exception as e:
+            logger.error(f"TCLoadHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class QuoteEditorPageHandler(BaseHandler):
     """GET /quote/{job_code} — Quote editor page."""
     def get(self, job_code):
@@ -9218,6 +9283,8 @@ def get_routes():
         (r"/quote/([^/]+)",                  QuoteEditorPageHandler),
         (r"/api/quote/data",                 QuoteDataHandler),
         (r"/api/quote/pdf",                  QuotePDFHandler),
+        (r"/api/tc/save",                    TCSaveHandler),
+        (r"/api/tc/load",                    TCLoadHandler),
 
         # ── AISC QC Module ─────────────────────────────────────
         (r"/qc/([^/]+)",                     QCPageHandler),
