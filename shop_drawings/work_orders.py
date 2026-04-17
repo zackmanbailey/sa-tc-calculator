@@ -798,7 +798,7 @@ def init_fab_checklist(base_dir: str, job_code: str, item_id: str) -> dict:
     if item.fab_checklist:
         return {"ok": True, "message": "Checklist already initialized", "checklist": item.fab_checklist}
 
-    steps = get_steps_for_item(item.component_type, job_code, base_dir)
+    steps = get_steps_for_item(item.to_dict(), base_dir, job_code)
     item.fab_checklist = [
         {
             "step_num": s["step_num"],
