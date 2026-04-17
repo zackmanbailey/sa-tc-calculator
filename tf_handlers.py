@@ -44,6 +44,20 @@ def _sanitize_string(val, max_len=500):
     return val.strip()[:max_len]
 
 
+def _html_escape(val):
+    """Escape HTML special characters to prevent XSS."""
+    if not isinstance(val, str):
+        val = str(val) if val is not None else ""
+    return val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#x27;")
+
+
+def _safe_json_embed(val):
+    """Make json.dumps output safe for embedding in HTML <script> tags."""
+    import json as _json
+    s = _json.dumps(val)
+    return s.replace("</", "<\\/").replace("<!--", "<\\!--")
+
+
 def _validate_job_code(code):
     """Validate a job code format. Returns sanitized code or None."""
     if not code or not isinstance(code, str):
@@ -692,6 +706,11 @@ class BaseHandler(tornado.web.RequestHandler):
     """Base handler that checks authentication and role permissions."""
     required_roles = None  # Override in subclasses. None = no role check.
 
+    def write_json(self, data):
+        """Helper to write JSON response with correct Content-Type."""
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode(data))
+
     def get_current_user(self):
         """Get current authenticated user (username or 'local' in dev mode)."""
         if not AUTH_ENABLED:
@@ -822,7 +841,7 @@ class BaseHandler(tornado.web.RequestHandler):
 # AUTH HANDLERS
 # ─────────────────────────────────────────────
 
-class LoginHandler(tornado.web.RequestHandler):
+class LoginHandler(BaseHandler):
     """POST /auth/login — Authenticate user and set secure cookie."""
     def get(self):
         try:
@@ -837,7 +856,12 @@ class LoginHandler(tornado.web.RequestHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write("<h2>Error</h2><p>Login page failed to load</p>")
+
+    def prepare(self):
+        """Override BaseHandler.prepare() — login page must be accessible without auth."""
+        pass
+
     def post(self):
         try:
             body     = json_decode(self.request.body)
@@ -856,24 +880,25 @@ class LoginHandler(tornado.web.RequestHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "redirect": "/"}))
 
-
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
+            self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e)}))
-class LogoutHandler(tornado.web.RequestHandler):
+
+class LogoutHandler(BaseHandler):
     """GET /auth/logout — Clear session and redirect to login."""
     def get(self):
         try:
+            current_user = self.get_current_user() or "unknown"
             self.clear_cookie("sa_user")
             self._log("logout", "user", current_user)
             self.redirect("/auth/login")
 
-
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
-            self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.clear_cookie("sa_user")
+            self.redirect("/auth/login")
 class AdminPageHandler(BaseHandler):
     """GET /admin — User management page (admin only)."""
     required_roles = ["admin"]
@@ -886,7 +911,7 @@ class AdminPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class UsersListHandler(BaseHandler):
     """GET /auth/users — List all users (admin only)."""
     required_roles = ["admin"]
@@ -1024,14 +1049,14 @@ class DashboardHandler(BaseHandler):
             users_db = load_users()
             role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
             display = users_db.get(user, {}).get("display_name", user) if user != "local" else "Admin"
-            html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", display)
+            html = DASHBOARD_HTML.replace("{{USER_ROLE}}", role).replace("{{USER_NAME}}", _html_escape(display))
             self.render_with_nav(html, active_page="dashboard")
 
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class GettingStartedHandler(BaseHandler):
     """GET /getting-started — Role-based onboarding guide."""
     def get(self):
@@ -1047,7 +1072,7 @@ class GettingStartedHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class HelpBundleHandler(BaseHandler):
     """GET /api/help-bundle — Returns tooltip CSS+JS+glossary for injection into any page."""
     def get(self):
@@ -1062,7 +1087,7 @@ class HelpBundleHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
@@ -1073,7 +1098,7 @@ class SACalcHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class TCQuoteHandler(BaseHandler):
     """GET /tc — Titan Carports Estimator."""
     def get(self):
@@ -1084,7 +1109,7 @@ class TCQuoteHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # CALCULATION & EXPORT HANDLERS
 # ─────────────────────────────────────────────
@@ -1118,7 +1143,7 @@ class CalculateHandler(BaseHandler):
             self.write(json_encode(result))
         except Exception as e:
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ExcelHandler(BaseHandler):
@@ -1135,7 +1160,8 @@ class ExcelHandler(BaseHandler):
             self.write(xlsx_bytes)
         except Exception as e:
             self.set_status(500)
-            self.write(f"Excel error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("Excel generation error. Check server logs.")
 
 
 class PDFHandler(BaseHandler):
@@ -1151,7 +1177,8 @@ class PDFHandler(BaseHandler):
             self.write(pdf_bytes)
         except Exception as e:
             self.set_status(500)
-            self.write(f"PDF error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("PDF generation error. Check server logs.")
 
 
 # ─────────────────────────────────────────────
@@ -1190,7 +1217,7 @@ class LabelsHandler(BaseHandler):
             }))
         except Exception as e:
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class LabelsPDFHandler(BaseHandler):
@@ -1207,7 +1234,8 @@ class LabelsPDFHandler(BaseHandler):
             self.write(pdf_bytes)
         except Exception as e:
             self.set_status(500)
-            self.write(f"Label PDF error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("PDF generation error. Check server logs.")
 
 
 class LabelsCsvHandler(BaseHandler):
@@ -1224,7 +1252,8 @@ class LabelsCsvHandler(BaseHandler):
             self.write(csv_bytes)
         except Exception as e:
             self.set_status(500)
-            self.write(f"Label CSV error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("Label generation error. Check server logs.")
 
 
 # ─────────────────────────────────────────────
@@ -1245,6 +1274,7 @@ class InventoryHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class InventoryUpdateHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """POST /api/inventory/update — Update coil stock."""
     def post(self):
         try:
@@ -1263,8 +1293,11 @@ class InventoryUpdateHandler(BaseHandler):
                 })
                 save_inventory(data)
                 self._log("updated_coil", "coil", coil_id, {"add_lbs": add_lbs})
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": True}))
+                return
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True}))
+            self.write(json_encode({"ok": False, "error": "Coil not found or invalid coil_id"}))
 
 
         except Exception as e:
@@ -1272,6 +1305,7 @@ class InventoryUpdateHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class InventorySaveHandler(BaseHandler):
+    required_roles = ["admin", "estimator"]
     """POST /api/inventory/save — Save full inventory JSON."""
     def post(self):
         try:
@@ -1339,7 +1373,7 @@ class InventoryCertUploadHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class CertFileHandler(BaseHandler):
@@ -1372,6 +1406,7 @@ class CertFileHandler(BaseHandler):
 # ─────────────────────────────────────────────
 
 class CoilDeleteHandler(BaseHandler):
+    required_roles = ["admin"]
     """POST /api/inventory/delete — Delete coil and associated certs."""
     def post(self):
         try:
@@ -1409,7 +1444,7 @@ class CoilDeleteHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class CoilStickerHandler(BaseHandler):
@@ -1487,7 +1522,8 @@ class CoilStickerHandler(BaseHandler):
                 self.write(json_encode({"error": f"Unknown format: {fmt}"}))
         except Exception as e:
             self.set_status(500)
-            self.write(f"Sticker error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("Sticker generation error. Check server logs.")
 
 
 class CoilDetailHandler(BaseHandler):
@@ -1597,7 +1633,7 @@ class CoilDetailHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # INVENTORY V2 API HANDLERS (for new inventory page)
 # ─────────────────────────────────────────────
@@ -2144,7 +2180,7 @@ class InventoryPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class TraceabilityPageHandler(BaseHandler):
     """GET /inventory/traceability — Material Traceability page."""
     required_roles = ["admin", "estimator", "shop"]
@@ -2218,7 +2254,7 @@ class TraceabilityPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # PROJECT HANDLERS (Save, Load, Versions)
 # ─────────────────────────────────────────────
@@ -2336,7 +2372,7 @@ class ProjectSaveHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectLoadHandler(BaseHandler):
@@ -2502,7 +2538,7 @@ class ProjectCompareHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectListHandler(BaseHandler):
@@ -2602,7 +2638,7 @@ class ProjectDocUploadHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectDocListHandler(BaseHandler):
@@ -2643,7 +2679,7 @@ class ProjectDocListHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectDocDeleteHandler(BaseHandler):
@@ -2666,10 +2702,11 @@ class ProjectDocDeleteHandler(BaseHandler):
                 return
 
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            filepath = os.path.join(PROJECTS_DIR, safe_name, "docs", category, filename)
+            safe_file = os.path.basename(filename)  # Strip any directory components
+            filepath = os.path.realpath(os.path.join(PROJECTS_DIR, safe_name, "docs", category, safe_file))
 
-            # Safety: prevent path traversal
-            if not filepath.startswith(os.path.join(PROJECTS_DIR, safe_name)):
+            # Safety: prevent path traversal using realpath
+            if not filepath.startswith(os.path.realpath(os.path.join(PROJECTS_DIR, safe_name))):
                 self.set_status(403)
                 self.write(json_encode({"ok": False, "error": "Path traversal attempt blocked"}))
                 return
@@ -2682,7 +2719,7 @@ class ProjectDocDeleteHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectDocServeHandler(BaseHandler):
@@ -2730,7 +2767,8 @@ class ProjectDocServeHandler(BaseHandler):
                 self.write(f.read())
         except Exception as e:
             self.set_status(500)
-            self.write(f"Error serving file: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("File serving error. Check server logs.")
 
 
 # ─────────────────────────────────────────────
@@ -2774,7 +2812,7 @@ class ProjectStatusHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectAssetsHandler(BaseHandler):
@@ -2869,7 +2907,7 @@ class ProjectAssetsHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 # ─────────────────────────────────────────────
@@ -2892,7 +2930,8 @@ class TCExportPDFHandler(BaseHandler):
                 self.write("TC PDF generation not available (install reportlab: pip install reportlab)")
         except Exception as e:
             self.set_status(500)
-            self.write(f"TC PDF error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("PDF generation error. Check server logs.")
 
 
 class TCExportExcelHandler(BaseHandler):
@@ -2912,7 +2951,8 @@ class TCExportExcelHandler(BaseHandler):
                 self.write("TC Excel not available (install openpyxl: pip install openpyxl)")
         except Exception as e:
             self.set_status(500)
-            self.write(f"TC Excel error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("Excel generation error. Check server logs.")
 
 
 # ─────────────────────────────────────────────
@@ -3083,7 +3123,7 @@ class ProjectCreateHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectDeleteHandler(BaseHandler):
@@ -3172,7 +3212,7 @@ class ProjectDeleteHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectMetadataHandler(BaseHandler):
@@ -3234,7 +3274,7 @@ class ProjectMetadataHandler(BaseHandler):
             self.write(json_encode({"ok": True, "metadata": metadata}))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectChecklistHandler(BaseHandler):
@@ -3281,7 +3321,7 @@ class ProjectChecklistHandler(BaseHandler):
             self.write(json_encode({"ok": True, "checklist": checklist, "completion_pct": pct}))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectNextStepsHandler(BaseHandler):
@@ -3349,10 +3389,10 @@ class ProjectPageHandler(BaseHandler):
                 display = users.get(user, {}).get("display_name", user or "User")
 
             html = PROJECT_PAGE_HTML
-            html = html.replace("{{JOB_CODE}}", job_code)
-            html = html.replace("{{METADATA_JSON}}", json.dumps(metadata))
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{METADATA_JSON}}", _safe_json_embed(metadata))
             html = html.replace("{{USER_ROLE}}", role)
-            html = html.replace("{{USER_NAME}}", display)
+            html = html.replace("{{USER_NAME}}", _html_escape(display))
             html = html.replace("{{STAGES_JSON}}", json.dumps(PROJECT_STAGES))
             html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
             html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
@@ -3363,7 +3403,7 @@ class ProjectPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ProjectToolStatusHandler(BaseHandler):
     """GET /api/project/tool-status?job_code=XXX — Return completion status
     for every toolbox card on the project page.
@@ -3435,7 +3475,7 @@ class ProjectToolStatusHandler(BaseHandler):
                     total_items = 0
                     completed_items = 0
                     for wo_info in wos:
-                        wo_obj = load_work_order(SHOP_DRAWINGS_DIR, wo_info.get("wo_id", ""))
+                        wo_obj = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_info.get("wo_id", ""))
                         if wo_obj:
                             for item in (wo_obj.items if hasattr(wo_obj, 'items') else []):
                                 total_items += 1
@@ -3495,8 +3535,16 @@ class ProjectArchiveDocHandler(BaseHandler):
             filename = body.get("filename", "").strip()
 
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            src = os.path.join(PROJECTS_DIR, safe_name, "docs", category, filename)
-            archive_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", category, "_archive")
+            safe_cat = re.sub(r"[^a-zA-Z0-9_\-]", "_", category)
+            safe_file = os.path.basename(filename)
+            base_dir = os.path.realpath(os.path.join(PROJECTS_DIR, safe_name, "docs"))
+            src = os.path.realpath(os.path.join(base_dir, safe_cat, safe_file))
+            # Prevent path traversal
+            if not src.startswith(base_dir):
+                self.set_status(403)
+                self.write(json_encode({"ok": False, "error": "Access denied"}))
+                return
+            archive_dir = os.path.join(base_dir, safe_cat, "_archive")
             os.makedirs(archive_dir, exist_ok=True)
 
             if not os.path.isfile(src):
@@ -3505,7 +3553,7 @@ class ProjectArchiveDocHandler(BaseHandler):
 
             # Add timestamp to archived filename to prevent overwrites
             ts = int(time.time())
-            base, ext = os.path.splitext(filename)
+            base, ext = os.path.splitext(safe_file)
             archived_name = f"{base}_archived_{ts}{ext}"
             dst = os.path.join(archive_dir, archived_name)
 
@@ -3515,7 +3563,7 @@ class ProjectArchiveDocHandler(BaseHandler):
             self.write(json_encode({"ok": True, "archived_as": archived_name}))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"error": str(e)}))
 
 
 class ProjectArchivedDocsHandler(BaseHandler):
@@ -3527,7 +3575,8 @@ class ProjectArchivedDocsHandler(BaseHandler):
             category = body.get("category", "").lower()
 
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
-            archive_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", category, "_archive")
+            safe_cat = re.sub(r"[^a-zA-Z0-9_\-]", "_", category)
+            archive_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", safe_cat, "_archive")
 
             files = []
             if os.path.isdir(archive_dir):
@@ -3813,26 +3862,36 @@ class CustomerDocListHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
-class CustomerDocServeHandler(tornado.web.RequestHandler):
+class CustomerDocServeHandler(BaseHandler):
     """GET /customer-files/{cid}/{type}/{filename} — Serve customer document."""
     def get(self, cid, dtype, fname):
         try:
-            fpath = os.path.join(DATA_DIR, "customer_docs", cid, dtype, fname)
+            # Sanitize all path components to prevent traversal
+            safe_cid = re.sub(r"[^a-zA-Z0-9_\-]", "_", cid)
+            safe_dtype = re.sub(r"[^a-zA-Z0-9_\-]", "_", dtype)
+            safe_fname = os.path.basename(fname)
+            base_dir = os.path.join(DATA_DIR, "customer_docs")
+            fpath = os.path.realpath(os.path.join(base_dir, safe_cid, safe_dtype, safe_fname))
+            # Ensure resolved path is inside the customer_docs directory
+            if not fpath.startswith(os.path.realpath(base_dir)):
+                self.set_status(403)
+                self.write("Access denied")
+                return
             if not os.path.isfile(fpath):
                 self.set_status(404)
                 self.write("Not found")
                 return
             import mimetypes
-            ct = mimetypes.guess_type(fname)[0] or "application/octet-stream"
+            ct = mimetypes.guess_type(safe_fname)[0] or "application/octet-stream"
             self.set_header("Content-Type", ct)
-            self.set_header("Content-Disposition", f'inline; filename="{fname}"')
+            self.set_header("Content-Disposition", f'inline; filename="{safe_fname}"')
             with open(fpath, "rb") as f:
                 self.write(f.read())
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(json_encode({"error": str(e)}))
+            self.write("Internal server error")
 class CustomerPageHandler(BaseHandler):
     """GET /customers — Customer database page."""
     def get(self):
@@ -3843,7 +3902,7 @@ class CustomerPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # GLOBAL SEARCH HANDLER
 # ─────────────────────────────────────────────
@@ -3963,24 +4022,22 @@ class GlobalSearchHandler(BaseHandler):
             # Search work orders
             if not entity_filter or entity_filter == "work_order":
                 try:
-                    from shop_drawings.work_orders import list_all_work_orders, load_work_order
-                    for wo_id in list_all_work_orders():
-                        wo = load_work_order(wo_id)
-                        if not wo:
-                            continue
+                    from shop_drawings.work_orders import list_all_work_orders
+                    for wo_ref in list_all_work_orders(SHOP_DRAWINGS_DIR):
                         searchable = " ".join([
-                            wo_id,
-                            wo.get("job_code", ""),
-                            wo.get("description", ""),
-                            wo.get("assigned_to", ""),
-                            wo.get("status", ""),
+                            wo_ref.get("work_order_id", ""),
+                            wo_ref.get("job_code", ""),
+                            wo_ref.get("description", ""),
+                            wo_ref.get("assigned_to", ""),
+                            wo_ref.get("status", ""),
                         ]).lower()
                         if q in searchable:
+                            wo_id = wo_ref.get("work_order_id", "")
                             results.append({
                                 "type": "work_order",
                                 "title": f'WO: {wo_id}',
-                                "subtitle": f'{wo.get("job_code","")} — {wo.get("description","")[:60]}',
-                                "status": wo.get("status", ""),
+                                "subtitle": f'{wo_ref.get("job_code","")} — {wo_ref.get("description","")[:60]}',
+                                "status": wo_ref.get("status", ""),
                                 "url": f'/work-orders?id={wo_id}',
                                 "icon": "work_order",
                             })
@@ -4056,22 +4113,26 @@ class QuotePDFHandler(BaseHandler):
     """POST /api/quote/pdf — Generate a professional PDF quote."""
     required_roles = ["admin", "estimator"]
     def post(self):
-        body = json_decode(self.request.body)
-        job_code = body.get("job_code", "")
-        data = body.get("data")
-        if not data:
-            data = load_quote_data(job_code)
-        if not data:
-            self.write(json_encode({"ok": False, "error": "No quote data found"}))
-            return
-
         try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "")
+            data = body.get("data")
+            if not data:
+                data = load_quote_data(job_code)
+            if not data:
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "No quote data found"}))
+                return
+
             pdf_bytes = generate_titan_quote_pdf(data, job_code)
             self.set_header("Content-Type", "application/pdf")
-            fname = f"Quote_{job_code}_{datetime.datetime.now().strftime('%Y%m%d')}.pdf"
+            safe_jc = re.sub(r"[^a-zA-Z0-9_\-]", "_", job_code)
+            fname = f"Quote_{safe_jc}_{datetime.datetime.now().strftime('%Y%m%d')}.pdf"
             self.set_header("Content-Disposition", f'attachment; filename="{fname}"')
             self.write(pdf_bytes)
         except Exception as e:
+            logger.error(f"QuotePDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": False, "error": str(e)}))
 
@@ -4080,16 +4141,16 @@ class QuoteEditorPageHandler(BaseHandler):
     """GET /quote/{job_code} — Quote editor page."""
     def get(self, job_code):
         try:
-            html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", job_code)
+            html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
-            html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
+            html = html.replace("{{USER_NAME}}", _html_escape(self.get_current_user() or ""))
             self.render_with_nav(html, active_page="quote", job_code=job_code)
 
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # QUOTE PDF GENERATION (ReportLab)
 # ─────────────────────────────────────────────
@@ -4578,7 +4639,14 @@ class NCRCreateHandler(BaseHandler):
 
             qc = load_project_qc(job_code)
             now = datetime.datetime.now()
-            ncr_num = len(qc["ncrs"]) + 1
+            # Use max existing NCR number + 1 to prevent collisions after deletions
+            existing_ncr_nums = []
+            for n in qc.get("ncrs", []):
+                try:
+                    existing_ncr_nums.append(int(str(n.get("number", 0))))
+                except (ValueError, TypeError):
+                    pass
+            ncr_num = max(existing_ncr_nums, default=0) + 1
             ncr = {
                 "id": f"NCR-{job_code}-{ncr_num:03d}",
                 "number": ncr_num,
@@ -4800,7 +4868,7 @@ class QAHubHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class QAStatsHandler(BaseHandler):
     """GET /api/qa/stats — Aggregated QA statistics for the hub dashboard."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4902,7 +4970,7 @@ class WPSPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WelderCertsPageHandler(BaseHandler):
     """GET /qa/welder-certs — Welder Certifications page."""
     required_roles = ["admin", "estimator", "shop"]
@@ -4972,7 +5040,7 @@ class WelderCertsPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WelderCertsAPIHandler(BaseHandler):
     """GET/POST /api/qa/welder-certs — CRUD for welder certifications."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5054,7 +5122,7 @@ class ProceduresPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ProceduresAPIHandler(BaseHandler):
     """GET/POST /api/qa/procedures — CRUD for procedures."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5145,7 +5213,7 @@ class CalibrationPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class CalibrationAPIHandler(BaseHandler):
     """GET/POST /api/qa/calibration — CRUD for calibration records."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5221,7 +5289,7 @@ class NCRLogPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class NCRLogAPIHandler(BaseHandler):
     """GET /api/qa/ncr-log — All NCRs across all projects."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5250,9 +5318,9 @@ class NCRLogAPIHandler(BaseHandler):
 class QCPageHandler(BaseHandler):
     """GET /qc/{job_code} — QC Dashboard page for a project."""
     def get(self, job_code):
-        html = QC_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
+        html = QC_PAGE_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
         html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
-        html = html.replace("{{USER_NAME}}", self.get_current_user() or "")
+        html = html.replace("{{USER_NAME}}", _html_escape(self.get_current_user() or ""))
         self.render_with_nav(html, active_page="qc", job_code=job_code)
 
 
@@ -5504,8 +5572,8 @@ class ColumnInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
 
             html = COLUMN_DRAWING_HTML
-            html = html.replace("{{JOB_CODE}}", job_code)
-            html = html.replace("{{COLUMN_CONFIG_JSON}}", json.dumps(config_dict))
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{COLUMN_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
 
@@ -5513,7 +5581,7 @@ class ColumnInteractiveHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class RafterInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/rafter — Interactive Rafter Drawing."""
     def get(self, job_code):
@@ -5536,8 +5604,8 @@ class RafterInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
 
             html = RAFTER_DRAWING_HTML
-            html = html.replace("{{JOB_CODE}}", job_code)
-            html = html.replace("{{RAFTER_CONFIG_JSON}}", json.dumps(config_dict))
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{RAFTER_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except ImportError:
@@ -5561,6 +5629,8 @@ class SaveInteractivePDFHandler(BaseHandler):
     Saves to the main shop drawings pdfs directory so the file appears in the
     Drawings gallery and is included in ZIP downloads.
     """
+    required_roles = ["admin", "estimator", "shop"]
+
     def post(self):
         job_code = self.get_argument("job_code", "")
         drawing_type = self.get_argument("drawing_type", "column")
@@ -5577,7 +5647,11 @@ class SaveInteractivePDFHandler(BaseHandler):
             d = _shop_drawing_project_dir(job_code)
             pdfs_dir = os.path.join(d, "pdfs")
             os.makedirs(pdfs_dir, exist_ok=True)
-            filename = pdf_file.get("filename", f"{job_code}_{drawing_type}.pdf")
+            # Sanitize filename to prevent path traversal
+            raw_name = pdf_file.get("filename", f"{job_code}_{drawing_type}.pdf")
+            filename = os.path.basename(re.sub(r"[^a-zA-Z0-9_.\-]", "_", raw_name))
+            if not filename:
+                filename = f"{job_code}_{drawing_type}.pdf"
             out_path = os.path.join(pdfs_dir, filename)
             with open(out_path, "wb") as f:
                 f.write(pdf_file["body"])
@@ -5598,6 +5672,7 @@ class SaveInteractivePDFHandler(BaseHandler):
 
 
 class DeleteShopDrawingPDFHandler(BaseHandler):
+    required_roles = ["admin", "estimator"]
     """POST /api/shop-drawings/delete-pdf — Delete a single shop drawing PDF."""
     def post(self):
         job_code = self.get_argument("job_code", "")
@@ -5644,17 +5719,18 @@ class ShopDrawingsPageHandler(BaseHandler):
                 display = users_db.get(user, {}).get("display_name", user or "User")
 
             html = SHOP_DRAWINGS_HTML
-            html = html.replace("{{JOB_CODE}}", job_code)
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{USER_ROLE}}", role)
-            html = html.replace("{{USER_NAME}}", display)
+            html = html.replace("{{USER_NAME}}", _html_escape(display))
             self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
 
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ShopDrawingsConfigHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """
     GET  /api/shop-drawings/config?job_code=XXX  — Load config + drawings + revisions
     POST /api/shop-drawings/config               — Save config
@@ -5743,7 +5819,7 @@ class ShopDrawingsConfigHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
-                                    "trace": traceback.format_exc()}))
+                                    }))
 
     def post(self):
         try:
@@ -5765,6 +5841,7 @@ class ShopDrawingsConfigHandler(BaseHandler):
 
 
 class ShopDrawingsSyncBOMHandler(BaseHandler):
+    required_roles = ["admin", "estimator"]
     """POST /api/shop-drawings/sync-bom — Re-derive config from BOM and save.
 
     Body options:
@@ -5842,6 +5919,7 @@ _FIELD_LABELS = {
 
 
 class ShopDrawingsDiffHandler(BaseHandler):
+    required_roles = ["admin", "estimator"]
     """POST /api/shop-drawings/diff — Compare current config vs fresh BOM-derived config.
 
     Returns per-field diffs with labels, current values, and BOM values.
@@ -5910,7 +5988,7 @@ class ShopDrawingsDiffHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
-                                    "trace": traceback.format_exc()}))
+                                    }))
 
 
 class ShopDrawingsGenerateHandler(BaseHandler):
@@ -6061,11 +6139,12 @@ class ShopDrawingsGenerateHandler(BaseHandler):
             self.write(json_encode({
                 "ok": False,
                 "error": str(e),
-                "trace": traceback.format_exc()
+                
             }))
 
 
 class ShopDrawingsFileHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """GET /api/shop-drawings/file?job_code=XXX&filename=YYY — Serve a single PDF."""
     def get(self):
         try:
@@ -6104,6 +6183,7 @@ class ShopDrawingsFileHandler(BaseHandler):
 
 
 class ShopDrawingsZipHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """GET /api/shop-drawings/zip?job_code=XXX — Download all PDFs as a ZIP."""
     def get(self):
         import zipfile, io
@@ -6157,14 +6237,14 @@ class WorkOrderPageHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.work_orders import WORK_ORDERS_HTML
-            html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", job_code)
+            html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
             self.render_with_nav(html, active_page="workorders", job_code=job_code)
 
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WorkOrderCreateHandler(BaseHandler):
     """POST /api/work-orders/create — Create a new work order from shop drawings."""
     required_roles = ["admin", "estimator"]
@@ -6275,7 +6355,7 @@ class WorkOrderCreateHandler(BaseHandler):
             }))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class WorkOrderListHandler(BaseHandler):
@@ -6480,7 +6560,7 @@ class WorkOrderQRScanHandler(BaseHandler):
             self.write(json_encode(result))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class WorkOrderItemNotesHandler(BaseHandler):
@@ -6560,7 +6640,7 @@ class WorkOrderEditHandler(BaseHandler):
             }))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class WorkOrderDeleteHandler(BaseHandler):
@@ -6676,7 +6756,7 @@ class WorkOrderQCHandler(BaseHandler):
             self.write(json_encode(result))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class WorkOrderLoadingHandler(BaseHandler):
@@ -6710,7 +6790,7 @@ class WorkOrderLoadingHandler(BaseHandler):
             self.write(json_encode(result))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class WorkOrderMobileScanPageHandler(BaseHandler):
@@ -6724,7 +6804,7 @@ class WorkOrderMobileScanPageHandler(BaseHandler):
             from templates.wo_mobile_scan import WO_MOBILE_SCAN_HTML
             user = self.get_current_user() or "shop"
             html = (WO_MOBILE_SCAN_HTML
-                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{JOB_CODE}}", _html_escape(job_code))
                     .replace("{{ITEM_ID}}", item_id)
                     .replace("{{USER_NAME}}", user))
             self.set_header("Content-Type", "text/html")
@@ -6734,7 +6814,7 @@ class WorkOrderMobileScanPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WorkOrderStickerPDFHandler(BaseHandler):
     """GET /api/work-orders/stickers/pdf?job_code=X&wo_id=Y — Generate sticker PDF."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7137,7 +7217,7 @@ class TVDashboardPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class GamificationLeaderboardHandler(BaseHandler):
     """GET /api/gamification/leaderboard — Worker leaderboard."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7225,7 +7305,7 @@ class SmartQueueHandler(BaseHandler):
             self.write(json_encode({"ok": True, "items": prioritized, "total": len(prioritized)}))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class AlertsHandler(BaseHandler):
@@ -7292,7 +7372,7 @@ class ShopFloorPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ShopFloorDataHandler(BaseHandler):
     """GET /api/shop-floor/data — Aggregated shop floor metrics."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7412,7 +7492,7 @@ class ShopFloorDataHandler(BaseHandler):
             }))
         except Exception as e:
             self.set_status(500)
-            self.write(json_encode({"ok": False, "error": str(e), "trace": traceback.format_exc()}))
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 # ─────────────────────────────────────────────
@@ -7428,7 +7508,7 @@ class WorkStationPageHandler(BaseHandler):
             from templates.work_station import WORK_STATION_HTML
             user = self.get_current_user() or "local"
             html = (WORK_STATION_HTML
-                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{JOB_CODE}}", _html_escape(job_code))
                     .replace("{{USER_NAME}}", user))
             self.render_with_nav(html, active_page="workstation", job_code=job_code)
 
@@ -7436,7 +7516,7 @@ class WorkStationPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WorkStationDataHandler(BaseHandler):
     """GET /api/work-station/data — Items + machine info for a job's work station."""
     required_roles = ["admin", "estimator", "shop"]
@@ -7505,7 +7585,7 @@ class WorkStationDataHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
-                                    "trace": traceback.format_exc()}))
+                                    }))
 
 
 class WorkStationStepsHandler(BaseHandler):
@@ -7540,7 +7620,7 @@ class WorkStationStepsHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e),
-                                    "trace": traceback.format_exc()}))
+                                    }))
 
 
 class WorkStationStepOverrideHandler(BaseHandler):
@@ -7577,7 +7657,7 @@ class QRScannerPageHandler(BaseHandler):
             from templates.qr_scanner import QR_SCANNER_HTML
             user = self.get_current_user() or "shop"
             html = (QR_SCANNER_HTML
-                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{JOB_CODE}}", _html_escape(job_code))
                     .replace("{{USER_NAME}}", user))
             self.set_header("Content-Type", "text/html")
             self.write(html)
@@ -7586,7 +7666,7 @@ class QRScannerPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WorkOrderItemDetailHandler(BaseHandler):
     """GET /api/work-orders/item-detail — Look up a single item by item_id.
     Returns full item dict AND full work order dict (including all sibling items)
@@ -7658,7 +7738,8 @@ class WorkOrderPacketPDFHandler(BaseHandler):
             self.write(pdf_bytes)
         except Exception as e:
             self.set_status(500)
-            self.write(f"Error: {e}\n{traceback.format_exc()}")
+            logger.error("Error: %s", e, exc_info=True)
+            self.write("An error occurred. Check server logs.")
 
 
 # ─────────────────────────────────────────────
@@ -7693,8 +7774,9 @@ class LoadBuilderPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class LoadBuilderListHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """GET /api/load-builder/loads — List active loads."""
     def get(self):
         try:
@@ -7707,6 +7789,7 @@ class LoadBuilderListHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class LoadBuilderCreateHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """POST /api/load-builder/create — Create a new load."""
     def post(self):
         try:
@@ -7718,7 +7801,15 @@ class LoadBuilderCreateHandler(BaseHandler):
 
             data = _load_builder_data()
             loads = data.get("loads", [])
-            load_id = f"LOAD-{len(loads)+1:04d}"
+            # Use max existing ID + 1 to prevent collisions after deletions
+            existing_nums = []
+            for ld in loads:
+                try:
+                    existing_nums.append(int(ld.get("load_id", "LOAD-0000").split("-")[1]))
+                except (ValueError, IndexError):
+                    pass
+            next_num = max(existing_nums, default=0) + 1
+            load_id = f"LOAD-{next_num:04d}"
             new_load = {
                 "load_id": load_id,
                 "job_code": job_code,
@@ -7741,6 +7832,7 @@ class LoadBuilderCreateHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class LoadBuilderAddItemHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """POST /api/load-builder/add-item — Add item to a load."""
     def post(self):
         try:
@@ -7767,6 +7859,7 @@ class LoadBuilderAddItemHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class LoadBuilderRemoveItemHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """POST /api/load-builder/remove-item — Remove item from a load."""
     def post(self):
         try:
@@ -7788,6 +7881,7 @@ class LoadBuilderRemoveItemHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class LoadBuilderFinalizeHandler(BaseHandler):
+    required_roles = ["admin", "estimator", "shop"]
     """POST /api/load-builder/finalize — Finalize a load."""
     def post(self):
         try:
@@ -7808,6 +7902,7 @@ class LoadBuilderFinalizeHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
 class LoadBuilderDeleteHandler(BaseHandler):
+    required_roles = ["admin"]
     """DELETE/POST /api/load-builder/delete — Delete a load."""
     def post(self):
         try:
@@ -7834,14 +7929,14 @@ class ShippingPageHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.shipping_page import SHIPPING_PAGE_HTML
-            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", job_code)
+            html = SHIPPING_PAGE_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
             self.render_with_nav(html, active_page="shipping")
 
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ShippingPackingListHandler(BaseHandler):
     """POST /api/shipping/packing-list — Generate a packing list."""
     required_roles = ["admin", "estimator", "shop"]
@@ -8127,7 +8222,7 @@ class GanttPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class GanttDataHandler(BaseHandler):
     """GET /api/gantt/data — Gantt chart data for all active jobs."""
     required_roles = ["admin", "estimator", "shop"]
@@ -8142,14 +8237,15 @@ class GanttDataHandler(BaseHandler):
             # Return valid JSON with today's date so the UI renders even if data fails
             today_str = datetime.datetime.now().strftime("%Y-%m-%d")
             self.set_header("Content-Type", "application/json")
+            logger.error(f"GanttDataHandler error: {e}", exc_info=True)
             self.write(json_encode({
-                "ok": True,
+                "ok": False,
                 "data": {
                     "today": today_str,
                     "jobs": [],
                     "machine_schedule": {},
                 },
-                "warning": f"Schedule data partially loaded: {str(e)}",
+                "error": "Schedule data could not be loaded",
             }))
 
 
@@ -8187,7 +8283,7 @@ class QCDashboardPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ShippingHubPageHandler(BaseHandler):
     """GET /shipping — Global shipping hub (no specific project)."""
     required_roles = ["admin", "estimator", "shop"]
@@ -8202,7 +8298,7 @@ class ShippingHubPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class FieldOpsPageHandler(BaseHandler):
     """GET /field-ops — Field operations dashboard."""
     required_roles = ["admin", "estimator", "shop"]
@@ -8216,7 +8312,7 @@ class FieldOpsPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class DocumentManagementPageHandler(BaseHandler):
     """GET /documents — Document management dashboard."""
     required_roles = ["admin", "estimator"]
@@ -8230,7 +8326,7 @@ class DocumentManagementPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class JobCostingPageHandler(BaseHandler):
     """GET /job-costing — Job costing & financial tracking."""
     required_roles = ["admin", "estimator"]
@@ -8244,7 +8340,7 @@ class JobCostingPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ReportsPageHandler(BaseHandler):
     """GET /reports — Production metrics & reports dashboard."""
     required_roles = ["admin", "estimator"]
@@ -8258,7 +8354,7 @@ class ReportsPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class WorkOrdersGlobalPageHandler(BaseHandler):
     """GET /work-orders — Global work orders list (all projects)."""
     required_roles = ["admin", "estimator", "shop"]
@@ -8272,7 +8368,7 @@ class WorkOrdersGlobalPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class ActivityFeedPageHandler(BaseHandler):
     """GET /activity — Activity feed."""
     def get(self):
@@ -8284,7 +8380,7 @@ class ActivityFeedPageHandler(BaseHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 
 class ActivityFeedAPIHandler(BaseHandler):
     """GET /api/activity — Returns paginated activity log entries."""
@@ -8490,62 +8586,73 @@ class JobCostingAPIHandler(BaseHandler):
 class ReportsAPIHandler(BaseHandler):
     """GET /api/reports/production — Production reports from real work order data."""
     def get(self):
-        self.set_header("Content-Type", "application/json")
-        days_back = int(self.get_query_argument("days_back", "30"))
-        cutoff = (datetime.datetime.now() - datetime.timedelta(days=days_back)).isoformat()
-
         try:
-            from shop_drawings.work_orders import list_all_work_orders, load_work_order
-        except ImportError:
-            self.write(json_encode({"ok": True, "message": "Work orders module not available",
-                                    "total_items_produced": 0, "by_component": {}, "by_machine": {}}))
-            return
-
-        total_items = 0
-        completed_items = 0
-        by_component = {}
-        by_machine = {}
-        by_project = {}
-
-        all_wos = list_all_work_orders()
-        for wo_ref in all_wos:
+            self.set_header("Content-Type", "application/json")
             try:
-                wo = load_work_order(wo_ref["job_code"], wo_ref["work_order_id"])
-                if not wo:
-                    continue
-                jc = wo.get("job_code", "unknown")
-                for item in wo.get("items", []):
-                    total_items += 1
-                    comp = item.get("component_type", "other")
-                    machine = item.get("machine", "unknown")
-                    status = item.get("status", "queued")
+                days_back = int(self.get_query_argument("days_back", "30"))
+            except (ValueError, TypeError):
+                days_back = 30
 
-                    by_component.setdefault(comp, {"total": 0, "complete": 0})
-                    by_component[comp]["total"] += 1
-                    by_machine.setdefault(machine, {"total": 0, "complete": 0})
-                    by_machine[machine]["total"] += 1
-                    by_project.setdefault(jc, {"total": 0, "complete": 0, "status": wo.get("status", "")})
-                    by_project[jc]["total"] += 1
+            try:
+                from shop_drawings.work_orders import list_all_work_orders, load_work_order
+            except ImportError:
+                self.write(json_encode({"ok": True, "message": "Work orders module not available",
+                                        "total_items_produced": 0, "by_component": {}, "by_machine": {}}))
+                return
 
-                    if status == "complete":
-                        completed_items += 1
-                        by_component[comp]["complete"] += 1
-                        by_machine[machine]["complete"] += 1
-                        by_project[jc]["complete"] += 1
+            total_items = 0
+            completed_items = 0
+            by_component = {}
+            by_machine = {}
+            by_project = {}
+
+            try:
+                all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
             except Exception:
-                continue
+                all_wos = []
+            for wo_ref in all_wos:
+                try:
+                    wo = load_work_order(SHOP_DRAWINGS_DIR, wo_ref.get("job_code", ""), wo_ref.get("work_order_id", ""))
+                    if not wo:
+                        continue
+                    jc = getattr(wo, "job_code", "unknown")
+                    wo_items = getattr(wo, "items", [])
+                    for item in wo_items:
+                        total_items += 1
+                        comp = getattr(item, "component_type", "other") if hasattr(item, "component_type") else item.get("component_type", "other") if isinstance(item, dict) else "other"
+                        machine = getattr(item, "machine", "unknown") if hasattr(item, "machine") else item.get("machine", "unknown") if isinstance(item, dict) else "unknown"
+                        status = getattr(item, "status", "queued") if hasattr(item, "status") else item.get("status", "queued") if isinstance(item, dict) else "queued"
 
-        efficiency = round((completed_items / total_items * 100), 1) if total_items else 0
-        self.write(json_encode({
-            "ok": True,
-            "period_days": days_back,
-            "total_items": total_items,
-            "total_items_produced": completed_items,
-            "efficiency": efficiency,
-            "by_component": by_component,
-            "by_machine": by_machine,
-            "by_project": by_project,
-        }))
+                        by_component.setdefault(comp, {"total": 0, "complete": 0})
+                        by_component[comp]["total"] += 1
+                        by_machine.setdefault(machine, {"total": 0, "complete": 0})
+                        by_machine[machine]["total"] += 1
+                        by_project.setdefault(jc, {"total": 0, "complete": 0, "status": getattr(wo, "status", "")})
+                        by_project[jc]["total"] += 1
+
+                        if status == "complete":
+                            completed_items += 1
+                            by_component[comp]["complete"] += 1
+                            by_machine[machine]["complete"] += 1
+                            by_project[jc]["complete"] += 1
+                except Exception:
+                    continue
+
+            efficiency = round((completed_items / total_items * 100), 1) if total_items else 0
+            self.write(json_encode({
+                "ok": True,
+                "period_days": days_back,
+                "total_items": total_items,
+                "total_items_produced": completed_items,
+                "efficiency": efficiency,
+                "by_component": by_component,
+                "by_machine": by_machine,
+                "by_project": by_project,
+            }))
+        except Exception as e:
+            logger.error(f"ReportsAPIHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class ReportsExportCSVHandler(BaseHandler):
@@ -8620,22 +8727,24 @@ class ReportsExportCSVHandler(BaseHandler):
             from shop_drawings.work_orders import list_all_work_orders, load_work_order
         except ImportError:
             return rows
-        for wo_ref in list_all_work_orders():
+        for wo_ref in list_all_work_orders(SHOP_DRAWINGS_DIR):
             try:
-                wo = load_work_order(wo_ref["job_code"], wo_ref["work_order_id"])
+                wo = load_work_order(SHOP_DRAWINGS_DIR, wo_ref.get("job_code", ""), wo_ref.get("work_order_id", ""))
                 if not wo:
                     continue
-                for item in wo.get("items", []):
+                jc = getattr(wo, "job_code", "")
+                wo_id = getattr(wo, "work_order_id", "")
+                for item in getattr(wo, "items", []):
                     rows.append([
-                        wo.get("job_code", ""),
-                        wo.get("work_order_id", ""),
-                        item.get("ship_mark", ""),
-                        item.get("component_type", ""),
-                        item.get("machine", ""),
-                        item.get("status", ""),
-                        item.get("started_by", ""),
-                        item.get("finished_by", ""),
-                        item.get("duration_minutes", ""),
+                        jc,
+                        wo_id,
+                        getattr(item, "ship_mark", "") if hasattr(item, "ship_mark") else "",
+                        getattr(item, "component_type", "") if hasattr(item, "component_type") else "",
+                        getattr(item, "machine", "") if hasattr(item, "machine") else "",
+                        getattr(item, "status", "") if hasattr(item, "status") else "",
+                        getattr(item, "started_by", "") if hasattr(item, "started_by") else "",
+                        getattr(item, "finished_by", "") if hasattr(item, "finished_by") else "",
+                        getattr(item, "duration_minutes", "") if hasattr(item, "duration_minutes") else "",
                     ])
             except Exception:
                 continue
@@ -8735,7 +8844,7 @@ class PWAServiceWorkerHandler(tornado.web.RequestHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 class PWAOfflineHandler(tornado.web.RequestHandler):
     """GET /offline — Offline fallback page."""
     def get(self):
@@ -8749,7 +8858,7 @@ class PWAOfflineHandler(tornado.web.RequestHandler):
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
-            self.write(f"<h2>Error</h2><p>{e}</p>")
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 # ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
