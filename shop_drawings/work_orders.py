@@ -155,6 +155,15 @@ class WorkOrderItem:
     truck_number: str = ""         # Truck/trailer ID
     # ── Fabrication Step Checklist ──
     fab_checklist: list = field(default_factory=list)  # [{step_num, title, checked, checked_by, checked_at}]
+    # ── Item Category (fabricated vs purchased) ──
+    item_category: str = "fabricated"   # "fabricated" or "purchased"
+    # ── Purchased Item Tracking ──
+    pick_status: str = ""               # "not_picked", "picked", "staged" (purchased items only)
+    picked_by: str = ""
+    picked_at: str = ""
+    unit_cost: float = 0.0              # Per-unit cost for purchased items
+    supplier: str = ""                  # Supplier/vendor name
+    sku: str = ""                       # Supplier part number / SKU
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -657,6 +666,121 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         machine="SPARTAN",
         drawing_ref=f"/shop-drawings/{job_code}",
     ))
+
+    # ═══════════════════════════════════════════════
+    # PURCHASED ITEMS (hardware, fasteners, accessories)
+    # ═══════════════════════════════════════════════
+
+    # ── Cap Plates: 2 per column (top + rafter connection) ──
+    n_cap_plates = n_columns * 2
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-CAP",
+        ship_mark="CAP",
+        component_type="cap_plate",
+        description=f'Cap Plates — 3/4"x26"x14" A572 Gr 50, {n_cap_plates} pcs',
+        quantity=n_cap_plates,
+        machine="N/A",
+        item_category="purchased",
+        pick_status="not_picked",
+        unit_cost=95.00,
+        sku="CP-26x14-0750",
+    ))
+
+    # ── Gusset Triangles: 4 per column (2 sizes based on slope) ──
+    n_gussets = n_columns * 4
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-GUS",
+        ship_mark="GUS",
+        component_type="gusset",
+        description=f'Gusset Triangles — 6"x6"x3/8" A572, {n_gussets} pcs',
+        quantity=n_gussets,
+        machine="N/A",
+        item_category="purchased",
+        pick_status="not_picked",
+        unit_cost=13.00,
+        sku="GT-6x6-0375",
+    ))
+
+    # ── Bolt Assemblies: 4 per column connection (bolt + nut + washers) ──
+    n_bolts = n_columns * 4
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-BLT",
+        ship_mark="BLT",
+        component_type="bolt_assembly",
+        description=f'Bolt Assemblies — 3/4" A325, {n_bolts} sets (bolt+nut+washers)',
+        quantity=n_bolts,
+        machine="N/A",
+        item_category="purchased",
+        pick_status="not_picked",
+        unit_cost=3.75,
+        sku="BA-075-A325",
+    ))
+
+    # ── Rebar: cut-to-length sticks per reinforced columns ──
+    rebar_size = config_dict.get("rebar_size", "#5")
+    n_rebar = n_columns * 2  # 2 sticks per column (inside box beam)
+    if n_rebar > 0:
+        wo.items.append(WorkOrderItem(
+            item_id=f"{wo.work_order_id}-RBR",
+            ship_mark="RBR",
+            component_type="rebar",
+            description=f"Rebar — {rebar_size} A615 Gr 60, {n_rebar} pcs (cut-to-length)",
+            quantity=n_rebar,
+            machine="REBAR",
+            item_category="purchased",
+            pick_status="not_picked",
+            unit_cost=8.50,
+            sku=f"RB-{rebar_size}-40FT",
+        ))
+
+    # ── Tek Screws: neoprene washer for purlin-to-rafter ──
+    # 2 per purlin end + 1 per mid-field, estimate ~8 per purlin bay
+    n_tek = n_bays * 8 * 2  # both sides
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-TEK",
+        ship_mark="TEK",
+        component_type="tek_screw",
+        description=f"TEK Screws — #12 w/ neoprene washer, {n_tek} pcs",
+        quantity=n_tek,
+        machine="N/A",
+        item_category="purchased",
+        pick_status="not_picked",
+        unit_cost=0.12,
+        sku="TEK-12-NEO",
+    ))
+
+    # ── Structural Tek Screws: for endcap and splice connections ──
+    n_struct_tek = (n_splices * 4) + 20  # 4 per splice + 20 for endcaps
+    wo.items.append(WorkOrderItem(
+        item_id=f"{wo.work_order_id}-STEK",
+        ship_mark="STEK",
+        component_type="tek_screw_structural",
+        description=f"Structural TEK Screws — #14 self-drilling, {n_struct_tek} pcs",
+        quantity=n_struct_tek,
+        machine="N/A",
+        item_category="purchased",
+        pick_status="not_picked",
+        unit_cost=0.18,
+        sku="TEK-14-SD",
+    ))
+
+    # ── Trim Package (if applicable) ──
+    building_width = config_dict.get("width_ft", 0)
+    building_length = config_dict.get("length_ft", 0)
+    if building_width and building_length:
+        perimeter = 2 * (building_width + building_length)
+        wo.items.append(WorkOrderItem(
+            item_id=f"{wo.work_order_id}-TRIM",
+            ship_mark="TRIM",
+            component_type="trim",
+            description=f"Trim Package — J-channel, drip edge, ridge cap (~{int(perimeter)} LF perimeter)",
+            quantity=1,
+            machine="N/A",
+            item_category="purchased",
+            pick_status="not_picked",
+            unit_cost=round(perimeter * 2.50, 2),  # ~$2.50/LF for trim
+            sku="TRIM-PKG",
+        ))
 
     # ── Populate estimated_minutes from fab step templates ──
     try:
