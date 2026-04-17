@@ -5876,7 +5876,7 @@ class PurlinInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = PURLIN_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{PURLIN_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -5903,7 +5903,7 @@ class SagrodInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = SAGROD_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{SAGROD_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -5930,7 +5930,7 @@ class StrapInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = STRAP_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{STRAP_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -5957,7 +5957,7 @@ class EndcapInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = ENDCAP_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{ENDCAP_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -5984,7 +5984,7 @@ class P1ClipInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = P1CLIP_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{P1CLIP_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -6011,7 +6011,7 @@ class P2PlateInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = P2PLATE_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{P2PLATE_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
@@ -6038,7 +6038,7 @@ class SpliceInteractiveHandler(BaseHandler):
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
             html = SPLICE_DRAWING_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
-            html = html.replace("{{CONFIG_VAR_JSON}}", _safe_json_embed(config_dict))
+            html = html.replace("{{SPLICE_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
             self.write(html)
         except Exception as e:
