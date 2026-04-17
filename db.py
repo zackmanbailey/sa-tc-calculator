@@ -454,35 +454,93 @@ def _load_customers_uncached():
     result = []
     for r in rows:
         extra = json.loads(r["extra"] or "{}")
-        result.append({
-            "id": r["id"], "name": r["name"], "email": r["email"],
-            "phone": r["phone"], "company": r["company"],
-            "address": r["address"], "city": r["city"],
-            "state": r["state"], "zip": r["zip"],
-            "notes": r["notes"], "created_at": r["created_at"],
+        cust = {
+            "id": r["id"],
+            "company": r["company"],
+            "name": r["name"],
+            "email": r["email"],
+            "phone": r["phone"],
+            # Reconstruct nested primary_contact (handler / frontend expects this)
+            "primary_contact": extra.pop("primary_contact", None) or {
+                "name": r["name"],
+                "email": r["email"],
+                "phone": r["phone"],
+                "title": extra.pop("contact_title", ""),
+            },
+            # Reconstruct nested address
+            "address": extra.pop("address", None) if isinstance(extra.get("address"), dict) else {
+                "street": r["address"],
+                "city": r["city"],
+                "state": r["state"],
+                "zip": r["zip"],
+            },
+            "city": r["city"],
+            "state": r["state"],
+            "zip": r["zip"],
+            "notes": r["notes"],
+            "created_at": r["created_at"],
             **extra,
-        })
+        }
+        result.append(cust)
     return result
 
 
 def save_customers(data):
-    """Save full customers list (replaces all)."""
+    """Save full customers list (replaces all).
+
+    Handles both flat format (name, email, phone, address as strings)
+    and nested format from the handler (primary_contact: {name, phone, email, title},
+    address: {street, city, state, zip}).
+    """
     invalidate("customers")
     conn = get_db()
     conn.execute("DELETE FROM customers")
+    KNOWN_COLS = {"id", "name", "email", "phone", "company",
+                  "address", "city", "state", "zip", "notes", "created_at"}
     for c in data:
         if not isinstance(c, dict):
             continue
-        extra = {k: v for k, v in c.items()
-                 if k not in ("id", "name", "email", "phone", "company",
-                              "address", "city", "state", "zip", "notes", "created_at")}
+
+        # --- Flatten nested primary_contact ---------------------------------
+        name = c.get("name", "")
+        email = c.get("email", "")
+        phone = c.get("phone", "")
+        pc = c.get("primary_contact")
+        if isinstance(pc, dict):
+            name = name or pc.get("name", "")
+            email = email or pc.get("email", "")
+            phone = phone or pc.get("phone", "")
+
+        # --- Flatten nested address -----------------------------------------
+        addr_raw = c.get("address", "")
+        city = c.get("city", "")
+        state = c.get("state", "")
+        zip_code = c.get("zip", "")
+        if isinstance(addr_raw, dict):
+            city = city or addr_raw.get("city", "")
+            state = state or addr_raw.get("state", "")
+            zip_code = zip_code or addr_raw.get("zip", "")
+            addr_raw = addr_raw.get("street", "")
+        # Ensure address is a plain string
+        address_str = str(addr_raw) if addr_raw else ""
+
+        # --- Build extra JSON for all non-core fields -----------------------
+        extra = {}
+        for k, v in c.items():
+            if k not in KNOWN_COLS:
+                # Ensure all values are JSON-serializable
+                if isinstance(v, (dict, list)):
+                    extra[k] = v
+                else:
+                    extra[k] = v
+
         conn.execute(
             "INSERT INTO customers (name, email, phone, company, address, city, state, zip, notes, created_at, extra) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (c.get("name", ""), c.get("email", ""), c.get("phone", ""),
-             c.get("company", ""), c.get("address", ""), c.get("city", ""),
-             c.get("state", ""), c.get("zip", ""), c.get("notes", ""),
-             c.get("created_at", ""), json.dumps(extra))
+            (str(name), str(email), str(phone),
+             str(c.get("company", "")), address_str, str(city),
+             str(state), str(zip_code), str(c.get("notes", "")),
+             str(c.get("created_at", "")), json.dumps(extra))
         )
     conn.commit()
 
