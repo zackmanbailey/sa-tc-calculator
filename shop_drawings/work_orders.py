@@ -865,7 +865,7 @@ def qr_scan_batch(base_dir: str, job_code: str, prefix: str,
     E.g., prefix="PG" starts/finishes all purlin group items,
     prefix="SR" does all sag rods, prefix="HS" does all straps.
     """
-    wo_dir = os.path.join(base_dir, "shop_drawings", job_code, "work_orders")
+    wo_dir = os.path.join(base_dir, job_code, "work_orders")
     if not os.path.isdir(wo_dir):
         return {"ok": False, "error": "No work orders found"}
 
