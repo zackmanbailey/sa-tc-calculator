@@ -812,17 +812,24 @@ def log_activity(user, action, entity_type="", entity_id="", details=None, ip_ad
         ip_address: requesting client IP
     """
     conn = get_db()
+    # Ensure details is a JSON string, not a raw dict
+    if isinstance(details, str):
+        details_str = details
+    elif details is not None:
+        details_str = json.dumps(details)
+    else:
+        details_str = "{}"
     conn.execute(
         """INSERT INTO activity_log (timestamp, user, action, entity_type, entity_id, details, ip_address)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             datetime.datetime.utcnow().isoformat() + "Z",
             user or "system",
-            action,
-            entity_type,
+            str(action),
+            str(entity_type),
             str(entity_id),
-            json.dumps(details or {}),
-            ip_address,
+            details_str,
+            str(ip_address),
         ),
     )
     conn.commit()

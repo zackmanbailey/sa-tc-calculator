@@ -801,25 +801,25 @@ class BaseHandler(tornado.web.RequestHandler):
 
     def _log(self, action, entity_type="", entity_id="", details=None):
         """Log an activity for the current user and award XP. Safe to call even if db not available."""
-        if USE_SQLITE:
-            try:
+        try:
+            if USE_SQLITE:
                 import db as _db
                 username = self.get_current_user() or "anonymous"
                 _db.log_activity(
                     user=username,
                     action=action,
                     entity_type=entity_type,
-                    entity_id=entity_id,
+                    entity_id=str(entity_id) if entity_id else "",
                     details=details,
                     ip_address=self.request.remote_ip or "",
                 )
                 # Award XP for the action (gamification)
                 try:
-                    _db.award_xp(username, action, entity_type, entity_id)
+                    _db.award_xp(username, action, entity_type, str(entity_id) if entity_id else "")
                 except Exception:
                     logger.debug("XP award failed", exc_info=True)
-            except Exception:
-                logger.debug("Activity log write failed", exc_info=True)
+        except Exception:
+            logger.debug("Activity log write failed", exc_info=True)
 
     def render_with_nav(self, html: str, active_page: str = "",
                         job_code: str = ""):
@@ -3730,9 +3730,13 @@ class CustomerCreateHandler(BaseHandler):
             }
             customers.append(customer)
             save_customers(customers)
-            self._log("created_customer", "customer", cid, {"company": company})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "customer": customer}))
+            # Log activity AFTER success response — must not crash handler
+            try:
+                self._log("created_customer", "customer", cid, {"company": company})
+            except Exception:
+                logger.debug("Activity log for customer create failed", exc_info=True)
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
