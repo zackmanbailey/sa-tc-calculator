@@ -237,8 +237,24 @@ function draw() {
 
   var secG = $g('hover-part', 'z-section');
 
-  // Top lip (goes up from top flange left end)
-  secG.appendChild($r(cx - zTF, zTop - zLip, zT, zLip, 'cee'));
+  // Top lip — angled 45° going RIGHT (opposite of top flange direction)
+  // Lip starts at left end of top flange and angles up-right
+  var lipLen = zLip;  // lip length in px
+  var lip45 = lipLen * Math.cos(Math.PI/4);  // 45° component
+  var topLipX1 = cx - zTF;
+  var topLipY1 = zTop;
+  var topLipX2 = topLipX1 + lip45;
+  var topLipY2 = topLipY1 - lip45;
+  // Draw as a thick polygon (two parallel lines with thickness)
+  var lipNx = zT * Math.cos(Math.PI/4) / 2;  // normal offset for thickness
+  var lipNy = zT * Math.sin(Math.PI/4) / 2;
+  var topLipPts = [
+    (topLipX1 - lipNy) + ',' + (topLipY1 - lipNx),
+    (topLipX2 - lipNy) + ',' + (topLipY2 - lipNx),
+    (topLipX2 + lipNy) + ',' + (topLipY2 + lipNx),
+    (topLipX1 + lipNy) + ',' + (topLipY1 + lipNx)
+  ].join(' ');
+  secG.appendChild($p(topLipPts, 'cee'));
 
   // Top flange (extends left from web top)
   secG.appendChild($r(cx - zTF, zTop, zTF, zT, 'cee'));
@@ -249,11 +265,22 @@ function draw() {
   // Bottom flange (extends right from web bottom)
   secG.appendChild($r(cx, zBot - zT, zBF, zT, 'cee'));
 
-  // Bottom lip (goes down from bottom flange right end)
-  secG.appendChild($r(cx + zBF - zT, zBot, zT, zLip, 'cee'));
+  // Bottom lip — angled 45° going LEFT (opposite of bottom flange direction)
+  // Lip starts at right end of bottom flange and angles down-left
+  var botLipX1 = cx + zBF;
+  var botLipY1 = zBot;
+  var botLipX2 = botLipX1 - lip45;
+  var botLipY2 = botLipY1 + lip45;
+  var botLipPts = [
+    (botLipX1 - lipNy) + ',' + (botLipY1 + lipNx),
+    (botLipX2 - lipNy) + ',' + (botLipY2 + lipNx),
+    (botLipX2 + lipNy) + ',' + (botLipY2 - lipNx),
+    (botLipX1 + lipNy) + ',' + (botLipY1 - lipNx)
+  ].join(' ');
+  secG.appendChild($p(botLipPts, 'cee'));
 
   // Centerlines
-  secG.appendChild($l(cx, zTop - zLip - 15, cx, zBot + zLip + 15, 'center'));
+  secG.appendChild($l(cx, zTop - lip45 - 15, cx, zBot + lip45 + 15, 'center'));
   secG.appendChild($l(cx - zTF - 20, cy, cx + zBF + 20, cy, 'center'));
   svg.appendChild(secG);
 
@@ -278,11 +305,12 @@ function draw() {
   // Bottom flange width
   dimH(svg, cx, cx + zBF, zBot + 5, 14, sp.botFlange + '"');
 
-  // Top lip
-  dimV(svg, cx - zTF - 8, zTop - zLip, zTop, -14, sp.lip + '"');
+  // Top lip (angled — show length along the 45° lip)
+  // Dimension line running parallel to the lip
+  svg.appendChild($t(topLipX2 + 5, topLipY2 - 3, sp.lip + '"', 'note'));
 
-  // Bottom lip
-  dimV(svg, cx + zBF + 8, zBot, zBot + zLip, 18, sp.lip + '"');
+  // Bottom lip (angled — show length along the 45° lip)
+  svg.appendChild($t(botLipX2 - 25, botLipY2 + 10, sp.lip + '"', 'note'));
 
   // Gauge callout
   svg.appendChild($t(cx - zTF - 30, cy, p.gauge, 'lblb', 'middle'));
@@ -294,7 +322,7 @@ function draw() {
   svg.appendChild($t(cx + zBF + 35, cy + 50, 'STEEL', 'note'));
 
   // Scale
-  svg.appendChild($t(200, zBot + zLip + 35, 'SCALE: 1" = ' + fmtDec(1/zScale * 12, 1) + '"', 'note', 'middle'));
+  svg.appendChild($t(200, zBot + lip45 + 35, 'SCALE: 1" = ' + fmtDec(1/zScale * 12, 1) + '"', 'note', 'middle'));
 
   // ════════════════════════════════════════════════════════════════════
   // ZONE 3: DETAIL VIEWS (y=230 to y=450, right side + below)
