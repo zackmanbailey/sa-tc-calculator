@@ -248,6 +248,31 @@ function applyServerConfig() {
     var colsPerFrame = (C.frameType === 'tee') ? 2 : 3;
     C.nFrames = Math.round(cfg.num_columns / colsPerFrame);
   }
+  // Auto-populate from rafter drawing data (Rec 5)
+  if (cfg._rafter_saved) {
+    if (cfg._rafter_clear_height_ft && !cfg.clear_height_ft) {
+      var el = document.getElementById('inClearHt');
+      if (el && (!el.value || el.value === '14')) {
+        el.value = cfg._rafter_clear_height_ft;
+      }
+    }
+    if (cfg._rafter_width_ft && !cfg.width_ft) {
+      var wEl = document.getElementById('inWidth');
+      if (wEl && (!wEl.value || wEl.value === '40')) {
+        wEl.value = cfg._rafter_width_ft;
+      }
+    }
+    if (cfg._rafter_pitch && !cfg.pitch_deg) {
+      var pEl = document.getElementById('inPitch');
+      if (pEl && (!pEl.value || pEl.value === '1.2')) {
+        pEl.value = cfg._rafter_pitch;
+        var vpEl = document.getElementById('vPitch');
+        if (vpEl) vpEl.textContent = cfg._rafter_pitch + '\u00b0';
+      }
+    }
+    // Show a brief notification that rafter data was applied
+    console.log('[TitanForge] Column builder auto-populated from rafter drawing data');
+  }
 }
 window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

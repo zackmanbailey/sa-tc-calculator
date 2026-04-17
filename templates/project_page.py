@@ -814,6 +814,14 @@ PROJECT_PAGE_HTML = r"""
             </div>
         </div>
 
+        <!-- QUOTE-TO-CASH TIMELINE -->
+        <div id="project-timeline" style="background:var(--tf-surface);border:1px solid var(--tf-border);border-radius:var(--tf-radius-lg);padding:var(--tf-sp-5) var(--tf-sp-6);margin-bottom:var(--tf-sp-6);">
+          <h3 style="font-size:var(--tf-text-sm);font-weight:600;color:var(--tf-gray-700);margin:0 0 var(--tf-sp-4);">Quote-to-Cash Timeline</h3>
+          <div id="timeline-steps" style="display:flex;gap:0;overflow-x:auto;padding:4px 0;">
+            <div style="color:var(--tf-gray-400);font-size:0.8rem;">Loading timeline...</div>
+          </div>
+        </div>
+
         <!-- TOOLBOX -->
         <div class="toolbox">
             <div class="tool-card" onclick="openInSACalc()" id="tc-sa_estimator">
@@ -1743,6 +1751,28 @@ PROJECT_PAGE_HTML = r"""
             if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / 1048576).toFixed(1) + ' MB';
         }
+
+        // ── Quote-to-Cash Timeline ───────────────────────
+        async function loadTimeline() {
+            try {
+                const resp = await fetch('/api/project/timeline?job_code=' + encodeURIComponent(JOB_CODE));
+                const data = await resp.json();
+                if (!data.ok) return;
+                const el = document.getElementById('timeline-steps');
+                el.innerHTML = data.milestones.map(function(m, i) {
+                    var color = m.complete ? 'var(--tf-success, #4caf50)' : 'var(--tf-gray-200)';
+                    var textColor = m.complete ? 'var(--tf-gray-900)' : 'var(--tf-gray-400)';
+                    var arrow = i < data.milestones.length - 1 ? '<div style="flex-shrink:0;width:24px;display:flex;align-items:center;justify-content:center;color:' + (m.complete ? 'var(--tf-success,#4caf50)' : 'var(--tf-gray-300)') + ';font-size:1.2rem;">\u2192</div>' : '';
+                    return '<div style="flex-shrink:0;text-align:center;min-width:90px;">' +
+                        '<div style="width:36px;height:36px;border-radius:50%;background:' + color + ';margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;">' + m.icon + '</div>' +
+                        '<div style="font-size:0.7rem;color:' + textColor + ';font-weight:' + (m.complete ? '600' : '400') + ';">' + m.label + '</div>' +
+                        (m.progress ? '<div style="font-size:0.6rem;color:var(--tf-blue);">' + m.progress + '</div>' : '') +
+                        (m.date ? '<div style="font-size:0.6rem;color:var(--tf-gray-400);">' + new Date(m.date).toLocaleDateString() + '</div>' : '') +
+                        '</div>' + arrow;
+                }).join('');
+            } catch(e) { /* silent */ }
+        }
+        loadTimeline();
 
         // Global Search
         var _gst=null;

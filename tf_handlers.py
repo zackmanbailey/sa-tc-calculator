@@ -3414,6 +3414,158 @@ class ProjectPageHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+class ProjectTimelineHandler(BaseHandler):
+    """GET /api/project/timeline — Get project milestone timeline."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        if not job_code:
+            self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+            return
+
+        try:
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+
+            if not os.path.isfile(meta_path):
+                self.write(json_encode({"ok": False, "error": "Project not found"}))
+                return
+
+            with open(meta_path) as f:
+                project = json.load(f)
+
+            milestones = []
+
+            # 1. Project created
+            milestones.append({
+                "key": "project_created",
+                "label": "Project Created",
+                "date": project.get("created_at", ""),
+                "complete": True,
+                "icon": "\U0001f4cb"
+            })
+
+            # 2. SA Quote generated
+            sa_quote = project.get("sa_quote_number", "")
+            milestones.append({
+                "key": "sa_quote",
+                "label": "SA Quote Generated",
+                "date": project.get("sa_quote_date", ""),
+                "complete": bool(sa_quote),
+                "icon": "\U0001f4ca"
+            })
+
+            # 3. TC Quote generated
+            tc_dir = os.path.join(DATA_DIR, "tc_quotes")
+            tc_path = os.path.join(tc_dir, f"{job_code}.json")
+            tc_exists = os.path.exists(tc_path)
+            tc_date = ""
+            if tc_exists:
+                try:
+                    with open(tc_path) as f:
+                        tc_data = json.load(f)
+                    tc_date = tc_data.get("saved_at", "")
+                except Exception:
+                    pass
+            milestones.append({
+                "key": "tc_quote",
+                "label": "TC Quote Generated",
+                "date": tc_date,
+                "complete": tc_exists,
+                "icon": "\U0001f4b0"
+            })
+
+            # 4. Quote signed
+            stage = project.get("stage", "")
+            milestones.append({
+                "key": "quote_signed",
+                "label": "Quote Signed",
+                "date": project.get("quote_signed_date", ""),
+                "complete": stage in ["production", "fabrication", "shipping", "complete", "shop_drawings"],
+                "icon": "\u270d\ufe0f"
+            })
+
+            # 5. Shop drawings
+            sd_dir = os.path.join(SHOP_DRAWINGS_DIR, job_code, "pdfs")
+            has_drawings = os.path.isdir(sd_dir) and len(os.listdir(sd_dir)) > 0
+            milestones.append({
+                "key": "shop_drawings",
+                "label": "Shop Drawings Complete",
+                "date": "",
+                "complete": has_drawings,
+                "icon": "\U0001f4d0"
+            })
+
+            # 6. Work order created
+            wo_dir = os.path.join(SHOP_DRAWINGS_DIR, job_code, "work_orders")
+            has_wo = False
+            wo_status = ""
+            wo_progress = ""
+            if os.path.isdir(wo_dir):
+                for fn in os.listdir(wo_dir):
+                    if fn.endswith(".json"):
+                        has_wo = True
+                        try:
+                            with open(os.path.join(wo_dir, fn)) as f:
+                                wo_data = json.load(f)
+                            wo_status = wo_data.get("status", "")
+                            items = wo_data.get("items", [])
+                            done = sum(1 for i in items if i.get("status") == "complete")
+                            wo_progress = f"{done}/{len(items)}"
+                        except Exception:
+                            pass
+                        break
+
+            milestones.append({
+                "key": "work_order",
+                "label": "Work Order Created",
+                "date": "",
+                "complete": has_wo,
+                "icon": "\U0001f527"
+            })
+
+            # 7. Fabrication
+            fab_complete = wo_status == "complete"
+            milestones.append({
+                "key": "fabrication",
+                "label": f"Fabrication {'Complete' if fab_complete else 'In Progress' if wo_status == 'in_progress' else 'Pending'}",
+                "date": "",
+                "complete": fab_complete,
+                "progress": wo_progress,
+                "icon": "\u2699\ufe0f"
+            })
+
+            # 8. Shipping
+            milestones.append({
+                "key": "shipping",
+                "label": "Shipped",
+                "date": project.get("shipped_date", ""),
+                "complete": stage in ["complete", "delivered"],
+                "icon": "\U0001f69b"
+            })
+
+            # 9. Delivered / Complete
+            milestones.append({
+                "key": "complete",
+                "label": "Delivered",
+                "date": project.get("delivered_date", ""),
+                "complete": stage == "complete",
+                "icon": "\u2705"
+            })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "job_code": job_code,
+                "milestones": milestones,
+            }))
+        except Exception as e:
+            logger.error(f"ProjectTimelineHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
 class ProjectToolStatusHandler(BaseHandler):
     """GET /api/project/tool-status?job_code=XXX — Return completion status
     for every toolbox card on the project page.
@@ -5425,8 +5577,9 @@ try:
         delete_work_order,
         list_work_orders, list_all_work_orders, load_all_active_items,
         find_work_order_by_item,
-        qr_scan_start, qr_scan_finish,
+        qr_scan_start, qr_scan_finish, qr_scan_batch,
         qc_inspect_item, update_loading_status,
+        init_fab_checklist, check_fab_step,
         LOADING_FLOW, LOADING_LABELS,
     )
     from shop_drawings.wo_stickers import (
@@ -5747,6 +5900,24 @@ class SaveInteractivePDFHandler(BaseHandler):
             if os.path.isdir(os.path.join(PROJECTS_DIR, safe_name)):
                 os.makedirs(proj_sd_dir, exist_ok=True)
                 shutil.copy2(out_path, os.path.join(proj_sd_dir, filename))
+
+            # Auto-populate column config from rafter dimensions (Rec 5)
+            try:
+                if drawing_type == "rafter":
+                    body = {}
+                    # Try to parse form fields from the multipart request
+                    for k in ("bldg_width", "pitch", "clear_height", "width_ft", "pitch_deg", "clear_height_ft"):
+                        v = self.get_argument(k, None)
+                        if v is not None:
+                            body[k] = v
+                    cfg = _load_shop_config(job_code) or {}
+                    cfg["_rafter_saved"] = True
+                    cfg["_rafter_width_ft"] = float(body.get("bldg_width", body.get("width_ft", cfg.get("bldg_width_ft", cfg.get("width_ft", 40)))))
+                    cfg["_rafter_pitch"] = float(body.get("pitch", body.get("pitch_deg", cfg.get("pitch_deg", 1.2))))
+                    cfg["_rafter_clear_height_ft"] = float(body.get("clear_height", body.get("clear_height_ft", cfg.get("clear_height_ft", 14))))
+                    _save_shop_config(job_code, cfg)
+            except Exception:
+                pass  # Non-critical — column builder will still work without rafter data
 
             self.write(json_encode({"ok": True, "filename": filename, "path": out_path}))
         except Exception as e:
@@ -6429,13 +6600,46 @@ class WorkOrderCreateHandler(BaseHandler):
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
 
+            # Check material availability from coil inventory (Rec 6)
+            material_warnings = []
+            try:
+                inv = load_inventory()
+                coils = inv.get("coils", {})
+                wo_weight = total_weight_lbs  # from BOM data loaded above
+                if wo_weight > 0 and coils:
+                    # Sum available stock across all coils matching the gauge from config
+                    required_gauge = str(cfg_dict.get("gauge", "10"))
+                    available_lbs = sum(
+                        float(c.get("stock_lbs", 0))
+                        for c in (coils.values() if isinstance(coils, dict) else coils)
+                        if str(c.get("gauge", "")) == required_gauge
+                    )
+                    if wo_weight > available_lbs:
+                        material_warnings.append(
+                            f"Warning: Work order needs ~{wo_weight:.0f} lbs but only {available_lbs:.0f} lbs of {required_gauge}GA coil in stock"
+                        )
+                    # Also check total stock regardless of gauge
+                    total_available = sum(
+                        float(c.get("stock_lbs", 0))
+                        for c in (coils.values() if isinstance(coils, dict) else coils)
+                    )
+                    if wo_weight > total_available:
+                        material_warnings.append(
+                            f"Warning: Total coil inventory ({total_available:.0f} lbs) is below work order weight ({wo_weight:.0f} lbs)"
+                        )
+            except Exception:
+                pass  # Non-critical — work order is still created
+
             self._log("created_work_order", "work_order", getattr(wo, "work_order_id", ""), {"job_code": job_code})
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({
+            response = {
                 "ok": True,
                 "work_order": wo.to_dict(),
                 "summary": wo.summary(),
-            }))
+            }
+            if material_warnings:
+                response["material_warnings"] = material_warnings
+            self.write(json_encode(response))
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
@@ -6515,8 +6719,32 @@ class WorkOrderApproveHandler(BaseHandler):
             # Auto-advance project stage to fabrication
             _auto_advance_stage(job_code, "fabrication")
 
+            # Auto-generate WO packet PDF on approval (Rec 4)
+            packet_path = None
+            try:
+                from shop_drawings.wo_packets import generate_wo_packet_pdf
+                from shop_drawings.fab_steps import get_steps_for_item
+                steps_by_item = {}
+                for item in wo.items:
+                    item_dict = item.to_dict()
+                    steps_by_item[item.item_id] = get_steps_for_item(
+                        item_dict, SHOP_DRAWINGS_DIR, job_code)
+                pdf_bytes = generate_wo_packet_pdf(wo.to_dict(), steps_by_item,
+                                                   base_url="http://localhost:8080")
+                packet_dir = os.path.join(SHOP_DRAWINGS_DIR, job_code, "packets")
+                os.makedirs(packet_dir, exist_ok=True)
+                packet_path = os.path.join(packet_dir, f"WO_Packet_{wo_id}.pdf")
+                with open(packet_path, "wb") as pf:
+                    pf.write(pdf_bytes)
+                logger.info("Auto-generated WO packet PDF: %s", packet_path)
+            except Exception as pkt_err:
+                logger.warning("Auto-generate WO packet PDF failed: %s", pkt_err)
+
             self.set_header("Content-Type", "application/json")
-            self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
+            resp = {"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}
+            if packet_path:
+                resp["packet_pdf"] = packet_path
+            self.write(json_encode(resp))
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
@@ -6639,6 +6867,28 @@ class WorkOrderQRScanHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": f"Unknown action: {action}. Use 'start' or 'finish'."}))
                 return
 
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderBatchScanHandler(BaseHandler):
+    """POST /api/work-orders/batch-scan — Batch start/finish items by prefix."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            prefix = body.get("prefix", "").strip()
+            action = body.get("action", "").strip()
+            user = self.get_current_user() or "shop"
+            if not job_code or not prefix or not action:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, prefix, or action"}))
+                return
+            result = qr_scan_batch(SHOP_DRAWINGS_DIR, job_code, prefix, action, user)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
@@ -6815,6 +7065,38 @@ class WorkOrderItemEditHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+class WorkOrderChecklistHandler(BaseHandler):
+    """GET/POST /api/work-orders/checklist — Fab step checklist per item."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        item_id = self.get_argument("item_id", "")
+        if not job_code or not item_id:
+            self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+            return
+        result = init_fab_checklist(SHOP_DRAWINGS_DIR, job_code, item_id)
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode(result))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            step_num = int(body.get("step_num", 0))
+            user = self.get_current_user() or "shop"
+            if not job_code or not item_id or not step_num:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or step_num"}))
+                return
+            result = check_fab_step(SHOP_DRAWINGS_DIR, job_code, item_id, step_num, user)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class WorkOrderQCHandler(BaseHandler):
     """POST /api/work-orders/qc — QC inspection pass/fail for a work order item."""
     required_roles = ["admin", "estimator", "shop"]
@@ -6840,6 +7122,80 @@ class WorkOrderQCHandler(BaseHandler):
         except Exception as e:
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderQCPhotoHandler(BaseHandler):
+    """POST /api/work-orders/qc-photo — Upload a QC inspection photo."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            item_id = self.get_argument("item_id", "")
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+
+            # Get uploaded file
+            if "photo" not in self.request.files:
+                self.write(json_encode({"ok": False, "error": "No photo uploaded"}))
+                return
+
+            photo = self.request.files["photo"][0]
+            filename = photo["filename"]
+
+            # Save photo to qc_photos directory
+            photo_dir = os.path.join(SHOP_DRAWINGS_DIR, job_code, "qc_photos")
+            os.makedirs(photo_dir, exist_ok=True)
+
+            # Generate unique filename
+            safe_item = re.sub(r"[^A-Za-z0-9_-]", "_", item_id)
+            ext = os.path.splitext(filename)[1] or ".jpg"
+            photo_filename = f"{safe_item}_{int(time.time())}{ext}"
+            photo_path = os.path.join(photo_dir, photo_filename)
+
+            with open(photo_path, "wb") as f:
+                f.write(photo["body"])
+
+            # Update work order item
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo and item:
+                if not hasattr(item, 'qc_photos') or not isinstance(item.qc_photos, list):
+                    item.qc_photos = []
+                item.qc_photos.append(photo_filename)
+                save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "filename": photo_filename,
+                "message": f"Photo uploaded for {item_id}",
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderQCPhotoServeHandler(BaseHandler):
+    """GET /api/work-orders/qc-photo/file — Serve a QC photo."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        job_code = self.get_argument("job_code", "")
+        filename = self.get_argument("filename", "")
+        if not job_code or not filename:
+            self.set_status(400)
+            return
+        safe_fn = os.path.basename(filename)
+        photo_path = os.path.join(SHOP_DRAWINGS_DIR, job_code, "qc_photos", safe_fn)
+        if not os.path.exists(photo_path):
+            self.set_status(404)
+            return
+        ext = os.path.splitext(safe_fn)[1].lower()
+        ct = {"jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}.get(ext, "image/jpeg")
+        self.set_header("Content-Type", ct)
+        with open(photo_path, "rb") as f:
+            self.write(f.read())
 
 
 class WorkOrderLoadingHandler(BaseHandler):
@@ -9179,6 +9535,7 @@ def get_routes():
         (r"/api/project/status",         ProjectStatusHandler),
         (r"/api/project/assets",         ProjectAssetsHandler),
         (r"/api/project/tool-status",    ProjectToolStatusHandler),
+        (r"/api/project/timeline",       ProjectTimelineHandler),
 
         # ── API - Enhanced Project System ─────────────────────
         (r"/api/project/next-code",      ProjectNextCodeHandler),
@@ -9220,9 +9577,13 @@ def get_routes():
         (r"/api/work-orders/stickers-printed",   WorkOrderStickersPrintedHandler),
         (r"/api/work-orders/hold",               WorkOrderHoldHandler),
         (r"/api/work-orders/qr-scan",            WorkOrderQRScanHandler),
+        (r"/api/work-orders/batch-scan",         WorkOrderBatchScanHandler),
         (r"/api/work-orders/item-notes",         WorkOrderItemNotesHandler),
         (r"/api/work-orders/item-edit",          WorkOrderItemEditHandler),
+        (r"/api/work-orders/checklist",          WorkOrderChecklistHandler),
         (r"/api/work-orders/qc",                 WorkOrderQCHandler),
+        (r"/api/work-orders/qc-photo",           WorkOrderQCPhotoHandler),
+        (r"/api/work-orders/qc-photo/file",      WorkOrderQCPhotoServeHandler),
         (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
         (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),
         (r"/api/work-orders/stickers/zpl",       WorkOrderStickerZPLHandler),

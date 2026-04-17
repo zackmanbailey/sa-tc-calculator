@@ -78,6 +78,7 @@ class WorkOrderItem:
     finished_by: str = ""          # Username who scanned finish
     finished_at: str = ""          # ISO timestamp
     duration_minutes: float = 0.0  # Auto-calculated
+    estimated_minutes: float = 0.0  # Sum of fab step estimated times
     # Notes
     notes: str = ""
     # ── Crew / Accountability ──
@@ -89,11 +90,14 @@ class WorkOrderItem:
     qc_inspector: str = ""         # Who inspected
     qc_inspected_at: str = ""      # ISO timestamp
     qc_notes: str = ""             # Inspector notes
+    qc_photos: list = field(default_factory=list)   # List of photo filenames from QC inspection
     # ── Loading / Shipping ──
     loading_status: str = "not_ready"  # "not_ready", "staged", "loaded", "shipped", "delivered"
     loaded_by: str = ""            # Who loaded it
     loaded_at: str = ""            # ISO timestamp
     truck_number: str = ""         # Truck/trailer ID
+    # ── Fabrication Step Checklist ──
+    fab_checklist: list = field(default_factory=list)  # [{step_num, title, checked, checked_by, checked_at}]
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -508,6 +512,21 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         drawing_ref=f"/shop-drawings/{job_code}",
     ))
 
+    # ── Populate estimated_minutes from fab step templates ──
+    try:
+        from shop_drawings.fab_steps import get_steps_for_item
+        base_dir_env = os.environ.get("TITANFORGE_DATA_DIR",
+                                      os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+        sd_base = os.path.join(base_dir_env, "shop_drawings")
+        for item in wo.items:
+            try:
+                steps = get_steps_for_item(item.to_dict(), sd_base, job_code)
+                item.estimated_minutes = sum(s.get("estimated_minutes", 0) for s in steps)
+            except Exception:
+                item.estimated_minutes = 0.0
+    except Exception:
+        pass  # fab_steps not available — leave estimates at 0
+
     return wo
 
 
@@ -762,6 +781,133 @@ def qc_inspect_item(base_dir: str, job_code: str, item_id: str,
         "ok": True,
         "item": item.to_dict(),
         "message": f"QC {qc_status.upper()} for {item.ship_mark} by {inspector}",
+    }
+
+
+# ─────────────────────────────────────────────
+# FABRICATION STEP CHECKLIST
+# ─────────────────────────────────────────────
+
+def init_fab_checklist(base_dir: str, job_code: str, item_id: str) -> dict:
+    """Initialize fabrication checklist from fab_steps template for this item."""
+    from shop_drawings.fab_steps import get_steps_for_item
+    wo, item = find_work_order_by_item(base_dir, job_code, item_id)
+    if wo is None or item is None:
+        return {"ok": False, "error": "Work order item not found"}
+
+    if item.fab_checklist:
+        return {"ok": True, "message": "Checklist already initialized", "checklist": item.fab_checklist}
+
+    steps = get_steps_for_item(item.component_type, job_code, base_dir)
+    item.fab_checklist = [
+        {
+            "step_num": s["step_num"],
+            "title": s["title"],
+            "instruction": s.get("instruction", ""),
+            "estimated_minutes": s.get("estimated_minutes", 0),
+            "checkpoint": s.get("checkpoint", False),
+            "checked": False,
+            "checked_by": "",
+            "checked_at": "",
+        }
+        for s in steps
+    ]
+    save_work_order(base_dir, wo)
+    return {"ok": True, "checklist": item.fab_checklist}
+
+
+def check_fab_step(base_dir: str, job_code: str, item_id: str,
+                   step_num: int, checked_by: str) -> dict:
+    """Check off a fabrication step in the checklist."""
+    wo, item = find_work_order_by_item(base_dir, job_code, item_id)
+    if wo is None or item is None:
+        return {"ok": False, "error": "Work order item not found"}
+
+    if not item.fab_checklist:
+        return {"ok": False, "error": "Checklist not initialized — call init first"}
+
+    # Find the step
+    step = None
+    for s in item.fab_checklist:
+        if s["step_num"] == step_num:
+            step = s
+            break
+    if step is None:
+        return {"ok": False, "error": f"Step {step_num} not found"}
+
+    # Check that all previous steps are completed (enforce order)
+    for s in item.fab_checklist:
+        if s["step_num"] < step_num and not s["checked"]:
+            return {"ok": False, "error": f"Complete step {s['step_num']} ({s['title']}) first"}
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    step["checked"] = True
+    step["checked_by"] = checked_by
+    step["checked_at"] = now
+
+    save_work_order(base_dir, wo)
+
+    total = len(item.fab_checklist)
+    done = sum(1 for s in item.fab_checklist if s["checked"])
+
+    return {
+        "ok": True,
+        "step": step,
+        "progress": f"{done}/{total}",
+        "message": f"Step {step_num} ({step['title']}) checked off by {checked_by}",
+    }
+
+
+def qr_scan_batch(base_dir: str, job_code: str, prefix: str,
+                  action: str, scanned_by: str) -> dict:
+    """Process a batch QR scan for all items matching a prefix.
+
+    E.g., prefix="PG" starts/finishes all purlin group items,
+    prefix="SR" does all sag rods, prefix="HS" does all straps.
+    """
+    wo_dir = os.path.join(base_dir, "shop_drawings", job_code, "work_orders")
+    if not os.path.isdir(wo_dir):
+        return {"ok": False, "error": "No work orders found"}
+
+    # Find the active work order
+    wo = None
+    for fname in sorted(os.listdir(wo_dir), reverse=True):
+        if fname.endswith(".json"):
+            fpath = os.path.join(wo_dir, fname)
+            with open(fpath) as f:
+                data = json.load(f)
+            wo = WorkOrder.from_dict(data)
+            break
+
+    if wo is None:
+        return {"ok": False, "error": "No work order found"}
+
+    prefix_upper = prefix.upper()
+    matching = [i for i in wo.items if i.ship_mark.upper().startswith(prefix_upper)]
+
+    if not matching:
+        return {"ok": False, "error": f"No items matching prefix '{prefix}'"}
+
+    results = []
+    for item in matching:
+        if action == "start":
+            r = qr_scan_start(base_dir, job_code, item.item_id, scanned_by)
+        elif action == "finish":
+            r = qr_scan_finish(base_dir, job_code, item.item_id, scanned_by)
+        else:
+            r = {"ok": False, "error": f"Unknown action: {action}"}
+        results.append({"item_id": item.item_id, "ship_mark": item.ship_mark, "ok": r.get("ok", False), "message": r.get("message", r.get("error", ""))})
+
+    ok_count = sum(1 for r in results if r["ok"])
+    return {
+        "ok": ok_count > 0,
+        "batch": True,
+        "prefix": prefix,
+        "action": action,
+        "processed": len(results),
+        "succeeded": ok_count,
+        "results": results,
+        "message": f"Batch {action}: {ok_count}/{len(results)} items processed for prefix '{prefix}'",
     }
 
 

@@ -627,6 +627,9 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     cursor: not-allowed;
 }
 
+.checklist-panel { background: rgba(0,0,0,0.3); border-radius: 0 0 8px 8px; margin: 0; }
+.checklist-step:hover { background: rgba(255,255,255,0.03); }
+
 /* ── Responsive ─── */
 @media (max-width: 768px) {
     .wo-container { padding: 12px; }
@@ -708,6 +711,19 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
                 <button class="btn-qr-finish" onclick="processQRScan('finish')">Finish</button>
             </div>
             <div class="qr-result" id="qr-result"></div>
+            <div style="margin-top:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;">
+              <h4 style="color:var(--tf-gold);margin:0 0 8px;">Batch Scan by Group</h4>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn-qr-start" onclick="batchScan('PG','start')">Start All Purlins</button>
+                <button class="btn-qr-finish" onclick="batchScan('PG','finish')">Finish All Purlins</button>
+                <button class="btn-qr-start" onclick="batchScan('SR','start')">Start All Sag Rods</button>
+                <button class="btn-qr-finish" onclick="batchScan('SR','finish')">Finish All Sag Rods</button>
+                <button class="btn-qr-start" onclick="batchScan('HS','start')">Start All Straps</button>
+                <button class="btn-qr-finish" onclick="batchScan('HS','finish')">Finish All Straps</button>
+                <button class="btn-qr-start" onclick="batchScan('EC','start')">Start All Endcaps</button>
+                <button class="btn-qr-finish" onclick="batchScan('EC','finish')">Finish All Endcaps</button>
+              </div>
+            </div>
         </div>
 
         <!-- Recent scan activity -->
@@ -842,6 +858,56 @@ async function scanItem(itemId, action) {
     return data;
 }
 
+async function toggleChecklist(itemId, compType) {
+    const rowId = 'checklist-' + itemId.replace(/[^a-zA-Z0-9]/g, '_');
+    let existing = document.getElementById(rowId);
+    if (existing) {
+        existing.remove();
+        return;
+    }
+
+    // Fetch/init checklist
+    const data = await apiCall('/api/work-orders/checklist?job_code=' + JOB_CODE + '&item_id=' + encodeURIComponent(itemId), 'GET');
+    if (!data.ok) { showToast(data.error, 'error'); return; }
+
+    const checklist = data.checklist;
+    const btn = event.target;
+    const row = btn.closest('tr');
+    const newRow = document.createElement('tr');
+    newRow.id = rowId;
+    newRow.innerHTML = '<td colspan="10" style="padding:0;"><div class="checklist-panel">' +
+        '<h4 style="margin:8px 12px 4px;color:var(--tf-gold);">Fabrication Steps</h4>' +
+        '<div class="checklist-steps">' +
+        checklist.map(s => {
+            const icon = s.checked ? '&#9745;' : (s.checkpoint ? '&#9888;' : '&#9744;');
+            const style = s.checked ? 'opacity:0.6;text-decoration:line-through;' : '';
+            const cpBadge = s.checkpoint ? '<span style="background:var(--tf-gold);color:#111;padding:1px 5px;border-radius:3px;font-size:0.65rem;margin-left:4px;">QC CHECKPOINT</span>' : '';
+            return '<div class="checklist-step" style="' + style + 'padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;cursor:' + (s.checked ? 'default' : 'pointer') + ';" ' +
+                (s.checked ? '' : 'onclick="checkStep(\\\'' + itemId + '\\\',' + s.step_num + ',this)"') + '>' +
+                '<span style="font-size:1.2rem;">' + icon + '</span>' +
+                '<span><strong>Step ' + s.step_num + ':</strong> ' + s.title + cpBadge + '</span>' +
+                '<span style="margin-left:auto;font-size:0.7rem;color:#888;">' + (s.checked ? s.checked_by + ' ' + new Date(s.checked_at).toLocaleTimeString() : s.estimated_minutes + ' min est.') + '</span>' +
+                '</div>';
+        }).join('') +
+        '</div></div></td>';
+    row.after(newRow);
+}
+
+async function checkStep(itemId, stepNum, el) {
+    const data = await apiCall('/api/work-orders/checklist', 'POST', {
+        job_code: JOB_CODE, item_id: itemId, step_num: stepNum
+    });
+    if (data.ok) {
+        showToast(data.message, 'success');
+        // Re-render checklist
+        const rowId = 'checklist-' + itemId.replace(/[^a-zA-Z0-9]/g, '_');
+        document.getElementById(rowId)?.remove();
+        toggleChecklist(itemId, '');
+    } else {
+        showToast(data.error, 'error');
+    }
+}
+
 async function processQRScan(action) {
     const input = document.getElementById('qr-input');
     const itemId = input.value.trim();
@@ -866,6 +932,19 @@ async function processQRScan(action) {
     } else {
         resultEl.className = 'qr-result error';
         resultEl.innerHTML = data.error || 'Scan failed';
+    }
+}
+
+async function batchScan(prefix, action) {
+    const data = await apiCall('/api/work-orders/batch-scan', 'POST', {
+        job_code: JOB_CODE, prefix, action
+    });
+    if (data.ok) {
+        showToast(data.message, 'success');
+        if (currentWO) await loadWODetail(currentWO.work_order_id);
+        renderDetail();
+    } else {
+        showToast(data.error || 'Batch scan failed', 'error');
     }
 }
 
@@ -958,6 +1037,7 @@ function renderDetail() {
     const completedItems = items.filter(i => i.status === 'complete').length;
     const inProgressItems = items.filter(i => i.status === 'in_progress').length;
     const totalFabMin = items.reduce((s, i) => s + (i.duration_minutes || 0), 0);
+    const totalEstimated = items.reduce((s, i) => s + (i.estimated_minutes || 0), 0);
     const pct = items.length > 0 ? Math.round(100 * completedItems / items.length) : 0;
 
     // Sticker download buttons (available once approved)
@@ -1040,7 +1120,8 @@ function renderDetail() {
         const canStart = (wo.status === 'stickers_printed' || wo.status === 'in_progress')
                          && iStatus !== 'in_progress' && iStatus !== 'complete';
         const canFinish = iStatus === 'in_progress';
-        const dur = item.duration_minutes > 0 ? `${item.duration_minutes.toFixed(1)} min` : '-';
+        const est = item.estimated_minutes > 0 ? item.estimated_minutes.toFixed(0) : '-';
+        const dur = item.duration_minutes > 0 ? `${item.duration_minutes.toFixed(1)}/${est} min` : (est !== '-' ? `—/${est} min` : '—');
 
         itemsHtml += `
         <tr>
@@ -1061,6 +1142,8 @@ function renderDetail() {
                 <button class="btn-item" style="background:var(--tf-navy);color:white;"
                         onclick="printSingleSticker('${item.item_id}')" title="Print sticker">QR</button>
                 <a href="/wo/${JOB_CODE}/${item.item_id}" target="_blank" class="btn-item" style="background:var(--tf-blue);color:white;text-decoration:none;display:inline-block;text-align:center;" title="Mobile scan page">&#128241;</a>
+                <button class="btn-item" style="background:var(--tf-gold);color:#111;"
+        onclick="toggleChecklist('${item.item_id}','${item.component_type}')" title="Fab Steps">&#9776;</button>
             </td>
         </tr>`;
     });
@@ -1104,8 +1187,8 @@ function renderDetail() {
                 <div class="metric-label">Progress</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">${totalFabMin > 0 ? totalFabMin.toFixed(1) : '-'}</div>
-                <div class="metric-label">Fab Minutes</div>
+                <div class="metric-value">${totalFabMin > 0 ? totalFabMin.toFixed(1) : '—'} / ${totalEstimated > 0 ? totalEstimated.toFixed(1) : '—'}</div>
+                <div class="metric-label">Actual / Est. Minutes</div>
             </div>
         </div>
 
@@ -1237,6 +1320,14 @@ function showToast(msg, type) {
     toast.className = `toast ${type || 'info'} show`;
     setTimeout(() => { toast.className = 'toast'; }, 4000);
 }
+
+// Auto-refresh work order detail every 30 seconds (Rec 8)
+setInterval(async () => {
+    if (currentWO) {
+        await loadWODetail(currentWO.work_order_id);
+        renderDetail();
+    }
+}, 30000);
 </script>
 </body>
 </html>
