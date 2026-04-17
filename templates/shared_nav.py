@@ -1657,7 +1657,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     </div>
 
     <div class="tf-sidebar-footer">
-        <a href="/profile" class="tf-footer-user" title="Edit Profile" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">
+        <a href="/admin" class="tf-footer-user" title="User Management" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">
             <div class="user-avatar" id="userAvatar">{user_name[0:1].upper()}</div>
             <div class="user-info">
                 <div class="user-name" id="userName">{user_name}</div>
