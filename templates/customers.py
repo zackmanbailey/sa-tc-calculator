@@ -47,6 +47,15 @@ CUSTOMERS_HTML = r"""
         }
         .customer-card:hover { box-shadow: var(--tf-shadow-md); border-color: var(--tf-blue); transform: translateY(-1px); }
         .customer-card .cc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--tf-sp-3); }
+        .customer-card .cc-actions { display: flex; gap: 4px; opacity: 0; transition: opacity var(--tf-duration) var(--tf-ease); }
+        .customer-card:hover .cc-actions { opacity: 1; }
+        .customer-card .cc-actions button {
+            background: none; border: 1px solid var(--tf-border); border-radius: var(--tf-radius-sm);
+            padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--tf-gray-500);
+            transition: all var(--tf-duration) var(--tf-ease);
+        }
+        .customer-card .cc-actions .cc-edit-btn:hover { background: var(--tf-blue-light); color: var(--tf-blue); border-color: var(--tf-blue); }
+        .customer-card .cc-actions .cc-delete-btn:hover { background: #FEE2E2; color: #DC2626; border-color: #DC2626; }
         .customer-card .cc-company { font-size: var(--tf-text-lg); font-weight: 700; color: var(--tf-gray-900); }
         .customer-card .cc-contact { font-size: var(--tf-text-sm); color: var(--tf-gray-600); margin-bottom: var(--tf-sp-2); }
         .customer-card .cc-meta { display: flex; gap: var(--tf-sp-3); font-size: var(--tf-text-xs); color: var(--tf-gray-500); flex-wrap: wrap; }
@@ -119,6 +128,42 @@ CUSTOMERS_HTML = r"""
             margin-top: 6px; font-size: var(--tf-text-xs);
         }
         .doc-file a { color: var(--tf-blue); text-decoration: none; font-weight: 600; }
+
+        /* Contact cards in drawer */
+        .contact-card {
+            background: var(--tf-gray-50); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);
+            padding: 12px 14px; margin-bottom: 8px; position: relative;
+        }
+        .contact-card.primary { border-left: 3px solid var(--tf-blue); }
+        .contact-card .contact-name { font-weight: 600; font-size: var(--tf-text-sm); color: var(--tf-gray-900); }
+        .contact-card .contact-title { font-size: var(--tf-text-xs); color: var(--tf-gray-500); margin-top: 2px; }
+        .contact-card .contact-info { font-size: var(--tf-text-xs); color: var(--tf-gray-600); margin-top: 4px; }
+        .contact-card .contact-info a { color: var(--tf-blue); text-decoration: none; }
+        .contact-card .contact-badges { display: flex; gap: 4px; margin-top: 6px; }
+        .contact-card .contact-badges .badge-primary {
+            background: var(--tf-blue-light); color: var(--tf-blue); font-size: 10px; font-weight: 700;
+            padding: 1px 8px; border-radius: 10px; text-transform: uppercase;
+        }
+        .contact-card .contact-actions {
+            position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;
+        }
+        .contact-card .contact-actions button {
+            background: none; border: none; cursor: pointer; font-size: 12px; padding: 2px 4px;
+            color: var(--tf-gray-400); border-radius: var(--tf-radius-sm);
+        }
+        .contact-card .contact-actions button:hover { background: var(--tf-gray-100); color: var(--tf-gray-700); }
+        .contact-card .contact-actions .contact-del-btn:hover { color: #DC2626; }
+
+        /* Add contact inline form */
+        .add-contact-form {
+            background: var(--tf-gray-50); border: 1px dashed var(--tf-border); border-radius: var(--tf-radius);
+            padding: 14px; margin-top: 8px; display: none;
+        }
+        .add-contact-form.open { display: block; }
+        .add-contact-form .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .add-contact-form .form-grid .full { grid-column: span 2; }
+        .add-contact-form input, .add-contact-form select { font-size: var(--tf-text-sm); padding: 6px 10px; }
+        .add-contact-form .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
         /* Notes */
         .notes-area {
@@ -259,7 +304,8 @@ CUSTOMERS_HTML = r"""
         <div class="drawer-header">
             <h2 id="drawerTitle" style="font-size:var(--tf-text-xl);font-weight:700;color:var(--tf-gray-900);"></h2>
             <div style="display:flex;gap:8px;align-items:center;">
-                <button class="btn btn-outline" onclick="editCustomer()" id="editBtn" style="font-size:var(--tf-text-xs);padding:4px 12px;">Edit</button>
+                <button class="btn btn-outline" onclick="editCustomer()" id="editBtn" style="font-size:var(--tf-text-xs);padding:4px 12px;">&#9998; Edit</button>
+                <button class="btn btn-outline" onclick="deleteCustomerFromDrawer()" id="deleteBtn" style="font-size:var(--tf-text-xs);padding:4px 12px;color:#DC2626;border-color:#DC2626;">&#128465; Delete</button>
                 <button class="drawer-close" onclick="closeDrawer()">&times;</button>
             </div>
         </div>
@@ -431,11 +477,22 @@ function renderCustomers() {
 
     grid.innerHTML = filtered.map(c => {
         const tags = (c.tags||[]).map(t => `<span class="cc-tag ${t}">${t}</span>`).join('');
-        const contact = c.primary_contact || {};
+        // Use primary contact from contacts array if available, fallback to primary_contact field
+        const primaryFromArr = (c.contacts||[]).find(ct => ct.primary);
+        const contact = primaryFromArr || c.primary_contact || {};
         const contactStr = [contact.name, contact.phone, contact.email].filter(Boolean).join(' &middot; ');
+        const contactCount = (c.contacts||[]).length;
+        const contactBadge = contactCount > 1 ? `<span class="cc-project-count">${contactCount} contacts</span>` : '';
         return `<div class="customer-card" onclick="openDetail('${c.id}')">
             <div class="cc-header">
                 <div class="cc-company">${c.company || 'Unnamed'}</div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    ${contactBadge}
+                    <div class="cc-actions">
+                        <button class="cc-edit-btn" onclick="event.stopPropagation();quickEditCustomer('${c.id}')" title="Edit">&#9998; Edit</button>
+                        <button class="cc-delete-btn" onclick="event.stopPropagation();deleteCustomer('${c.id}','${(c.company||'').replace(/'/g,"\\'")}')" title="Delete">&#128465; Delete</button>
+                    </div>
+                </div>
             </div>
             <div class="cc-contact">${contactStr || 'No contact info'}</div>
             <div class="cc-meta">
@@ -501,19 +558,26 @@ function fillForm(c) {
     document.querySelectorAll('.tagCheck').forEach(cb => {
         cb.checked = (c.tags||[]).includes(cb.value);
     });
-    // Additional contacts
+    // Additional contacts — load all contacts from contacts array
     const ac = document.getElementById('additionalContacts');
     ac.innerHTML = '';
-    (c.contacts||[]).forEach(ct => addContactRow(ct));
+    const contactsList = c.contacts || [];
+    if (contactsList.length) {
+        contactsList.forEach(ct => addContactRow(ct));
+    }
 }
 
 function addContactRow(data) {
     const div = document.createElement('div');
-    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;';
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto auto;gap:8px;margin-bottom:8px;align-items:center;';
     div.innerHTML = `
         <input type="text" class="form-input ac-name" placeholder="Name" value="${data?.name||''}">
+        <input type="text" class="form-input ac-title" placeholder="Title/Role" value="${data?.title||''}">
         <input type="text" class="form-input ac-phone" placeholder="Phone" value="${data?.phone||''}">
         <input type="email" class="form-input ac-email" placeholder="Email" value="${data?.email||''}">
+        <label style="font-size:11px;white-space:nowrap;cursor:pointer;display:flex;align-items:center;gap:3px;">
+            <input type="checkbox" class="ac-primary" ${data?.primary ? 'checked' : ''}> Primary
+        </label>
         <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--tf-danger);cursor:pointer;font-size:1.2rem;padding:0 4px;">&times;</button>
     `;
     document.getElementById('additionalContacts').appendChild(div);
@@ -531,18 +595,48 @@ async function saveCustomer() {
     const contacts = [];
     document.querySelectorAll('#additionalContacts > div').forEach(row => {
         const n = row.querySelector('.ac-name').value.trim();
+        const t = row.querySelector('.ac-title')?.value.trim() || '';
         const p = row.querySelector('.ac-phone').value.trim();
         const e = row.querySelector('.ac-email').value.trim();
-        if (n || p || e) contacts.push({name:n, phone:p, email:e});
+        const pri = row.querySelector('.ac-primary')?.checked || false;
+        if (n || p || e) contacts.push({name:n, title:t, phone:p, email:e, primary:pri});
     });
+    // Ensure exactly one primary contact if any contacts exist
+    if (contacts.length && !contacts.some(c => c.primary)) contacts[0].primary = true;
+
+    // Build primary_contact from fields — also add to contacts array if not already there
+    const primaryContactFromForm = {
+        name: document.getElementById('fContactName').value.trim(),
+        phone: document.getElementById('fContactPhone').value.trim(),
+        email: document.getElementById('fContactEmail').value.trim(),
+        title: document.getElementById('fContactTitle').value.trim(),
+        primary: true,
+    };
+
+    // If primary contact fields are filled but not in contacts array, prepend
+    if (primaryContactFromForm.name && !contacts.some(c => c.primary)) {
+        contacts.unshift(primaryContactFromForm);
+    } else if (primaryContactFromForm.name) {
+        // Update the primary contact in the array
+        const priIdx = contacts.findIndex(c => c.primary);
+        if (priIdx >= 0) {
+            contacts[priIdx].name = primaryContactFromForm.name || contacts[priIdx].name;
+            contacts[priIdx].phone = primaryContactFromForm.phone || contacts[priIdx].phone;
+            contacts[priIdx].email = primaryContactFromForm.email || contacts[priIdx].email;
+            contacts[priIdx].title = primaryContactFromForm.title || contacts[priIdx].title;
+        }
+    }
+
+    // Derive primary_contact from the primary in contacts
+    const primaryForPayload = contacts.find(c => c.primary) || primaryContactFromForm;
 
     const payload = {
         company,
         primary_contact: {
-            name: document.getElementById('fContactName').value.trim(),
-            phone: document.getElementById('fContactPhone').value.trim(),
-            email: document.getElementById('fContactEmail').value.trim(),
-            title: document.getElementById('fContactTitle').value.trim(),
+            name: primaryForPayload.name || '',
+            phone: primaryForPayload.phone || '',
+            email: primaryForPayload.email || '',
+            title: primaryForPayload.title || '',
         },
         contacts,
         address: {
@@ -597,22 +691,58 @@ function renderDrawer(c) {
     const contact = c.primary_contact || {};
     const tags = (c.tags||[]).map(t => `<span class="cc-tag ${t}">${t}</span>`).join(' ');
 
-    let html = `
-        <div class="detail-section">
-            <h3>Primary Contact</h3>
-            <div class="detail-row"><span class="label">Name</span><span class="value">${contact.name||'—'}</span></div>
-            <div class="detail-row"><span class="label">Title</span><span class="value">${contact.title||'—'}</span></div>
-            <div class="detail-row"><span class="label">Phone</span><span class="value">${contact.phone ? '<a href="tel:'+contact.phone+'">'+contact.phone+'</a>' : '—'}</span></div>
-            <div class="detail-row"><span class="label">Email</span><span class="value">${contact.email ? '<a href="mailto:'+contact.email+'">'+contact.email+'</a>' : '—'}</span></div>
-        </div>`;
+    // Merge primary_contact into contacts array for unified display
+    const allContacts = (c.contacts && c.contacts.length) ? c.contacts : (contact.name ? [{...contact, primary: true}] : []);
 
-    if ((c.contacts||[]).length) {
-        html += `<div class="detail-section"><h3>Additional Contacts</h3>`;
-        c.contacts.forEach(ct => {
-            html += `<div class="detail-row"><span class="label">${ct.name||''}</span><span class="value">${ct.phone||''} ${ct.email||''}</span></div>`;
+    let html = `<div class="detail-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h3 style="margin-bottom:0;">Contacts (${allContacts.length})</h3>
+            <button class="btn btn-outline" onclick="toggleAddContactForm('${c.id}')" style="font-size:11px;padding:3px 10px;">+ Add Contact</button>
+        </div>
+        <div id="drawerContacts" style="margin-top:var(--tf-sp-3);">`;
+
+    if (allContacts.length) {
+        allContacts.forEach((ct, idx) => {
+            html += `<div class="contact-card ${ct.primary ? 'primary' : ''}">
+                <div class="contact-actions">
+                    <button onclick="editContactInDrawer('${c.id}', ${idx})" title="Edit">&#9998;</button>
+                    <button class="contact-del-btn" onclick="deleteContact('${c.id}', ${idx})" title="Remove">&#128465;</button>
+                </div>
+                <div class="contact-name">${ct.name||'Unnamed'} ${ct.primary ? '<span style="color:var(--tf-blue);font-size:10px;font-weight:700;text-transform:uppercase;margin-left:6px;">Primary</span>' : ''}</div>
+                ${ct.title ? '<div class="contact-title">'+ct.title+'</div>' : ''}
+                <div class="contact-info">
+                    ${ct.phone ? '<a href="tel:'+ct.phone+'">'+ct.phone+'</a>' : ''}
+                    ${ct.phone && ct.email ? ' &middot; ' : ''}
+                    ${ct.email ? '<a href="mailto:'+ct.email+'">'+ct.email+'</a>' : ''}
+                </div>
+                ${ct.primary ? '<div class="contact-badges"><span class="badge-primary">Primary Contact</span></div>' : ''}
+            </div>`;
         });
-        html += `</div>`;
+    } else {
+        html += `<div style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:12px 0;">No contacts added yet</div>`;
     }
+
+    html += `</div>
+        <!-- Inline add contact form -->
+        <div class="add-contact-form" id="addContactForm">
+            <div class="form-grid">
+                <div><label class="form-label" style="font-size:11px;">Name *</label><input type="text" class="form-input" id="acfName" placeholder="Full name"></div>
+                <div><label class="form-label" style="font-size:11px;">Title / Role</label><input type="text" class="form-input" id="acfTitle" placeholder="Project Manager"></div>
+                <div><label class="form-label" style="font-size:11px;">Phone</label><input type="text" class="form-input" id="acfPhone" placeholder="(555) 123-4567"></div>
+                <div><label class="form-label" style="font-size:11px;">Email</label><input type="email" class="form-input" id="acfEmail" placeholder="email@company.com"></div>
+                <div class="full" style="display:flex;align-items:center;gap:8px;">
+                    <label style="font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" id="acfPrimary"> Set as primary contact
+                    </label>
+                </div>
+            </div>
+            <input type="hidden" id="acfEditIndex" value="-1">
+            <div class="form-actions">
+                <button class="btn btn-outline" onclick="cancelAddContact()" style="font-size:12px;padding:4px 12px;">Cancel</button>
+                <button class="btn btn-primary" onclick="saveContact('${c.id}')" style="font-size:12px;padding:4px 12px;" id="acfSaveBtn">Add Contact</button>
+            </div>
+        </div>
+    </div>`;
 
     const addr = c.address || {};
     html += `
@@ -728,6 +858,137 @@ function closeGlobalSearch() {
 document.getElementById('globalSearchOverlay').addEventListener('click', e => {
     if (e.target.id === 'globalSearchOverlay') closeGlobalSearch();
 });
+
+// ── Delete from Drawer ──
+function deleteCustomerFromDrawer() {
+    if (!currentDetail) return;
+    deleteCustomer(currentDetail.id, currentDetail.company || 'this customer');
+}
+
+// ── Quick Edit from Card ──
+function quickEditCustomer(cid) {
+    const c = allCustomers.find(x => x.id === cid);
+    if (!c) return;
+    editingCustomerId = c.id;
+    document.getElementById('modalTitle').textContent = 'Edit Customer';
+    fillForm(c);
+    document.getElementById('modalOverlay').style.display = 'flex';
+}
+
+// ── Delete Customer ──
+async function deleteCustomer(cid, companyName) {
+    if (!confirm('Are you sure you want to delete "' + companyName + '"? This cannot be undone.')) return;
+    try {
+        const r = await fetch('/api/customers/delete', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({id: cid})
+        });
+        const d = await r.json();
+        if (d.ok) {
+            loadCustomers();
+            // Close drawer if viewing this customer
+            if (currentDetail && currentDetail.id === cid) closeDrawer();
+        } else {
+            alert(d.error || 'Delete failed');
+        }
+    } catch(e) { alert('Error deleting customer'); }
+}
+
+// ── Drawer Contact Management ──
+function toggleAddContactForm(cid) {
+    const form = document.getElementById('addContactForm');
+    form.classList.toggle('open');
+    if (form.classList.contains('open')) {
+        document.getElementById('acfName').value = '';
+        document.getElementById('acfTitle').value = '';
+        document.getElementById('acfPhone').value = '';
+        document.getElementById('acfEmail').value = '';
+        document.getElementById('acfPrimary').checked = false;
+        document.getElementById('acfEditIndex').value = '-1';
+        document.getElementById('acfSaveBtn').textContent = 'Add Contact';
+        document.getElementById('acfName').focus();
+    }
+}
+
+function cancelAddContact() {
+    document.getElementById('addContactForm').classList.remove('open');
+}
+
+function editContactInDrawer(cid, idx) {
+    const c = currentDetail;
+    if (!c) return;
+    const allContacts = (c.contacts && c.contacts.length) ? c.contacts : (c.primary_contact?.name ? [{...c.primary_contact, primary:true}] : []);
+    const ct = allContacts[idx];
+    if (!ct) return;
+
+    const form = document.getElementById('addContactForm');
+    form.classList.add('open');
+    document.getElementById('acfName').value = ct.name || '';
+    document.getElementById('acfTitle').value = ct.title || '';
+    document.getElementById('acfPhone').value = ct.phone || '';
+    document.getElementById('acfEmail').value = ct.email || '';
+    document.getElementById('acfPrimary').checked = ct.primary || false;
+    document.getElementById('acfEditIndex').value = idx;
+    document.getElementById('acfSaveBtn').textContent = 'Update Contact';
+}
+
+async function saveContact(cid) {
+    const name = document.getElementById('acfName').value.trim();
+    if (!name) { alert('Contact name is required'); return; }
+
+    const contact = {
+        name: name,
+        title: document.getElementById('acfTitle').value.trim(),
+        phone: document.getElementById('acfPhone').value.trim(),
+        email: document.getElementById('acfEmail').value.trim(),
+        primary: document.getElementById('acfPrimary').checked
+    };
+
+    const editIndex = parseInt(document.getElementById('acfEditIndex').value);
+    const action = editIndex >= 0 ? 'update' : 'add';
+
+    try {
+        const r = await fetch('/api/customers/contacts', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                customer_id: cid,
+                action: action,
+                contact: contact,
+                index: editIndex >= 0 ? editIndex : undefined
+            })
+        });
+        const d = await r.json();
+        if (d.ok) {
+            cancelAddContact();
+            // Refresh detail and list
+            loadCustomers();
+            openDetail(cid);
+        } else {
+            alert(d.error || 'Failed to save contact');
+        }
+    } catch(e) { alert('Error saving contact'); }
+}
+
+async function deleteContact(cid, idx) {
+    if (!confirm('Remove this contact?')) return;
+    try {
+        const r = await fetch('/api/customers/contacts', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                customer_id: cid,
+                action: 'delete',
+                index: idx
+            })
+        });
+        const d = await r.json();
+        if (d.ok) {
+            loadCustomers();
+            openDetail(cid);
+        } else {
+            alert(d.error || 'Failed to delete contact');
+        }
+    } catch(e) { alert('Error deleting contact'); }
+}
 
 function doGlobalSearch(q) {
     clearTimeout(searchTimeout);

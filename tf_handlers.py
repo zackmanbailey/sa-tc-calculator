@@ -1112,6 +1112,168 @@ class UserDeleteHandler(BaseHandler):
 # APP PAGE HANDLERS (Dashboard, Calculators)
 # ─────────────────────────────────────────────
 
+class DashboardStatsAPIHandler(BaseHandler):
+    """GET /api/dashboard/stats — Aggregated stats for the dashboard."""
+    def get(self):
+        try:
+            user = self.get_current_user() or "local"
+            users_db = load_users()
+            role = users_db.get(user, {}).get("role", "viewer") if user != "local" else "admin"
+
+            result = {"ok": True}
+
+            # ── Active projects & stage counts ──
+            active_projects = 0
+            stage_counts = {}
+            in_engineering = 0
+            in_fabrication = 0
+            ready_to_ship = 0
+            try:
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for d in os.listdir(PROJECTS_DIR):
+                    dpath = os.path.join(PROJECTS_DIR, d)
+                    meta_path = os.path.join(dpath, "metadata.json")
+                    if os.path.isdir(dpath) and os.path.isfile(meta_path):
+                        try:
+                            with open(meta_path) as f:
+                                meta = json.load(f)
+                            if meta.get("archived", False):
+                                continue
+                            stage = meta.get("stage", "quote")
+                            if stage != "complete":
+                                active_projects += 1
+                            stage_counts[stage] = stage_counts.get(stage, 0) + 1
+                            if stage in ("engineering", "shop_drawings", "shop-drawings"):
+                                in_engineering += 1
+                            elif stage == "fabrication":
+                                in_fabrication += 1
+                            elif stage in ("shipping", "install"):
+                                ready_to_ship += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            result["active_projects"] = active_projects
+            result["stage_counts"] = stage_counts
+            result["in_engineering"] = in_engineering
+            result["in_fabrication"] = in_fabrication
+            result["ready_to_ship"] = ready_to_ship
+
+            # ── Open work orders ──
+            open_work_orders = 0
+            active_work_orders = []
+            work_order_items = []
+            try:
+                from shop_drawings.work_orders import list_all_work_orders, load_all_active_items
+                all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+                for wo in all_wos:
+                    status = wo.get("status", "")
+                    if status not in ("complete", "completed", "cancelled"):
+                        open_work_orders += 1
+                        active_work_orders.append(wo)
+                try:
+                    items = load_all_active_items(SHOP_DRAWINGS_DIR)
+                    for item in items:
+                        if hasattr(item, 'to_dict'):
+                            work_order_items.append(item.to_dict())
+                        elif hasattr(item, '__dict__'):
+                            work_order_items.append(item.__dict__)
+                        else:
+                            work_order_items.append(item)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            result["open_work_orders"] = open_work_orders
+            result["active_work_orders"] = active_work_orders[:10]
+            result["work_order_items"] = work_order_items[:20]
+
+            # ── Pending QC items & NCRs ──
+            pending_qc = 0
+            qc_items = []
+            open_ncrs = []
+            recent_signoffs = []
+            try:
+                os.makedirs(QC_DIR, exist_ok=True)
+                for fname in os.listdir(QC_DIR):
+                    if fname.endswith(".json"):
+                        fpath = os.path.join(QC_DIR, fname)
+                        try:
+                            with open(fpath) as f:
+                                qc_data = json.load(f)
+                            job_code = fname.replace(".json", "")
+                            for insp in qc_data.get("inspections", []):
+                                status = insp.get("status", "pending")
+                                if status in ("pending", "in_progress"):
+                                    pending_qc += 1
+                                    insp["job_code"] = job_code
+                                    qc_items.append(insp)
+                                elif status in ("passed", "completed", "signed"):
+                                    insp["job_code"] = job_code
+                                    recent_signoffs.append(insp)
+                            for ncr in qc_data.get("ncrs", []):
+                                ncr_status = ncr.get("status", "open")
+                                if ncr_status in ("open", "in_progress"):
+                                    ncr["job_code"] = job_code
+                                    open_ncrs.append(ncr)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            result["pending_qc"] = pending_qc
+            result["qc_items"] = qc_items[:20]
+            result["open_ncrs"] = open_ncrs[:10]
+            result["recent_signoffs"] = recent_signoffs[-10:]
+
+            # ── Inventory alerts ──
+            inventory_alerts = 0
+            try:
+                inv = load_inventory()
+                coils = inv.get("coils", inv) if isinstance(inv, dict) else {}
+                if isinstance(coils, dict):
+                    for cid, c in coils.items():
+                        if isinstance(c, dict):
+                            avail = (c.get("stock_lbs", 0) or 0) - (c.get("committed_lbs", 0) or 0)
+                            min_stock = c.get("min_stock_lbs", 2000) or 2000
+                            if avail <= 0 or avail < min_stock:
+                                inventory_alerts += 1
+            except Exception:
+                pass
+
+            result["inventory_alerts"] = inventory_alerts
+
+            # ── Recent activity (admin only) ──
+            recent_activity = []
+            admin_roles = ["admin", "god_mode", "owner", "general_manager", "estimator"]
+            if role in admin_roles:
+                try:
+                    if USE_SQLITE:
+                        import db as _db
+                        entries = _db.get_activity_log(limit=10, offset=0)
+                        recent_activity = entries if isinstance(entries, list) else []
+                except Exception:
+                    pass
+
+            result["recent_activity"] = recent_activity
+
+            # ── Users online estimate (admin) ──
+            if role in admin_roles:
+                result["users_online"] = max(1, len([u for u in users_db.values()
+                                                       if isinstance(u, dict)
+                                                       and u.get("last_login", "")]))
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+
+        except Exception as e:
+            logger.error(f"DashboardStatsAPIHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class DashboardHandler(BaseHandler):
     """GET / — Main TitanForge dashboard."""
     def get(self):
@@ -1876,6 +2038,57 @@ class InventoryCoilCreateHandler(BaseHandler):
             }
             save_inventory(inv)
             self._log("created_coil", "coil", coil_id, {"name": body.get("name", coil_id)})
+            self.write(json_encode({"ok": True, "coil_id": coil_id}))
+
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+class CoilEditHandler(BaseHandler):
+    required_roles = ["admin", "estimator"]
+    """POST /api/inventory/coil/edit — Edit an existing coil's metadata."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            coil_id = (body.get("coil_id", "") or "").strip()
+            if not coil_id:
+                self.write(json_encode({"ok": False, "error": "coil_id is required"}))
+                return
+
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            if coil_id not in coils:
+                self.write(json_encode({"ok": False, "error": f"Coil '{coil_id}' not found"}))
+                return
+
+            coil = coils[coil_id]
+
+            # Editable string fields
+            for field in ["name", "gauge", "grade", "supplier", "heat_num", "notes"]:
+                if field in body:
+                    coil[field] = _sanitize_string(body[field], 200) if body[field] else ""
+
+            # Editable numeric fields
+            numeric_fields = ["stock_lbs", "price_per_lb", "min_order_lbs",
+                              "min_stock_lbs", "lbs_per_lft", "width_in",
+                              "coil_max_lbs", "lead_time_weeks"]
+            for field in numeric_fields:
+                if field in body and body[field] is not None:
+                    try:
+                        coil[field] = float(body[field])
+                    except (ValueError, TypeError):
+                        pass
+
+            # Status field (if provided)
+            if "status" in body and body["status"]:
+                valid_statuses = ["active", "low_stock", "depleted", "on_hold"]
+                if body["status"] in valid_statuses:
+                    coil["status"] = body["status"]
+
+            save_inventory(inv)
+            self._log("edited_coil", "coil", coil_id, {"fields": list(body.keys())})
+            self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "coil_id": coil_id}))
 
 
@@ -4042,6 +4255,102 @@ class CustomerDeleteHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
+class CustomerContactHandler(BaseHandler):
+    """POST /api/customers/contacts — Add, update, or delete contacts within a customer."""
+    required_roles = ["admin", "estimator"]
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            cid = body.get("customer_id", "")
+            action = body.get("action", "")  # add, update, delete
+            customers = load_customers()
+            found_idx = None
+            for i, c in enumerate(customers):
+                if c["id"] == cid:
+                    found_idx = i
+                    break
+            if found_idx is None:
+                self.write(json_encode({"ok": False, "error": "Customer not found"}))
+                return
+
+            customer = customers[found_idx]
+            contacts = customer.get("contacts", [])
+
+            if action == "add":
+                contact = body.get("contact", {})
+                if not contact.get("name"):
+                    self.write(json_encode({"ok": False, "error": "Contact name is required"}))
+                    return
+                # If this contact is set as primary, unset others
+                if contact.get("primary"):
+                    for ct in contacts:
+                        ct["primary"] = False
+                contacts.append(contact)
+                # Also update primary_contact field for backward compat
+                if contact.get("primary") or len(contacts) == 1:
+                    contact["primary"] = True
+                    customer["primary_contact"] = {
+                        "name": contact.get("name", ""),
+                        "email": contact.get("email", ""),
+                        "phone": contact.get("phone", ""),
+                        "title": contact.get("title", ""),
+                    }
+
+            elif action == "update":
+                idx = body.get("index")
+                contact = body.get("contact", {})
+                if idx is None or idx < 0 or idx >= len(contacts):
+                    self.write(json_encode({"ok": False, "error": "Invalid contact index"}))
+                    return
+                # If this contact is set as primary, unset others
+                if contact.get("primary"):
+                    for ct in contacts:
+                        ct["primary"] = False
+                contacts[idx] = contact
+                # Update primary_contact if this is the primary
+                if contact.get("primary"):
+                    customer["primary_contact"] = {
+                        "name": contact.get("name", ""),
+                        "email": contact.get("email", ""),
+                        "phone": contact.get("phone", ""),
+                        "title": contact.get("title", ""),
+                    }
+
+            elif action == "delete":
+                idx = body.get("index")
+                if idx is None or idx < 0 or idx >= len(contacts):
+                    self.write(json_encode({"ok": False, "error": "Invalid contact index"}))
+                    return
+                was_primary = contacts[idx].get("primary", False)
+                contacts.pop(idx)
+                # If we deleted the primary, promote the first remaining
+                if was_primary and contacts:
+                    contacts[0]["primary"] = True
+                    customer["primary_contact"] = {
+                        "name": contacts[0].get("name", ""),
+                        "email": contacts[0].get("email", ""),
+                        "phone": contacts[0].get("phone", ""),
+                        "title": contacts[0].get("title", ""),
+                    }
+                elif not contacts:
+                    customer["primary_contact"] = {}
+            else:
+                self.write(json_encode({"ok": False, "error": "Invalid action. Use add, update, or delete."}))
+                return
+
+            customer["contacts"] = contacts
+            customer["updated_at"] = datetime.datetime.now().isoformat()
+            customers[found_idx] = customer
+            save_customers(customers)
+            self._log("updated_customer_contacts", "customer", cid, {"action": action})
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "customer": customer}))
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
 class CustomerDetailHandler(BaseHandler):
     """GET /api/customers/detail — Get single customer with project history."""
     def get(self):
@@ -11169,6 +11478,7 @@ def get_routes():
 
         # ── App routes (Dashboard + Calculators) ────────────────
         (r"/",                      DashboardHandler),
+        (r"/api/dashboard/stats",   DashboardStatsAPIHandler),
         (r"/sa",                    SACalcHandler),
         (r"/tc",                    TCQuoteHandler),
         (r"/getting-started",       GettingStartedHandler),
@@ -11197,6 +11507,7 @@ def get_routes():
         (r"/api/inventory/summary",      InventorySummaryHandler),
         (r"/api/inventory/coils",        InventoryCoilsHandler),
         (r"/api/inventory/coil/create",  InventoryCoilCreateHandler),
+        (r"/api/inventory/coil/edit",    CoilEditHandler),
         (r"/api/inventory/transactions", InventoryTransactionsHandler),
         (r"/api/inventory/allocations",  InventoryAllocationsHandler),
         (r"/api/inventory/allocate/release", InventoryAllocateReleaseHandler),
@@ -11340,6 +11651,7 @@ def get_routes():
         (r"/api/customers/create",           CustomerCreateHandler),
         (r"/api/customers/update",           CustomerUpdateHandler),
         (r"/api/customers/delete",           CustomerDeleteHandler),
+        (r"/api/customers/contacts",         CustomerContactHandler),
         (r"/api/customers/detail",           CustomerDetailHandler),
         (r"/api/customers/docs/upload",      CustomerDocUploadHandler),
         (r"/api/customers/docs",             CustomerDocListHandler),

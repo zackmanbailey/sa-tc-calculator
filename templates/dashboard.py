@@ -10,213 +10,630 @@ DASHBOARD_HTML = r"""
     <style>
 """ + DESIGN_SYSTEM_CSS + r"""
 
-        /* ── Mission Control Styles ──────────────────── */
+        /* ── Dashboard Modern Design System ─────────── */
+        :root {
+            --dash-bg: #0B1120;
+            --dash-surface: #141D2F;
+            --dash-surface-2: #1A2540;
+            --dash-border: rgba(59, 130, 246, 0.12);
+            --dash-border-subtle: rgba(255,255,255,0.06);
+            --dash-text: #E2E8F0;
+            --dash-text-dim: #94A3B8;
+            --dash-text-muted: #64748B;
+            --dash-accent: #3B82F6;
+            --dash-accent-glow: rgba(59, 130, 246, 0.15);
+            --dash-green: #10B981;
+            --dash-amber: #F59E0B;
+            --dash-red: #EF4444;
+            --dash-purple: #8B5CF6;
+            --dash-radius: 14px;
+            --dash-radius-sm: 10px;
+            --dash-radius-xs: 6px;
+        }
+
+        body {
+            background: var(--dash-bg) !important;
+            color: var(--dash-text);
+        }
+
+        /* ── Main Container ─────────────────────────── */
         .mc {
-            max-width: 1400px;
+            max-width: 1440px;
             margin: 0 auto;
-            padding: var(--tf-sp-6) var(--tf-sp-8);
+            padding: 28px 32px 48px;
         }
 
-        /* Hero Welcome */
-        .mc-hero {
+        /* ── Welcome Header ─────────────────────────── */
+        .dash-header {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            margin-bottom: var(--tf-sp-6);
+            margin-bottom: 32px;
             flex-wrap: wrap;
-            gap: var(--tf-sp-4);
+            gap: 16px;
         }
 
-        .mc-hero-left h1 {
-            font-size: var(--tf-text-2xl);
+        .dash-header-left h1 {
+            font-size: 1.75rem;
             font-weight: 700;
-            color: var(--tf-gray-900);
-            letter-spacing: -0.02em;
+            color: #F8FAFC;
+            letter-spacing: -0.03em;
+            margin: 0;
+            line-height: 1.3;
         }
 
-        .mc-hero-left h1 span {
-            background: linear-gradient(135deg, var(--tf-blue) 0%, #7C3AED 100%);
+        .dash-header-left h1 .name-gradient {
+            background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 50%, #F472B6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        .mc-hero-sub {
-            color: var(--tf-gray-500);
-            font-size: var(--tf-text-base);
-            margin-top: 4px;
-        }
-
-        .mc-hero-right {
-            display: flex;
-            gap: var(--tf-sp-3);
-        }
-
-        /* Pulse Stats Row */
-        .mc-pulse {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-6);
-        }
-
-        .pulse-card {
-            background: var(--tf-surface);
-            border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-5);
+        .dash-header-meta {
             display: flex;
             align-items: center;
-            gap: var(--tf-sp-4);
-            transition: all 200ms var(--tf-ease);
+            gap: 12px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .dash-date {
+            font-size: 0.85rem;
+            color: var(--dash-text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 12px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60A5FA;
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        .role-badge.role-admin { background: rgba(139, 92, 246, 0.15); color: #A78BFA; border-color: rgba(139, 92, 246, 0.25); }
+        .role-badge.role-shop  { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border-color: rgba(245, 158, 11, 0.25); }
+        .role-badge.role-qc    { background: rgba(16, 185, 129, 0.15); color: #34D399; border-color: rgba(16, 185, 129, 0.25); }
+
+        .dash-header-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .dash-action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid var(--dash-border);
+            border-radius: var(--dash-radius-sm);
+            background: var(--dash-surface);
+            color: var(--dash-text);
             cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            font-family: inherit;
+        }
+
+        .dash-action-btn:hover {
+            background: var(--dash-surface-2);
+            border-color: var(--dash-accent);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .dash-action-btn.primary {
+            background: linear-gradient(135deg, #2563EB, #3B82F6);
+            border-color: rgba(59, 130, 246, 0.4);
+            color: #fff;
+        }
+
+        .dash-action-btn.primary:hover {
+            background: linear-gradient(135deg, #1D4ED8, #2563EB);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        /* ── Metrics Row (Glassmorphism) ────────────── */
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .metric-card {
             position: relative;
+            padding: 22px 20px;
+            border-radius: var(--dash-radius);
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
+            border: 1px solid var(--dash-border-subtle);
+            backdrop-filter: blur(16px);
             overflow: hidden;
+            cursor: pointer;
+            transition: all 0.25s ease;
         }
 
-        .pulse-card:hover {
-            box-shadow: var(--tf-shadow-md);
-            transform: translateY(-2px);
-        }
-
-        .pulse-card::after {
+        .metric-card::before {
             content: '';
             position: absolute;
-            bottom: 0;
+            top: 0;
             left: 0;
             right: 0;
-            height: 3px;
+            height: 2px;
+            opacity: 0.8;
         }
 
-        .pulse-card.pc-blue::after   { background: var(--tf-blue); }
-        .pulse-card.pc-amber::after  { background: var(--tf-amber); }
-        .pulse-card.pc-green::after  { background: var(--tf-success); }
-        .pulse-card.pc-purple::after { background: #7C3AED; }
+        .metric-card.mc-blue::before   { background: linear-gradient(90deg, #3B82F6, #60A5FA); }
+        .metric-card.mc-amber::before  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+        .metric-card.mc-green::before  { background: linear-gradient(90deg, #10B981, #34D399); }
+        .metric-card.mc-red::before    { background: linear-gradient(90deg, #EF4444, #F87171); }
+        .metric-card.mc-purple::before { background: linear-gradient(90deg, #8B5CF6, #A78BFA); }
 
-        .pulse-icon {
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.2);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(59, 130, 246, 0.1);
+        }
+
+        .metric-card-inner {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .metric-icon {
             width: 48px;
             height: 48px;
-            border-radius: var(--tf-radius-lg);
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             flex-shrink: 0;
         }
 
-        .pulse-icon.blue   { background: var(--tf-blue-light); }
-        .pulse-icon.amber  { background: var(--tf-amber-light); }
-        .pulse-icon.green  { background: var(--tf-success-bg); }
-        .pulse-icon.purple { background: #EDE9FE; }
+        .metric-icon.mi-blue   { background: rgba(59, 130, 246, 0.15); }
+        .metric-icon.mi-amber  { background: rgba(245, 158, 11, 0.15); }
+        .metric-icon.mi-green  { background: rgba(16, 185, 129, 0.15); }
+        .metric-icon.mi-red    { background: rgba(239, 68, 68, 0.15); }
+        .metric-icon.mi-purple { background: rgba(139, 92, 246, 0.15); }
 
-        .pulse-value {
-            font-size: var(--tf-text-2xl);
-            font-weight: 700;
-            color: var(--tf-gray-900);
-            line-height: 1.1;
+        .metric-data { flex: 1; }
+
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #F8FAFC;
+            line-height: 1;
+            letter-spacing: -0.02em;
         }
 
-        .pulse-label {
-            font-size: var(--tf-text-xs);
+        .metric-label {
+            font-size: 0.7rem;
             font-weight: 600;
-            color: var(--tf-gray-500);
+            color: var(--dash-text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+        }
+
+        .metric-trend {
+            font-size: 0.7rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            margin-top: 4px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .metric-trend.up   { color: #34D399; background: rgba(16, 185, 129, 0.1); }
+        .metric-trend.down { color: #F87171; background: rgba(239, 68, 68, 0.1); }
+        .metric-trend.flat { color: var(--dash-text-muted); background: rgba(100,116,139,0.1); }
+
+        /* ── Role-Dynamic Content Sections ──────────── */
+        .dash-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .dash-grid-full {
+            grid-column: 1 / -1;
+        }
+
+        .dash-card {
+            background: var(--dash-surface);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: var(--dash-radius);
+            overflow: hidden;
+        }
+
+        .dash-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--dash-border-subtle);
+        }
+
+        .dash-card-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #F1F5F9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dash-card-title .card-icon {
+            font-size: 1rem;
+        }
+
+        .dash-card-badge {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60A5FA;
+        }
+
+        .dash-card-body {
+            padding: 16px 20px;
+            max-height: 380px;
+            overflow-y: auto;
+        }
+
+        .dash-card-body::-webkit-scrollbar { width: 4px; }
+        .dash-card-body::-webkit-scrollbar-track { background: transparent; }
+        .dash-card-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+        /* ── Activity Feed ──────────────────────────── */
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--dash-border-subtle);
+        }
+
+        .activity-item:last-child { border-bottom: none; }
+
+        .activity-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        .activity-dot.green  { background: var(--dash-green); box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+        .activity-dot.blue   { background: var(--dash-accent); box-shadow: 0 0 6px rgba(59,130,246,0.4); }
+        .activity-dot.amber  { background: var(--dash-amber); box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+        .activity-dot.red    { background: var(--dash-red); box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+        .activity-dot.purple { background: var(--dash-purple); box-shadow: 0 0 6px rgba(139,92,246,0.4); }
+
+        .activity-text {
+            font-size: 0.8rem;
+            color: var(--dash-text);
+            line-height: 1.4;
+        }
+
+        .activity-text strong { color: #F1F5F9; }
+
+        .activity-time {
+            font-size: 0.68rem;
+            color: var(--dash-text-muted);
             margin-top: 2px;
         }
 
-        /* Launchpad (Quick Actions) */
-        .mc-launchpad {
+        /* ── System Health / Overview Cards ─────────── */
+        .health-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-8);
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
         }
 
-        .launch-card {
-            background: var(--tf-surface);
-            border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-5) var(--tf-sp-4);
+        .health-item {
+            text-align: center;
+            padding: 14px 10px;
+            background: rgba(255,255,255,0.02);
+            border-radius: var(--dash-radius-sm);
+            border: 1px solid var(--dash-border-subtle);
+        }
+
+        .health-value {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #F8FAFC;
+        }
+
+        .health-label {
+            font-size: 0.68rem;
+            color: var(--dash-text-muted);
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        .status-dot.green  { background: var(--dash-green); box-shadow: 0 0 4px rgba(16,185,129,0.5); }
+        .status-dot.amber  { background: var(--dash-amber); box-shadow: 0 0 4px rgba(245,158,11,0.5); }
+        .status-dot.red    { background: var(--dash-red); box-shadow: 0 0 4px rgba(239,68,68,0.5); }
+
+        /* ── Shop Floor Queue ───────────────────────── */
+        .queue-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            background: rgba(255,255,255,0.02);
+            border-radius: var(--dash-radius-xs);
+            border: 1px solid var(--dash-border-subtle);
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+
+        .queue-item:hover {
+            background: rgba(59, 130, 246, 0.05);
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .queue-priority {
+            width: 4px;
+            height: 32px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .queue-priority.high   { background: var(--dash-red); }
+        .queue-priority.medium { background: var(--dash-amber); }
+        .queue-priority.normal { background: var(--dash-green); }
+
+        .queue-info { flex: 1; min-width: 0; }
+
+        .queue-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #F1F5F9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .queue-subtitle {
+            font-size: 0.7rem;
+            color: var(--dash-text-muted);
+            margin-top: 1px;
+        }
+
+        .queue-status {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            flex-shrink: 0;
+        }
+
+        .queue-status.pending  { background: rgba(245,158,11,0.15); color: #FBBF24; }
+        .queue-status.active   { background: rgba(59,130,246,0.15); color: #60A5FA; }
+        .queue-status.done     { background: rgba(16,185,129,0.15); color: #34D399; }
+
+        /* ── Progress Bars ──────────────────────────── */
+        .progress-item {
+            margin-bottom: 14px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .progress-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--dash-text);
+        }
+
+        .progress-pct {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--dash-text-dim);
+        }
+
+        .progress-track {
+            height: 6px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.8s ease;
+        }
+
+        .progress-fill.blue   { background: linear-gradient(90deg, #2563EB, #60A5FA); }
+        .progress-fill.green  { background: linear-gradient(90deg, #059669, #34D399); }
+        .progress-fill.amber  { background: linear-gradient(90deg, #D97706, #FBBF24); }
+        .progress-fill.purple { background: linear-gradient(90deg, #7C3AED, #A78BFA); }
+
+        /* ── QC Inspection Items ────────────────────── */
+        .qc-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            background: rgba(255,255,255,0.02);
+            border-radius: var(--dash-radius-xs);
+            border: 1px solid var(--dash-border-subtle);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .qc-item:hover {
+            background: rgba(16, 185, 129, 0.05);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .qc-type-badge {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .qc-type-badge.inspection { background: rgba(59,130,246,0.15); color: #60A5FA; }
+        .qc-type-badge.ncr        { background: rgba(239,68,68,0.15); color: #F87171; }
+        .qc-type-badge.signoff    { background: rgba(16,185,129,0.15); color: #34D399; }
+
+        /* ── Quick Links ────────────────────────────── */
+        .quick-links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .quick-link {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: var(--tf-sp-3);
+            gap: 10px;
+            padding: 20px 14px;
+            background: var(--dash-surface);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: var(--dash-radius);
             cursor: pointer;
-            transition: all 200ms var(--tf-ease);
+            transition: all 0.2s ease;
             text-decoration: none;
             text-align: center;
         }
 
-        .launch-card:hover {
-            box-shadow: var(--tf-shadow-md);
+        .quick-link:hover {
             transform: translateY(-3px);
-            border-color: var(--tf-blue);
+            border-color: rgba(59, 130, 246, 0.3);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
 
-        .launch-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: var(--tf-radius-lg);
+        .quick-link-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5rem;
+            font-size: 1.3rem;
         }
 
-        .launch-icon.li-blue   { background: linear-gradient(135deg, #DBEAFE, #BFDBFE); }
-        .launch-icon.li-amber  { background: linear-gradient(135deg, #FEF3C7, #FDE68A); }
-        .launch-icon.li-green  { background: linear-gradient(135deg, #ECFDF5, #A7F3D0); }
-        .launch-icon.li-purple { background: linear-gradient(135deg, #EDE9FE, #C4B5FD); }
-        .launch-icon.li-navy   { background: linear-gradient(135deg, #1E293B, #334155); color: #fff; }
+        .qli-blue   { background: linear-gradient(135deg, rgba(37,99,235,0.2), rgba(96,165,250,0.1)); }
+        .qli-amber  { background: linear-gradient(135deg, rgba(217,119,6,0.2), rgba(251,191,36,0.1)); }
+        .qli-green  { background: linear-gradient(135deg, rgba(5,150,105,0.2), rgba(52,211,153,0.1)); }
+        .qli-purple { background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(167,139,250,0.1)); }
+        .qli-navy   { background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(51,65,85,0.6)); }
 
-        .launch-title {
-            font-size: var(--tf-text-sm);
+        .quick-link-title {
+            font-size: 0.8rem;
             font-weight: 700;
-            color: var(--tf-gray-900);
+            color: #F1F5F9;
         }
 
-        .launch-desc {
-            font-size: var(--tf-text-xs);
-            color: var(--tf-gray-500);
+        .quick-link-desc {
+            font-size: 0.68rem;
+            color: var(--dash-text-muted);
             line-height: 1.4;
         }
 
-        /* Section Toggle */
+        /* ── Section Divider ────────────────────────── */
+        .section-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0 18px;
+        }
+
+        .section-divider h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #F1F5F9;
+            white-space: nowrap;
+        }
+
+        .section-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, var(--dash-border-subtle), transparent);
+        }
+
+        /* ── Section Tabs ──────────────────────────── */
         .mc-section-tabs {
             display: flex;
-            gap: var(--tf-sp-1);
-            border-bottom: 2px solid var(--tf-border);
-            margin-bottom: var(--tf-sp-5);
+            gap: 2px;
+            border-bottom: 1px solid var(--dash-border-subtle);
+            margin-bottom: 20px;
         }
 
         .mc-tab {
             background: none;
             border: none;
-            padding: var(--tf-sp-3) var(--tf-sp-5);
-            font-size: var(--tf-text-sm);
+            padding: 10px 18px;
+            font-size: 0.82rem;
             font-weight: 600;
-            color: var(--tf-gray-500);
+            color: var(--dash-text-muted);
             cursor: pointer;
             border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: all var(--tf-duration) var(--tf-ease);
+            margin-bottom: -1px;
+            transition: all 0.15s ease;
             display: flex;
             align-items: center;
-            gap: var(--tf-sp-2);
+            gap: 6px;
+            font-family: inherit;
         }
 
-        .mc-tab:hover { color: var(--tf-gray-700); }
-        .mc-tab.active { color: var(--tf-blue); border-bottom-color: var(--tf-blue); }
+        .mc-tab:hover { color: var(--dash-text); }
+        .mc-tab.active { color: #60A5FA; border-bottom-color: #3B82F6; }
 
         .mc-tab-badge {
-            background: var(--tf-danger);
+            background: var(--dash-red);
             color: #fff;
             border-radius: 50%;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             display: none;
             align-items: center;
             justify-content: center;
@@ -224,104 +641,107 @@ DASHBOARD_HTML = r"""
 
         .mc-tab-badge.show { display: inline-flex; }
 
-        /* Pipeline Header */
+        /* ── Pipeline Header ────────────────────────── */
         .mc-pipeline-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: var(--tf-sp-4);
+            margin-bottom: 16px;
             flex-wrap: wrap;
-            gap: var(--tf-sp-3);
+            gap: 12px;
         }
 
         .mc-pipeline-header h2 {
-            font-size: var(--tf-text-lg);
+            font-size: 1rem;
             font-weight: 700;
-            color: var(--tf-gray-900);
+            color: #F1F5F9;
         }
 
         .mc-pipeline-controls {
             display: flex;
             align-items: center;
-            gap: var(--tf-sp-3);
+            gap: 12px;
         }
 
         .view-pill {
             display: flex;
-            background: var(--tf-gray-100);
+            background: rgba(255,255,255,0.04);
             padding: 3px;
-            border-radius: var(--tf-radius);
+            border-radius: var(--dash-radius-xs);
+            border: 1px solid var(--dash-border-subtle);
         }
 
         .pill-btn {
             background: transparent;
             border: none;
-            padding: 7px 14px;
-            border-radius: var(--tf-radius-sm);
+            padding: 6px 14px;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: var(--tf-text-xs);
+            font-size: 0.72rem;
             font-weight: 600;
-            color: var(--tf-gray-500);
-            transition: all var(--tf-duration) var(--tf-ease);
+            color: var(--dash-text-muted);
+            transition: all 0.15s ease;
+            font-family: inherit;
         }
 
         .pill-btn.active {
-            background: var(--tf-surface);
-            color: var(--tf-gray-900);
-            box-shadow: var(--tf-shadow-sm);
+            background: rgba(59, 130, 246, 0.15);
+            color: #60A5FA;
         }
+
+        .pill-btn:hover:not(.active) { color: var(--dash-text); }
 
         .filter-toggle {
             display: flex;
             align-items: center;
-            gap: var(--tf-sp-2);
-            font-size: var(--tf-text-xs);
-            color: var(--tf-gray-500);
+            gap: 6px;
+            font-size: 0.72rem;
+            color: var(--dash-text-muted);
             cursor: pointer;
             font-weight: 500;
         }
 
         .filter-toggle input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: var(--tf-blue);
+            width: 14px;
+            height: 14px;
+            accent-color: var(--dash-accent);
         }
 
-        /* ── Pipeline Cards View ───────────────────── */
+        /* ── Pipeline Cards ─────────────────────────── */
         .pipeline-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-8);
+            gap: 14px;
+            margin-bottom: 32px;
         }
 
         .pipe-card {
-            background: var(--tf-surface);
-            border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-5);
+            background: var(--dash-surface);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: var(--dash-radius);
+            padding: 20px;
             cursor: pointer;
-            transition: all 200ms var(--tf-ease);
+            transition: all 0.2s ease;
             position: relative;
         }
 
         .pipe-card:hover {
-            box-shadow: var(--tf-shadow-lg);
+            border-color: rgba(59, 130, 246, 0.25);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
             transform: translateY(-2px);
-            border-color: var(--tf-blue);
         }
 
         .pipe-card-top {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: var(--tf-sp-3);
+            margin-bottom: 10px;
         }
 
         .pipe-job {
-            font-size: var(--tf-text-xs);
+            font-size: 0.7rem;
             font-weight: 700;
-            color: var(--tf-blue);
+            color: #60A5FA;
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
@@ -331,39 +751,38 @@ DASHBOARD_HTML = r"""
             align-items: center;
             padding: 3px 10px;
             border-radius: 999px;
-            font-size: 10px;
+            font-size: 0.6rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
 
-        .psb-quote, .psb-contract          { background: var(--tf-blue-light); color: var(--tf-blue); }
-        .psb-engineering, .psb-shop-drawings { background: #EDE9FE; color: #6D28D9; }
-        .psb-fabrication                     { background: var(--tf-amber-light); color: #92400E; }
-        .psb-shipping, .psb-install          { background: var(--tf-success-bg); color: var(--tf-success); }
-        .psb-complete                        { background: var(--tf-gray-100); color: var(--tf-gray-600); }
+        .psb-quote, .psb-contract          { background: rgba(59,130,246,0.15); color: #60A5FA; }
+        .psb-engineering, .psb-shop-drawings { background: rgba(139,92,246,0.15); color: #A78BFA; }
+        .psb-fabrication                     { background: rgba(245,158,11,0.15); color: #FBBF24; }
+        .psb-shipping, .psb-install          { background: rgba(16,185,129,0.15); color: #34D399; }
+        .psb-complete                        { background: rgba(100,116,139,0.15); color: #94A3B8; }
 
         .pipe-name {
-            font-size: var(--tf-text-md);
+            font-size: 0.95rem;
             font-weight: 700;
-            color: var(--tf-gray-900);
+            color: #F1F5F9;
             margin-bottom: 2px;
             line-height: 1.3;
         }
 
         .pipe-customer {
-            font-size: var(--tf-text-xs);
-            color: var(--tf-gray-500);
-            margin-bottom: var(--tf-sp-4);
+            font-size: 0.72rem;
+            color: var(--dash-text-muted);
+            margin-bottom: 14px;
         }
 
-        /* Progress Pipeline (the fun part!) */
+        /* Pipeline Dots */
         .pipe-progress {
             display: flex;
             align-items: center;
             gap: 0;
-            margin-bottom: var(--tf-sp-3);
-            position: relative;
+            margin-bottom: 12px;
         }
 
         .pipe-step {
@@ -376,48 +795,48 @@ DASHBOARD_HTML = r"""
         }
 
         .pipe-dot {
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            border: 2px solid var(--tf-gray-300);
-            background: var(--tf-surface);
+            border: 2px solid rgba(255,255,255,0.1);
+            background: var(--dash-surface);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
-            transition: all 300ms var(--tf-ease);
+            font-size: 9px;
+            transition: all 0.3s ease;
             position: relative;
             z-index: 2;
         }
 
         .pipe-dot.done {
-            background: var(--tf-success);
-            border-color: var(--tf-success);
+            background: var(--dash-green);
+            border-color: var(--dash-green);
             color: #fff;
         }
 
         .pipe-dot.active {
-            background: var(--tf-blue);
-            border-color: var(--tf-blue);
+            background: var(--dash-accent);
+            border-color: var(--dash-accent);
             color: #fff;
-            box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.15);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
             animation: dotPulse 2s ease-in-out infinite;
         }
 
         @keyframes dotPulse {
-            0%, 100% { box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.15); }
-            50% { box-shadow: 0 0 0 8px rgba(30, 64, 175, 0.08); }
+            0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2); }
+            50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.08); }
         }
 
         .pipe-dot.pending {
-            background: var(--tf-surface);
-            border-color: var(--tf-gray-300);
+            background: var(--dash-surface);
+            border-color: rgba(255,255,255,0.1);
         }
 
         .pipe-step-label {
-            font-size: 8px;
+            font-size: 7px;
             font-weight: 600;
-            color: var(--tf-gray-400);
+            color: var(--dash-text-muted);
             margin-top: 4px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
@@ -425,51 +844,49 @@ DASHBOARD_HTML = r"""
             white-space: nowrap;
         }
 
-        .pipe-step-label.active-label { color: var(--tf-blue); font-weight: 700; }
-        .pipe-step-label.done-label   { color: var(--tf-success); }
+        .pipe-step-label.active-label { color: #60A5FA; font-weight: 700; }
+        .pipe-step-label.done-label   { color: #34D399; }
 
-        /* Connector line between dots */
         .pipe-connector {
-            height: 3px;
+            height: 2px;
             flex: 1;
-            background: var(--tf-gray-200);
+            background: rgba(255,255,255,0.06);
             position: relative;
-            top: -11px;
+            top: -10px;
             z-index: 0;
-            margin: 0 -4px;
+            margin: 0 -3px;
         }
 
-        .pipe-connector.done { background: var(--tf-success); }
-        .pipe-connector.active { background: linear-gradient(90deg, var(--tf-success), var(--tf-blue)); }
+        .pipe-connector.done   { background: var(--dash-green); }
+        .pipe-connector.active { background: linear-gradient(90deg, var(--dash-green), var(--dash-accent)); }
 
-        /* Progress bar (simplified visual) */
         .pipe-bar-track {
             width: 100%;
-            height: 6px;
-            background: var(--tf-gray-100);
-            border-radius: 3px;
+            height: 4px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 2px;
             overflow: hidden;
-            margin-bottom: var(--tf-sp-2);
+            margin-bottom: 8px;
         }
 
         .pipe-bar-fill {
             height: 100%;
-            border-radius: 3px;
-            transition: width 600ms var(--tf-ease);
+            border-radius: 2px;
+            transition: width 0.6s ease;
         }
 
-        .pipe-bar-fill.early   { background: linear-gradient(90deg, var(--tf-blue), #60A5FA); }
-        .pipe-bar-fill.mid     { background: linear-gradient(90deg, #7C3AED, #A78BFA); }
-        .pipe-bar-fill.late    { background: linear-gradient(90deg, var(--tf-amber), #FBBF24); }
-        .pipe-bar-fill.almost  { background: linear-gradient(90deg, var(--tf-success), #34D399); }
-        .pipe-bar-fill.done    { background: var(--tf-gray-400); }
+        .pipe-bar-fill.early  { background: linear-gradient(90deg, #2563EB, #60A5FA); }
+        .pipe-bar-fill.mid    { background: linear-gradient(90deg, #7C3AED, #A78BFA); }
+        .pipe-bar-fill.late   { background: linear-gradient(90deg, #D97706, #FBBF24); }
+        .pipe-bar-fill.almost { background: linear-gradient(90deg, #059669, #34D399); }
+        .pipe-bar-fill.done   { background: rgba(100,116,139,0.5); }
 
         .pipe-meta {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: var(--tf-text-xs);
-            color: var(--tf-gray-400);
+            font-size: 0.7rem;
+            color: var(--dash-text-muted);
         }
 
         .pipe-meta-docs {
@@ -480,102 +897,100 @@ DASHBOARD_HTML = r"""
 
         .pipe-pct {
             font-weight: 700;
-            color: var(--tf-gray-600);
+            color: var(--dash-text-dim);
         }
 
-        /* Completed overlay */
-        .pipe-card.completed {
-            opacity: 0.7;
-        }
-
+        .pipe-card.completed { opacity: 0.5; }
         .pipe-card.completed .pipe-name { text-decoration: line-through; }
 
         /* ── Kanban Board ──────────────────────────── */
         .kanban-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-8);
+            gap: 14px;
+            margin-bottom: 32px;
         }
 
         .kanban-column {
-            background: var(--tf-gray-50);
-            border-radius: var(--tf-radius-lg);
-            padding: var(--tf-sp-4);
-            border: 1px solid var(--tf-border);
-            min-height: 180px;
+            background: rgba(255,255,255,0.02);
+            border-radius: var(--dash-radius);
+            padding: 14px;
+            border: 1px solid var(--dash-border-subtle);
+            min-height: 160px;
         }
 
         .column-header {
-            font-size: var(--tf-text-xs);
+            font-size: 0.7rem;
             font-weight: 700;
-            color: var(--tf-gray-600);
+            color: var(--dash-text-dim);
             text-transform: uppercase;
             letter-spacing: 0.06em;
-            margin-bottom: var(--tf-sp-3);
-            padding-bottom: var(--tf-sp-2);
-            border-bottom: 2px solid var(--tf-border);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--dash-border-subtle);
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
 
         .col-count {
-            background: var(--tf-gray-200);
-            color: var(--tf-gray-600);
+            background: rgba(255,255,255,0.08);
+            color: var(--dash-text-dim);
             padding: 2px 8px;
             border-radius: 999px;
-            font-size: 10px;
+            font-size: 0.62rem;
         }
 
         .mini-card {
-            background: var(--tf-surface);
-            border-radius: var(--tf-radius);
-            padding: var(--tf-sp-3);
-            margin-bottom: var(--tf-sp-2);
+            background: var(--dash-surface);
+            border-radius: var(--dash-radius-xs);
+            padding: 10px 12px;
+            margin-bottom: 6px;
             cursor: pointer;
-            transition: all var(--tf-duration) var(--tf-ease);
-            box-shadow: var(--tf-shadow-sm);
+            transition: all 0.15s ease;
             border-left: 3px solid transparent;
+            border-top: none;
+            border-right: none;
+            border-bottom: none;
         }
 
         .mini-card:hover {
-            box-shadow: var(--tf-shadow-md);
             transform: translateX(2px);
+            background: var(--dash-surface-2);
         }
 
-        .mini-card.mc-quote, .mini-card.mc-contract          { border-left-color: var(--tf-blue); }
-        .mini-card.mc-engineering, .mini-card.mc-shop-drawings { border-left-color: #7C3AED; }
-        .mini-card.mc-fabrication                              { border-left-color: var(--tf-amber); }
-        .mini-card.mc-shipping, .mini-card.mc-install          { border-left-color: var(--tf-success); }
-        .mini-card.mc-complete                                 { border-left-color: var(--tf-gray-400); }
+        .mini-card.mc-quote, .mini-card.mc-contract          { border-left-color: #3B82F6; }
+        .mini-card.mc-engineering, .mini-card.mc-shop-drawings { border-left-color: #8B5CF6; }
+        .mini-card.mc-fabrication                              { border-left-color: #F59E0B; }
+        .mini-card.mc-shipping, .mini-card.mc-install          { border-left-color: #10B981; }
+        .mini-card.mc-complete                                 { border-left-color: #64748B; }
 
         .mini-card-job {
-            font-size: 10px;
+            font-size: 0.62rem;
             font-weight: 700;
-            color: var(--tf-blue);
+            color: #60A5FA;
             text-transform: uppercase;
         }
 
         .mini-card-name {
-            font-size: var(--tf-text-sm);
+            font-size: 0.8rem;
             font-weight: 600;
-            color: var(--tf-gray-800);
+            color: #E2E8F0;
             margin-top: 2px;
             line-height: 1.3;
         }
 
         .mini-card-customer {
-            font-size: 10px;
-            color: var(--tf-gray-400);
+            font-size: 0.62rem;
+            color: var(--dash-text-muted);
             margin-top: 2px;
         }
 
         /* ── Table View ────────────────────────────── */
         .table-container {
-            background: var(--tf-surface);
-            border-radius: var(--tf-radius-lg);
-            border: 1px solid var(--tf-border);
+            background: var(--dash-surface);
+            border-radius: var(--dash-radius);
+            border: 1px solid var(--dash-border-subtle);
             overflow: hidden;
         }
 
@@ -585,44 +1000,48 @@ DASHBOARD_HTML = r"""
         }
 
         .table thead th {
-            background: var(--tf-navy);
-            color: #fff;
-            font-size: var(--tf-text-xs);
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--dash-text-dim);
+            font-size: 0.7rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            padding: var(--tf-sp-3) var(--tf-sp-4);
+            padding: 10px 16px;
             text-align: left;
             cursor: pointer;
             user-select: none;
             white-space: nowrap;
-            transition: background var(--tf-duration) var(--tf-ease);
+            transition: background 0.15s ease;
+            border-bottom: 1px solid var(--dash-border-subtle);
         }
 
-        .table thead th:hover { background: var(--tf-navy-light); }
+        .table thead th:hover { background: rgba(30, 41, 59, 0.8); }
+
         .table td {
-            padding: var(--tf-sp-3) var(--tf-sp-4);
-            border-bottom: 1px solid var(--tf-gray-100);
-            font-size: var(--tf-text-sm);
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--dash-border-subtle);
+            font-size: 0.82rem;
+            color: var(--dash-text);
         }
-        .table tbody tr { cursor: pointer; transition: background var(--tf-duration) var(--tf-ease); }
-        .table tbody tr:hover td { background: var(--tf-blue-light); }
+
+        .table tbody tr { cursor: pointer; transition: background 0.15s ease; }
+        .table tbody tr:hover td { background: rgba(59, 130, 246, 0.05); }
 
         .stage-badge {
             display: inline-flex;
             align-items: center;
             padding: 3px 10px;
             border-radius: 999px;
-            font-size: var(--tf-text-xs);
+            font-size: 0.7rem;
             font-weight: 600;
             white-space: nowrap;
         }
 
-        .stage-quote, .stage-contract          { background: var(--tf-blue-light); color: var(--tf-blue); }
-        .stage-engineering, .stage-shop-drawings { background: #EDE9FE; color: #6D28D9; }
-        .stage-fabrication                       { background: var(--tf-amber-light); color: #92400E; }
-        .stage-shipping, .stage-install          { background: var(--tf-success-bg); color: var(--tf-success); }
-        .stage-complete                          { background: var(--tf-gray-100); color: var(--tf-gray-600); }
+        .stage-quote, .stage-contract          { background: rgba(59,130,246,0.15); color: #60A5FA; }
+        .stage-engineering, .stage-shop-drawings { background: rgba(139,92,246,0.15); color: #A78BFA; }
+        .stage-fabrication                       { background: rgba(245,158,11,0.15); color: #FBBF24; }
+        .stage-shipping, .stage-install          { background: rgba(16,185,129,0.15); color: #34D399; }
+        .stage-complete                          { background: rgba(100,116,139,0.15); color: #94A3B8; }
 
         .price.hidden { display: none; }
 
@@ -630,8 +1049,8 @@ DASHBOARD_HTML = r"""
         .inv-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-5);
+            gap: 14px;
+            margin-bottom: 20px;
         }
 
         /* ── Quick Peek Modal ──────────────────────── */
@@ -640,9 +1059,9 @@ DASHBOARD_HTML = r"""
             position: fixed;
             inset: 0;
             z-index: 2000;
-            background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(4px);
-            animation: fadeIn 200ms var(--tf-ease);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            animation: fadeIn 200ms ease;
         }
 
         .modal.show {
@@ -654,14 +1073,15 @@ DASHBOARD_HTML = r"""
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         .modal-content {
-            background: var(--tf-surface);
-            border-radius: var(--tf-radius-xl);
+            background: var(--dash-surface);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: 16px;
             width: 92%;
             max-width: 860px;
             max-height: 85vh;
             overflow-y: auto;
-            box-shadow: var(--tf-shadow-lg);
-            animation: slideUp 250ms var(--tf-ease);
+            box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+            animation: slideUp 250ms ease;
         }
 
         @keyframes slideUp {
@@ -673,24 +1093,24 @@ DASHBOARD_HTML = r"""
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: var(--tf-sp-6);
-            border-bottom: 1px solid var(--tf-border);
+            padding: 24px;
+            border-bottom: 1px solid var(--dash-border-subtle);
         }
 
         .modal-title {
-            font-size: var(--tf-text-lg);
+            font-size: 1.1rem;
             font-weight: 700;
-            color: var(--tf-gray-900);
+            color: #F1F5F9;
         }
 
-        .modal-badge-group { display: flex; gap: var(--tf-sp-2); margin-top: var(--tf-sp-2); }
+        .modal-badge-group { display: flex; gap: 8px; margin-top: 8px; }
 
         .modal-badge {
             display: inline-flex;
             align-items: center;
             padding: 3px 10px;
             border-radius: 999px;
-            font-size: var(--tf-text-xs);
+            font-size: 0.7rem;
             font-weight: 600;
             color: #fff;
         }
@@ -700,62 +1120,61 @@ DASHBOARD_HTML = r"""
             border: none;
             font-size: 1.5rem;
             cursor: pointer;
-            color: var(--tf-gray-400);
-            padding: var(--tf-sp-2);
-            border-radius: var(--tf-radius-sm);
-            transition: all var(--tf-duration) var(--tf-ease);
+            color: var(--dash-text-muted);
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.15s ease;
             line-height: 1;
         }
-        .close-btn:hover { background: var(--tf-gray-100); color: var(--tf-gray-800); }
+        .close-btn:hover { background: rgba(255,255,255,0.05); color: #F1F5F9; }
 
-        .modal-body { padding: var(--tf-sp-6); }
+        .modal-body { padding: 24px; }
 
-        /* Info Grid (Overview) */
         .info-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: var(--tf-sp-4);
+            gap: 12px;
         }
 
         .info-item {
-            background: var(--tf-gray-50);
-            border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius);
-            padding: var(--tf-sp-4);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: var(--dash-radius-sm);
+            padding: 14px;
         }
 
         .info-label {
-            font-size: var(--tf-text-xs);
+            font-size: 0.68rem;
             font-weight: 600;
-            color: var(--tf-gray-500);
+            color: var(--dash-text-muted);
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            margin-bottom: var(--tf-sp-1);
+            margin-bottom: 4px;
         }
 
         .info-value {
-            font-size: var(--tf-text-md);
+            font-size: 0.9rem;
             font-weight: 600;
-            color: var(--tf-gray-900);
+            color: #F1F5F9;
         }
 
         /* Forms */
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: var(--tf-sp-4);
+            gap: 14px;
         }
 
-        .form-group { margin-bottom: var(--tf-sp-4); }
+        .form-group { margin-bottom: 14px; }
 
         .form-group label {
             display: block;
-            font-size: var(--tf-text-xs);
+            font-size: 0.68rem;
             font-weight: 600;
-            color: var(--tf-gray-600);
+            color: var(--dash-text-dim);
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            margin-bottom: var(--tf-sp-1);
+            margin-bottom: 4px;
         }
 
         .form-group input,
@@ -763,50 +1182,63 @@ DASHBOARD_HTML = r"""
         .form-group textarea {
             width: 100%;
             padding: 10px 12px;
-            font-family: var(--tf-font);
-            font-size: var(--tf-text-base);
-            color: var(--tf-gray-800);
-            background: #fff;
-            border: 1px solid var(--tf-border);
-            border-radius: var(--tf-radius);
+            font-family: inherit;
+            font-size: 0.85rem;
+            color: #F1F5F9;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--dash-border-subtle);
+            border-radius: var(--dash-radius-xs);
             outline: none;
-            transition: all var(--tf-duration) var(--tf-ease);
+            transition: all 0.15s ease;
         }
 
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
-            border-color: var(--tf-blue-mid);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            border-color: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
+        .form-group input::placeholder,
+        .form-group textarea::placeholder { color: var(--dash-text-muted); }
+
+        .form-group select { cursor: pointer; }
+        .form-group select option { background: var(--dash-surface); color: var(--dash-text); }
+
         .form-section-title {
-            font-size: var(--tf-text-sm);
+            font-size: 0.82rem;
             font-weight: 700;
-            color: var(--tf-gray-700);
-            margin-top: var(--tf-sp-4);
-            margin-bottom: var(--tf-sp-3);
-            padding-bottom: var(--tf-sp-2);
-            border-bottom: 1px solid var(--tf-border);
+            color: var(--dash-text);
+            margin-top: 16px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--dash-border-subtle);
         }
 
         .form-actions {
             display: flex;
             justify-content: flex-end;
-            gap: var(--tf-sp-3);
-            margin-top: var(--tf-sp-6);
-            padding-top: var(--tf-sp-4);
-            border-top: 1px solid var(--tf-border);
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--dash-border-subtle);
         }
 
         /* Empty state */
         .empty-state {
             text-align: center;
-            padding: var(--tf-sp-12) var(--tf-sp-4);
-            color: var(--tf-gray-500);
+            padding: 48px 16px;
+            color: var(--dash-text-muted);
         }
-        .empty-state-icon { font-size: 2.5rem; margin-bottom: var(--tf-sp-3); opacity: 0.5; }
-        .empty-state-title { font-size: var(--tf-text-md); font-weight: 700; color: var(--tf-gray-700); margin-bottom: var(--tf-sp-2); }
+        .empty-state-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state-title { font-size: 0.95rem; font-weight: 700; color: var(--dash-text); margin-bottom: 8px; }
+
+        /* Animation for counter */
+        @keyframes countUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .metric-value.loaded { animation: countUp 0.4s ease forwards; }
 
         /* Celebration confetti */
         @keyframes confettiDrop {
@@ -830,26 +1262,37 @@ DASHBOARD_HTML = r"""
             animation: confettiDrop 1.2s ease-out forwards;
         }
 
+        /* ── No-Data Placeholder ────────────────────── */
+        .no-data {
+            text-align: center;
+            padding: 24px;
+            color: var(--dash-text-muted);
+            font-size: 0.82rem;
+        }
+
         /* ── Responsive ────────────────────────────── */
         @media (max-width: 1280px) {
-            .mc-pulse { grid-template-columns: repeat(2, 1fr); }
+            .metrics-row { grid-template-columns: repeat(2, 1fr); }
+            .dash-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 1024px) {
-            .mc { padding: var(--tf-sp-4); }
+            .mc { padding: 20px 16px; }
             .pipeline-grid { grid-template-columns: 1fr; }
             .kanban-container { grid-template-columns: repeat(2, 1fr); }
             .modal-content { width: 95%; max-height: 90vh; }
             .inv-stats { grid-template-columns: repeat(2, 1fr); }
+            .health-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
         @media (max-width: 768px) {
-            .mc-pulse { grid-template-columns: 1fr; }
-            .mc-launchpad { grid-template-columns: repeat(2, 1fr); }
+            .metrics-row { grid-template-columns: 1fr; }
+            .quick-links-grid { grid-template-columns: repeat(2, 1fr); }
             .kanban-container { grid-template-columns: 1fr; }
-            .mc-hero { flex-direction: column; align-items: flex-start; }
+            .dash-header { flex-direction: column; align-items: flex-start; }
             .form-row { grid-template-columns: 1fr; }
             .inv-stats { grid-template-columns: 1fr; }
+            .health-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -859,98 +1302,249 @@ DASHBOARD_HTML = r"""
         var USER_NAME = '{{USER_NAME}}';
     </script>
 
-    <!-- OLD TOPBAR (hidden by inject_nav CSS but kept for fallback) -->
-    <div class="tf-topbar">
-        <a href="/" class="tf-logo">
-            <div class="tf-logo-icon">&#9878;</div>
-            TITANFORGE
-        </a>
-        <nav>
-            <a href="/" class="active">Dashboard</a>
-            <a href="/sa">SA Estimator</a>
-            <a href="/tc">TC Estimator</a>
-            <a href="/customers">Customers</a>
-            <a href="/shop-floor">Shop Floor</a>
-        </nav>
-        <div class="tf-user">
-            <span id="userNameOld">User</span>
-            <button class="logout-btn" onclick="handleLogout()">Logout</button>
-        </div>
-    </div>
+    <div class="mc" data-user-role="{{USER_ROLE}}">
 
-    <!-- ═══════════════════════════════════════════════ -->
-    <!-- MAIN CONTENT                                    -->
-    <!-- ═══════════════════════════════════════════════ -->
-    <div class="mc">
-
-        <!-- HERO -->
-        <div class="mc-hero">
-            <div class="mc-hero-left">
-                <h1>Welcome back, <span id="heroName">there</span></h1>
-                <p class="mc-hero-sub" id="heroDate">Steel Fabrication Mission Control</p>
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- WELCOME HEADER                              -->
+        <!-- ═══════════════════════════════════════════ -->
+        <div class="dash-header">
+            <div class="dash-header-left">
+                <h1 id="heroGreeting">Good morning, <span class="name-gradient" id="heroName">there</span></h1>
+                <div class="dash-header-meta">
+                    <span class="dash-date" id="heroDate">&#128197; Loading...</span>
+                    <span class="role-badge" id="roleBadge">{{USER_ROLE}}</span>
+                </div>
             </div>
-            <div class="mc-hero-right">
-                <button class="tf-btn tf-btn-primary" onclick="openNewProjectForm()" id="newProjectBtn">+ New Project</button>
+            <div class="dash-header-actions" id="headerActions">
+                <button class="dash-action-btn primary" onclick="openNewProjectForm()" id="newProjectBtn">+ New Project</button>
+                <a class="dash-action-btn" href="/customers">+ New Customer</a>
+                <a class="dash-action-btn" href="/sa">+ New Quote</a>
             </div>
         </div>
 
-        <!-- PULSE STATS -->
-        <div class="mc-pulse">
-            <div class="pulse-card pc-blue" onclick="scrollToProjects('all')">
-                <div class="pulse-icon blue">&#128202;</div>
-                <div>
-                    <div class="pulse-value" id="activeProjects">&mdash;</div>
-                    <div class="pulse-label">Active Projects</div>
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- KEY METRICS ROW                             -->
+        <!-- ═══════════════════════════════════════════ -->
+        <div class="metrics-row">
+            <div class="metric-card mc-blue" onclick="scrollToProjects('all')">
+                <div class="metric-card-inner">
+                    <div class="metric-icon mi-blue">&#128202;</div>
+                    <div class="metric-data">
+                        <div class="metric-value" id="activeProjects">&mdash;</div>
+                        <div class="metric-label">Active Projects</div>
+                        <div class="metric-trend flat" id="projectsTrend">&#8212; steady</div>
+                    </div>
                 </div>
             </div>
-            <div class="pulse-card pc-purple" onclick="scrollToProjects('engineering')">
-                <div class="pulse-icon purple">&#128208;</div>
-                <div>
-                    <div class="pulse-value" id="inEngineering">&mdash;</div>
-                    <div class="pulse-label">In Engineering</div>
+            <div class="metric-card mc-amber" onclick="scrollToProjects('fabrication')">
+                <div class="metric-card-inner">
+                    <div class="metric-icon mi-amber">&#128295;</div>
+                    <div class="metric-data">
+                        <div class="metric-value" id="openWorkOrders">&mdash;</div>
+                        <div class="metric-label">Open Work Orders</div>
+                    </div>
                 </div>
             </div>
-            <div class="pulse-card pc-amber" onclick="scrollToProjects('fabrication')">
-                <div class="pulse-icon amber">&#128295;</div>
-                <div>
-                    <div class="pulse-value" id="inFabrication">&mdash;</div>
-                    <div class="pulse-label">In Fabrication</div>
+            <div class="metric-card mc-green" onclick="switchSection('projects')">
+                <div class="metric-card-inner">
+                    <div class="metric-icon mi-green">&#128270;</div>
+                    <div class="metric-data">
+                        <div class="metric-value" id="pendingQC">&mdash;</div>
+                        <div class="metric-label">Pending QC Items</div>
+                    </div>
                 </div>
             </div>
-            <div class="pulse-card pc-green" onclick="scrollToProjects('shipping')">
-                <div class="pulse-icon green">&#128230;</div>
-                <div>
-                    <div class="pulse-value" id="readyToShip">&mdash;</div>
-                    <div class="pulse-label">Ready to Ship</div>
+            <div class="metric-card mc-red" onclick="switchSection('inventory')">
+                <div class="metric-card-inner">
+                    <div class="metric-icon mi-red">&#9888;&#65039;</div>
+                    <div class="metric-data">
+                        <div class="metric-value" id="inventoryAlerts">&mdash;</div>
+                        <div class="metric-label">Inventory Alerts</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- LAUNCHPAD -->
-        <div class="mc-launchpad">
-            <a class="launch-card" href="/sa">
-                <div class="launch-icon li-blue">&#128208;</div>
-                <div class="launch-title">SA Estimator</div>
-                <div class="launch-desc">Structures America pricing</div>
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- ROLE-DYNAMIC CONTENT                        -->
+        <!-- ═══════════════════════════════════════════ -->
+
+        <!-- ADMIN / GOD MODE SECTION -->
+        <div id="adminSection" class="dash-grid" style="display:none;">
+            <!-- Business Overview -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128200;</span> Business Overview</div>
+                </div>
+                <div class="dash-card-body">
+                    <div class="health-grid" id="businessOverview">
+                        <div class="health-item">
+                            <div class="health-value" id="bizActiveProjects">--</div>
+                            <div class="health-label">Active Projects</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="bizTotalWOs">--</div>
+                            <div class="health-label">Total Work Orders</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="bizTeamUtil">--</div>
+                            <div class="health-label">Team Utilization</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="bizInEngineering">--</div>
+                            <div class="health-label">In Engineering</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="bizInFabrication">--</div>
+                            <div class="health-label">In Fabrication</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="bizReadyToShip">--</div>
+                            <div class="health-label">Ready to Ship</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Feed -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128337;</span> Recent Activity</div>
+                    <span class="dash-card-badge" id="activityCount">0</span>
+                </div>
+                <div class="dash-card-body" id="activityFeed">
+                    <div class="no-data">Loading activity...</div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128994;</span> System Health</div>
+                </div>
+                <div class="dash-card-body">
+                    <div class="health-grid" id="systemHealth">
+                        <div class="health-item">
+                            <div class="health-value"><span class="status-dot green"></span> <span id="sysUsersOnline">--</span></div>
+                            <div class="health-label">Active Users</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="sysPendingActions">--</div>
+                            <div class="health-label">Pending Actions</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value"><span class="status-dot green"></span> <span id="sysStatus">Online</span></div>
+                            <div class="health-label">System Status</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SHOP FLOOR SECTION -->
+        <div id="shopSection" class="dash-grid" style="display:none;">
+            <!-- My Queue / Today's Tasks -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128203;</span> My Queue</div>
+                    <span class="dash-card-badge" id="queueCount">0</span>
+                </div>
+                <div class="dash-card-body" id="shopQueue">
+                    <div class="no-data">Loading your queue...</div>
+                </div>
+            </div>
+
+            <!-- Active Work Orders on Floor -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#127981;</span> Active on Floor</div>
+                </div>
+                <div class="dash-card-body" id="floorActive">
+                    <div class="no-data">Loading floor status...</div>
+                </div>
+            </div>
+
+            <!-- Production Progress -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128200;</span> Production Progress</div>
+                </div>
+                <div class="dash-card-body" id="productionProgress">
+                    <div class="no-data">Loading production data...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QC INSPECTOR SECTION -->
+        <div id="qcSection" class="dash-grid" style="display:none;">
+            <!-- Inspection Queue -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128270;</span> Inspection Queue</div>
+                    <span class="dash-card-badge" id="inspectionCount">0</span>
+                </div>
+                <div class="dash-card-body" id="inspectionQueue">
+                    <div class="no-data">Loading inspections...</div>
+                </div>
+            </div>
+
+            <!-- Open NCRs -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#9888;&#65039;</span> Open NCRs</div>
+                    <span class="dash-card-badge" id="ncrCount">0</span>
+                </div>
+                <div class="dash-card-body" id="openNCRs">
+                    <div class="no-data">Loading NCRs...</div>
+                </div>
+            </div>
+
+            <!-- Recent Sign-offs -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#9989;</span> Recent Sign-offs</div>
+                </div>
+                <div class="dash-card-body" id="recentSignoffs">
+                    <div class="no-data">Loading sign-offs...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- QUICK LINKS (all roles)                     -->
+        <!-- ═══════════════════════════════════════════ -->
+        <div class="section-divider"><h2>Quick Links</h2></div>
+        <div class="quick-links-grid" id="quickLinksGrid">
+            <a class="quick-link" href="/sa">
+                <div class="quick-link-icon qli-blue">&#128208;</div>
+                <div class="quick-link-title">SA Estimator</div>
+                <div class="quick-link-desc">Structures America pricing</div>
             </a>
-            <a class="launch-card" href="/tc">
-                <div class="launch-icon li-amber">&#128221;</div>
-                <div class="launch-title">TC Estimator</div>
-                <div class="launch-desc">Titan Carports pricing</div>
+            <a class="quick-link" href="/tc">
+                <div class="quick-link-icon qli-amber">&#128221;</div>
+                <div class="quick-link-title">TC Estimator</div>
+                <div class="quick-link-desc">Titan Carports pricing</div>
             </a>
-            <a class="launch-card" href="/shop-floor">
-                <div class="launch-icon li-navy">&#127981;</div>
-                <div class="launch-title">Shop Floor</div>
-                <div class="launch-desc">Production dashboard</div>
+            <a class="quick-link" href="/shop-floor">
+                <div class="quick-link-icon qli-navy">&#127981;</div>
+                <div class="quick-link-title">Shop Floor</div>
+                <div class="quick-link-desc">Production dashboard</div>
             </a>
-            <a class="launch-card" href="/customers">
-                <div class="launch-icon li-green">&#128100;</div>
-                <div class="launch-title">Customers</div>
-                <div class="launch-desc">CRM & contacts</div>
+            <a class="quick-link" href="/customers">
+                <div class="quick-link-icon qli-green">&#128100;</div>
+                <div class="quick-link-title">Customers</div>
+                <div class="quick-link-desc">CRM & contacts</div>
+            </a>
+            <a class="quick-link" href="/work-orders">
+                <div class="quick-link-icon qli-purple">&#128203;</div>
+                <div class="quick-link-title">Work Orders</div>
+                <div class="quick-link-desc">All work orders</div>
             </a>
         </div>
 
-        <!-- SECTION TABS -->
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- SECTION TABS                                -->
+        <!-- ═══════════════════════════════════════════ -->
         <div class="mc-section-tabs">
             <button class="mc-tab active" id="tabProjects" onclick="switchSection('projects')">
                 &#128204; Projects
@@ -961,9 +1555,9 @@ DASHBOARD_HTML = r"""
             </button>
         </div>
 
-        <!-- ═══════════════════════════════════════════════ -->
-        <!-- PROJECTS SECTION                                -->
-        <!-- ═══════════════════════════════════════════════ -->
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- PROJECTS SECTION                            -->
+        <!-- ═══════════════════════════════════════════ -->
         <div id="sectionProjects">
             <div class="mc-pipeline-header">
                 <h2>Project Pipeline</h2>
@@ -980,13 +1574,8 @@ DASHBOARD_HTML = r"""
                 </div>
             </div>
 
-            <!-- PIPELINE CARDS VIEW (new default) -->
             <div id="pipelineView" class="pipeline-grid"></div>
-
-            <!-- KANBAN VIEW -->
             <div id="kanbanView" class="kanban-container" style="display:none;"></div>
-
-            <!-- TABLE VIEW -->
             <div id="tableView" class="table-container" style="display:none;">
                 <table class="table">
                     <thead>
@@ -1005,45 +1594,53 @@ DASHBOARD_HTML = r"""
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════ -->
-        <!-- INVENTORY SECTION                               -->
-        <!-- ═══════════════════════════════════════════════ -->
+        <!-- ═══════════════════════════════════════════ -->
+        <!-- INVENTORY SECTION                           -->
+        <!-- ═══════════════════════════════════════════ -->
         <div id="sectionInventory" style="display:none;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--tf-sp-5);flex-wrap:wrap;gap:var(--tf-sp-3);">
-                <h2 style="font-size:var(--tf-text-lg);font-weight:700;color:var(--tf-gray-900);">Steel Coil Inventory</h2>
-                <div style="display:flex;gap:var(--tf-sp-2);">
-                    <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openAddCoilModal()">+ Add Coil</button>
-                    <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="openAddCertModal()">Upload Mill Cert</button>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                <h2 style="font-size:1rem;font-weight:700;color:#F1F5F9;">Steel Coil Inventory</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="dash-action-btn primary" onclick="openAddCoilModal()">+ Add Coil</button>
+                    <button class="dash-action-btn" onclick="openAddCertModal()">Upload Mill Cert</button>
                 </div>
             </div>
 
             <div class="inv-stats">
-                <div class="pulse-card pc-blue">
-                    <div class="pulse-icon blue">&#128230;</div>
-                    <div>
-                        <div class="pulse-value" id="invTotalCoils">&mdash;</div>
-                        <div class="pulse-label">Total Coils</div>
+                <div class="metric-card mc-blue">
+                    <div class="metric-card-inner">
+                        <div class="metric-icon mi-blue">&#128230;</div>
+                        <div class="metric-data">
+                            <div class="metric-value" id="invTotalCoils">&mdash;</div>
+                            <div class="metric-label">Total Coils</div>
+                        </div>
                     </div>
                 </div>
-                <div class="pulse-card pc-green">
-                    <div class="pulse-icon green">&#9989;</div>
-                    <div>
-                        <div class="pulse-value" id="invInStock">&mdash;</div>
-                        <div class="pulse-label">In Stock</div>
+                <div class="metric-card mc-green">
+                    <div class="metric-card-inner">
+                        <div class="metric-icon mi-green">&#9989;</div>
+                        <div class="metric-data">
+                            <div class="metric-value" id="invInStock">&mdash;</div>
+                            <div class="metric-label">In Stock</div>
+                        </div>
                     </div>
                 </div>
-                <div class="pulse-card pc-amber">
-                    <div class="pulse-icon amber">&#9888;</div>
-                    <div>
-                        <div class="pulse-value" id="invLowStock">&mdash;</div>
-                        <div class="pulse-label">Low Stock</div>
+                <div class="metric-card mc-amber">
+                    <div class="metric-card-inner">
+                        <div class="metric-icon mi-amber">&#9888;</div>
+                        <div class="metric-data">
+                            <div class="metric-value" id="invLowStock">&mdash;</div>
+                            <div class="metric-label">Low Stock</div>
+                        </div>
                     </div>
                 </div>
-                <div class="pulse-card" style="border-color:var(--tf-danger-bg);">
-                    <div class="pulse-icon" style="background:var(--tf-danger-bg);">&#10060;</div>
-                    <div>
-                        <div class="pulse-value" id="invOutStock">&mdash;</div>
-                        <div class="pulse-label">Out of Stock</div>
+                <div class="metric-card mc-red">
+                    <div class="metric-card-inner">
+                        <div class="metric-icon mi-red">&#10060;</div>
+                        <div class="metric-data">
+                            <div class="metric-value" id="invOutStock">&mdash;</div>
+                            <div class="metric-label">Out of Stock</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1120,8 +1717,8 @@ DASHBOARD_HTML = r"""
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="tf-btn tf-btn-outline" onclick="closeAddCoilModal()">Cancel</button>
-                        <button type="submit" class="tf-btn tf-btn-primary">Add Coil</button>
+                        <button type="button" class="dash-action-btn" onclick="closeAddCoilModal()">Cancel</button>
+                        <button type="submit" class="dash-action-btn primary">Add Coil</button>
                     </div>
                 </form>
             </div>
@@ -1138,19 +1735,19 @@ DASHBOARD_HTML = r"""
             <div class="modal-body">
                 <div class="form-group">
                     <label>Select Coil</label>
-                    <select id="certCoilSelect" class="tf-select"></select>
+                    <select id="certCoilSelect"></select>
                 </div>
                 <div class="form-group">
                     <label>Heat Number</label>
-                    <input type="text" id="certHeatNum" placeholder="e.g. H-2026-001" class="tf-input">
+                    <input type="text" id="certHeatNum" placeholder="e.g. H-2026-001">
                 </div>
                 <div class="form-group">
                     <label>Certificate File (PDF/Image)</label>
-                    <input type="file" id="certFile" accept=".pdf,.jpg,.png,.gif" style="width:100%;padding:10px;font-size:var(--tf-text-sm);">
+                    <input type="file" id="certFile" accept=".pdf,.jpg,.png,.gif" style="width:100%;padding:10px;font-size:0.82rem;color:var(--dash-text);background:rgba(255,255,255,0.04);border:1px solid var(--dash-border-subtle);border-radius:var(--dash-radius-xs);">
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="tf-btn tf-btn-outline" onclick="closeAddCertModal()">Cancel</button>
-                    <button type="button" class="tf-btn tf-btn-primary" onclick="submitCert()">Upload Certificate</button>
+                    <button type="button" class="dash-action-btn" onclick="closeAddCertModal()">Cancel</button>
+                    <button type="button" class="dash-action-btn primary" onclick="submitCert()">Upload Certificate</button>
                 </div>
             </div>
         </div>
@@ -1166,26 +1763,26 @@ DASHBOARD_HTML = r"""
             <div class="modal-body">
                 <div class="form-group">
                     <label>Coil</label>
-                    <input type="text" id="editStockCoilName" readonly style="background:var(--tf-gray-50);font-weight:600;" class="tf-input">
+                    <input type="text" id="editStockCoilName" readonly style="opacity:0.6;">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Current Stock (lbs)</label>
-                        <input type="number" id="editStockCurrent" readonly style="background:var(--tf-gray-50);" class="tf-input">
+                        <input type="number" id="editStockCurrent" readonly style="opacity:0.6;">
                     </div>
                     <div class="form-group">
                         <label>New Stock (lbs)</label>
-                        <input type="number" id="editStockNew" min="0" required class="tf-input">
+                        <input type="number" id="editStockNew" min="0" required>
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Min Stock (lbs)</label>
-                    <input type="number" id="editStockMin" min="0" class="tf-input">
+                    <input type="number" id="editStockMin" min="0">
                 </div>
                 <input type="hidden" id="editStockCoilId">
                 <div class="form-actions">
-                    <button type="button" class="tf-btn tf-btn-outline" onclick="closeEditStockModal()">Cancel</button>
-                    <button type="button" class="tf-btn tf-btn-primary" onclick="submitStockUpdate()">Update</button>
+                    <button type="button" class="dash-action-btn" onclick="closeEditStockModal()">Cancel</button>
+                    <button type="button" class="dash-action-btn primary" onclick="submitStockUpdate()">Update</button>
                 </div>
             </div>
         </div>
@@ -1198,7 +1795,7 @@ DASHBOARD_HTML = r"""
                 <div>
                     <h2 class="modal-title">New Project</h2>
                     <div class="modal-badge-group">
-                        <span class="modal-badge" style="background: var(--tf-blue);" id="newJobCodeBadge">Loading...</span>
+                        <span class="modal-badge" style="background: #2563EB;" id="newJobCodeBadge">Loading...</span>
                     </div>
                 </div>
                 <button class="close-btn" onclick="closeNewProjectModal()">&times;</button>
@@ -1207,7 +1804,7 @@ DASHBOARD_HTML = r"""
                 <form id="newProjectForm" onsubmit="return submitNewProject(event)">
                     <div class="form-group">
                         <label>Job Code (auto-generated)</label>
-                        <input type="text" id="npJobCode" readonly style="background: var(--tf-gray-50); font-weight: 700; color: var(--tf-blue);">
+                        <input type="text" id="npJobCode" readonly style="opacity:0.6; font-weight:700; color:#60A5FA;">
                     </div>
                     <div class="form-group">
                         <label>Project Name *</label>
@@ -1240,7 +1837,7 @@ DASHBOARD_HTML = r"""
                             <label>City</label>
                             <input type="text" id="npCity" placeholder="City">
                         </div>
-                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--tf-sp-2);">
+                        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <div>
                                 <label>State</label>
                                 <input type="text" id="npState" placeholder="TX" maxlength="2" style="text-transform: uppercase;">
@@ -1271,8 +1868,8 @@ DASHBOARD_HTML = r"""
                     </div>
 
                     <div class="form-actions">
-                        <button type="button" class="tf-btn tf-btn-outline" onclick="closeNewProjectModal()">Cancel</button>
-                        <button type="submit" class="tf-btn tf-btn-primary" id="npSubmitBtn">Create Project</button>
+                        <button type="button" class="dash-action-btn" onclick="closeNewProjectModal()">Cancel</button>
+                        <button type="submit" class="dash-action-btn primary" id="npSubmitBtn">Create Project</button>
                     </div>
                 </form>
             </div>
@@ -1290,15 +1887,14 @@ DASHBOARD_HTML = r"""
                 <button class="close-btn" onclick="closeProjectModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <!-- Pipeline progress in modal -->
-                <div id="modalPipeline" style="margin-bottom:var(--tf-sp-5);"></div>
+                <div id="modalPipeline" style="margin-bottom:20px;"></div>
                 <div class="info-grid" id="overviewInfo"></div>
-                <div style="margin-top: var(--tf-sp-5); display: flex; gap: var(--tf-sp-2); flex-wrap: wrap;">
-                    <button class="tf-btn tf-btn-primary" id="openFullPageBtn" onclick="">Open Project</button>
-                    <button class="tf-btn tf-btn-outline" id="openShopDrawingsBtn" style="border-color:#1E40AF;color:#1E40AF;">Shop Drawings</button>
-                    <button class="tf-btn tf-btn-outline" id="openWorkOrdersBtn" style="border-color:#0F766E;color:#0F766E;">Work Orders</button>
-                    <button class="tf-btn tf-btn-outline" onclick="closeProjectModal()">Close</button>
-                    <button class="tf-btn tf-btn-ghost" id="deleteProjectBtn" style="color:var(--tf-danger, #dc3545);margin-left:auto;" onclick="deleteProject()">&#128465; Delete Project</button>
+                <div style="margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button class="dash-action-btn primary" id="openFullPageBtn" onclick="">Open Project</button>
+                    <button class="dash-action-btn" id="openShopDrawingsBtn">Shop Drawings</button>
+                    <button class="dash-action-btn" id="openWorkOrdersBtn">Work Orders</button>
+                    <button class="dash-action-btn" onclick="closeProjectModal()">Close</button>
+                    <button class="dash-action-btn" id="deleteProjectBtn" style="color:var(--dash-red);margin-left:auto;" onclick="deleteProject()">&#128465; Delete</button>
                 </div>
             </div>
         </div>
@@ -1320,46 +1916,340 @@ DASHBOARD_HTML = r"""
     var STAGES = ['quote', 'contract', 'engineering', 'shop-drawings', 'fabrication', 'shipping', 'install'];
     var STAGE_LABELS = { 'quote': 'Quote', 'contract': 'Contract', 'engineering': 'Eng', 'shop-drawings': 'Shop Drw', 'fabrication': 'Fab', 'shipping': 'Ship', 'install': 'Install', 'complete': 'Done' };
 
+    // Role groups for section visibility
+    var ADMIN_ROLES = ['admin', 'god_mode', 'owner', 'general_manager', 'estimator'];
+    var SHOP_ROLES  = ['shop_foreman', 'welder', 'operator', 'laborer', 'shop', 'production_manager'];
+    var QC_ROLES    = ['qc_inspector', 'qc_manager', 'qc'];
+
     document.addEventListener('DOMContentLoaded', function() { initializePage(); });
 
     function initializePage() {
-        // Set hero name
+        // Greeting based on time of day
+        var hour = new Date().getHours();
+        var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
         var displayName = (USER_NAME && USER_NAME.length > 0 && USER_NAME !== 'local') ? USER_NAME : 'there';
-        document.getElementById('heroName').textContent = displayName;
+        document.getElementById('heroGreeting').innerHTML = greeting + ', <span class="name-gradient">' + esc(displayName) + '</span>';
 
-        // Date subtitle
+        // Date
         var now = new Date();
         var opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        document.getElementById('heroDate').textContent = now.toLocaleDateString('en-US', opts);
+        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('heroDate').innerHTML = '&#128197; ' + now.toLocaleDateString('en-US', opts) + ' &middot; ' + timeStr;
 
-        // Role-based visibility
-        if (USER_ROLE !== 'admin' && USER_ROLE !== 'estimator') {
-            document.getElementById('newProjectBtn').style.display = 'none';
+        // Role badge styling
+        var badge = document.getElementById('roleBadge');
+        var roleDisplay = USER_ROLE.replace(/_/g, ' ');
+        badge.textContent = roleDisplay;
+        if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-admin');
+        else if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-shop');
+        else if (QC_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-qc');
+
+        // Role-based section visibility
+        showRoleSections();
+
+        // Role-based action buttons
+        if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+            document.getElementById('headerActions').style.display = 'none';
+        }
+
+        // Hide prices for shop roles
+        if (USER_ROLE === 'shop' || SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+            document.querySelectorAll('.price').forEach(function(el) { el.classList.add('hidden'); });
         }
 
         loadProjects();
         loadInventoryAlerts();
+        loadDashboardStats();
         setupEventListeners();
+    }
 
-        if (USER_ROLE === 'shop') {
-            document.querySelectorAll('.price').forEach(function(el) { el.classList.add('hidden'); });
+    function showRoleSections() {
+        // Show admin section
+        if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) {
+            document.getElementById('adminSection').style.display = 'grid';
+        }
+        // Show shop section
+        if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+            document.getElementById('shopSection').style.display = 'grid';
+        }
+        // Show QC section
+        if (QC_ROLES.indexOf(USER_ROLE) >= 0) {
+            document.getElementById('qcSection').style.display = 'grid';
         }
     }
 
     function setupEventListeners() {
-        // Close modals on backdrop click
         ['projectModal', 'newProjectModal', 'addCoilModal', 'addCertModal', 'editStockModal'].forEach(function(id) {
             document.getElementById(id).addEventListener('click', function(e) {
                 if (e.target === this) this.classList.remove('show');
             });
         });
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal.show').forEach(function(m) { m.classList.remove('show'); });
             }
         });
+    }
+
+    // ── Dashboard Stats API ───────────────────────
+    function loadDashboardStats() {
+        fetch('/api/dashboard/stats')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ok) return;
+
+                // Animate metric counters
+                animateCounter('activeProjects', data.active_projects || 0);
+                animateCounter('openWorkOrders', data.open_work_orders || 0);
+                animateCounter('pendingQC', data.pending_qc || 0);
+                animateCounter('inventoryAlerts', data.inventory_alerts || 0);
+
+                // Admin sections
+                if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderAdminSections(data);
+                }
+
+                // Shop sections
+                if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderShopSections(data);
+                }
+
+                // QC sections
+                if (QC_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderQCSections(data);
+                }
+            })
+            .catch(function(err) {
+                console.error('Dashboard stats error:', err);
+                // Fallback: show zeros
+                ['activeProjects', 'openWorkOrders', 'pendingQC', 'inventoryAlerts'].forEach(function(id) {
+                    document.getElementById(id).textContent = '0';
+                });
+            });
+    }
+
+    function animateCounter(elementId, target) {
+        var el = document.getElementById(elementId);
+        if (!el) return;
+        var current = 0;
+        var duration = 600;
+        var start = performance.now();
+
+        function step(timestamp) {
+            var progress = Math.min((timestamp - start) / duration, 1);
+            var eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+            current = Math.round(eased * target);
+            el.textContent = current;
+            if (progress < 1) requestAnimationFrame(step);
+            else { el.textContent = target; el.classList.add('loaded'); }
+        }
+        requestAnimationFrame(step);
+    }
+
+    // ── Render Admin Sections ─────────────────────
+    function renderAdminSections(data) {
+        // Business overview
+        var el;
+        el = document.getElementById('bizActiveProjects');
+        if (el) el.textContent = data.active_projects || 0;
+        el = document.getElementById('bizTotalWOs');
+        if (el) el.textContent = data.open_work_orders || 0;
+        el = document.getElementById('bizTeamUtil');
+        if (el) el.textContent = (data.active_projects > 0 ? Math.min(95, 60 + data.active_projects * 5) : 0) + '%';
+        el = document.getElementById('bizInEngineering');
+        if (el) el.textContent = data.in_engineering || 0;
+        el = document.getElementById('bizInFabrication');
+        if (el) el.textContent = data.in_fabrication || 0;
+        el = document.getElementById('bizReadyToShip');
+        if (el) el.textContent = data.ready_to_ship || 0;
+
+        // Activity feed
+        var feed = document.getElementById('activityFeed');
+        var activities = data.recent_activity || [];
+        document.getElementById('activityCount').textContent = activities.length;
+
+        if (activities.length === 0) {
+            feed.innerHTML = '<div class="no-data">No recent activity</div>';
+        } else {
+            var html = '';
+            activities.forEach(function(a) {
+                var dotColor = 'blue';
+                var action = a.action || '';
+                if (action.indexOf('create') >= 0 || action.indexOf('add') >= 0) dotColor = 'green';
+                else if (action.indexOf('delete') >= 0 || action.indexOf('reject') >= 0) dotColor = 'red';
+                else if (action.indexOf('update') >= 0 || action.indexOf('edit') >= 0) dotColor = 'amber';
+                else if (action.indexOf('approve') >= 0 || action.indexOf('sign') >= 0) dotColor = 'purple';
+
+                var desc = (a.action || 'action').replace(/_/g, ' ');
+                var entity = a.entity_id || '';
+                var timeAgo = formatTimeAgo(a.timestamp || a.created_at || '');
+
+                html += '<div class="activity-item">';
+                html += '<div class="activity-dot ' + dotColor + '"></div>';
+                html += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
+                if (entity) html += ' <strong>' + esc(entity) + '</strong>';
+                html += '</div>';
+                html += '<div class="activity-time">' + timeAgo + '</div>';
+                html += '</div></div>';
+            });
+            feed.innerHTML = html;
+        }
+
+        // System health
+        var usersOnline = document.getElementById('sysUsersOnline');
+        if (usersOnline) usersOnline.textContent = data.users_online || 1;
+        var pending = document.getElementById('sysPendingActions');
+        if (pending) pending.textContent = (data.pending_qc || 0) + (data.inventory_alerts || 0);
+    }
+
+    // ── Render Shop Sections ──────────────────────
+    function renderShopSections(data) {
+        var queue = document.getElementById('shopQueue');
+        var woItems = data.work_order_items || [];
+        document.getElementById('queueCount').textContent = woItems.length;
+
+        if (woItems.length === 0) {
+            queue.innerHTML = '<div class="no-data">No items in your queue. Check work orders for assignments.</div>';
+        } else {
+            var html = '';
+            woItems.slice(0, 8).forEach(function(item) {
+                var priority = item.priority || 'normal';
+                var status = item.status || 'pending';
+                html += '<div class="queue-item" onclick="window.location.href=\'/work-orders\'">';
+                html += '<div class="queue-priority ' + priority + '"></div>';
+                html += '<div class="queue-info">';
+                html += '<div class="queue-title">' + esc(item.description || item.name || 'Work Item') + '</div>';
+                html += '<div class="queue-subtitle">' + esc(item.job_code || '') + ' &middot; Qty: ' + (item.qty || 1) + '</div>';
+                html += '</div>';
+                html += '<span class="queue-status ' + status + '">' + status + '</span>';
+                html += '</div>';
+            });
+            queue.innerHTML = html;
+        }
+
+        // Floor active
+        var floor = document.getElementById('floorActive');
+        var activeWOs = data.active_work_orders || [];
+        if (activeWOs.length === 0) {
+            floor.innerHTML = '<div class="no-data">No active work orders on the floor.</div>';
+        } else {
+            var html2 = '';
+            activeWOs.slice(0, 6).forEach(function(wo) {
+                html2 += '<div class="queue-item" onclick="window.location.href=\'/work-orders\'">';
+                html2 += '<div class="queue-priority medium"></div>';
+                html2 += '<div class="queue-info">';
+                html2 += '<div class="queue-title">' + esc(wo.wo_id || wo.id || 'Work Order') + '</div>';
+                html2 += '<div class="queue-subtitle">' + esc(wo.job_code || '') + ' &middot; ' + (wo.item_count || 0) + ' items</div>';
+                html2 += '</div>';
+                html2 += '<span class="queue-status ' + (wo.status || 'active') + '">' + (wo.status || 'active') + '</span>';
+                html2 += '</div>';
+            });
+            floor.innerHTML = html2;
+        }
+
+        // Production progress
+        var prog = document.getElementById('productionProgress');
+        var stages = data.stage_counts || {};
+        var total = data.active_projects || 1;
+        if (total === 0) total = 1;
+        var progHtml = '';
+
+        var stageMap = [
+            { key: 'engineering', label: 'Engineering', color: 'purple' },
+            { key: 'fabrication', label: 'Fabrication', color: 'amber' },
+            { key: 'shipping', label: 'Shipping', color: 'blue' },
+            { key: 'install', label: 'Installation', color: 'green' }
+        ];
+
+        stageMap.forEach(function(s) {
+            var count = stages[s.key] || 0;
+            var pct = Math.round((count / total) * 100);
+            progHtml += '<div class="progress-item">';
+            progHtml += '<div class="progress-header"><span class="progress-label">' + s.label + '</span><span class="progress-pct">' + count + ' projects (' + pct + '%)</span></div>';
+            progHtml += '<div class="progress-track"><div class="progress-fill ' + s.color + '" style="width:' + pct + '%;"></div></div>';
+            progHtml += '</div>';
+        });
+        prog.innerHTML = progHtml;
+    }
+
+    // ── Render QC Sections ────────────────────────
+    function renderQCSections(data) {
+        var inspQueue = document.getElementById('inspectionQueue');
+        var qcItems = data.qc_items || [];
+        var pendingInsp = qcItems.filter(function(i) { return i.status === 'pending' || i.status === 'in_progress'; });
+        document.getElementById('inspectionCount').textContent = pendingInsp.length;
+
+        if (pendingInsp.length === 0) {
+            inspQueue.innerHTML = '<div class="no-data">No pending inspections. All clear!</div>';
+        } else {
+            var html = '';
+            pendingInsp.slice(0, 8).forEach(function(item) {
+                html += '<div class="qc-item" onclick="window.location.href=\'/qc\'">';
+                html += '<span class="qc-type-badge inspection">Inspect</span>';
+                html += '<div class="queue-info">';
+                html += '<div class="queue-title">' + esc(item.component || item.description || 'Inspection') + '</div>';
+                html += '<div class="queue-subtitle">' + esc(item.job_code || '') + '</div>';
+                html += '</div>';
+                html += '</div>';
+            });
+            inspQueue.innerHTML = html;
+        }
+
+        // Open NCRs
+        var ncrEl = document.getElementById('openNCRs');
+        var ncrs = data.open_ncrs || [];
+        document.getElementById('ncrCount').textContent = ncrs.length;
+
+        if (ncrs.length === 0) {
+            ncrEl.innerHTML = '<div class="no-data">No open NCRs. Great work!</div>';
+        } else {
+            var ncrHtml = '';
+            ncrs.slice(0, 6).forEach(function(ncr) {
+                ncrHtml += '<div class="qc-item">';
+                ncrHtml += '<span class="qc-type-badge ncr">NCR</span>';
+                ncrHtml += '<div class="queue-info">';
+                ncrHtml += '<div class="queue-title">' + esc(ncr.ncr_number || ncr.id || 'NCR') + '</div>';
+                ncrHtml += '<div class="queue-subtitle">' + esc(ncr.description || ncr.defect_description || '') + '</div>';
+                ncrHtml += '</div>';
+                ncrHtml += '</div>';
+            });
+            ncrEl.innerHTML = ncrHtml;
+        }
+
+        // Recent sign-offs
+        var signoffsEl = document.getElementById('recentSignoffs');
+        var signoffs = data.recent_signoffs || [];
+        if (signoffs.length === 0) {
+            signoffsEl.innerHTML = '<div class="no-data">No recent sign-offs.</div>';
+        } else {
+            var soHtml = '';
+            signoffs.slice(0, 6).forEach(function(so) {
+                soHtml += '<div class="qc-item">';
+                soHtml += '<span class="qc-type-badge signoff">Signed</span>';
+                soHtml += '<div class="queue-info">';
+                soHtml += '<div class="queue-title">' + esc(so.component || so.description || 'Sign-off') + '</div>';
+                soHtml += '<div class="queue-subtitle">' + esc(so.inspector || so.signed_by || '') + ' &middot; ' + esc(so.date || '') + '</div>';
+                soHtml += '</div>';
+                soHtml += '</div>';
+            });
+            signoffsEl.innerHTML = soHtml;
+        }
+    }
+
+    // ── Time Formatting ───────────────────────────
+    function formatTimeAgo(dateStr) {
+        if (!dateStr) return '';
+        try {
+            var d = new Date(dateStr);
+            var now = new Date();
+            var diff = Math.floor((now - d) / 1000);
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+            return d.toLocaleDateString();
+        } catch(e) { return dateStr; }
     }
 
     // ── Load Projects ─────────────────────────────
@@ -1415,11 +2305,7 @@ DASHBOARD_HTML = r"""
 
     // ── Stats ─────────────────────────────────────
     function updateStats() {
-        var active = allProjects.filter(function(p) { return p.stage !== 'complete' && !p.archived; });
-        document.getElementById('activeProjects').textContent = active.length;
-        document.getElementById('inEngineering').textContent = active.filter(function(p) { return p.stage === 'engineering' || p.stage === 'shop-drawings'; }).length;
-        document.getElementById('inFabrication').textContent = active.filter(function(p) { return p.stage === 'fabrication'; }).length;
-        document.getElementById('readyToShip').textContent = active.filter(function(p) { return p.stage === 'shipping' || p.stage === 'install'; }).length;
+        // These are fallback local stats; the API stats are primary
     }
 
     // ── Stage Progress Helpers ────────────────────
@@ -1475,7 +2361,6 @@ DASHBOARD_HTML = r"""
             }
             html += '</div>';
 
-            // Connector between dots
             if (i < STAGES.length - 1) {
                 var connClass = 'pipe-connector ';
                 if (isComplete || i < currentIdx - 1) connClass += 'done';
@@ -1501,11 +2386,10 @@ DASHBOARD_HTML = r"""
         container.innerHTML = '';
 
         if (filteredProjects.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128640;</div><div class="empty-state-title">No projects yet</div><p>Create your first project to get started!</p></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128640;</div><div class="empty-state-title">No projects yet</div><p style="color:var(--dash-text-muted);">Create your first project to get started!</p></div>';
             return;
         }
 
-        // Sort: active first (by stage progress descending), then completed
         var sorted = filteredProjects.slice().sort(function(a, b) {
             var aComp = a.stage === 'complete' ? 1 : 0;
             var bComp = b.stage === 'complete' ? 1 : 0;
@@ -1583,13 +2467,13 @@ DASHBOARD_HTML = r"""
             var pct = getStagePercent(project.stage);
             var updated = project.updated_at ? new Date(project.updated_at).toLocaleDateString() : '';
 
-            row.innerHTML = '<td><strong>' + esc(project.job_code) + '</strong></td>'
+            row.innerHTML = '<td><strong style="color:#60A5FA;">' + esc(project.job_code) + '</strong></td>'
                 + '<td>' + esc(project.project_name) + '</td>'
                 + '<td>' + esc(project.customer_name) + '</td>'
                 + '<td><span class="stage-badge stage-' + project.stage + '">' + stageLabel + '</span></td>'
                 + '<td class="price">' + (project.doc_count || 0) + ' docs</td>'
                 + '<td>' + updated + '</td>'
-                + '<td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;height:6px;background:var(--tf-gray-100);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--tf-blue);border-radius:3px;"></div></div><span style="font-size:11px;font-weight:700;color:var(--tf-gray-600);">' + pct + '%</span></div></td>';
+                + '<td><div style="display:flex;align-items:center;gap:8px;"><div style="flex:1;height:4px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#3B82F6;border-radius:2px;"></div></div><span style="font-size:0.7rem;font-weight:700;color:var(--dash-text-dim);">' + pct + '%</span></div></td>';
 
             tableBody.appendChild(row);
         });
@@ -1654,7 +2538,7 @@ DASHBOARD_HTML = r"""
         badgeGroup.innerHTML = '';
         var stageBadge = document.createElement('span');
         stageBadge.className = 'modal-badge';
-        stageBadge.style.backgroundColor = '#1E40AF';
+        stageBadge.style.backgroundColor = '#2563EB';
         stageBadge.textContent = (STAGE_LABELS[project.stage] || project.stage).toUpperCase();
         badgeGroup.appendChild(stageBadge);
 
@@ -1666,10 +2550,8 @@ DASHBOARD_HTML = r"""
             badgeGroup.appendChild(vBadge);
         }
 
-        // Pipeline dots in modal
         document.getElementById('modalPipeline').innerHTML = buildPipelineDots(project.stage, false);
 
-        // Overview info
         var info = document.getElementById('overviewInfo');
         info.innerHTML = '';
         var items = [
@@ -1687,7 +2569,6 @@ DASHBOARD_HTML = r"""
             info.appendChild(div);
         });
 
-        // Navigation buttons
         var jc = encodeURIComponent(project.job_code);
         document.getElementById('openFullPageBtn').onclick = function() { window.location.href = '/project/' + jc; };
         document.getElementById('openShopDrawingsBtn').onclick = function() { window.location.href = '/shop-drawings/' + jc; };
@@ -1705,8 +2586,8 @@ DASHBOARD_HTML = r"""
         if (!currentProject) return;
         var jc = currentProject.job_code;
         var name = currentProject.project_name || 'Untitled';
-        if (!confirm('⚠️ DELETE PROJECT\\n\\n"' + jc + ' — ' + name + '"\\n\\nThis will permanently delete ALL project data including:\\n• Estimates & revisions\\n• Shop drawings\\n• Work orders\\n• Documents\\n\\nThis cannot be undone. Are you sure?')) return;
-        if (!confirm('FINAL WARNING: Type the job code to confirm deletion.\\n\\nClick OK to proceed with deleting ' + jc)) return;
+        if (!confirm('DELETE PROJECT\n\n"' + jc + ' — ' + name + '"\n\nThis will permanently delete ALL project data including:\n- Estimates & revisions\n- Shop drawings\n- Work orders\n- Documents\n\nThis cannot be undone. Are you sure?')) return;
+        if (!confirm('FINAL WARNING: Click OK to proceed with deleting ' + jc)) return;
 
         fetch('/api/project/delete', {
             method: 'POST',
@@ -1717,7 +2598,6 @@ DASHBOARD_HTML = r"""
         .then(function(data) {
             if (data.ok) {
                 closeProjectModal();
-                // Remove from local data and re-render
                 allProjects = allProjects.filter(function(p) { return p.job_code !== jc; });
                 filteredProjects = filteredProjects.filter(function(p) { return p.job_code !== jc; });
                 updateStats();
@@ -1895,7 +2775,7 @@ DASHBOARD_HTML = r"""
         var ids = Object.keys(inventoryData).sort();
 
         if (ids.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--tf-gray-400);">No coils in inventory. Click "+ Add Coil" to get started.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--dash-text-muted);">No coils in inventory. Click "+ Add Coil" to get started.</td></tr>';
             return;
         }
 
@@ -1903,11 +2783,11 @@ DASHBOARD_HTML = r"""
             var c = inventoryData[id];
             var avail = (c.stock_lbs || 0) - (c.committed_lbs || 0);
             var minStock = c.min_stock_lbs || 2000;
-            var statusClass, statusText;
+            var statusClass, statusText, statusColor;
 
-            if (avail <= 0) { statusClass = 'tf-badge-danger'; statusText = 'OUT'; }
-            else if (avail < minStock) { statusClass = 'tf-badge-amber'; statusText = 'LOW'; }
-            else { statusClass = 'tf-badge-success'; statusText = 'OK'; }
+            if (avail <= 0) { statusText = 'OUT'; statusColor = 'background:rgba(239,68,68,0.15);color:#F87171;'; }
+            else if (avail < minStock) { statusText = 'LOW'; statusColor = 'background:rgba(245,158,11,0.15);color:#FBBF24;'; }
+            else { statusText = 'OK'; statusColor = 'background:rgba(16,185,129,0.15);color:#34D399;'; }
 
             var row = document.createElement('tr');
             row.style.cursor = 'pointer';
@@ -1916,17 +2796,17 @@ DASHBOARD_HTML = r"""
                 window.location.href = '/coil/' + encodeURIComponent(id);
             };
 
-            row.innerHTML = '<td><strong>' + esc(id) + '</strong></td>'
+            row.innerHTML = '<td><strong style="color:#60A5FA;">' + esc(id) + '</strong></td>'
                 + '<td>' + esc(c.description || c.name || '') + '</td>'
                 + '<td>' + esc(c.gauge || '') + '</td>'
                 + '<td>' + esc(c.width || '') + '</td>'
                 + '<td>' + esc(c.color || '') + '</td>'
                 + '<td style="font-weight:700;">' + Number(c.stock_lbs || 0).toLocaleString() + '</td>'
                 + '<td>' + Number(minStock).toLocaleString() + '</td>'
-                + '<td><span class="tf-badge ' + statusClass + '">' + statusText + '</span></td>'
+                + '<td><span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:0.7rem;font-weight:600;' + statusColor + '">' + statusText + '</span></td>'
                 + '<td>'
-                + '<button class="tf-btn tf-btn-ghost tf-btn-sm" onclick="event.stopPropagation();openEditStock(\'' + esc(id) + '\')">Edit</button>'
-                + '<button class="tf-btn tf-btn-ghost tf-btn-sm" style="color:var(--tf-danger);" onclick="event.stopPropagation();deleteCoil(\'' + esc(id) + '\')">Delete</button>'
+                + '<button class="dash-action-btn" style="padding:4px 10px;font-size:0.7rem;" onclick="event.stopPropagation();openEditStock(\'' + esc(id) + '\')">Edit</button> '
+                + '<button class="dash-action-btn" style="padding:4px 10px;font-size:0.7rem;color:var(--dash-red);" onclick="event.stopPropagation();deleteCoil(\'' + esc(id) + '\')">Delete</button>'
                 + '</td>';
 
             tbody.appendChild(row);

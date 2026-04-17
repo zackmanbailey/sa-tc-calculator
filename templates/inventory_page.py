@@ -911,6 +911,108 @@ INVENTORY_PAGE_HTML = r'''
         </div>
     </div>
 
+    <!-- Edit Coil Modal -->
+    <div class="modal" id="editCoilModal">
+        <div class="modal-content" style="max-width:560px">
+            <div class="modal-header">
+                <h2>Edit Coil</h2>
+                <button class="modal-close" onclick="closeModal('editCoilModal')">&times;</button>
+            </div>
+            <form id="editCoilForm">
+                <input type="hidden" id="edit-coil-id">
+                <div class="form-group">
+                    <label>Coil ID</label>
+                    <input type="text" id="edit-coil-id-display" disabled style="opacity:0.6;cursor:not-allowed">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="form-group">
+                        <label>Name / Description</label>
+                        <input type="text" id="edit-coil-name" placeholder="Coil name">
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier</label>
+                        <input type="text" id="edit-coil-supplier" placeholder="Supplier">
+                    </div>
+                    <div class="form-group">
+                        <label>Gauge</label>
+                        <select id="edit-coil-gauge"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Grade</label>
+                        <select id="edit-coil-grade"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Stock Weight (lbs)</label>
+                        <input type="number" id="edit-coil-stock" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Cost per Lb ($)</label>
+                        <input type="number" id="edit-coil-price" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Min Order (lbs)</label>
+                        <input type="number" id="edit-coil-min-order" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Lbs per Linear Ft</label>
+                        <input type="number" id="edit-coil-lbs-per-lft" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Width (inches)</label>
+                        <input type="number" id="edit-coil-width" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Max Coil Weight (lbs)</label>
+                        <input type="number" id="edit-coil-max-lbs" min="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select id="edit-coil-status">
+                            <option value="">Auto (computed)</option>
+                            <option value="active">Active</option>
+                            <option value="low_stock">Low Stock</option>
+                            <option value="depleted">Depleted</option>
+                            <option value="on_hold">On Hold</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Heat Number</label>
+                        <input type="text" id="edit-coil-heat-num" placeholder="Heat number">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="edit-coil-notes" placeholder="Additional notes..." style="background-color:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-family:'Inter',system-ui,sans-serif;font-size:13px"></textarea>
+                </div>
+                <div style="padding:8px 12px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;font-size:12px;color:#06B6D4;margin-bottom:8px">
+                    Committed stock is managed by allocations and cannot be edited here.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('editCoilModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal" id="deleteCoilModal">
+        <div class="modal-content" style="max-width:440px">
+            <div class="modal-header">
+                <h2 style="color:var(--red)">Delete Coil</h2>
+                <button class="modal-close" onclick="closeModal('deleteCoilModal')">&times;</button>
+            </div>
+            <p id="delete-confirm-msg" style="margin-bottom:16px;font-size:14px;line-height:1.6"></p>
+            <div id="delete-committed-warning" style="display:none;padding:10px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;margin-bottom:16px;font-size:13px;color:var(--red)">
+                This coil has committed/allocated stock and cannot be deleted. Release all allocations first.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('deleteCoilModal')">Cancel</button>
+                <button type="button" class="btn btn-danger" id="delete-confirm-btn" onclick="confirmDeleteCoil()">Delete Permanently</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const $ = id => document.getElementById(id);
         let configData = {};
@@ -1059,6 +1161,8 @@ INVENTORY_PAGE_HTML = r'''
                             <button class="btn btn-small btn-secondary" onclick="showCoilHistory('${c.coil_id}')">History</button>
                             <button class="btn btn-small btn-secondary" onclick="showReceiveModal()">Receive</button>
                             <button class="btn btn-small btn-secondary" onclick="showAllocateModal()">Allocate</button>
+                            <button class="btn btn-small btn-secondary" onclick="showEditCoilModal('${c.coil_id}')" style="background:#1E40AF;color:#93C5FD;border-color:#2563EB">Edit</button>
+                            <button class="btn btn-small btn-danger" onclick="deleteCoil('${c.coil_id}', '${(c.name || c.coil_id).replace(/'/g, "\\\\'")}', ${c.committed_lbs || 0})" style="font-size:11px;padding:4px 8px">Delete</button>
                         </td>
                     </tr>
                 `).join('');
@@ -1385,6 +1489,134 @@ INVENTORY_PAGE_HTML = r'''
 
         function showCoilHistory(coilId) {
             alert(`History for coil ${coilId} would open here`);
+        }
+
+        // ── Edit Coil ──────────────────────────────────────────
+        async function showEditCoilModal(coilId) {
+            try {
+                const response = await fetch('/api/inventory');
+                const inv = await response.json();
+                const coil = (inv.coils || {})[coilId];
+                if (!coil) { alert('Coil not found'); return; }
+
+                $('edit-coil-id').value = coilId;
+                $('edit-coil-id-display').value = coilId;
+                $('edit-coil-name').value = coil.name || '';
+                $('edit-coil-supplier').value = coil.supplier || '';
+                $('edit-coil-stock').value = coil.stock_lbs || 0;
+                $('edit-coil-price').value = coil.price_per_lb || 0;
+                $('edit-coil-min-order').value = coil.min_order_lbs || coil.min_stock_lbs || 2000;
+                $('edit-coil-lbs-per-lft').value = coil.lbs_per_lft || 0;
+                $('edit-coil-width').value = coil.width_in || 0;
+                $('edit-coil-max-lbs').value = coil.coil_max_lbs || 0;
+                $('edit-coil-heat-num').value = coil.heat_num || '';
+                $('edit-coil-notes').value = coil.notes || '';
+                $('edit-coil-status').value = coil.status || '';
+
+                // Populate gauge/grade selects
+                populateSelectFromConfig('edit-coil-gauge', 'coil_gauges', 'Gauges');
+                populateSelectFromConfig('edit-coil-grade', 'material_grades', 'Grades');
+
+                // Set current values after populating
+                setTimeout(() => {
+                    $('edit-coil-gauge').value = coil.gauge || '';
+                    $('edit-coil-grade').value = coil.grade || '';
+                }, 50);
+
+                $('editCoilModal').classList.add('show');
+            } catch (err) {
+                console.error('Failed to load coil for editing:', err);
+                alert('Error loading coil data');
+            }
+        }
+
+        $('editCoilForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            const coilId = $('edit-coil-id').value;
+            const payload = {
+                coil_id: coilId,
+                name: $('edit-coil-name').value,
+                gauge: $('edit-coil-gauge').value,
+                grade: $('edit-coil-grade').value,
+                supplier: $('edit-coil-supplier').value,
+                stock_lbs: parseFloat($('edit-coil-stock').value) || 0,
+                price_per_lb: parseFloat($('edit-coil-price').value) || 0,
+                min_order_lbs: parseFloat($('edit-coil-min-order').value) || 2000,
+                min_stock_lbs: parseFloat($('edit-coil-min-order').value) || 2000,
+                lbs_per_lft: parseFloat($('edit-coil-lbs-per-lft').value) || 0,
+                width_in: parseFloat($('edit-coil-width').value) || 0,
+                coil_max_lbs: parseFloat($('edit-coil-max-lbs').value) || 0,
+                heat_num: $('edit-coil-heat-num').value,
+                notes: $('edit-coil-notes').value,
+                status: $('edit-coil-status').value || null,
+            };
+
+            try {
+                const response = await fetch('/api/inventory/coil/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.ok) {
+                    closeModal('editCoilModal');
+                    loadCoils();
+                    loadSummary();
+                    alert('Coil updated successfully');
+                } else {
+                    alert('Error: ' + (result.error || 'Update failed'));
+                }
+            } catch (err) {
+                console.error('Error updating coil:', err);
+                alert('Error updating coil');
+            }
+        });
+
+        // ── Delete Coil ────────────────────────────────────────
+        let pendingDeleteCoilId = null;
+
+        function deleteCoil(coilId, coilName, committedLbs) {
+            pendingDeleteCoilId = coilId;
+            $('delete-confirm-msg').textContent = 'Are you sure you want to delete coil "' + coilName + '"? This cannot be undone.';
+
+            if (committedLbs > 0) {
+                $('delete-committed-warning').style.display = 'block';
+                $('delete-confirm-btn').disabled = true;
+                $('delete-confirm-btn').style.opacity = '0.5';
+                $('delete-confirm-btn').style.cursor = 'not-allowed';
+            } else {
+                $('delete-committed-warning').style.display = 'none';
+                $('delete-confirm-btn').disabled = false;
+                $('delete-confirm-btn').style.opacity = '1';
+                $('delete-confirm-btn').style.cursor = 'pointer';
+            }
+
+            $('deleteCoilModal').classList.add('show');
+        }
+
+        async function confirmDeleteCoil() {
+            if (!pendingDeleteCoilId) return;
+
+            try {
+                const response = await fetch('/api/inventory/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ coil_id: pendingDeleteCoilId })
+                });
+                const result = await response.json();
+                if (result.ok) {
+                    closeModal('deleteCoilModal');
+                    pendingDeleteCoilId = null;
+                    loadCoils();
+                    loadSummary();
+                    alert('Coil deleted successfully');
+                } else {
+                    alert('Error: ' + (result.error || 'Delete failed'));
+                }
+            } catch (err) {
+                console.error('Error deleting coil:', err);
+                alert('Error deleting coil');
+            }
         }
 
         // Helper functions
