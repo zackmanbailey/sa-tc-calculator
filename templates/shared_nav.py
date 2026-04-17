@@ -569,14 +569,166 @@ NAV_HTML = """
         </div>
     </nav>
 
-    <div class="tf-sidebar-footer">
-        <div class="user-avatar" id="userAvatar">U</div>
-        <div class="user-info">
-            <div class="user-name" id="userName">{{USER_NAME}}</div>
-            <div class="user-role" id="userRole">{{USER_ROLE}}</div>
+    <div class="tf-sidebar-footer" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
+        <!-- XP Level Bar -->
+        <div id="xpWidget" style="display:none;cursor:pointer;" onclick="toggleXPPanel()">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <div class="user-avatar" id="userAvatar" style="width:32px;height:32px;font-size:12px;">U</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span class="user-name" id="userName" style="font-size:13px;">{{USER_NAME}}</span>
+                        <span id="xpLevelBadge" style="font-size:10px;background:#f59e0b;color:#000;border-radius:10px;padding:1px 8px;font-weight:700;">Lv 1</span>
+                    </div>
+                    <div id="xpLevelName" style="font-size:10px;color:#94a3b8;margin-top:1px;">Apprentice</div>
+                </div>
+            </div>
+            <div style="background:#1e293b;border-radius:6px;height:6px;overflow:hidden;margin-top:2px;">
+                <div id="xpProgressBar" style="height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);width:0%;border-radius:6px;transition:width 0.8s ease;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-top:2px;">
+                <span id="xpProgressText">0 / 100 XP</span>
+                <span id="xpStreakText" style="color:#f59e0b;"></span>
+            </div>
+        </div>
+        <!-- Fallback for no-gamification -->
+        <div id="xpFallback" style="display:flex;align-items:center;gap:8px;">
+            <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">U</div>
+            <div class="user-info">
+                <div class="user-name" id="userNameFb">{{USER_NAME}}</div>
+                <div class="user-role" id="userRole">{{USER_ROLE}}</div>
+            </div>
         </div>
     </div>
 </aside>
+
+<!-- XP Toast Notification -->
+<div id="xpToast" style="position:fixed;bottom:24px;right:24px;z-index:10000;pointer-events:none;"></div>
+
+<!-- XP Panel (achievements/leaderboard) -->
+<div id="xpPanel" style="display:none;position:fixed;bottom:80px;left:200px;width:360px;max-height:480px;background:#1e293b;border:1px solid #334155;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:9999;overflow-y:auto;color:#e2e8f0;">
+    <div style="padding:16px;border-bottom:1px solid #334155;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <h3 style="margin:0;font-size:16px;color:#f59e0b;">Your Profile</h3>
+            <button onclick="toggleXPPanel()" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;">&times;</button>
+        </div>
+    </div>
+    <div id="xpPanelContent" style="padding:16px;">Loading...</div>
+</div>
+
+<script>
+// ── Gamification Widget ──
+(function(){
+    let xpPanelOpen = false;
+    window.toggleXPPanel = function(){
+        xpPanelOpen = !xpPanelOpen;
+        document.getElementById('xpPanel').style.display = xpPanelOpen ? 'block' : 'none';
+        if (xpPanelOpen) loadXPPanel();
+    };
+
+    async function loadGamification(){
+        try {
+            const resp = await fetch('/api/gamification/profile');
+            const data = await resp.json();
+            if (!data.ok) return;
+            const p = data.profile;
+            document.getElementById('xpWidget').style.display = 'block';
+            document.getElementById('xpFallback').style.display = 'none';
+            document.getElementById('xpLevelBadge').textContent = 'Lv ' + p.level;
+            document.getElementById('xpLevelName').textContent = p.name;
+            document.getElementById('xpProgressBar').style.width = p.progress_pct + '%';
+            document.getElementById('xpProgressText').textContent = p.xp_in_level + ' / ' + p.xp_needed + ' XP';
+            if (p.streak_days > 0) {
+                document.getElementById('xpStreakText').textContent = p.streak_days + '-day streak ' + (p.streak_days >= 7 ? '🔥🔥' : p.streak_days >= 3 ? '🔥' : '✨');
+            }
+        } catch(e) { console.debug('Gamification load failed', e); }
+    }
+
+    window.showXPToast = function(xp, action, levelUp, newBadges) {
+        const toast = document.getElementById('xpToast');
+        const el = document.createElement('div');
+        el.style.cssText = 'background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #f59e0b;border-radius:12px;padding:12px 20px;margin-bottom:8px;display:flex;align-items:center;gap:10px;animation:xpSlideIn 0.4s ease,xpFadeOut 0.4s ease 2.6s forwards;box-shadow:0 4px 20px rgba(245,158,11,0.3);';
+        let html = '<span style="font-size:24px;animation:xpBounce 0.5s ease;">⚡</span>';
+        html += '<div><div style="color:#f59e0b;font-weight:700;font-size:14px;">+' + xp + ' XP</div>';
+        html += '<div style="color:#94a3b8;font-size:11px;">' + action.replace(/_/g,' ') + '</div></div>';
+        el.innerHTML = html;
+        toast.appendChild(el);
+        if (levelUp) {
+            setTimeout(()=>{
+                const lvl = document.createElement('div');
+                lvl.style.cssText = 'background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:12px;padding:16px 24px;margin-bottom:8px;text-align:center;animation:xpSlideIn 0.4s ease,xpFadeOut 0.4s ease 3.6s forwards;box-shadow:0 4px 20px rgba(245,158,11,0.5);';
+                lvl.innerHTML = '<div style="font-size:28px;margin-bottom:4px;">🎉</div><div style="color:#000;font-weight:800;font-size:16px;">LEVEL UP!</div>';
+                toast.appendChild(lvl);
+                setTimeout(()=>lvl.remove(), 4000);
+            }, 500);
+        }
+        if (newBadges && newBadges.length) {
+            newBadges.forEach((b,i)=>{
+                setTimeout(()=>{
+                    const badge = document.createElement('div');
+                    badge.style.cssText = 'background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid #22c55e;border-radius:12px;padding:12px 20px;margin-bottom:8px;animation:xpSlideIn 0.4s ease,xpFadeOut 0.4s ease 3.6s forwards;box-shadow:0 4px 20px rgba(34,197,94,0.3);';
+                    badge.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:28px;">' + b.icon + '</span><div><div style="color:#22c55e;font-weight:700;">Achievement Unlocked!</div><div style="color:#e2e8f0;font-size:13px;">' + b.name + '</div></div></div>';
+                    toast.appendChild(badge);
+                    setTimeout(()=>badge.remove(), 4000);
+                }, 800 * (i+1));
+            });
+        }
+        setTimeout(()=>el.remove(), 3000);
+        loadGamification(); // refresh bar
+    };
+
+    async function loadXPPanel(){
+        const pc = document.getElementById('xpPanelContent');
+        try {
+            const [pResp, lResp, aResp] = await Promise.all([
+                fetch('/api/gamification/profile').then(r=>r.json()),
+                fetch('/api/gamification/leaderboard').then(r=>r.json()),
+                fetch('/api/gamification/achievements').then(r=>r.json()),
+            ]);
+            let html = '';
+            if (pResp.ok) {
+                const p = pResp.profile;
+                html += '<div style="text-align:center;margin-bottom:16px;">';
+                html += '<div style="font-size:36px;font-weight:800;color:#f59e0b;">' + p.total_xp + ' XP</div>';
+                html += '<div style="font-size:14px;color:#94a3b8;">Level ' + p.level + ' — ' + p.name + '</div>';
+                if (p.streak_days > 0) html += '<div style="margin-top:4px;font-size:13px;color:#f59e0b;">' + (p.streak_days >= 7 ? '🔥🔥' : '🔥') + ' ' + p.streak_days + '-day streak</div>';
+                html += '</div>';
+            }
+            if (aResp.ok) {
+                html += '<div style="margin-bottom:16px;"><h4 style="margin:0 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Achievements (' + aResp.earned_count + '/' + aResp.achievements.length + ')</h4>';
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+                aResp.achievements.forEach(a=>{
+                    const opacity = a.earned ? '1' : '0.3';
+                    const bg = a.earned ? '#334155' : '#1e293b';
+                    html += '<div title="' + a.name + ': ' + a.desc + '" style="background:' + bg + ';opacity:' + opacity + ';border-radius:8px;padding:6px 10px;font-size:12px;cursor:default;">' + a.icon + ' ' + a.name + '</div>';
+                });
+                html += '</div></div>';
+            }
+            if (lResp.ok && lResp.leaderboard.length) {
+                html += '<h4 style="margin:0 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Leaderboard</h4>';
+                html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+                lResp.leaderboard.forEach(u=>{
+                    const medal = u.rank===1?'🥇':u.rank===2?'🥈':u.rank===3?'🥉':'#'+u.rank;
+                    html += '<div style="display:flex;align-items:center;gap:8px;background:#0f172a;border-radius:8px;padding:8px 12px;"><span style="font-size:16px;width:28px;text-align:center;">' + medal + '</span><div style="flex:1;"><div style="font-size:13px;font-weight:600;">' + u.username + '</div><div style="font-size:10px;color:#64748b;">' + u.level_name + '</div></div><div style="color:#f59e0b;font-weight:700;font-size:13px;">' + u.total_xp + ' XP</div></div>';
+                });
+                html += '</div>';
+            }
+            pc.innerHTML = html || '<p style="color:#64748b;">No data yet. Start working to earn XP!</p>';
+        } catch(e) { pc.innerHTML = '<p style="color:#ef4444;">Failed to load</p>'; }
+    }
+
+    // Load on page ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadGamification);
+    } else {
+        loadGamification();
+    }
+})();
+</script>
+<style>
+@keyframes xpSlideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes xpFadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+@keyframes xpBounce { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3); } }
+</style>
 
 <!-- Global Search Modal -->
 <div class="tf-search-overlay" id="searchOverlay" onclick="if(event.target===this)closeGlobalSearch()">

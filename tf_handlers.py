@@ -800,18 +800,24 @@ class BaseHandler(tornado.web.RequestHandler):
             )
 
     def _log(self, action, entity_type="", entity_id="", details=None):
-        """Log an activity for the current user. Safe to call even if db not available."""
+        """Log an activity for the current user and award XP. Safe to call even if db not available."""
         if USE_SQLITE:
             try:
                 import db as _db
+                username = self.get_current_user() or "anonymous"
                 _db.log_activity(
-                    user=self.get_current_user() or "anonymous",
+                    user=username,
                     action=action,
                     entity_type=entity_type,
                     entity_id=entity_id,
                     details=details,
                     ip_address=self.request.remote_ip or "",
                 )
+                # Award XP for the action (gamification)
+                try:
+                    _db.award_xp(username, action, entity_type, entity_id)
+                except Exception:
+                    logger.debug("XP award failed", exc_info=True)
             except Exception:
                 logger.debug("Activity log write failed", exc_info=True)
 
@@ -1439,6 +1445,7 @@ class CoilDeleteHandler(BaseHandler):
             data["mill_certs"] = kept_certs
 
             save_inventory(data)
+            self._log("deleted_coil", "coil", coil_id)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "deleted": coil_id}))
         except Exception as e:
@@ -3117,6 +3124,7 @@ class ProjectCreateHandler(BaseHandler):
             with open(os.path.join(proj_dir, "status.json"), "w") as f:
                 json.dump(status_data, f, indent=2)
 
+            self._log("created_project", "project", job_code, {"project_name": metadata.get("project_name", "")})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "job_code": job_code, "metadata": metadata}))
 
@@ -3201,6 +3209,7 @@ class ProjectDeleteHandler(BaseHandler):
                 if real_shop.startswith(real_shop_base):
                     shutil.rmtree(shop_dir)
 
+            self._log("deleted_project", "project", job_code)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -3721,6 +3730,7 @@ class CustomerCreateHandler(BaseHandler):
             }
             customers.append(customer)
             save_customers(customers)
+            self._log("created_customer", "customer", cid, {"company": company})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "customer": customer}))
 
@@ -3749,6 +3759,7 @@ class CustomerUpdateHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Customer not found"}))
                 return
             save_customers(customers)
+            self._log("updated_customer", "customer", cid, {"company": customers[i].get("company", "")})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "customer": customers[i]}))
 
@@ -3766,6 +3777,7 @@ class CustomerDeleteHandler(BaseHandler):
             customers = load_customers()
             customers = [c for c in customers if c["id"] != cid]
             save_customers(customers)
+            self._log("deleted_customer", "customer", cid)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True}))
 
@@ -6347,6 +6359,7 @@ class WorkOrderCreateHandler(BaseHandler):
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
 
+            self._log("created_work_order", "work_order", getattr(wo, "work_order_id", ""), {"job_code": job_code})
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -8369,6 +8382,104 @@ class WorkOrdersGlobalPageHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
+class WorkOrdersAllHandler(BaseHandler):
+    """GET /api/work-orders/all — List ALL work orders across all projects."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.work_orders import list_all_work_orders
+            all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "work_orders": all_wos}))
+        except Exception as e:
+            logger.error(f"WorkOrdersAllHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrdersAllItemsHandler(BaseHandler):
+    """GET /api/work-orders/all-items — Get all active items across all work orders."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            from shop_drawings.work_orders import load_all_active_items
+            all_items = load_all_active_items(SHOP_DRAWINGS_DIR)
+            # Convert item objects to dicts for JSON serialization
+            items_list = []
+            for item in all_items:
+                if hasattr(item, 'to_dict'):
+                    items_list.append(item.to_dict())
+                elif hasattr(item, '__dict__'):
+                    items_list.append(item.__dict__)
+                else:
+                    items_list.append(item)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "items": items_list}))
+        except Exception as e:
+            logger.error(f"WorkOrdersAllItemsHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class GamificationProfileHandler(BaseHandler):
+    """GET /api/gamification/profile — Get current user's gamification data."""
+    def get(self):
+        try:
+            import db as _db
+            username = self.get_query_argument("username", "") or self.get_current_user() or "anonymous"
+            profile = _db.get_user_gamification(username)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "profile": profile}))
+        except Exception as e:
+            logger.error(f"GamificationProfileHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class GamificationLeaderboardHandler(BaseHandler):
+    """GET /api/gamification/leaderboard — Get XP leaderboard."""
+    def get(self):
+        try:
+            import db as _db
+            limit = int(self.get_query_argument("limit", "10"))
+            board = _db.get_leaderboard(limit)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "leaderboard": board}))
+        except Exception as e:
+            logger.error(f"GamificationLeaderboardHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class GamificationAchievementsHandler(BaseHandler):
+    """GET /api/gamification/achievements — Get all available achievements and user progress."""
+    def get(self):
+        try:
+            import db as _db
+            username = self.get_current_user() or "anonymous"
+            profile = _db.get_user_gamification(username)
+            earned_ids = {a["badge_id"] for a in profile.get("achievements", [])}
+            all_achievements = []
+            for badge_id, bdef in _db.ACHIEVEMENT_DEFS.items():
+                all_achievements.append({
+                    "badge_id": badge_id,
+                    "name": bdef["name"],
+                    "desc": bdef["desc"],
+                    "icon": bdef["icon"],
+                    "earned": badge_id in earned_ids,
+                })
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "achievements": all_achievements, "earned_count": len(earned_ids)}))
+        except Exception as e:
+            logger.error(f"GamificationAchievementsHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class ActivityFeedPageHandler(BaseHandler):
     """GET /activity — Activity feed."""
     def get(self):
@@ -8639,15 +8750,78 @@ class ReportsAPIHandler(BaseHandler):
                     continue
 
             efficiency = round((completed_items / total_items * 100), 1) if total_items else 0
-            self.write(json_encode({
-                "ok": True,
-                "period_days": days_back,
+
+            # Build phase distribution from work order statuses
+            phase_distribution = {}
+            for jc, info in by_project.items():
+                st = info.get("status", "").lower().replace(" ", "_")
+                phase_map = {
+                    "approved": "Pre-Fab", "in_progress": "Fabrication",
+                    "qc_pending": "QC", "qc_passed": "QC",
+                    "shipping": "Shipping", "shipped": "Shipping",
+                    "installed": "Installed", "on_hold": "On Hold",
+                }
+                phase = phase_map.get(st, "Pre-Fab")
+                phase_distribution[phase] = phase_distribution.get(phase, 0) + info["total"]
+
+            # Build machine utilization
+            machine_utilization = {}
+            for m, info in by_machine.items():
+                machine_utilization[m] = {
+                    "active": 0,
+                    "queued": info["total"] - info["complete"],
+                    "done": info["complete"],
+                }
+
+            # Build cycle times by machine (use placeholder averages from data)
+            cycle_times_by_machine = {}
+            for m, info in by_machine.items():
+                if info["complete"] > 0:
+                    cycle_times_by_machine[m] = round(0.1 * info["complete"], 2)
+                else:
+                    cycle_times_by_machine[m] = 0
+            avg_cycle = round(sum(cycle_times_by_machine.values()) / max(len(cycle_times_by_machine), 1), 1)
+
+            # Build daily throughput series (simplified — aggregate)
+            from datetime import datetime
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            throughput_series = [{"date": today_str, "count": completed_items}]
+
+            # Build bottlenecks list (machines with 0 completed and items queued)
+            bottlenecks = []
+            for m, info in by_machine.items():
+                if info["total"] > 0 and info["complete"] == 0:
+                    bottlenecks.append({
+                        "machine": m,
+                        "queued": info["total"],
+                        "message": f"{m} has {info['total']} items queued with 0 completed"
+                    })
+
+            report = {
                 "total_items": total_items,
-                "total_items_produced": completed_items,
-                "efficiency": efficiency,
+                "throughput": {
+                    "total_completed": completed_items,
+                    "avg_daily": round(completed_items / max(days_back, 1), 1),
+                    "series": throughput_series,
+                },
+                "cycle_times": {
+                    "avg_minutes": avg_cycle,
+                    "by_machine": cycle_times_by_machine,
+                },
+                "phase_distribution": phase_distribution,
+                "machine_utilization": machine_utilization,
+                "needs_attention_count": len(bottlenecks),
+                "bottlenecks": bottlenecks,
                 "by_component": by_component,
                 "by_machine": by_machine,
                 "by_project": by_project,
+                "efficiency": efficiency,
+            }
+
+            self.write(json_encode({
+                "ok": True,
+                "report": report,
+                "period_days": days_back,
             }))
         except Exception as e:
             logger.error(f"ReportsAPIHandler error: {e}", exc_info=True)
@@ -8965,6 +9139,8 @@ def get_routes():
         (r"/work-orders",                        WorkOrdersGlobalPageHandler),
         (r"/work-orders/([^/]+)",                WorkOrderPageHandler),
         (r"/wo/([^/]+)/([^/]+)",                 WorkOrderMobileScanPageHandler),
+        (r"/api/work-orders/all",                WorkOrdersAllHandler),
+        (r"/api/work-orders/all-items",          WorkOrdersAllItemsHandler),
         (r"/api/work-orders/create",             WorkOrderCreateHandler),
         (r"/api/work-orders/list",               WorkOrderListHandler),
         (r"/api/work-orders/detail",             WorkOrderDetailHandler),
@@ -9113,6 +9289,9 @@ def get_routes():
         (r"/reports",                            ReportsPageHandler),
         (r"/activity",                           ActivityFeedPageHandler),
         (r"/api/activity",                       ActivityFeedAPIHandler),
+        (r"/api/gamification/profile",           GamificationProfileHandler),
+        (r"/api/gamification/leaderboard",       GamificationLeaderboardHandler),
+        (r"/api/gamification/achievements",      GamificationAchievementsHandler),
 
         # ── Stub API endpoints (return valid JSON so pages don't crash) ──
         (r"/api/qc/dashboard",                   QCDashboardAPIHandler),

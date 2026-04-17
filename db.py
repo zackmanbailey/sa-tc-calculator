@@ -248,6 +248,42 @@ CREATE TABLE IF NOT EXISTS activity_log (
 CREATE INDEX IF NOT EXISTS idx_activity_timestamp ON activity_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user);
 CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_log(entity_type, entity_id);
+
+-- Gamification: XP & Levels
+CREATE TABLE IF NOT EXISTS user_xp (
+    username    TEXT PRIMARY KEY,
+    total_xp    INTEGER NOT NULL DEFAULT 0,
+    level       INTEGER NOT NULL DEFAULT 1,
+    streak_days INTEGER NOT NULL DEFAULT 0,
+    last_active TEXT DEFAULT '',
+    updated_at  TEXT DEFAULT ''
+);
+
+-- Gamification: Achievements
+CREATE TABLE IF NOT EXISTS achievements (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT NOT NULL,
+    badge_id    TEXT NOT NULL,
+    badge_name  TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon        TEXT DEFAULT '',
+    earned_at   TEXT NOT NULL,
+    UNIQUE(username, badge_id)
+);
+CREATE INDEX IF NOT EXISTS idx_achievements_user ON achievements(username);
+
+-- Gamification: XP Transactions (audit trail)
+CREATE TABLE IF NOT EXISTS xp_transactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT NOT NULL,
+    xp_amount   INTEGER NOT NULL,
+    reason      TEXT NOT NULL,
+    entity_type TEXT DEFAULT '',
+    entity_id   TEXT DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_xp_tx_user ON xp_transactions(username);
+CREATE INDEX IF NOT EXISTS idx_xp_tx_date ON xp_transactions(created_at);
 """
 
 
@@ -842,3 +878,259 @@ def get_activity_count(user=None, entity_type=None, entity_id=None):
         sql += " AND entity_id = ?"
         params.append(str(entity_id))
     return conn.execute(sql, params).fetchone()[0]
+
+
+# ─────────────────────────────────────────────
+# GAMIFICATION
+# ─────────────────────────────────────────────
+
+# XP values for actions
+XP_VALUES = {
+    "login": 5,
+    "created_project": 50,
+    "saved_quote": 30,
+    "created_customer": 25,
+    "updated_customer": 10,
+    "created_coil": 15,
+    "updated_coil": 10,
+    "created_work_order": 40,
+    "completed_item": 20,
+    "passed_inspection": 15,
+    "failed_inspection": 5,
+    "uploaded_doc": 10,
+    "generated_shop_drawings": 35,
+    "approved_work_order": 25,
+    "default": 5,
+}
+
+# Level thresholds
+LEVEL_THRESHOLDS = [
+    (0, "Apprentice"),
+    (100, "Welder I"),
+    (300, "Welder II"),
+    (600, "Fabricator"),
+    (1000, "Senior Fabricator"),
+    (1500, "Foreman"),
+    (2500, "Master Builder"),
+    (4000, "Shop Legend"),
+    (6000, "TitanForge Elite"),
+    (10000, "Titan"),
+]
+
+# Achievement definitions
+ACHIEVEMENT_DEFS = {
+    "first_project": {"name": "First Blueprint", "desc": "Created your first project", "icon": "📋", "check": lambda stats: stats.get("projects_created", 0) >= 1},
+    "five_projects": {"name": "Project Manager", "desc": "Created 5 projects", "icon": "📊", "check": lambda stats: stats.get("projects_created", 0) >= 5},
+    "first_wo": {"name": "Shop Starter", "desc": "Created your first work order", "icon": "🔧", "check": lambda stats: stats.get("work_orders_created", 0) >= 1},
+    "ten_inspections": {"name": "Quality Eye", "desc": "Passed 10 inspections", "icon": "🔍", "check": lambda stats: stats.get("inspections_passed", 0) >= 10},
+    "fifty_inspections": {"name": "QC Master", "desc": "Passed 50 inspections", "icon": "🏅", "check": lambda stats: stats.get("inspections_passed", 0) >= 50},
+    "hundred_items": {"name": "Production Machine", "desc": "Completed 100 fabrication items", "icon": "⚡", "check": lambda stats: stats.get("items_completed", 0) >= 100},
+    "streak_3": {"name": "Hat Trick", "desc": "3-day login streak", "icon": "🔥", "check": lambda stats: stats.get("streak_days", 0) >= 3},
+    "streak_7": {"name": "On Fire", "desc": "7-day login streak", "icon": "🔥🔥", "check": lambda stats: stats.get("streak_days", 0) >= 7},
+    "streak_30": {"name": "Iron Will", "desc": "30-day login streak", "icon": "💎", "check": lambda stats: stats.get("streak_days", 0) >= 30},
+    "level_5": {"name": "Rising Star", "desc": "Reached level 5 (Foreman)", "icon": "⭐", "check": lambda stats: stats.get("level", 1) >= 5},
+    "xp_1000": {"name": "XP Hunter", "desc": "Earned 1,000 XP", "icon": "🏆", "check": lambda stats: stats.get("total_xp", 0) >= 1000},
+    "first_customer": {"name": "Client Whisperer", "desc": "Added your first customer", "icon": "🤝", "check": lambda stats: stats.get("customers_created", 0) >= 1},
+    "speed_demon": {"name": "Speed Demon", "desc": "Completed 10 items in one day", "icon": "💨", "check": lambda stats: stats.get("items_today", 0) >= 10},
+}
+
+
+def get_level_info(total_xp):
+    """Given total XP, return (level_number, level_name, xp_for_next, xp_progress)."""
+    level = 1
+    name = "Apprentice"
+    for i, (threshold, lname) in enumerate(LEVEL_THRESHOLDS):
+        if total_xp >= threshold:
+            level = i + 1
+            name = lname
+    next_threshold = LEVEL_THRESHOLDS[min(level, len(LEVEL_THRESHOLDS) - 1)][0]
+    prev_threshold = LEVEL_THRESHOLDS[level - 1][0] if level > 0 else 0
+    xp_in_level = total_xp - prev_threshold
+    xp_needed = max(next_threshold - prev_threshold, 1)
+    progress_pct = min(round(xp_in_level / xp_needed * 100), 100) if level < len(LEVEL_THRESHOLDS) else 100
+    return {
+        "level": level,
+        "name": name,
+        "total_xp": total_xp,
+        "xp_in_level": xp_in_level,
+        "xp_needed": xp_needed,
+        "progress_pct": progress_pct,
+        "next_level": LEVEL_THRESHOLDS[min(level, len(LEVEL_THRESHOLDS) - 1)][1] if level < len(LEVEL_THRESHOLDS) else name,
+    }
+
+
+def award_xp(username, action, entity_type="", entity_id="", extra_xp=0):
+    """Award XP to a user for an action. Returns (xp_awarded, new_total, leveled_up, new_achievements)."""
+    conn = get_db()
+    now = datetime.datetime.now().isoformat()
+    xp = XP_VALUES.get(action, XP_VALUES["default"]) + extra_xp
+
+    # Get or create user_xp row
+    row = conn.execute("SELECT * FROM user_xp WHERE username = ?", (username,)).fetchone()
+    if row is None:
+        conn.execute("INSERT INTO user_xp (username, total_xp, level, streak_days, last_active, updated_at) VALUES (?, 0, 1, 0, '', ?)", (username, now))
+        conn.commit()
+        row = conn.execute("SELECT * FROM user_xp WHERE username = ?", (username,)).fetchone()
+
+    old_level = row["level"]
+    old_xp = row["total_xp"]
+    new_xp = old_xp + xp
+
+    # Calculate new level
+    new_level_info = get_level_info(new_xp)
+    new_level = new_level_info["level"]
+
+    # Update streak
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    last_active = row["last_active"] or ""
+    streak = row["streak_days"] or 0
+    if last_active != today_str:
+        yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        if last_active == yesterday:
+            streak += 1
+        elif last_active != today_str:
+            streak = 1  # reset streak
+
+    conn.execute(
+        "UPDATE user_xp SET total_xp = ?, level = ?, streak_days = ?, last_active = ?, updated_at = ? WHERE username = ?",
+        (new_xp, new_level, streak, today_str, now, username)
+    )
+
+    # Record XP transaction
+    conn.execute(
+        "INSERT INTO xp_transactions (username, xp_amount, reason, entity_type, entity_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (username, xp, action, entity_type, entity_id, now)
+    )
+    conn.commit()
+
+    leveled_up = new_level > old_level
+
+    # Check for new achievements
+    new_achievements = check_achievements(username)
+
+    return {
+        "xp_awarded": xp,
+        "new_total": new_xp,
+        "level": new_level,
+        "level_name": new_level_info["name"],
+        "leveled_up": leveled_up,
+        "streak": streak,
+        "new_achievements": new_achievements,
+    }
+
+
+def check_achievements(username):
+    """Check and award any new achievements for a user. Returns list of newly earned badges."""
+    conn = get_db()
+
+    # Get user stats
+    row = conn.execute("SELECT * FROM user_xp WHERE username = ?", (username,)).fetchone()
+    if not row:
+        return []
+
+    stats = {
+        "total_xp": row["total_xp"],
+        "level": row["level"],
+        "streak_days": row["streak_days"],
+    }
+
+    # Count actions from xp_transactions
+    action_counts = conn.execute(
+        "SELECT reason, COUNT(*) as cnt FROM xp_transactions WHERE username = ? GROUP BY reason",
+        (username,)
+    ).fetchall()
+    for ac in action_counts:
+        reason = ac["reason"]
+        cnt = ac["cnt"]
+        if reason == "created_project":
+            stats["projects_created"] = cnt
+        elif reason == "created_work_order":
+            stats["work_orders_created"] = cnt
+        elif reason == "passed_inspection":
+            stats["inspections_passed"] = cnt
+        elif reason == "completed_item":
+            stats["items_completed"] = cnt
+        elif reason == "created_customer":
+            stats["customers_created"] = cnt
+
+    # Count items completed today
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    today_count = conn.execute(
+        "SELECT COUNT(*) FROM xp_transactions WHERE username = ? AND reason = 'completed_item' AND created_at LIKE ?",
+        (username, today + "%")
+    ).fetchone()[0]
+    stats["items_today"] = today_count
+
+    # Get already-earned achievements
+    earned = set()
+    for r in conn.execute("SELECT badge_id FROM achievements WHERE username = ?", (username,)).fetchall():
+        earned.add(r["badge_id"])
+
+    # Check for new ones
+    now = datetime.datetime.now().isoformat()
+    new_badges = []
+    for badge_id, bdef in ACHIEVEMENT_DEFS.items():
+        if badge_id not in earned and bdef["check"](stats):
+            try:
+                conn.execute(
+                    "INSERT INTO achievements (username, badge_id, badge_name, description, icon, earned_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (username, badge_id, bdef["name"], bdef["desc"], bdef["icon"], now)
+                )
+                new_badges.append({"id": badge_id, "name": bdef["name"], "desc": bdef["desc"], "icon": bdef["icon"]})
+            except Exception:
+                pass  # duplicate
+    if new_badges:
+        conn.commit()
+
+    return new_badges
+
+
+def get_user_gamification(username):
+    """Get full gamification profile for a user."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM user_xp WHERE username = ?", (username,)).fetchone()
+    if not row:
+        return {
+            "total_xp": 0, "level": 1, "level_name": "Apprentice",
+            "streak_days": 0, "achievements": [], "progress_pct": 0,
+            "xp_in_level": 0, "xp_needed": 100, "next_level": "Welder I",
+        }
+
+    level_info = get_level_info(row["total_xp"])
+    achievements = []
+    for r in conn.execute("SELECT * FROM achievements WHERE username = ? ORDER BY earned_at DESC", (username,)).fetchall():
+        achievements.append({
+            "badge_id": r["badge_id"],
+            "badge_name": r["badge_name"],
+            "description": r["description"],
+            "icon": r["icon"],
+            "earned_at": r["earned_at"],
+        })
+
+    return {
+        **level_info,
+        "streak_days": row["streak_days"],
+        "last_active": row["last_active"],
+        "achievements": achievements,
+    }
+
+
+def get_leaderboard(limit=10):
+    """Get top users by XP."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT username, total_xp, level, streak_days FROM user_xp ORDER BY total_xp DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    result = []
+    for i, r in enumerate(rows):
+        info = get_level_info(r["total_xp"])
+        result.append({
+            "rank": i + 1,
+            "username": r["username"],
+            "total_xp": r["total_xp"],
+            "level": r["level"],
+            "level_name": info["name"],
+            "streak_days": r["streak_days"],
+        })
+    return result
