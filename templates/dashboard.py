@@ -3714,12 +3714,6 @@ DASHBOARD_HTML = r"""
                 position: 'bottom'
             },
             {
-                target: '.dash-grid',
-                title: 'Recent Projects & Activity',
-                desc: 'Your active projects and recent activity feed. Click any project name to open it, or click an activity item to navigate to that record.',
-                position: 'top'
-            },
-            {
                 target: '.dash-header-actions',
                 title: 'Quick Actions',
                 desc: 'Start a new estimate, create a project, or view your production schedule. These shortcuts save you clicks.',
@@ -3730,6 +3724,12 @@ DASHBOARD_HTML = r"""
                 title: 'Global Search',
                 desc: 'Press Ctrl+K to search for anything: projects, customers, job codes, coils. Results link directly to the record.',
                 position: 'right'
+            },
+            {
+                target: null,
+                title: 'You\'re All Set!',
+                desc: 'Explore the sidebar to discover all modules. Need help? Click the Getting Started link in the sidebar or press Ctrl+K to search. Happy building!',
+                position: 'center'
             }
         ];
 
@@ -3748,29 +3748,25 @@ DASHBOARD_HTML = r"""
         var currentStep = 0;
 
         function createTourOverlay() {
-            var overlay = document.createElement('div');
-            overlay.id = 'tourOverlay';
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:99990;pointer-events:none;';
-
+            // Backdrop with a "hole" cut out via clip-path
             var backdrop = document.createElement('div');
             backdrop.id = 'tourBackdrop';
-            backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99991;pointer-events:auto;';
+            backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:99991;transition:clip-path 0.3s ease;';
 
             var card = document.createElement('div');
             card.id = 'tourCard';
-            card.style.cssText = 'position:fixed;z-index:99993;background:#1E293B;border:2px solid #C89A2E;border-radius:12px;padding:20px 24px;max-width:360px;color:#E2E8F0;box-shadow:0 8px 32px rgba(0,0,0,0.5);pointer-events:auto;';
+            card.style.cssText = 'position:fixed;z-index:99993;background:#1E293B;border:2px solid #C89A2E;border-radius:12px;padding:20px 24px;max-width:360px;width:340px;color:#E2E8F0;box-shadow:0 8px 32px rgba(0,0,0,0.5);transition:left 0.3s ease,top 0.3s ease;';
             card.innerHTML = '<div id="tourTitle" style="font-size:16px;font-weight:700;color:#C89A2E;margin-bottom:8px;"></div>'
-                + '<div id="tourDesc" style="font-size:13px;color:#CBD5E1;line-height:1.6;margin-bottom:16px;"></div>'
+                + '<div id="tourDesc" style="font-size:14px;color:#CBD5E1;line-height:1.6;margin-bottom:16px;"></div>'
                 + '<div style="display:flex;justify-content:space-between;align-items:center;">'
-                + '  <span id="tourStepCount" style="font-size:11px;color:#64748B;"></span>'
+                + '  <span id="tourStepCount" style="font-size:12px;color:#64748B;"></span>'
                 + '  <div style="display:flex;gap:8px;">'
-                + '    <button id="tourSkip" onclick="window._skipTour()" style="padding:6px 14px;border-radius:6px;border:1px solid #475569;background:transparent;color:#94A3B8;font-size:12px;cursor:pointer;font-weight:600;">Skip Tour</button>'
-                + '    <button id="tourNext" onclick="window._nextTourStep()" style="padding:6px 14px;border-radius:6px;border:none;background:#C89A2E;color:#0F172A;font-size:12px;cursor:pointer;font-weight:700;">Next</button>'
+                + '    <button id="tourSkip" onclick="window._skipTour()" style="padding:8px 16px;border-radius:6px;border:1px solid #475569;background:transparent;color:#94A3B8;font-size:13px;cursor:pointer;font-weight:600;">Skip Tour</button>'
+                + '    <button id="tourNext" onclick="window._nextTourStep()" style="padding:8px 16px;border-radius:6px;border:none;background:#C89A2E;color:#0F172A;font-size:13px;cursor:pointer;font-weight:700;">Next</button>'
                 + '  </div>'
                 + '</div>';
 
             document.body.appendChild(backdrop);
-            document.body.appendChild(overlay);
             document.body.appendChild(card);
         }
 
@@ -3781,63 +3777,67 @@ DASHBOARD_HTML = r"""
             }
             currentStep = idx;
             var step = TOUR_STEPS[idx];
-            var el = document.querySelector(step.target);
+            var el = step.target ? document.querySelector(step.target) : null;
+            var card = document.getElementById('tourCard');
+            var backdrop = document.getElementById('tourBackdrop');
 
+            // Update card content
             document.getElementById('tourTitle').textContent = step.title;
             document.getElementById('tourDesc').textContent = step.desc;
             document.getElementById('tourStepCount').textContent = (idx + 1) + ' of ' + TOUR_STEPS.length;
             document.getElementById('tourNext').textContent = idx === TOUR_STEPS.length - 1 ? 'Finish' : 'Next';
 
-            var card = document.getElementById('tourCard');
-            if (el) {
-                var rect = el.getBoundingClientRect();
-                // Highlight element
-                el.style.position = el.style.position || 'relative';
-                el.style.zIndex = '99992';
-                el.style.boxShadow = '0 0 0 4px rgba(200,154,46,0.4)';
-                el.style.borderRadius = el.style.borderRadius || '8px';
+            // Reset card positioning
+            card.style.transform = '';
+            card.style.left = '';
+            card.style.top = '';
 
-                // Position card
+            if (el && el.offsetParent !== null) {
+                var rect = el.getBoundingClientRect();
+                var pad = 8;
+
+                // Cut a hole in the backdrop for the highlighted element
+                var hx = rect.left - pad;
+                var hy = rect.top - pad;
+                var hw = rect.width + pad * 2;
+                var hh = rect.height + pad * 2;
+                var br = 12;
+                backdrop.style.clipPath = 'polygon(0% 0%, 0% 100%, ' +
+                    hx + 'px 100%, ' + hx + 'px ' + hy + 'px, ' +
+                    (hx + hw) + 'px ' + hy + 'px, ' +
+                    (hx + hw) + 'px ' + (hy + hh) + 'px, ' +
+                    hx + 'px ' + (hy + hh) + 'px, ' +
+                    hx + 'px 100%, 100% 100%, 100% 0%)';
+
+                // Position card relative to element
                 if (step.position === 'right') {
-                    card.style.left = Math.min(rect.right + 16, window.innerWidth - 380) + 'px';
-                    card.style.top = Math.max(rect.top, 20) + 'px';
+                    card.style.left = Math.min(rect.right + 20, window.innerWidth - 380) + 'px';
+                    card.style.top = Math.max(rect.top + (rect.height / 2) - 80, 20) + 'px';
                 } else if (step.position === 'bottom') {
+                    card.style.left = Math.min(Math.max(rect.left, 20), window.innerWidth - 380) + 'px';
+                    card.style.top = Math.min(rect.bottom + 20, window.innerHeight - 200) + 'px';
+                } else if (step.position === 'top') {
                     card.style.left = Math.max(rect.left, 20) + 'px';
-                    card.style.top = (rect.bottom + 16) + 'px';
-                } else {
-                    card.style.left = Math.max(rect.left, 20) + 'px';
-                    card.style.top = Math.max(rect.top - 200, 20) + 'px';
+                    card.style.top = Math.max(rect.top - 220, 20) + 'px';
                 }
             } else {
+                // No target or element not visible — center the card
+                backdrop.style.clipPath = '';
                 card.style.left = '50%';
                 card.style.top = '50%';
-                card.style.transform = 'translate(-50%,-50%)';
+                card.style.transform = 'translate(-50%, -50%)';
             }
         }
 
-        function clearHighlights() {
-            TOUR_STEPS.forEach(function(step) {
-                var el = document.querySelector(step.target);
-                if (el) {
-                    el.style.zIndex = '';
-                    el.style.boxShadow = '';
-                }
-            });
-        }
-
         function endTour() {
-            clearHighlights();
             var bd = document.getElementById('tourBackdrop');
-            var ov = document.getElementById('tourOverlay');
             var cd = document.getElementById('tourCard');
             if (bd) bd.remove();
-            if (ov) ov.remove();
             if (cd) cd.remove();
             setCookie('tf_tour_done', '1', 365);
         }
 
         window._nextTourStep = function() {
-            clearHighlights();
             showStep(currentStep + 1);
         };
 
@@ -3845,11 +3845,11 @@ DASHBOARD_HTML = r"""
             endTour();
         };
 
-        // Start tour after page loads
+        // Start tour after dashboard has loaded its data
         setTimeout(function() {
             createTourOverlay();
             showStep(0);
-        }, 1500);
+        }, 2000);
     })();
     </script>
 </body>
