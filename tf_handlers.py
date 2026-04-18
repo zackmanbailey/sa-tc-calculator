@@ -834,12 +834,12 @@ class BaseHandler(tornado.web.RequestHandler):
         self.write(json_encode(data))
 
     def get_current_user(self):
-        """Get current authenticated user (username or 'local' in dev mode)."""
-        if not AUTH_ENABLED:
-            return "local"
+        """Get current authenticated user (username or 'admin' in dev mode)."""
         cookie = self.get_secure_cookie("sa_user")
         if cookie:
             return cookie.decode("utf-8")
+        if not AUTH_ENABLED:
+            return "admin"
         return None
 
     def get_user_role(self):
@@ -894,6 +894,9 @@ class BaseHandler(tornado.web.RequestHandler):
     def prepare(self):
         """Check auth before handling request."""
         if not AUTH_ENABLED:
+            # Auto-login as admin when auth is disabled (testing mode)
+            if not self.get_secure_cookie("sa_user"):
+                self.set_secure_cookie("sa_user", "admin", expires_days=1)
             return
         path = self.request.path
         if path.startswith("/auth/") or path.startswith("/static/"):
@@ -1010,6 +1013,11 @@ class LoginHandler(BaseHandler):
     """POST /auth/login — Authenticate user and set secure cookie."""
     def get(self):
         try:
+            # If auth is disabled, auto-login and go to dashboard
+            if not AUTH_ENABLED:
+                self.set_secure_cookie("sa_user", "admin", expires_days=1)
+                self.redirect("/")
+                return
             # If already logged in, redirect to dashboard
             if self.get_secure_cookie("sa_user"):
                 self.redirect("/")
