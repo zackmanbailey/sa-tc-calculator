@@ -10778,6 +10778,74 @@ class QCQueuePageHandler(BaseHandler):
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{e}</p>")
 
+class ComingSoonPageHandler(BaseHandler):
+    """Generic 'Coming Soon' placeholder for sidebar links without full implementations."""
+
+    # Map of URL path -> (title, icon emoji)
+    PAGE_META = {
+        "/admin/settings":          ("Admin Settings", "⚙️"),
+        "/aisc":                    ("AISC Compliance", "🏗️"),
+        "/budget":                  ("Budget Overview", "💰"),
+        "/financial":               ("Financial Dashboard", "📊"),
+        "/financial/equipment":     ("Equipment Costs", "🔧"),
+        "/financial/expenses":      ("Expense Tracking", "💳"),
+        "/financial/invoices":      ("Invoice Management", "📄"),
+        "/financial/projects":      ("Project Financials", "📁"),
+        "/financial/reports":       ("Financial Reports", "📈"),
+        "/financial/vendor-bills":  ("Vendor Bills", "🧾"),
+        "/sales/leads":             ("Sales Leads", "🎯"),
+        "/sales/pipeline":          ("Sales Pipeline", "📈"),
+        "/sales/quotes":            ("Sales Quotes", "💬"),
+        "/field/daily":             ("Daily Field Reports", "📋"),
+        "/field/docs":              ("Field Documents", "📂"),
+        "/field/equipment":         ("Field Equipment", "🔧"),
+        "/field/expenses":          ("Field Expenses", "💳"),
+        "/field/jha":               ("Job Hazard Analysis", "⚠️"),
+        "/field/photos":            ("Field Photos", "📸"),
+        "/field/projects":          ("Field Projects", "🏗️"),
+        "/allocations":             ("Material Allocations", "📦"),
+        "/certs":                   ("Certifications", "📜"),
+        "/crew":                    ("Crew Management", "👷"),
+        "/material-reqs":           ("Material Requisitions", "📋"),
+        "/pos":                     ("Purchase Orders", "🛒"),
+        "/prices":                  ("Price Lists", "💲"),
+        "/receipts":                ("Receipts", "🧾"),
+        "/receiving":               ("Receiving", "📥"),
+        "/vendors":                 ("Vendor Management", "🏢"),
+        "/audit":                   ("Audit Trail", "🔍"),
+        "/qc":                      ("QC Dashboard", "✅"),
+        "/qc/ncr":                  ("Non-Conformance Reports", "❌"),
+        "/safety/equipment":        ("Safety Equipment", "🦺"),
+        "/safety/incidents":        ("Incident Reports", "🚨"),
+        "/safety/jha":              ("Job Hazard Analysis", "⚠️"),
+        "/safety/metrics":          ("Safety Metrics", "📊"),
+        "/safety/training":         ("Safety Training", "🎓"),
+        "/portal/docs":             ("Customer Portal Docs", "📄"),
+        "/portal/photos":           ("Customer Portal Photos", "📸"),
+        "/portal/status":           ("Customer Portal Status", "📊"),
+        "/scan":                    ("QR Scanner", "📱"),
+        "/shipping/active":         ("Active Shipments", "🚚"),
+        "/shipping/bol":            ("Bills of Lading", "📋"),
+        "/shipping/build":          ("Build Loads", "📦"),
+        "/tasks":                   ("Task Manager", "✅"),
+        "/timeline":                ("Project Timeline", "📅"),
+        "/traceability":            ("Traceability", "🔗"),
+        "/work-station/coil":       ("Coil Work Station", "🔩"),
+        "/work-station/completed":  ("Completed Work", "✅"),
+        "/work-station/cuts":       ("Cut List", "✂️"),
+        "/work-station/log":        ("Work Log", "📝"),
+        "/work-station/queue":      ("Work Queue", "📋"),
+        "/workflows":               ("Workflow Builder", "🔄"),
+    }
+
+    def get(self, path=None):
+        from templates.coming_soon_page import COMING_SOON_PAGE_HTML
+        req_path = self.request.path.rstrip("/")
+        title, icon = self.PAGE_META.get(req_path, ("Coming Soon", "🚧"))
+        html = COMING_SOON_PAGE_HTML.replace("{{PAGE_TITLE}}", title).replace("{{PAGE_ICON}}", icon)
+        self.render_with_nav(html, active_page="coming_soon")
+
+
 class DocumentManagementPageHandler(BaseHandler):
     """GET /documents — Document management dashboard."""
     required_roles = ["admin", "estimator"]
@@ -12942,6 +13010,11 @@ def get_routes():
         (r"/api/notifications/test",             EmailNotificationTestHandler),
 
         # ── Work Station (tablet/phone) ───────────────────────
+        (r"/work-station/coil",                  ComingSoonPageHandler),
+        (r"/work-station/completed",             ComingSoonPageHandler),
+        (r"/work-station/cuts",                  ComingSoonPageHandler),
+        (r"/work-station/log",                   ComingSoonPageHandler),
+        (r"/work-station/queue",                 ComingSoonPageHandler),
         (r"/work-station/([^/]+)",               WorkStationPageHandler),
         (r"/api/work-station/data",              WorkStationDataHandler),
         (r"/api/work-station/steps",             WorkStationStepsHandler),
@@ -12989,6 +13062,8 @@ def get_routes():
         (r"/api/tc/load",                    TCLoadHandler),
 
         # ── AISC QC Module ─────────────────────────────────────
+        (r"/qc/ncr",                         ComingSoonPageHandler),
+        (r"/qc",                             ComingSoonPageHandler),
         (r"/qc/([^/]+)",                     QCPageHandler),
         (r"/api/qc/types",                   QCInspectionTypesHandler),
         (r"/api/qc/data",                    QCDataHandler),
@@ -13037,6 +13112,9 @@ def get_routes():
         (r"/api/load-builder/delete",            LoadBuilderDeleteHandler),
 
         # ── Shipping ─────────────────────────────────────────
+        (r"/shipping/active",                    ComingSoonPageHandler),
+        (r"/shipping/bol",                       ComingSoonPageHandler),
+        (r"/shipping/build",                     ComingSoonPageHandler),
         (r"/shipping/([^/]+)",                   ShippingPageHandler),
         (r"/api/shipping/packing-list",          ShippingPackingListHandler),
         (r"/api/shipping/bol",                   ShippingBOLHandler),
@@ -13107,6 +13185,51 @@ def get_routes():
         (r"/qc-queue",                           QCQueuePageHandler),
         (r"/admin/users",                        AdminPageHandler),
         (r"/work-orders/all",                    WorkOrdersGlobalPageHandler),
+
+        # ── Coming Soon stubs (all remaining sidebar links) ──
+        (r"/admin/settings",                     ComingSoonPageHandler),
+        (r"/aisc",                               ComingSoonPageHandler),
+        (r"/budget",                             ComingSoonPageHandler),
+        (r"/financial/equipment",                ComingSoonPageHandler),
+        (r"/financial/expenses",                 ComingSoonPageHandler),
+        (r"/financial/invoices",                 ComingSoonPageHandler),
+        (r"/financial/projects",                 ComingSoonPageHandler),
+        (r"/financial/reports",                  ComingSoonPageHandler),
+        (r"/financial/vendor-bills",             ComingSoonPageHandler),
+        (r"/financial",                          ComingSoonPageHandler),
+        (r"/sales/leads",                        ComingSoonPageHandler),
+        (r"/sales/pipeline",                     ComingSoonPageHandler),
+        (r"/sales/quotes",                       ComingSoonPageHandler),
+        (r"/field/daily",                        ComingSoonPageHandler),
+        (r"/field/docs",                         ComingSoonPageHandler),
+        (r"/field/equipment",                    ComingSoonPageHandler),
+        (r"/field/expenses",                     ComingSoonPageHandler),
+        (r"/field/jha",                          ComingSoonPageHandler),
+        (r"/field/photos",                       ComingSoonPageHandler),
+        (r"/field/projects",                     ComingSoonPageHandler),
+        (r"/allocations",                        ComingSoonPageHandler),
+        (r"/certs",                              ComingSoonPageHandler),
+        (r"/crew",                               ComingSoonPageHandler),
+        (r"/material-reqs",                      ComingSoonPageHandler),
+        (r"/pos",                                ComingSoonPageHandler),
+        (r"/prices",                             ComingSoonPageHandler),
+        (r"/receipts",                           ComingSoonPageHandler),
+        (r"/receiving",                          ComingSoonPageHandler),
+        (r"/vendors",                            ComingSoonPageHandler),
+        (r"/audit",                              ComingSoonPageHandler),
+        (r"/safety/equipment",                   ComingSoonPageHandler),
+        (r"/safety/incidents",                   ComingSoonPageHandler),
+        (r"/safety/jha",                         ComingSoonPageHandler),
+        (r"/safety/metrics",                     ComingSoonPageHandler),
+        (r"/safety/training",                    ComingSoonPageHandler),
+        (r"/portal/docs",                        ComingSoonPageHandler),
+        (r"/portal/photos",                      ComingSoonPageHandler),
+        (r"/portal/status",                      ComingSoonPageHandler),
+        (r"/scan",                               ComingSoonPageHandler),
+        (r"/tasks",                              ComingSoonPageHandler),
+        (r"/timeline",                           ComingSoonPageHandler),
+        (r"/traceability",                       ComingSoonPageHandler),
+        (r"/workflows",                          ComingSoonPageHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),
