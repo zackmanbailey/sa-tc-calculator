@@ -18,7 +18,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TitanForge — Work Orders</title>
 <style>
-""" + DESIGN_SYSTEM_CSS + """
+""" + DESIGN_SYSTEM_CSS + r"""
 
 /* ── Work Order Specific Styles ─── */
 .wo-container {

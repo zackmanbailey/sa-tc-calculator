@@ -5,7 +5,7 @@ Cost estimates, actuals, labor tracking, change orders,
 variance analysis, and cross-job financial overview.
 """
 
-JOB_COSTING_PAGE_HTML = """<!DOCTYPE html>
+JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">

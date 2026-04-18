@@ -19,7 +19,7 @@ WORK_STATION_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>TitanForge — Work Station</title>
 <style>
-""" + DESIGN_SYSTEM_CSS + """
+""" + DESIGN_SYSTEM_CSS + r"""
 
 /* ── Work Station — Touch-Optimized ─── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }

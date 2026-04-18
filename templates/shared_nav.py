@@ -17,7 +17,7 @@ Usage in templates:
 # SIDEBAR CSS
 # ─────────────────────────────────────────────
 
-NAV_CSS = """
+NAV_CSS = r"""
 /* ── Sidebar Navigation ─────────────────────────────── */
 .tf-sidebar {
     position: fixed;
@@ -691,7 +691,7 @@ body.sidebar-collapsed .tf-main {
 # The {{ACTIVE_PAGE}} placeholder is replaced per-page.
 # The {{JOB_CODE}} placeholder is replaced if in a project context.
 
-NAV_HTML = """
+NAV_HTML = r"""
 <!-- Mobile hamburger button (fixed, visible only on mobile) -->
 <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
 <!-- Mobile overlay -->
@@ -991,7 +991,7 @@ NAV_HTML = """
 # NAV JAVASCRIPT
 # ─────────────────────────────────────────────
 
-NAV_JS = """
+NAV_JS = r"""
 // ── Sidebar Toggle ──
 function toggleSidebar() {
     const sb = document.getElementById('tfSidebar');
@@ -1110,7 +1110,15 @@ document.addEventListener('DOMContentLoaded', function() {
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             const focused = document.querySelector('.tf-search-item.focused');
-            if (focused) { window.location.href = focused.href || focused.getAttribute('data-href'); }
+            if (focused) {
+                window.location.href = focused.href || focused.getAttribute('data-href');
+            } else {
+                const q = input.value.trim();
+                if (q.length >= 2) {
+                    closeGlobalSearch();
+                    window.location.href = '/search?q=' + encodeURIComponent(q);
+                }
+            }
         }
     });
 });
@@ -1243,7 +1251,7 @@ function escNavHtml(s) {
             html += '    <div class="tf-notif-time">' + ago + '</div>';
             html += '  </div>';
             if (!n.is_read) {
-                html += '  <button class="tf-notif-read-btn" onclick="markNotifRead(\\x27' + (n.id || '') + '\\x27, this)" title="Mark read">&#10003;</button>';
+                html += '  <button class="tf-notif-read-btn" onclick="markNotifRead(\'' + (n.id || '') + '\', this)" title="Mark read">&#10003;</button>';
             }
             html += '</div>';
         }
@@ -1426,7 +1434,12 @@ def build_nav(active_page: str = "", job_code: str = "",
 
 
 def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles):
-    """Build sidebar HTML from user's RBAC roles."""
+    """Build sidebar HTML dynamically from user's RBAC roles.
+
+    Uses perm.get_sidebar() from auth.permissions to get the role-filtered
+    sidebar sections defined in auth/roles.py, then renders them as HTML.
+    Falls back to the static NAV_HTML if the auth module is not available.
+    """
     # Try to use new auth system
     perm = None
     try:
@@ -1447,17 +1460,32 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         html = html.replace("{{USER_ROLE}}", user_role)
         return html
 
-    # ── Build dynamic sidebar from permissions ──
+    # ── Build dynamic sidebar from role-filtered sections ──
 
-    # Map active_page to URL prefixes for highlighting
-    active_urls = {
-        "dashboard": "/", "workorders_global": "/work-orders",
-        "shopfloor": "/shop-floor", "customers": "/customers",
-        "sa": "/sa", "tc": "/tc", "project": "/project/", "shopdrw": "/shop-drawings/",
-        "workorders": "/work-orders/", "workstation": "/work-station/",
-        "qc": "/qc/", "quote": "/quote/", "admin": "/admin",
+    # Icon mapping: sidebar section icon name -> HTML entity
+    ICON_MAP = {
+        "home":           "&#127968;",
+        "calculator":     "&#127959;",
+        "folder":         "&#128194;",
+        "factory":        "&#9881;",
+        "shield-check":   "&#128737;",
+        "package":        "&#128230;",
+        "shopping-cart":  "&#128722;",
+        "truck":          "&#128666;",
+        "hard-hat":       "&#127959;",
+        "alert-triangle": "&#9888;",
+        "dollar-sign":    "&#128176;",
+        "trending-up":    "&#128200;",
+        "settings":       "&#128274;",
+        "cpu":            "&#128190;",
+        "flame":          "&#128293;",
+        "clipboard":      "&#128203;",
+        "eye":            "&#128065;",
+        "calendar":       "&#128197;",
+        "bar-chart":      "&#128200;",
+        "file-text":      "&#128196;",
+        "users":          "&#128101;",
     }
-    active_href = active_urls.get(active_page, "")
 
     # Role display labels
     role_labels = []
@@ -1465,99 +1493,44 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         role_labels.append(r.replace("_", " ").title())
     role_display = " + ".join(role_labels) if role_labels else user_role.replace("_", " ").title()
 
-    # Sidebar section definitions — each maps to permission checks
-    # This is the definitive sidebar order from RULES.md §12
-    sections = []
+    # Get role-filtered sidebar sections from the permission system
+    sidebar_sections = perm.get_sidebar()
 
-    # Dashboard always visible
-    sections.append(("", [("/", "&#127968;", "Dashboard", "dashboard")]))
+    # ── Render sidebar sections to HTML ──
+    nav_items_html = ""
+    for section in sidebar_sections:
+        sid = section.get("id", "")
+        label = section.get("label", "")
+        icon_name = section.get("icon", "")
+        icon_html = ICON_MAP.get(icon_name, "&#128194;")
+        children = section.get("children", [])
+        url = section.get("url", "")
 
-    # Estimating — calculator access
-    if perm.can("run_calculator") or perm.can("view_calculator"):
-        items = [("/sa", "&#127959;", "SA Estimator", "sa")]
-        items.append(("/tc", "&#128663;", "TC Estimator", "tc"))
-        sections.append(("Estimating", items))
+        nav_items_html += '        <div class="tf-sidebar-section">\n'
 
-    # Projects
-    if perm.can("view_projects"):
-        items = [("/", "&#128194;", "All Projects", "projects")]
-        sections.append(("Projects", items))
+        if children:
+            # Section with child links
+            nav_items_html += f'            <div class="tf-sidebar-section-label">{label}</div>\n'
+            for child in children:
+                child_url = child.get("url", "#")
+                child_label = child.get("label", "")
+                # Determine active state by matching URL
+                is_active = _is_nav_active(child_url, active_page)
+                active_cls = " active" if is_active else ""
+                nav_items_html += f'            <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
+                nav_items_html += f'                <span class="tf-nav-icon">{icon_html}</span>\n'
+                nav_items_html += f'                <span class="tf-nav-label">{child_label}</span>\n'
+                nav_items_html += f'            </a>\n'
+        elif url:
+            # Single-link section (e.g., Dashboard)
+            is_active = _is_nav_active(url, active_page)
+            active_cls = " active" if is_active else ""
+            nav_items_html += f'            <a href="{url}" class="tf-nav-item{active_cls}">\n'
+            nav_items_html += f'                <span class="tf-nav-icon">{icon_html}</span>\n'
+            nav_items_html += f'                <span class="tf-nav-label">{label}</span>\n'
+            nav_items_html += f'            </a>\n'
 
-    # Shop Floor
-    if perm.can("view_work_orders") or perm.can("view_own_work_items") or perm.can("create_work_orders"):
-        items = [("/shop-floor", "&#9881;", "Shop Floor", "shopfloor")]
-        if perm.can("view_work_orders"):
-            items.append(("/work-orders", "&#128203;", "Work Orders", "workorders_global"))
-        if perm.can("view_shop_drawings"):
-            items.append(("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"))
-        sections.append(("Shop Floor", items))
-
-    # My Station (operator roles)
-    if perm.has_role("roll_forming_operator"):
-        sections.append(("My Station", [
-            ("/work-station/mine", "&#128190;", "My Machine", "workstation"),
-        ]))
-
-    # My Work (welder)
-    if perm.has_role("welder"):
-        sections.append(("My Work", [
-            ("/work-station/mine", "&#128293;", "My Queue", "workstation"),
-        ]))
-
-    # Quality
-    if perm.can("view_qc") or perm.can("perform_inspections"):
-        items = [("/qc-dashboard", "&#128737;", "Inspections", "qc")]
-        sections.append(("Quality", items))
-
-    # Inventory
-    if perm.can("view_inventory"):
-        sections.append(("Inventory", [
-            ("/inventory", "&#128230;", "Stock Levels", "inventory"),
-        ]))
-
-    # Customers
-    if perm.can("view_customer_info"):
-        sections.append(("", [("/customers", "&#128101;", "Customers", "customers")]))
-
-    # Shipping
-    if perm.can("view_shipping") or perm.can("build_loads"):
-        items = [("/shipping", "&#128666;", "Shipping", "shipping")]
-        sections.append(("Shipping", items))
-
-    # Field
-    if perm.can("submit_daily_report") or perm.can("view_field_reports"):
-        items = [("/field", "&#127959;", "Field Ops", "field")]
-        sections.append(("Field", items))
-
-    # Scheduling
-    if perm.can("view_schedule") or perm.can("manage_schedule"):
-        sections.append(("Planning", [
-            ("/schedule", "&#128197;", "Schedule", "schedule"),
-        ]))
-
-    # Document Management
-    if perm.can("view_shop_drawings"):
-        sections.append(("Documents", [
-            ("/documents", "&#128196;", "Doc Management", "documents"),
-        ]))
-
-    # Financial
-    if perm.has_financial_access() and perm.can("view_financials"):
-        sections.append(("Financial", [
-            ("/job-costing", "&#128176;", "Job Costing", "jobcosting"),
-            ("/reports/production", "&#128200;", "Reports", "reports"),
-        ]))
-
-    # Activity
-    sections.append(("", [
-        ("/activity", "&#128276;", "Activity Feed", "activity"),
-    ]))
-
-    # Admin
-    if perm.can_manage_users:
-        sections.append(("Admin", [
-            ("/admin", "&#128274;", "Users", "admin"),
-        ]))
+        nav_items_html += '        </div>\n'
 
     # Current Project (context-aware — shown when in a project page)
     project_section = """
@@ -1597,22 +1570,9 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
             </a>"""
     project_section += "\n        </div>"
 
-    # ── Assemble the full sidebar HTML ──
-    nav_items_html = ""
-    for label, items in sections:
-        nav_items_html += '        <div class="tf-sidebar-section">\n'
-        if label:
-            nav_items_html += f'            <div class="tf-sidebar-section-label">{label}</div>\n'
-        for href, icon, text, page_id in items:
-            active_cls = " active" if page_id == active_page else ""
-            nav_items_html += f'            <a href="{href}" class="tf-nav-item{active_cls}">\n'
-            nav_items_html += f'                <span class="tf-nav-icon">{icon}</span>\n'
-            nav_items_html += f'                <span class="tf-nav-label">{text}</span>\n'
-            nav_items_html += f'            </a>\n'
-        nav_items_html += '        </div>\n'
-
     nav_items_html += project_section
 
+    # ── Assemble the full sidebar HTML ──
     sidebar = f"""
 <!-- Mobile hamburger button (fixed, visible only on mobile) -->
 <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
@@ -1656,19 +1616,54 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         </div>
     </div>
 
-    <div class="tf-sidebar-footer">
-        <a href="/admin" class="tf-footer-user" title="User Management" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;flex:1;min-width:0;">
-            <div class="user-avatar" id="userAvatar">{user_name[0:1].upper()}</div>
+    <div class="tf-sidebar-footer" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
+        <!-- XP Level Bar -->
+        <div id="xpWidget" style="display:none;cursor:pointer;" onclick="toggleXPPanel()">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <div class="user-avatar" id="userAvatar" style="width:32px;height:32px;font-size:12px;">{user_name[0:1].upper()}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span class="user-name" id="userName" style="font-size:13px;">{user_name}</span>
+                        <span id="xpLevelBadge" style="font-size:10px;background:#f59e0b;color:#000;border-radius:10px;padding:1px 8px;font-weight:700;">Lv 1</span>
+                    </div>
+                    <div id="xpLevelName" style="font-size:10px;color:#94a3b8;margin-top:1px;">Apprentice</div>
+                </div>
+            </div>
+            <div style="background:#1e293b;border-radius:6px;height:6px;overflow:hidden;margin-top:2px;">
+                <div id="xpProgressBar" style="height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);width:0%;border-radius:6px;transition:width 0.8s ease;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-top:2px;">
+                <span id="xpProgressText">0 / 100 XP</span>
+                <span id="xpStreakText" style="color:#f59e0b;"></span>
+            </div>
+        </div>
+        <!-- Fallback for no-gamification -->
+        <div id="xpFallback" style="display:flex;align-items:center;gap:8px;">
+            <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">{user_name[0:1].upper()}</div>
             <div class="user-info">
-                <div class="user-name" id="userName">{user_name}</div>
+                <div class="user-name" id="userNameFb">{user_name}</div>
                 <div class="user-role" id="userRole">{role_display}</div>
             </div>
-        </a>
-        <a href="/auth/logout" class="tf-logout-btn" title="Logout" onclick="return confirm('Are you sure you want to logout?')">
-            <span style="font-size:16px;">&#9211;</span>
-        </a>
+            <a href="/auth/logout" class="tf-logout-btn" title="Logout" onclick="return confirm('Are you sure you want to logout?')" style="margin-left:auto;">
+                <span style="font-size:16px;">&#9211;</span>
+            </a>
+        </div>
     </div>
 </aside>
+
+<!-- XP Toast Notification -->
+<div id="xpToast" style="position:fixed;bottom:24px;right:24px;z-index:10000;pointer-events:none;"></div>
+
+<!-- XP Panel (achievements/leaderboard) -->
+<div id="xpPanel" style="display:none;position:fixed;bottom:80px;left:200px;width:360px;max-height:480px;background:#1e293b;border:1px solid #334155;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:9999;overflow-y:auto;color:#e2e8f0;">
+    <div style="padding:16px;border-bottom:1px solid #334155;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <h3 style="margin:0;font-size:16px;color:#f59e0b;">Your Profile</h3>
+            <button onclick="toggleXPPanel()" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;">&times;</button>
+        </div>
+    </div>
+    <div id="xpPanelContent" style="padding:16px;">Loading...</div>
+</div>
 
 <!-- Global Search Modal -->
 <div class="tf-search-overlay" id="searchOverlay" onclick="if(event.target===this)closeGlobalSearch()">
@@ -1692,3 +1687,36 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 </div>
 """
     return sidebar
+
+
+def _is_nav_active(url: str, active_page: str) -> bool:
+    """Determine if a nav link should be highlighted as active.
+
+    Maps known active_page identifiers to URL patterns.
+    """
+    _ACTIVE_MAP = {
+        "dashboard":         ["/dashboard", "/"],
+        "shopfloor":         ["/shop-floor"],
+        "workorders_global": ["/work-orders"],
+        "customers":         ["/customers"],
+        "sa":                ["/sa"],
+        "tc":                ["/tc"],
+        "admin":             ["/admin"],
+        "qc":                ["/qc"],
+        "inventory":         ["/inventory"],
+        "shipping":          ["/shipping"],
+        "schedule":          ["/schedule"],
+        "documents":         ["/documents"],
+        "field":             ["/field"],
+        "reports":           ["/reports"],
+        "projects":          ["/projects"],
+        "workstation":       ["/work-station"],
+        "shopdrw":           ["/shop-drawings"],
+    }
+    if not active_page:
+        return False
+    active_urls = _ACTIVE_MAP.get(active_page, [])
+    for pattern in active_urls:
+        if url.startswith(pattern) or url == pattern:
+            return True
+    return False

@@ -5,7 +5,7 @@ Lists all PQR records with add/edit/delete functionality.
 PQRs back WPS documents with tensile, bend, macro etch, and impact test results.
 """
 
-PQR_PAGE_HTML = """<!DOCTYPE html>
+PQR_PAGE_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -319,7 +319,7 @@ PQR_PAGE_HTML = """<!DOCTYPE html>
       h += '<td>' + renderWpsTags(p.wps_refs) + '</td>';
       h += '<td class="pqr-actions">';
       h += '<button class="pqr-edit-btn" data-rec="' + btoa(JSON.stringify(p)) + '" onclick="pqrEdit(this)">Edit</button>';
-      h += '<button class="pqr-del-btn" onclick="pqrDelete(\\x27' + (p.pqr_id || '') + '\\x27)">Del</button>';
+      h += '<button class="pqr-del-btn" onclick="pqrDelete(\'' + (p.pqr_id || '') + '\')">Del</button>';
       h += '</td>';
       h += '</tr>';
     }

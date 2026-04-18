@@ -386,7 +386,7 @@ TOOLTIP_CSS = """
 # JS for tooltip system (include in any page)
 # ─────────────────────────────────────────────
 
-TOOLTIP_JS = """
+TOOLTIP_JS = r"""
 <script>
 (function() {
   var GLOSSARY = ##GLOSSARY_JSON##;

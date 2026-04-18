@@ -163,7 +163,7 @@ ERROR_CSS = """
 # JS for error handling (replaces alert())
 # ─────────────────────────────────────────────
 
-ERROR_JS = """
+ERROR_JS = r"""
 <script>
 (function() {
   // ── Create error banner ──

@@ -4484,6 +4484,18 @@ class CustomerDocServeHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write("Internal server error")
+class ProjectsListPageHandler(BaseHandler):
+    """GET /projects — Projects list page with filtering and sorting."""
+    def get(self):
+        try:
+            from templates.projects_list_page import PROJECTS_LIST_HTML
+            self.render_with_nav(PROJECTS_LIST_HTML, active_page="projects")
+
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
 class CustomerPageHandler(BaseHandler):
     """GET /customers — Customer database page."""
     def get(self):
@@ -6951,6 +6963,17 @@ class DeleteShopDrawingPDFHandler(BaseHandler):
         except Exception as e:
             self.write(json_encode({"ok": False, "error": str(e)}))
 
+
+class ShopDrawingsLandingHandler(BaseHandler):
+    """GET /shop-drawings — Landing page with project selector grid."""
+    def get(self):
+        try:
+            from templates.shop_drawings_landing import SHOP_DRAWINGS_LANDING_HTML
+            self.render_with_nav(SHOP_DRAWINGS_LANDING_HTML, active_page="shopdrw")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 
 class ShopDrawingsPageHandler(BaseHandler):
     """GET /shop-drawings/{job_code} — Shop Drawing Dashboard page."""
@@ -10583,6 +10606,18 @@ class ActivityFeedPageHandler(BaseHandler):
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
 
+class SearchResultsPageHandler(BaseHandler):
+    """GET /search — Dedicated search results page."""
+    def get(self):
+        try:
+            from templates.search_results_page import SEARCH_RESULTS_HTML
+            self.render_with_nav(SEARCH_RESULTS_HTML, active_page="search")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+
 class ActivityFeedAPIHandler(BaseHandler):
     """GET /api/activity — Returns paginated activity log entries."""
     def get(self):
@@ -11566,6 +11601,7 @@ def get_routes():
         (r"/project/([^/]+)",            ProjectPageHandler),
 
         # ── Shop Drawings ─────────────────────────────────────
+        (r"/shop-drawings/?",                    ShopDrawingsLandingHandler),
         (r"/shop-drawings/([^/]+)/column",       ColumnInteractiveHandler),
         (r"/shop-drawings/([^/]+)/rafter",       RafterInteractiveHandler),
         (r"/shop-drawings/([^/]+)/purlin",       PurlinInteractiveHandler),
@@ -11658,6 +11694,9 @@ def get_routes():
         # ── Smart Queue & Alerts ──────────────────────────────
         (r"/api/smart-queue",                    SmartQueueHandler),
         (r"/api/alerts",                         AlertsHandler),
+
+        # ── Projects List ─────────────────────────────────────
+        (r"/projects",                       ProjectsListPageHandler),
 
         # ── Customer Database ─────────────────────────────────
         (r"/customers",                      CustomerPageHandler),
@@ -11774,6 +11813,7 @@ def get_routes():
         (r"/reports/production",                 ReportsPageHandler),
         (r"/reports",                            ReportsPageHandler),
         (r"/activity",                           ActivityFeedPageHandler),
+        (r"/search",                             SearchResultsPageHandler),
         (r"/api/activity",                       ActivityFeedAPIHandler),
         (r"/api/gamification/profile",           GamificationProfileHandler),
         (r"/api/gamification/leaderboard",       GamificationLeaderboardHandler),

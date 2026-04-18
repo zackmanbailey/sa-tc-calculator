@@ -358,6 +358,20 @@ SIDEBAR_SECTIONS = [
         {"id": "settings",      "label": "Settings",          "url": "/admin/settings"},
         {"id": "audit_log_nav", "label": "Audit Log",         "url": "/audit"},
     ]},
+    # ── Standalone sections for role-specific access ───
+    {"id": "schedule",       "label": "Planning",        "icon": "calendar",  "children": [
+        {"id": "sched_board",    "label": "Schedule",        "url": "/schedule"},
+    ]},
+    {"id": "reports",        "label": "Reports",         "icon": "bar-chart", "children": [
+        {"id": "prod_reports",   "label": "Production Reports", "url": "/reports/production"},
+        {"id": "exec_reports",   "label": "Executive Summary",  "url": "/reports/executive"},
+    ]},
+    {"id": "documents",      "label": "Documents",       "icon": "file-text", "children": [
+        {"id": "doc_mgmt",      "label": "Doc Management",     "url": "/documents"},
+    ]},
+    {"id": "customers",      "label": "Customers",       "icon": "users",     "children": [
+        {"id": "cust_list",      "label": "All Customers",      "url": "/customers"},
+    ]},
     # ── Minimal sidebars for restricted roles ───
     {"id": "my_station",     "label": "My Station",      "icon": "cpu",       "children": [
         {"id": "my_machine",    "label": "My Machine",        "url": "/work-station/mine"},
@@ -486,7 +500,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["active_projects", "milestones", "shop_progress", "field_status", "customer_comms"],
-        sidebar_sections=["dashboard", "projects", "estimating", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "financial", "sales"],
+        sidebar_sections=["dashboard", "projects", "customers", "schedule", "reports", "documents", "estimating", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "financial", "sales"],
     ),
 
     RoleDef(
@@ -498,10 +512,10 @@ _ROLE_DEFS = [
             P.RUN_CALCULATOR, P.VIEW_CALCULATOR, P.CREATE_QUOTES, P.VIEW_QUOTES,
             P.VIEW_BOM, P.VIEW_BOM_PRICING, P.VIEW_SELL_PRICES, P.EDIT_PRICING,
             P.CREATE_PROJECTS, P.EDIT_PROJECTS, P.VIEW_PROJECTS,
-            P.VIEW_INVENTORY,
+            P.VIEW_INVENTORY, P.VIEW_CUSTOMER_INFO, P.VIEW_SHOP_DRAWINGS,
         ],
         dashboard_cards=["active_quotes", "quick_calc", "inventory_summary"],
-        sidebar_sections=["dashboard", "estimating"],
+        sidebar_sections=["dashboard", "estimating", "projects", "customers", "documents"],
     ),
 
     RoleDef(
@@ -531,7 +545,7 @@ _ROLE_DEFS = [
             P.CREATE_PO, P.VIEW_PO, P.VIEW_PO_PRICING, P.MANAGE_VENDORS,
         ],
         dashboard_cards=["open_pos", "pending_deliveries", "price_alerts", "vendor_summary"],
-        sidebar_sections=["dashboard", "purchasing", "inventory"],
+        sidebar_sections=["dashboard", "inventory", "shipping", "purchasing"],
     ),
 
     RoleDef(
@@ -607,7 +621,7 @@ _ROLE_DEFS = [
             P.VIEW_AISC_LIBRARY,
         ],
         dashboard_cards=["drawings_pending", "recent_uploads", "project_drawing_sets"],
-        sidebar_sections=["dashboard", "quality"],
+        sidebar_sections=["dashboard", "shop_floor", "projects", "documents"],
     ),
 
     RoleDef(
@@ -705,6 +719,180 @@ _ROLE_DEFS = [
         ],
         dashboard_cards=["my_project_status", "upcoming_dates", "customer_photos", "customer_documents"],
         sidebar_sections=["dashboard", "my_project"],
+    ),
+
+    # ── Additional roles from 18-role RBAC spec ─────────────────────────────
+
+    RoleDef(
+        id="shop_manager", name="Shop Manager", rank=8,
+        description="Full shop floor management including scheduling, drawings, reports, and inventory.",
+        financial_access="own_receipts",
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS,
+            P.VIEW_SHOP_DRAWINGS,
+            P.CREATE_WORK_ORDERS, P.EDIT_WORK_ORDERS, P.VIEW_WORK_ORDERS, P.APPROVE_WORK_ORDERS,
+            P.ASSIGN_OPERATORS, P.REPRIORITIZE_QUEUE,
+            P.SCAN_START_FINISH, P.LOG_COIL_CHANGEOVER, P.LOG_ITEM_NOTES,
+            P.VIEW_QC,
+            P.VIEW_INVENTORY, P.EDIT_INVENTORY, P.RECEIVE_INVENTORY, P.ALLOCATE_STOCK,
+            P.SUBMIT_RECEIPTS, P.VIEW_OWN_RECEIPTS,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
+        ],
+        dashboard_cards=["shop_overview", "active_projects_nf", "today_priorities", "crew_status", "receipt_log"],
+        sidebar_sections=["dashboard", "shop_floor", "quality", "schedule", "reports", "inventory"],
+    ),
+
+    RoleDef(
+        id="fabricator", name="Fabricator", rank=12,
+        description="Shop floor fabrication. Work orders, queue, and shop drawings.",
+        mobile_first=True,
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_SHOP_DRAWINGS,
+            P.VIEW_WORK_ORDERS, P.VIEW_OWN_WORK_ITEMS,
+            P.SCAN_START_FINISH, P.LOG_ITEM_NOTES,
+            P.VIEW_SCHEDULE,
+        ],
+        dashboard_cards=["my_queue", "active_item", "recently_completed"],
+        sidebar_sections=["dashboard", "shop_floor", "my_work"],
+    ),
+
+    RoleDef(
+        id="qa_manager", name="QA Manager", rank=9,
+        description="Full QC authority plus reporting. Manages inspection teams.",
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_SHOP_DRAWINGS,
+            P.VIEW_WORK_ORDERS,
+            P.VIEW_QC, P.PERFORM_INSPECTIONS, P.SIGN_OFF_QC, P.REJECT_QC_ITEMS, P.CREATE_NCR,
+            P.VIEW_AISC_LIBRARY, P.MANAGE_AISC_LIBRARY,
+            P.MANAGE_MILL_CERTS,
+        ],
+        dashboard_cards=["inspection_queue", "open_ncrs", "recent_signoffs", "aisc_shortcut"],
+        sidebar_sections=["dashboard", "quality", "reports"],
+    ),
+
+    RoleDef(
+        id="shipping_clerk", name="Shipping Clerk", rank=13,
+        description="Shipping operations, load building, and inventory visibility.",
+        mobile_first=True,
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS,
+            P.VIEW_WORK_ORDERS,
+            P.BUILD_LOADS, P.GENERATE_BOL, P.MARK_SHIPPED, P.VIEW_SHIPPING,
+            P.VIEW_INVENTORY,
+            P.VIEW_SCHEDULE,
+        ],
+        dashboard_cards=["ready_to_ship", "active_loads", "fab_progress"],
+        sidebar_sections=["dashboard", "shipping", "inventory"],
+    ),
+
+    RoleDef(
+        id="field_ops", name="Field Operations", rank=15,
+        description="Field operations and job costing visibility.",
+        financial_access="own_expenses",
+        mobile_first=True,
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS, P.VIEW_PROJECT_FINANCIALS,
+            P.VIEW_FIELD_DRAWINGS,
+            P.SUBMIT_DAILY_REPORT, P.SUBMIT_JHA, P.UPLOAD_FIELD_PHOTOS,
+            P.TRACK_EQUIPMENT, P.SUBMIT_EXPENSES, P.CREATE_PUNCH_LIST,
+            P.VIEW_FIELD_REPORTS,
+        ],
+        dashboard_cards=["field_project_select", "field_documents", "field_daily_actions", "field_equipment"],
+        sidebar_sections=["dashboard", "field", "financial"],
+    ),
+
+    RoleDef(
+        id="foreman", name="Foreman", rank=8,
+        description="Shop floor supervision with scheduling and queue management.",
+        financial_access="own_receipts",
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS,
+            P.VIEW_SHOP_DRAWINGS,
+            P.CREATE_WORK_ORDERS, P.EDIT_WORK_ORDERS, P.VIEW_WORK_ORDERS,
+            P.ASSIGN_OPERATORS, P.REPRIORITIZE_QUEUE,
+            P.VIEW_OWN_WORK_ITEMS,
+            P.SCAN_START_FINISH, P.LOG_ITEM_NOTES,
+            P.SUBMIT_RECEIPTS, P.VIEW_OWN_RECEIPTS,
+            P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
+        ],
+        dashboard_cards=["shop_overview", "today_priorities", "crew_status", "my_queue"],
+        sidebar_sections=["dashboard", "shop_floor", "schedule", "my_work"],
+    ),
+
+    RoleDef(
+        id="accountant", name="Accountant", rank=7,
+        description="Financial visibility and customer access. View/export only.",
+        financial_access="full",
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_BOM, P.VIEW_BOM_PRICING, P.VIEW_SELL_PRICES, P.VIEW_VENDOR_COSTS, P.VIEW_MARGINS,
+            P.VIEW_PROJECTS, P.VIEW_PROJECT_FINANCIALS,
+            P.VIEW_INVENTORY, P.VIEW_INVENTORY_COSTS,
+            P.VIEW_PO, P.VIEW_PO_PRICING,
+            P.VIEW_FINANCIALS, P.VIEW_PROJECT_PNL, P.PROCESS_EXPENSES,
+            P.VIEW_ALL_RECEIPTS,
+            P.VIEW_CUSTOMER_INFO,
+        ],
+        dashboard_cards=["revenue_summary", "pending_expenses", "project_pnl", "vendor_bills"],
+        sidebar_sections=["dashboard", "financial", "customers", "reports"],
+    ),
+
+    RoleDef(
+        id="viewer", name="Viewer", rank=18,
+        description="Dashboard read-only access. No operational capabilities.",
+        permissions=[
+            P.VIEW_DASHBOARD,
+        ],
+        dashboard_cards=["recent_activity"],
+        sidebar_sections=["dashboard"],
+    ),
+
+    RoleDef(
+        id="installer", name="Installer", rank=15,
+        description="Field installation crew. Mobile-first field operations.",
+        mobile_first=True,
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS,
+            P.VIEW_FIELD_DRAWINGS,
+            P.SUBMIT_DAILY_REPORT, P.UPLOAD_FIELD_PHOTOS,
+            P.CREATE_PUNCH_LIST,
+            P.VIEW_FIELD_REPORTS,
+        ],
+        dashboard_cards=["field_project_select", "field_documents", "field_daily_actions"],
+        sidebar_sections=["dashboard", "field"],
+    ),
+
+    RoleDef(
+        id="driver", name="Driver", rank=14,
+        description="Shipping driver. View shipments and confirm delivery.",
+        mobile_first=True,
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_SHIPPING, P.MARK_SHIPPED,
+        ],
+        dashboard_cards=["active_loads"],
+        sidebar_sections=["dashboard", "shipping"],
+    ),
+
+    RoleDef(
+        id="executive", name="Executive", rank=2,
+        description="High-level dashboard and reports access. Strategic oversight.",
+        financial_access="full",
+        permissions=[
+            P.VIEW_DASHBOARD,
+            P.VIEW_PROJECTS, P.VIEW_PROJECT_FINANCIALS,
+            P.VIEW_FINANCIALS, P.VIEW_PROJECT_PNL,
+            P.VIEW_SCHEDULE,
+        ],
+        dashboard_cards=["business_summary", "all_projects_fin", "recent_activity"],
+        sidebar_sections=["dashboard", "reports"],
     ),
 ]
 

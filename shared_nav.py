@@ -798,7 +798,15 @@ document.addEventListener('DOMContentLoaded', function() {
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             const focused = document.querySelector('.tf-search-item.focused');
-            if (focused) { window.location.href = focused.href || focused.getAttribute('data-href'); }
+            if (focused) {
+                window.location.href = focused.href || focused.getAttribute('data-href');
+            } else {
+                const q = input.value.trim();
+                if (q.length >= 2) {
+                    closeGlobalSearch();
+                    window.location.href = '/search?q=' + encodeURIComponent(q);
+                }
+            }
         }
     });
 });

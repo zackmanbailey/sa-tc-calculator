@@ -5,7 +5,7 @@ Shows work items assigned to the current user across all jobs.
 Sections: In Progress, Up Next, Recently Completed.
 """
 
-MY_QUEUE_HTML = """<!DOCTYPE html>
+MY_QUEUE_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -327,10 +327,10 @@ MY_QUEUE_HTML = """<!DOCTYPE html>
 
         html += '<div class="mq-card-actions">';
         if (sc === 'queued') {
-            html += '<button class="mq-btn mq-btn-primary" onclick="startItem(\\x27' + escAttr(jobCode) + '\\x27,\\x27' + escAttr(woId) + '\\x27,\\x27' + escAttr(item.item_id) + '\\x27)">&#9654; Start</button>';
+            html += '<button class="mq-btn mq-btn-primary" onclick="startItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#9654; Start</button>';
         }
         if (sc === 'in_progress') {
-            html += '<button class="mq-btn mq-btn-success" onclick="completeItem(\\x27' + escAttr(jobCode) + '\\x27,\\x27' + escAttr(woId) + '\\x27,\\x27' + escAttr(item.item_id) + '\\x27)">&#10003; Complete</button>';
+            html += '<button class="mq-btn mq-btn-success" onclick="completeItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#10003; Complete</button>';
         }
         if (jobCode && item.drawing_ref) {
             html += '<a class="mq-btn mq-btn-ghost" href="/shop-drawings/' + encodeURIComponent(jobCode) + '" target="_blank">&#128208; Drawing</a>';

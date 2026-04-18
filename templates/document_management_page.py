@@ -4,7 +4,7 @@ TitanForge — Document Management Dashboard Template
 Drawing revisions, RFIs, transmittals, and BOM change tracking.
 """
 
-DOCUMENT_MANAGEMENT_PAGE_HTML = """<!DOCTYPE html>
+DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
