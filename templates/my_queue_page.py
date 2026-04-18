@@ -386,9 +386,57 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
         return (s || '').replace(/'/g, "\\\\'").replace(/"/g, '&quot;');
     }
 
+    // ── WebSocket — Live Updates ──
+    var POLL_MS = 30000;
+    var ws = null;
+    var wsRetry = 0;
+    var pollTimer = null;
+
+    function connectWebSocket() {
+        try {
+            var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(proto + '//' + location.host + '/ws/live');
+
+            ws.onopen = function() {
+                console.log('[WS] Connected');
+                wsRetry = 0;
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            };
+
+            ws.onmessage = function(evt) {
+                try {
+                    var msg = JSON.parse(evt.data);
+                    // Refresh queue on scan events or status changes
+                    if (msg.type === 'scan' || msg.type === 'batch_scan' ||
+                        msg.type === 'wo_status') {
+                        loadQueue();
+                    }
+                } catch(e) { console.error('[WS] Parse error:', e); }
+            };
+
+            ws.onclose = function() {
+                console.log('[WS] Disconnected — falling back to polling');
+                ws = null;
+                if (!pollTimer) { pollTimer = setInterval(loadQueue, POLL_MS); }
+                var delay = Math.min(30000, 1000 * Math.pow(2, wsRetry));
+                wsRetry++;
+                setTimeout(connectWebSocket, delay);
+            };
+
+            ws.onerror = function(err) {
+                console.error('[WS] Error:', err);
+                if (ws) ws.close();
+            };
+        } catch(e) {
+            console.error('[WS] Failed to connect:', e);
+            if (!pollTimer) { pollTimer = setInterval(loadQueue, POLL_MS); }
+        }
+    }
+
     loadQueue();
-    // Auto-refresh every 30 seconds
-    setInterval(loadQueue, 30000);
+    connectWebSocket();
+    // Start polling as safety net; WebSocket onopen will clear it
+    pollTimer = setInterval(loadQueue, POLL_MS);
 })();
 </script>
 </body>

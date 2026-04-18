@@ -433,9 +433,67 @@ TV_DASHBOARD_HTML = """
     setTimeout(function() { box.innerHTML = ''; }, 4000);
   }
 
+  // ── WebSocket — Live Updates ──
+  var ws = null;
+  var wsRetry = 0;
+  var pollTimer = null;
+  var usePolling = false;
+
+  function connectWebSocket() {
+    try {
+      var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(proto + '//' + location.host + '/ws/live');
+
+      ws.onopen = function() {
+        console.log('[WS] Connected');
+        wsRetry = 0;
+        // Stop polling if WebSocket is active
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        usePolling = false;
+      };
+
+      ws.onmessage = function(evt) {
+        try {
+          var msg = JSON.parse(evt.data);
+          // Any live event triggers a full data refresh
+          if (msg.type === 'scan' || msg.type === 'batch_scan' ||
+              msg.type === 'wo_status' || msg.type === 'inventory_update') {
+            loadData();
+          }
+        } catch(e) { console.error('[WS] Parse error:', e); }
+      };
+
+      ws.onclose = function() {
+        console.log('[WS] Disconnected — retrying in', Math.min(5000, 1000 * Math.pow(2, wsRetry)), 'ms');
+        ws = null;
+        // Fall back to polling while disconnected
+        if (!pollTimer) {
+          usePolling = true;
+          pollTimer = setInterval(loadData, REFRESH_MS);
+        }
+        // Exponential backoff reconnect (max 30s)
+        var delay = Math.min(30000, 1000 * Math.pow(2, wsRetry));
+        wsRetry++;
+        setTimeout(connectWebSocket, delay);
+      };
+
+      ws.onerror = function(err) {
+        console.error('[WS] Error:', err);
+        if (ws) ws.close();
+      };
+    } catch(e) {
+      console.error('[WS] Failed to connect:', e);
+      // Fall back to polling
+      usePolling = true;
+      if (!pollTimer) { pollTimer = setInterval(loadData, REFRESH_MS); }
+    }
+  }
+
   // ── Init ──
   loadData();
-  setInterval(loadData, REFRESH_MS);
+  connectWebSocket();
+  // Start polling as a safety net; WebSocket onopen will clear it
+  pollTimer = setInterval(loadData, REFRESH_MS);
 
 })();
 </script>

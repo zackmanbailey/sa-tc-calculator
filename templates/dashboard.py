@@ -519,6 +519,36 @@ DASHBOARD_HTML = r"""
         .qc-type-badge.ncr        { background: rgba(239,68,68,0.15); color: #F87171; }
         .qc-type-badge.signoff    { background: rgba(16,185,129,0.15); color: #34D399; }
 
+        /* ── Gamification Stats Grid ────────────────── */
+        .gamification-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .gam-stat {
+            text-align: center;
+            padding: 16px 10px;
+            background: rgba(255,255,255,0.02);
+            border-radius: var(--dash-radius-sm);
+            border: 1px solid var(--dash-border-subtle);
+        }
+
+        .gam-value {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #F8FAFC;
+            line-height: 1;
+        }
+
+        .gam-label {
+            font-size: 0.68rem;
+            color: var(--dash-text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
         /* ── Quick Links ────────────────────────────── */
         .quick-links-grid {
             display: grid;
@@ -1293,6 +1323,7 @@ DASHBOARD_HTML = r"""
             .form-row { grid-template-columns: 1fr; }
             .inv-stats { grid-template-columns: 1fr; }
             .health-grid { grid-template-columns: 1fr; }
+            .gamification-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -1300,6 +1331,7 @@ DASHBOARD_HTML = r"""
     <script>
         var USER_ROLE = '{{USER_ROLE}}';
         var USER_NAME = '{{USER_NAME}}';
+        window.USER_ROLES = ['{{USER_ROLE}}'];
     </script>
 
     <div class="mc" data-user-role="{{USER_ROLE}}">
@@ -1499,13 +1531,217 @@ DASHBOARD_HTML = r"""
                 </div>
             </div>
 
+            <!-- Inspection Stats & Calibration -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128202;</span> Inspection Stats</div>
+                </div>
+                <div class="dash-card-body">
+                    <div class="health-grid" id="qcInspectionStats">
+                        <div class="health-item">
+                            <div class="health-value" id="qcTotalInspected">--</div>
+                            <div class="health-label">Total Inspected</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="qcPassRate">--</div>
+                            <div class="health-label">Pass Rate</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="qcCalibDue">--</div>
+                            <div class="health-label">Calibration Due</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Recent Sign-offs -->
-            <div class="dash-card dash-grid-full">
+            <div class="dash-card">
                 <div class="dash-card-header">
                     <div class="dash-card-title"><span class="card-icon">&#9989;</span> Recent Sign-offs</div>
                 </div>
                 <div class="dash-card-body" id="recentSignoffs">
                     <div class="no-data">Loading sign-offs...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ESTIMATOR SECTION -->
+        <div id="estimatorSection" class="dash-grid" style="display:none;">
+            <!-- Active Projects -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128202;</span> Active Projects</div>
+                    <span class="dash-card-badge" id="estProjectCount">0</span>
+                </div>
+                <div class="dash-card-body" id="estActiveProjects">
+                    <div class="no-data">Loading projects...</div>
+                </div>
+            </div>
+
+            <!-- Quotes Pending -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128221;</span> Quotes Pending</div>
+                    <span class="dash-card-badge" id="estQuoteCount">0</span>
+                </div>
+                <div class="dash-card-body" id="estQuotesPending">
+                    <div class="no-data">Loading quotes...</div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128337;</span> Recent Activity</div>
+                    <span class="dash-card-badge" id="estActivityCount">0</span>
+                </div>
+                <div class="dash-card-body" id="estActivityFeed">
+                    <div class="no-data">Loading activity...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FABRICATOR / WELDER SECTION (My Work) -->
+        <div id="fabSection" class="dash-grid" style="display:none;">
+            <!-- My Queue -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128203;</span> My Queue</div>
+                    <span class="dash-card-badge" id="fabQueueCount">0</span>
+                </div>
+                <div class="dash-card-body" id="fabQueue">
+                    <div class="no-data">Loading your queue...</div>
+                </div>
+            </div>
+
+            <!-- Recent Completions -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#9989;</span> Recent Completions</div>
+                </div>
+                <div class="dash-card-body" id="fabCompletions">
+                    <div class="no-data">Loading completions...</div>
+                </div>
+            </div>
+
+            <!-- Gamification Stats -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#127942;</span> My Stats</div>
+                </div>
+                <div class="dash-card-body">
+                    <div class="gamification-grid" id="fabGamification">
+                        <div class="gam-stat">
+                            <div class="gam-value" id="fabXP">0</div>
+                            <div class="gam-label">XP Earned</div>
+                        </div>
+                        <div class="gam-stat">
+                            <div class="gam-value" id="fabStreak">0</div>
+                            <div class="gam-label">Day Streak</div>
+                        </div>
+                        <div class="gam-stat">
+                            <div class="gam-value" id="fabAchievements">0</div>
+                            <div class="gam-label">Achievements</div>
+                        </div>
+                        <div class="gam-stat">
+                            <div class="gam-value" id="fabLevel">1</div>
+                            <div class="gam-label">Level</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SHIPPING SECTION -->
+        <div id="shippingSection" class="dash-grid" style="display:none;">
+            <!-- Ready to Ship -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128230;</span> Ready to Ship</div>
+                    <span class="dash-card-badge" id="shipReadyCount">0</span>
+                </div>
+                <div class="dash-card-body" id="shipReady">
+                    <div class="no-data">Loading ready items...</div>
+                </div>
+            </div>
+
+            <!-- Today's Loads -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128666;</span> Today&#39;s Loads</div>
+                    <span class="dash-card-badge" id="shipTodayCount">0</span>
+                </div>
+                <div class="dash-card-body" id="shipToday">
+                    <div class="no-data">No loads scheduled today.</div>
+                </div>
+            </div>
+
+            <!-- Recent Shipments -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128203;</span> Recent Shipments</div>
+                </div>
+                <div class="dash-card-body" id="shipRecent">
+                    <div class="no-data">Loading recent shipments...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROJECT MANAGER SECTION -->
+        <div id="pmSection" class="dash-grid" style="display:none;">
+            <!-- Active Projects with Progress -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128202;</span> Active Projects</div>
+                    <span class="dash-card-badge" id="pmProjectCount">0</span>
+                </div>
+                <div class="dash-card-body" id="pmActiveProjects">
+                    <div class="no-data">Loading projects...</div>
+                </div>
+            </div>
+
+            <!-- Upcoming Milestones -->
+            <div class="dash-card">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#127919;</span> Upcoming Milestones</div>
+                </div>
+                <div class="dash-card-body" id="pmMilestones">
+                    <div class="no-data">Loading milestones...</div>
+                </div>
+            </div>
+
+            <!-- Customer Activity -->
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128100;</span> Customer Activity</div>
+                </div>
+                <div class="dash-card-body" id="pmCustomerActivity">
+                    <div class="no-data">Loading customer activity...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEWER SECTION (Read-only summary) -->
+        <div id="viewerSection" class="dash-grid" style="display:none;">
+            <div class="dash-card dash-grid-full">
+                <div class="dash-card-header">
+                    <div class="dash-card-title"><span class="card-icon">&#128200;</span> Business Summary</div>
+                </div>
+                <div class="dash-card-body">
+                    <div class="health-grid" id="viewerOverview">
+                        <div class="health-item">
+                            <div class="health-value" id="viewerActiveProjects">--</div>
+                            <div class="health-label">Active Projects</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="viewerTotalWOs">--</div>
+                            <div class="health-label">Open Work Orders</div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-value" id="viewerInFab">--</div>
+                            <div class="health-label">In Fabrication</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1917,9 +2153,14 @@ DASHBOARD_HTML = r"""
     var STAGE_LABELS = { 'quote': 'Quote', 'contract': 'Contract', 'engineering': 'Eng', 'shop-drawings': 'Shop Drw', 'fabrication': 'Fab', 'shipping': 'Ship', 'install': 'Install', 'complete': 'Done' };
 
     // Role groups for section visibility
-    var ADMIN_ROLES = ['admin', 'god_mode', 'owner', 'general_manager', 'estimator'];
-    var SHOP_ROLES  = ['shop_foreman', 'welder', 'operator', 'laborer', 'shop', 'production_manager'];
-    var QC_ROLES    = ['qc_inspector', 'qc_manager', 'qc'];
+    var ADMIN_ROLES = ['admin', 'god_mode', 'owner', 'general_manager', 'executive'];
+    var SHOP_ROLES  = ['shop_manager', 'foreman', 'shop_foreman', 'shop', 'production_manager'];
+    var FAB_ROLES   = ['fabricator', 'welder', 'operator', 'laborer'];
+    var QC_ROLES    = ['qa_inspector', 'qa_manager', 'qc_inspector', 'qc_manager', 'qc'];
+    var ESTIMATOR_ROLES = ['estimator'];
+    var SHIPPING_ROLES  = ['shipping_clerk', 'driver'];
+    var PM_ROLES        = ['project_manager'];
+    var VIEWER_ROLES    = ['viewer'];
 
     document.addEventListener('DOMContentLoaded', function() { initializePage(); });
 
@@ -1941,20 +2182,34 @@ DASHBOARD_HTML = r"""
         var roleDisplay = USER_ROLE.replace(/_/g, ' ');
         badge.textContent = roleDisplay;
         if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-admin');
-        else if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-shop');
+        else if (SHOP_ROLES.indexOf(USER_ROLE) >= 0 || FAB_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-shop');
         else if (QC_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-qc');
+        else if (ESTIMATOR_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-admin');
+        else if (SHIPPING_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-shop');
+        else if (PM_ROLES.indexOf(USER_ROLE) >= 0) badge.classList.add('role-admin');
 
         // Role-based section visibility
         showRoleSections();
 
-        // Role-based action buttons
-        if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+        // Role-based action buttons — hide for shop floor, fab, shipping, viewer
+        if (SHOP_ROLES.indexOf(USER_ROLE) >= 0 || FAB_ROLES.indexOf(USER_ROLE) >= 0 ||
+            SHIPPING_ROLES.indexOf(USER_ROLE) >= 0 || VIEWER_ROLES.indexOf(USER_ROLE) >= 0) {
             document.getElementById('headerActions').style.display = 'none';
         }
 
-        // Hide prices for shop roles
-        if (USER_ROLE === 'shop' || SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+        // Hide prices for shop/fab roles
+        if (USER_ROLE === 'shop' || SHOP_ROLES.indexOf(USER_ROLE) >= 0 || FAB_ROLES.indexOf(USER_ROLE) >= 0) {
             document.querySelectorAll('.price').forEach(function(el) { el.classList.add('hidden'); });
+        }
+
+        // Hide project/inventory tabs for viewer role
+        if (VIEWER_ROLES.indexOf(USER_ROLE) >= 0) {
+            var tabSection = document.querySelector('.mc-section-tabs');
+            if (tabSection) tabSection.style.display = 'none';
+            var projSection = document.getElementById('sectionProjects');
+            if (projSection) projSection.style.display = 'none';
+            var invSection = document.getElementById('sectionInventory');
+            if (invSection) invSection.style.display = 'none';
         }
 
         loadProjects();
@@ -1964,17 +2219,115 @@ DASHBOARD_HTML = r"""
     }
 
     function showRoleSections() {
-        // Show admin section
-        if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) {
+        var role = USER_ROLE;
+        // Admin/executive: full dashboard
+        if (ADMIN_ROLES.indexOf(role) >= 0) {
             document.getElementById('adminSection').style.display = 'grid';
         }
-        // Show shop section
-        if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+        // Estimator: project pipeline focus
+        if (ESTIMATOR_ROLES.indexOf(role) >= 0) {
+            document.getElementById('estimatorSection').style.display = 'grid';
+        }
+        // Shop manager/foreman: shop floor focus
+        if (SHOP_ROLES.indexOf(role) >= 0) {
             document.getElementById('shopSection').style.display = 'grid';
         }
-        // Show QC section
-        if (QC_ROLES.indexOf(USER_ROLE) >= 0) {
+        // Fabricator/welder: my work focus
+        if (FAB_ROLES.indexOf(role) >= 0) {
+            document.getElementById('fabSection').style.display = 'grid';
+        }
+        // QA/QC inspector/manager: quality focus
+        if (QC_ROLES.indexOf(role) >= 0) {
             document.getElementById('qcSection').style.display = 'grid';
+        }
+        // Shipping clerk/driver: shipping focus
+        if (SHIPPING_ROLES.indexOf(role) >= 0) {
+            document.getElementById('shippingSection').style.display = 'grid';
+        }
+        // Project manager: project overview
+        if (PM_ROLES.indexOf(role) >= 0) {
+            document.getElementById('pmSection').style.display = 'grid';
+        }
+        // Viewer: read-only summary
+        if (VIEWER_ROLES.indexOf(role) >= 0) {
+            document.getElementById('viewerSection').style.display = 'grid';
+        }
+
+        // Hide metrics cards that are not relevant per role
+        applyMetricsVisibility();
+        // Show role-appropriate quick links
+        applyQuickLinksVisibility();
+    }
+
+    function applyMetricsVisibility() {
+        var metricsRow = document.querySelector('.metrics-row');
+        if (!metricsRow) return;
+        var cards = metricsRow.querySelectorAll('.metric-card');
+        // cards[0] = Active Projects, cards[1] = Open Work Orders, cards[2] = Pending QC, cards[3] = Inventory Alerts
+
+        if (VIEWER_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Viewer: show only Active Projects
+            if (cards[1]) cards[1].style.display = 'none';
+            if (cards[2]) cards[2].style.display = 'none';
+            if (cards[3]) cards[3].style.display = 'none';
+            metricsRow.style.gridTemplateColumns = '1fr';
+        } else if (SHIPPING_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Shipping: hide QC, show work orders as "Ready to Ship" context
+            if (cards[2]) cards[2].style.display = 'none';
+            metricsRow.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        } else if (FAB_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Fabricator: hide inventory alerts
+            if (cards[3]) cards[3].style.display = 'none';
+            metricsRow.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        }
+    }
+
+    function applyQuickLinksVisibility() {
+        var qlSection = document.querySelector('.quick-links-grid');
+        var qlDivider = qlSection ? qlSection.previousElementSibling : null;
+        if (!qlSection) return;
+
+        if (FAB_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Fabricators: hide quick links — they use My Queue
+            qlSection.style.display = 'none';
+            if (qlDivider) qlDivider.style.display = 'none';
+        } else if (VIEWER_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Viewer: hide quick links
+            qlSection.style.display = 'none';
+            if (qlDivider) qlDivider.style.display = 'none';
+        } else if (ESTIMATOR_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Estimator: show only SA Estimator, TC Estimator, Customers
+            var links = qlSection.querySelectorAll('.quick-link');
+            links.forEach(function(link) {
+                var href = link.getAttribute('href') || '';
+                if (href === '/sa' || href === '/tc' || href === '/customers') {
+                    link.style.display = '';
+                } else {
+                    link.style.display = 'none';
+                }
+            });
+        } else if (SHIPPING_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Shipping: show only Work Orders, Shop Floor
+            var links = qlSection.querySelectorAll('.quick-link');
+            links.forEach(function(link) {
+                var href = link.getAttribute('href') || '';
+                if (href === '/work-orders' || href === '/shop-floor') {
+                    link.style.display = '';
+                } else {
+                    link.style.display = 'none';
+                }
+            });
+        } else if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
+            // Shop manager: show Shop Floor, Work Orders
+            var links = qlSection.querySelectorAll('.quick-link');
+            links.forEach(function(link) {
+                var href = link.getAttribute('href') || '';
+                if (href === '/shop-floor' || href === '/work-orders') {
+                    link.style.display = '';
+                } else {
+                    link.style.display = 'none';
+                }
+            });
         }
     }
 
@@ -2009,15 +2362,33 @@ DASHBOARD_HTML = r"""
                 if (ADMIN_ROLES.indexOf(USER_ROLE) >= 0) {
                     renderAdminSections(data);
                 }
-
-                // Shop sections
+                // Estimator sections
+                if (ESTIMATOR_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderEstimatorSections(data);
+                }
+                // Shop manager/foreman sections
                 if (SHOP_ROLES.indexOf(USER_ROLE) >= 0) {
                     renderShopSections(data);
                 }
-
+                // Fabricator/welder sections
+                if (FAB_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderFabSections(data);
+                }
                 // QC sections
                 if (QC_ROLES.indexOf(USER_ROLE) >= 0) {
                     renderQCSections(data);
+                }
+                // Shipping sections
+                if (SHIPPING_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderShippingSections(data);
+                }
+                // Project manager sections
+                if (PM_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderPMSections(data);
+                }
+                // Viewer sections
+                if (VIEWER_ROLES.indexOf(USER_ROLE) >= 0) {
+                    renderViewerSections(data);
                 }
             })
             .catch(function(err) {
@@ -2235,6 +2606,321 @@ DASHBOARD_HTML = r"""
             });
             signoffsEl.innerHTML = soHtml;
         }
+
+        // Inspection stats
+        var totalInspected = signoffs.length + pendingInsp.length;
+        var passRate = totalInspected > 0 ? Math.round((signoffs.length / totalInspected) * 100) : 0;
+        var tiEl = document.getElementById('qcTotalInspected');
+        if (tiEl) tiEl.textContent = totalInspected;
+        var prEl = document.getElementById('qcPassRate');
+        if (prEl) prEl.textContent = passRate + '%';
+        // Calibration due — fetch from calibration API
+        var calEl = document.getElementById('qcCalibDue');
+        if (calEl) {
+            fetch('/api/qc/calibration')
+                .then(function(r) { return r.json(); })
+                .then(function(cData) {
+                    var records = cData.records || cData.calibration_records || [];
+                    var dueCount = 0;
+                    var now = new Date();
+                    var thirtyDays = 30 * 24 * 60 * 60 * 1000;
+                    records.forEach(function(rec) {
+                        var nextCal = rec.next_calibration || rec.next_due || '';
+                        if (nextCal) {
+                            var d = new Date(nextCal);
+                            if (d - now < thirtyDays) dueCount++;
+                        }
+                    });
+                    calEl.textContent = dueCount;
+                })
+                .catch(function() { calEl.textContent = '0'; });
+        }
+    }
+
+    // ── Render Estimator Sections ─────────────────
+    function renderEstimatorSections(data) {
+        // Active projects
+        var el = document.getElementById('estActiveProjects');
+        var stages = data.stage_counts || {};
+        var activeCount = data.active_projects || 0;
+        document.getElementById('estProjectCount').textContent = activeCount;
+
+        if (activeCount === 0) {
+            el.innerHTML = '<div class="no-data">No active projects. Start a new quote!</div>';
+        } else {
+            var html = '';
+            var stageList = [
+                { key: 'quote', label: 'Quote', color: 'blue' },
+                { key: 'contract', label: 'Contract', color: 'blue' },
+                { key: 'engineering', label: 'Engineering', color: 'purple' },
+                { key: 'fabrication', label: 'Fabrication', color: 'amber' },
+                { key: 'shipping', label: 'Shipping', color: 'green' }
+            ];
+            stageList.forEach(function(s) {
+                var count = stages[s.key] || 0;
+                if (count > 0) {
+                    var pct = Math.round((count / activeCount) * 100);
+                    html += '<div class="progress-item">';
+                    html += '<div class="progress-header"><span class="progress-label">' + s.label + '</span><span class="progress-pct">' + count + ' (' + pct + '%)</span></div>';
+                    html += '<div class="progress-track"><div class="progress-fill ' + s.color + '" style="width:' + pct + '%;"></div></div>';
+                    html += '</div>';
+                }
+            });
+            if (!html) html = '<div class="no-data">' + activeCount + ' active projects across stages</div>';
+            el.innerHTML = html;
+        }
+
+        // Quotes pending
+        var quotesEl = document.getElementById('estQuotesPending');
+        var quoteCount = (stages['quote'] || 0) + (stages['contract'] || 0);
+        document.getElementById('estQuoteCount').textContent = quoteCount;
+        if (quoteCount === 0) {
+            quotesEl.innerHTML = '<div class="no-data">No quotes pending. Pipeline is clear.</div>';
+        } else {
+            quotesEl.innerHTML = '<div class="health-grid">' +
+                '<div class="health-item"><div class="health-value">' + (stages['quote'] || 0) + '</div><div class="health-label">In Quoting</div></div>' +
+                '<div class="health-item"><div class="health-value">' + (stages['contract'] || 0) + '</div><div class="health-label">Awaiting Contract</div></div>' +
+                '<div class="health-item"><div class="health-value">' + activeCount + '</div><div class="health-label">Total Active</div></div>' +
+                '</div>';
+        }
+
+        // Activity feed (reuse admin's logic)
+        var feed = document.getElementById('estActivityFeed');
+        var activities = data.recent_activity || [];
+        document.getElementById('estActivityCount').textContent = activities.length;
+        if (activities.length === 0) {
+            feed.innerHTML = '<div class="no-data">No recent activity</div>';
+        } else {
+            var ahtml = '';
+            activities.slice(0, 10).forEach(function(a) {
+                var dotColor = 'blue';
+                var action = a.action || '';
+                if (action.indexOf('create') >= 0 || action.indexOf('add') >= 0) dotColor = 'green';
+                else if (action.indexOf('delete') >= 0) dotColor = 'red';
+                else if (action.indexOf('update') >= 0) dotColor = 'amber';
+                var desc = (a.action || 'action').replace(/_/g, ' ');
+                var entity = a.entity_id || '';
+                var timeAgo = formatTimeAgo(a.timestamp || a.created_at || '');
+                ahtml += '<div class="activity-item">';
+                ahtml += '<div class="activity-dot ' + dotColor + '"></div>';
+                ahtml += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
+                if (entity) ahtml += ' <strong>' + esc(entity) + '</strong>';
+                ahtml += '</div><div class="activity-time">' + timeAgo + '</div></div></div>';
+            });
+            feed.innerHTML = ahtml;
+        }
+    }
+
+    // ── Render Fabricator/Welder Sections ─────────
+    function renderFabSections(data) {
+        // My Queue
+        var queue = document.getElementById('fabQueue');
+        var woItems = data.work_order_items || [];
+        document.getElementById('fabQueueCount').textContent = woItems.length;
+
+        if (woItems.length === 0) {
+            queue.innerHTML = '<div class="no-data">No items in your queue. Check with your foreman.</div>';
+        } else {
+            var html = '';
+            woItems.slice(0, 10).forEach(function(item) {
+                var priority = item.priority || 'normal';
+                var status = item.status || 'pending';
+                html += '<div class="queue-item" onclick="window.location.href=\'/my-queue\'">';
+                html += '<div class="queue-priority ' + priority + '"></div>';
+                html += '<div class="queue-info">';
+                html += '<div class="queue-title">' + esc(item.description || item.name || 'Work Item') + '</div>';
+                html += '<div class="queue-subtitle">' + esc(item.job_code || '') + ' &middot; Qty: ' + (item.qty || 1) + '</div>';
+                html += '</div>';
+                html += '<span class="queue-status ' + status + '">' + status + '</span>';
+                html += '</div>';
+            });
+            queue.innerHTML = html;
+        }
+
+        // Recent completions
+        var compEl = document.getElementById('fabCompletions');
+        var signoffs = data.recent_signoffs || [];
+        if (signoffs.length === 0) {
+            compEl.innerHTML = '<div class="no-data">No recent completions yet. Keep going!</div>';
+        } else {
+            var chtml = '';
+            signoffs.slice(0, 6).forEach(function(so) {
+                chtml += '<div class="qc-item">';
+                chtml += '<span class="qc-type-badge signoff">Done</span>';
+                chtml += '<div class="queue-info">';
+                chtml += '<div class="queue-title">' + esc(so.component || so.description || 'Completed') + '</div>';
+                chtml += '<div class="queue-subtitle">' + esc(so.date || '') + '</div>';
+                chtml += '</div></div>';
+            });
+            compEl.innerHTML = chtml;
+        }
+
+        // Gamification stats — fetch from dedicated API
+        fetch('/api/gamification/profile')
+            .then(function(r) { return r.json(); })
+            .then(function(gRes) {
+                var gamData = gRes.profile || gRes || {};
+                var xpEl = document.getElementById('fabXP');
+                if (xpEl) xpEl.textContent = gamData.xp || 0;
+                var streakEl = document.getElementById('fabStreak');
+                if (streakEl) streakEl.textContent = gamData.streak || 0;
+                var achEl = document.getElementById('fabAchievements');
+                if (achEl) achEl.textContent = (gamData.achievements || []).length || 0;
+                var lvlEl = document.getElementById('fabLevel');
+                if (lvlEl) lvlEl.textContent = gamData.level || Math.max(1, Math.floor((gamData.xp || 0) / 500) + 1);
+            })
+            .catch(function() {
+                // Fallback: zeros already shown
+            });
+    }
+
+    // ── Render Shipping Sections ──────────────────
+    function renderShippingSections(data) {
+        var readyEl = document.getElementById('shipReady');
+        var readyCount = data.ready_to_ship || 0;
+        document.getElementById('shipReadyCount').textContent = readyCount;
+
+        if (readyCount === 0) {
+            readyEl.innerHTML = '<div class="no-data">No items ready to ship.</div>';
+        } else {
+            readyEl.innerHTML = '<div class="health-grid">' +
+                '<div class="health-item"><div class="health-value">' + readyCount + '</div><div class="health-label">Ready to Ship</div></div>' +
+                '<div class="health-item"><div class="health-value">' + (data.in_fabrication || 0) + '</div><div class="health-label">In Fabrication</div></div>' +
+                '<div class="health-item"><div class="health-value">' + (data.active_projects || 0) + '</div><div class="health-label">Active Projects</div></div>' +
+                '</div>';
+        }
+
+        // Today's loads — from active work orders that are in shipping stage
+        var todayEl = document.getElementById('shipToday');
+        var activeWOs = data.active_work_orders || [];
+        var shippingWOs = activeWOs.filter(function(wo) {
+            return (wo.status || '').indexOf('ship') >= 0 || (wo.stage || '').indexOf('ship') >= 0;
+        });
+        document.getElementById('shipTodayCount').textContent = shippingWOs.length;
+
+        if (shippingWOs.length === 0) {
+            todayEl.innerHTML = '<div class="no-data">No loads scheduled. Check shipping hub for updates.</div>';
+        } else {
+            var shtml = '';
+            shippingWOs.slice(0, 6).forEach(function(wo) {
+                shtml += '<div class="queue-item" onclick="window.location.href=\'/shipping\'">';
+                shtml += '<div class="queue-priority medium"></div>';
+                shtml += '<div class="queue-info">';
+                shtml += '<div class="queue-title">' + esc(wo.wo_id || wo.id || 'Load') + '</div>';
+                shtml += '<div class="queue-subtitle">' + esc(wo.job_code || '') + '</div>';
+                shtml += '</div>';
+                shtml += '<span class="queue-status active">loading</span>';
+                shtml += '</div>';
+            });
+            todayEl.innerHTML = shtml;
+        }
+
+        // Recent shipments
+        var recentEl = document.getElementById('shipRecent');
+        var signoffs = data.recent_signoffs || [];
+        if (signoffs.length === 0) {
+            recentEl.innerHTML = '<div class="no-data">No recent shipments recorded.</div>';
+        } else {
+            var rhtml = '';
+            signoffs.slice(0, 6).forEach(function(so) {
+                rhtml += '<div class="queue-item">';
+                rhtml += '<div class="queue-priority normal"></div>';
+                rhtml += '<div class="queue-info">';
+                rhtml += '<div class="queue-title">' + esc(so.component || so.description || 'Shipment') + '</div>';
+                rhtml += '<div class="queue-subtitle">' + esc(so.date || '') + '</div>';
+                rhtml += '</div>';
+                rhtml += '<span class="queue-status done">shipped</span>';
+                rhtml += '</div>';
+            });
+            recentEl.innerHTML = rhtml;
+        }
+    }
+
+    // ── Render Project Manager Sections ───────────
+    function renderPMSections(data) {
+        var projEl = document.getElementById('pmActiveProjects');
+        var activeCount = data.active_projects || 0;
+        var stages = data.stage_counts || {};
+        document.getElementById('pmProjectCount').textContent = activeCount;
+
+        if (activeCount === 0) {
+            projEl.innerHTML = '<div class="no-data">No active projects.</div>';
+        } else {
+            var html = '';
+            var stageList = [
+                { key: 'quote', label: 'Quote', color: 'blue' },
+                { key: 'contract', label: 'Contract', color: 'blue' },
+                { key: 'engineering', label: 'Engineering', color: 'purple' },
+                { key: 'shop-drawings', label: 'Shop Drawings', color: 'purple' },
+                { key: 'fabrication', label: 'Fabrication', color: 'amber' },
+                { key: 'shipping', label: 'Shipping', color: 'green' },
+                { key: 'install', label: 'Installation', color: 'green' }
+            ];
+            stageList.forEach(function(s) {
+                var count = stages[s.key] || 0;
+                var pct = Math.round((count / Math.max(activeCount, 1)) * 100);
+                html += '<div class="progress-item">';
+                html += '<div class="progress-header"><span class="progress-label">' + s.label + '</span><span class="progress-pct">' + count + ' projects</span></div>';
+                html += '<div class="progress-track"><div class="progress-fill ' + s.color + '" style="width:' + pct + '%;"></div></div>';
+                html += '</div>';
+            });
+            projEl.innerHTML = html;
+        }
+
+        // Upcoming milestones
+        var mileEl = document.getElementById('pmMilestones');
+        var milestones = [];
+        // Build milestones from stage transitions
+        if (stages['fabrication'] > 0) milestones.push({ text: stages['fabrication'] + ' project(s) in fabrication', icon: 'amber' });
+        if (stages['shipping'] > 0) milestones.push({ text: stages['shipping'] + ' project(s) ready to ship', icon: 'green' });
+        if (stages['engineering'] > 0) milestones.push({ text: stages['engineering'] + ' project(s) in engineering', icon: 'purple' });
+        if ((data.pending_qc || 0) > 0) milestones.push({ text: data.pending_qc + ' QC items pending', icon: 'blue' });
+
+        if (milestones.length === 0) {
+            mileEl.innerHTML = '<div class="no-data">No upcoming milestones.</div>';
+        } else {
+            var mhtml = '';
+            milestones.forEach(function(m) {
+                mhtml += '<div class="activity-item">';
+                mhtml += '<div class="activity-dot ' + m.icon + '"></div>';
+                mhtml += '<div><div class="activity-text">' + esc(m.text) + '</div></div>';
+                mhtml += '</div>';
+            });
+            mileEl.innerHTML = mhtml;
+        }
+
+        // Customer activity (reuse recent activity)
+        var custEl = document.getElementById('pmCustomerActivity');
+        var activities = data.recent_activity || [];
+        if (activities.length === 0) {
+            custEl.innerHTML = '<div class="no-data">No recent customer activity.</div>';
+        } else {
+            var cahtml = '';
+            activities.slice(0, 8).forEach(function(a) {
+                var dotColor = 'blue';
+                var action = a.action || '';
+                if (action.indexOf('create') >= 0) dotColor = 'green';
+                else if (action.indexOf('update') >= 0) dotColor = 'amber';
+                var desc = (a.action || 'action').replace(/_/g, ' ');
+                cahtml += '<div class="activity-item">';
+                cahtml += '<div class="activity-dot ' + dotColor + '"></div>';
+                cahtml += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
+                if (a.entity_id) cahtml += ' <strong>' + esc(a.entity_id) + '</strong>';
+                cahtml += '</div><div class="activity-time">' + formatTimeAgo(a.timestamp || a.created_at || '') + '</div></div></div>';
+            });
+            custEl.innerHTML = cahtml;
+        }
+    }
+
+    // ── Render Viewer Sections ────────────────────
+    function renderViewerSections(data) {
+        var el;
+        el = document.getElementById('viewerActiveProjects');
+        if (el) el.textContent = data.active_projects || 0;
+        el = document.getElementById('viewerTotalWOs');
+        if (el) el.textContent = data.open_work_orders || 0;
+        el = document.getElementById('viewerInFab');
+        if (el) el.textContent = data.in_fabrication || 0;
     }
 
     // ── Time Formatting ───────────────────────────

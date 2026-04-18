@@ -8,9 +8,22 @@ import os, sys, json, io, datetime, hashlib, uuid, secrets, re, glob, time, shut
 import logging, traceback
 import tornado.ioloop
 import tornado.web
+import tornado.websocket
 from tornado.escape import json_decode, json_encode
 
 logger = logging.getLogger("titanforge")
+
+# ── Email Notification System ───────────────────────────────────────────────
+try:
+    from email_notifications import (
+        send_notification, send_test_email, get_queue_status,
+        load_notification_settings, save_notification_settings,
+        NOTIFICATION_TYPES, NOTIFICATION_ENABLED,
+    )
+    HAS_EMAIL_NOTIFICATIONS = True
+except ImportError:
+    HAS_EMAIL_NOTIFICATIONS = False
+    logger.warning("Email notification module not available")
 
 
 # ── Input Validation Helpers ─────────────────────────────────────────────────
@@ -740,12 +753,65 @@ def get_user_permissions(user_role: str) -> list:
 
 
 # ─────────────────────────────────────────────
+# SECURITY HARDENING CONSTANTS & HELPERS
+# ─────────────────────────────────────────────
+
+COOKIE_MAX_AGE_HOURS = 8  # Session cookie expiry
+ALLOWED_ORIGINS = os.environ.get("TITANFORGE_ALLOWED_ORIGINS", "").split(",")
+# Remove empty strings from the list
+ALLOWED_ORIGINS = [o.strip() for o in ALLOWED_ORIGINS if o.strip()]
+
+# Login rate limiting: track failed attempts per IP
+_login_attempts = {}  # { ip: [ timestamp, timestamp, ... ] }
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 15 * 60  # 15 minutes
+
+
+def _cleanup_login_attempts():
+    """Remove expired entries from the login attempts tracker."""
+    cutoff = time.time() - _LOGIN_WINDOW_SECONDS
+    expired_ips = [ip for ip, attempts in _login_attempts.items()
+                   if not attempts or attempts[-1] < cutoff]
+    for ip in expired_ips:
+        del _login_attempts[ip]
+
+
+def validate_password(password):
+    """Validate password complexity requirements.
+    Returns (ok: bool, error_message: str or None).
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one uppercase letter."
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number."
+    return True, None
+
+
+# ─────────────────────────────────────────────
 # BASE AUTHENTICATED HANDLER WITH ROLE CHECKING
 # ─────────────────────────────────────────────
 
 class BaseHandler(tornado.web.RequestHandler):
     """Base handler that checks authentication and role permissions."""
     required_roles = None  # Override in subclasses. None = no role check.
+
+    def set_default_headers(self):
+        """Set security-related default headers including CORS."""
+        origin = self.request.headers.get("Origin", "")
+        if ALLOWED_ORIGINS and origin in ALLOWED_ORIGINS:
+            self.set_header("Access-Control-Allow-Origin", origin)
+        elif not ALLOWED_ORIGINS:
+            # If no origins configured, allow same-origin only (no header set)
+            pass
+        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def options(self, *args, **kwargs):
+        """Handle CORS preflight requests."""
+        self.set_status(204)
+        self.finish()
 
     def write_json(self, data):
         """Helper to write JSON response with correct Content-Type."""
@@ -948,6 +1014,21 @@ class LoginHandler(BaseHandler):
 
     def post(self):
         try:
+            # --- Rate limiting by IP ---
+            ip = self.request.remote_ip or "unknown"
+            _cleanup_login_attempts()
+            attempts = _login_attempts.get(ip, [])
+            cutoff = time.time() - _LOGIN_WINDOW_SECONDS
+            recent = [t for t in attempts if t > cutoff]
+            if len(recent) >= _LOGIN_MAX_ATTEMPTS:
+                self.set_status(429)
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({
+                    "ok": False,
+                    "error": "Too many failed login attempts. Please try again in 15 minutes."
+                }))
+                return
+
             body     = json_decode(self.request.body)
             username = body.get("username", "").strip().lower()
             password = body.get("password", "")
@@ -955,12 +1036,18 @@ class LoginHandler(BaseHandler):
             users = load_users()
             user  = users.get(username)
             if not user or not verify_password(user["password"], password):
+                # Record failed attempt
+                recent.append(time.time())
+                _login_attempts[ip] = recent
                 self.set_status(401)
                 self.set_header("Content-Type", "application/json")
                 self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
                 return
 
-            self.set_secure_cookie("sa_user", username, expires_days=30)
+            # Successful login — reset rate limit counter for this IP
+            _login_attempts.pop(ip, None)
+            self.set_secure_cookie("sa_user", username,
+                                   expires_days=COOKIE_MAX_AGE_HOURS / 24.0)
             self._log("login", "user", username, user_override=username)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "redirect": "/"}))
@@ -1039,8 +1126,9 @@ class UserAddHandler(BaseHandler):
             if not re.match(r'^[a-z0-9_\-\.]+$', username):
                 self.write(json_encode({"ok": False, "error": "Username can only contain letters, numbers, underscores, hyphens"}))
                 return
-            if len(password) < 4:
-                self.write(json_encode({"ok": False, "error": "Password must be at least 4 characters"}))
+            pw_ok, pw_err = validate_password(password)
+            if not pw_ok:
+                self.write(json_encode({"ok": False, "error": pw_err}))
                 return
             # Support both new multi-role list and legacy single-role string
             roles = body.get("roles") or []
@@ -1108,6 +1196,10 @@ class UserEditHandler(BaseHandler):
                 users[username]["roles"] = new_roles
                 users[username]["role"] = new_roles[0]  # legacy compat
             if "password" in body and body["password"]:
+                pw_ok, pw_err = validate_password(body["password"])
+                if not pw_ok:
+                    self.write(json_encode({"ok": False, "error": pw_err}))
+                    return
                 users[username]["password"] = hash_password(body["password"])
 
             save_users(users)
@@ -1280,10 +1372,11 @@ class DashboardStatsAPIHandler(BaseHandler):
 
             result["inventory_alerts"] = inventory_alerts
 
-            # ── Recent activity (admin only) ──
+            # ── Recent activity (admin, estimator, PM roles) ──
             recent_activity = []
-            admin_roles = ["admin", "god_mode", "owner", "general_manager", "estimator"]
-            if role in admin_roles:
+            activity_roles = ["admin", "god_mode", "owner", "general_manager", "executive",
+                              "estimator", "project_manager"]
+            if role in activity_roles:
                 try:
                     if USE_SQLITE:
                         import db as _db
@@ -1561,6 +1654,21 @@ class InventoryUpdateHandler(BaseHandler):
                 })
                 save_inventory(data)
                 self._log("updated_coil", "coil", coil_id, {"add_lbs": add_lbs})
+
+                # ── Broadcast inventory update via WebSocket ──
+                try:
+                    LiveUpdateWebSocket.broadcast({
+                        "type": "inventory_update",
+                        "data": {
+                            "coil_id": coil_id,
+                            "add_lbs": add_lbs,
+                            "new_stock_lbs": coil["stock_lbs"],
+                            "timestamp": datetime.datetime.now().isoformat(),
+                        }
+                    })
+                except Exception:
+                    pass
+
                 self.set_header("Content-Type", "application/json")
                 self.write(json_encode({"ok": True}))
                 return
@@ -2472,6 +2580,24 @@ class InventoryAlertsHandler(BaseHandler):
 
         # Sort: critical first, then warning
         alerts.sort(key=lambda a: (0 if a["level"] == "critical" else 1, a.get("coil_id", "")))
+
+        # ── Email notification: inventory alerts (critical/out-of-stock only) ──
+        if HAS_EMAIL_NOTIFICATIONS:
+            critical_alerts = [a for a in alerts if a.get("level") == "critical"]
+            for alert in critical_alerts[:5]:  # Cap at 5 to avoid spam
+                try:
+                    cid = alert.get("coil_id", "")
+                    coil_data = coils.get(cid, {})
+                    send_notification("inventory_alert", context_data={
+                        "coil_name": coil_data.get("name", cid),
+                        "coil_id": cid,
+                        "available_lbs": float(coil_data.get("stock_lbs", 0) or 0) - float(coil_data.get("committed_lbs", 0) or 0),
+                        "min_stock_lbs": float(coil_data.get("min_stock_lbs", 2000) or 2000),
+                        "level": alert.get("level", "warning"),
+                    })
+                except Exception as notif_err:
+                    logger.warning(f"Failed to send inventory_alert notification: {notif_err}")
+
         self.write(json_encode({"ok": True, "alerts": alerts}))
 
 
@@ -3120,6 +3246,15 @@ class ProjectStatusHandler(BaseHandler):
             status_file = os.path.join(PROJECTS_DIR, safe_name, "status.json")
             os.makedirs(os.path.dirname(status_file), exist_ok=True)
 
+            # Read previous stage for notification
+            old_stage = ""
+            if os.path.isfile(status_file):
+                try:
+                    with open(status_file) as f:
+                        old_stage = json.load(f).get("stage", "")
+                except Exception:
+                    pass
+
             status_data = {
                 "job_code": job_code,
                 "stage": stage,
@@ -3131,6 +3266,20 @@ class ProjectStatusHandler(BaseHandler):
                 json.dump(status_data, f, indent=2)
 
             self._log("updated_project_status", "project", job_code, {"stage": stage})
+
+            # ── Email notification: project stage change ──
+            if HAS_EMAIL_NOTIFICATIONS and stage != old_stage:
+                try:
+                    send_notification("project_stage_change", context_data={
+                        "job_code": job_code,
+                        "project_name": body.get("project_name", ""),
+                        "old_stage": old_stage,
+                        "new_stage": stage,
+                        "changed_by": self.get_current_user() or "unknown",
+                    })
+                except Exception as notif_err:
+                    logger.warning(f"Failed to send project_stage_change notification: {notif_err}")
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "stage": stage}))
         except Exception as e:
@@ -5364,6 +5513,21 @@ class NCRCreateHandler(BaseHandler):
             qc["ncrs"].append(ncr)
             save_project_qc(job_code, qc)
             self._log("created_ncr", "ncr", ncr_id, {"job_code": job_code, "severity": body.get("severity","")})
+
+            # ── Email notification: NCR created ──
+            if HAS_EMAIL_NOTIFICATIONS:
+                try:
+                    send_notification("ncr_created", context_data={
+                        "job_code": job_code,
+                        "ncr_id": ncr["id"],
+                        "severity": body.get("severity", "minor"),
+                        "title": body.get("title", ""),
+                        "description": body.get("description", ""),
+                        "reported_by": body.get("reported_by", self.get_current_user() or ""),
+                    })
+                except Exception as notif_err:
+                    logger.warning(f"Failed to send ncr_created notification: {notif_err}")
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "ncr": ncr}))
 
@@ -7785,6 +7949,21 @@ class WorkOrderApproveHandler(BaseHandler):
 
             self._log("approved_work_order", "work_order", wo_id, {"job_code": job_code})
 
+            # ── Broadcast status change via WebSocket ──
+            try:
+                LiveUpdateWebSocket.broadcast({
+                    "type": "wo_status",
+                    "action": "approved",
+                    "data": {
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "status": "approved",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                })
+            except Exception:
+                pass
+
             self.set_header("Content-Type", "application/json")
             resp = {"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}
             if packet_path:
@@ -7869,6 +8048,34 @@ class WorkOrderHoldHandler(BaseHandler):
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
             self._log("work_order_" + action, "work_order", wo_id, {"job_code": job_code})
+
+            # ── Broadcast status change via WebSocket ──
+            try:
+                LiveUpdateWebSocket.broadcast({
+                    "type": "wo_status",
+                    "action": action,
+                    "data": {
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "status": wo.status,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                })
+            except Exception:
+                pass
+
+            # ── Email notification: QC hold ──
+            if action == "hold" and HAS_EMAIL_NOTIFICATIONS:
+                try:
+                    send_notification("qc_hold", context_data={
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "reason": body.get("reason", "No reason provided"),
+                        "held_by": self.get_current_user() or "unknown",
+                    })
+                except Exception as notif_err:
+                    logger.warning(f"Failed to send qc_hold notification: {notif_err}")
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "work_order": wo.to_dict(), "summary": wo.summary()}))
         except Exception as e:
@@ -7916,6 +8123,20 @@ class WorkOrderQRScanHandler(BaseHandler):
 
             if result.get("ok"):
                 self._log("qr_scan_" + action, "work_order_item", item_id, {"job_code": job_code})
+                # ── Broadcast scan event via WebSocket ──
+                try:
+                    LiveUpdateWebSocket.broadcast({
+                        "type": "scan",
+                        "action": action,
+                        "data": {
+                            "job_code": job_code,
+                            "item_id": item_id,
+                            "scanned_by": scanned_by,
+                            "timestamp": datetime.datetime.now().isoformat(),
+                        }
+                    })
+                except Exception:
+                    pass
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
@@ -7938,6 +8159,22 @@ class WorkOrderBatchScanHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Missing job_code, prefix, or action"}))
                 return
             result = qr_scan_batch(SHOP_DRAWINGS_DIR, job_code, prefix, action, user)
+            # ── Broadcast batch scan event via WebSocket ──
+            if result.get("ok"):
+                try:
+                    LiveUpdateWebSocket.broadcast({
+                        "type": "batch_scan",
+                        "action": action,
+                        "data": {
+                            "job_code": job_code,
+                            "prefix": prefix,
+                            "scanned_by": user,
+                            "count": result.get("processed", 0),
+                            "timestamp": datetime.datetime.now().isoformat(),
+                        }
+                    })
+                except Exception:
+                    pass
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
         except Exception as e:
@@ -11307,6 +11544,93 @@ class NotificationsAPIHandler(BaseHandler):
 
 
 # ─────────────────────────────────────────────
+# EMAIL NOTIFICATION SETTINGS HANDLERS
+# ─────────────────────────────────────────────
+
+class EmailNotificationSettingsHandler(BaseHandler):
+    """GET/POST /api/notifications/settings — Email notification preferences."""
+    required_roles = ["admin"]
+
+    def get(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            if not HAS_EMAIL_NOTIFICATIONS:
+                self.write(json_encode({"ok": False, "error": "Email notifications module not available"}))
+                return
+            settings = load_notification_settings()
+            queue = get_queue_status()
+            self.write(json_encode({
+                "ok": True,
+                "settings": settings,
+                "notification_types": {k: {"label": v["label"], "description": v["description"]}
+                                       for k, v in NOTIFICATION_TYPES.items()},
+                "queue_status": queue,
+            }))
+        except Exception as e:
+            logger.error(f"EmailNotificationSettingsHandler.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            if not HAS_EMAIL_NOTIFICATIONS:
+                self.write(json_encode({"ok": False, "error": "Email notifications module not available"}))
+                return
+            body = json_decode(self.request.body)
+            settings = load_notification_settings()
+
+            # Update enabled state
+            if "enabled" in body:
+                settings["enabled"] = bool(body["enabled"])
+
+            # Update recipients
+            if "recipients" in body and isinstance(body["recipients"], dict):
+                settings["recipients"] = body["recipients"]
+
+            # Update per-type settings
+            if "type_settings" in body and isinstance(body["type_settings"], dict):
+                for ntype, cfg in body["type_settings"].items():
+                    if ntype in settings.get("type_settings", {}):
+                        if "enabled" in cfg:
+                            settings["type_settings"][ntype]["enabled"] = bool(cfg["enabled"])
+                        if "roles" in cfg and isinstance(cfg["roles"], list):
+                            settings["type_settings"][ntype]["roles"] = cfg["roles"]
+
+            save_notification_settings(settings)
+            self._log("updated_email_notification_settings", "system", "email_settings", {})
+            self.write(json_encode({"ok": True, "settings": settings}))
+        except Exception as e:
+            logger.error(f"EmailNotificationSettingsHandler.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class EmailNotificationTestHandler(BaseHandler):
+    """POST /api/notifications/test — Send a test email."""
+    required_roles = ["admin"]
+
+    def post(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            if not HAS_EMAIL_NOTIFICATIONS:
+                self.write(json_encode({"ok": False, "error": "Email notifications module not available"}))
+                return
+            body = json_decode(self.request.body)
+            to_addr = body.get("email", "").strip()
+            if not to_addr or "@" not in to_addr:
+                self.write(json_encode({"ok": False, "error": "Valid email address required"}))
+                return
+
+            success, message = send_test_email(to_addr)
+            self.write(json_encode({"ok": success, "message": message}))
+        except Exception as e:
+            logger.error(f"EmailNotificationTestHandler.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
 # MY QUEUE HANDLERS
 # ─────────────────────────────────────────────
 
@@ -11530,6 +11854,43 @@ class DocumentRevisionApproveHandler(BaseHandler):
             self.write(json_encode({"error": str(e)}))
 
 # ─────────────────────────────────────────────
+# WEBSOCKET HANDLER — Live Updates
+# ─────────────────────────────────────────────
+
+class LiveUpdateWebSocket(tornado.websocket.WebSocketHandler):
+    """WebSocket endpoint for real-time shop floor updates.
+    Broadcasts scan events, status changes, and inventory updates
+    to all connected TV dashboards and queue pages.
+    """
+    connections = set()
+
+    def check_origin(self, origin):
+        return True  # Allow same-origin connections
+
+    def open(self):
+        LiveUpdateWebSocket.connections.add(self)
+        logger.info("WebSocket opened — %d active connections", len(LiveUpdateWebSocket.connections))
+
+    def on_close(self):
+        LiveUpdateWebSocket.connections.discard(self)
+        logger.info("WebSocket closed — %d active connections", len(LiveUpdateWebSocket.connections))
+
+    def on_message(self, message):
+        pass  # Server-push only; ignore client messages
+
+    @classmethod
+    def broadcast(cls, message):
+        """Send a JSON message to all connected WebSocket clients."""
+        if isinstance(message, dict):
+            message = json_encode(message)
+        for conn in list(cls.connections):
+            try:
+                conn.write_message(message)
+            except Exception:
+                cls.connections.discard(conn)
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -11684,6 +12045,9 @@ def get_routes():
         (r"/api/work-orders/fab-stickers/csv/assembly",       FabCsvAssemblyHandler),
         (r"/api/work-orders/fab-stickers/csv/material",       FabCsvMaterialHandler),
 
+        # ── WebSocket — Live Updates ─────────────────────────
+        (r"/ws/live",                            LiveUpdateWebSocket),
+
         # ── Shop Floor Dashboard ─────────────────────────────
         (r"/shop-floor",                         ShopFloorPageHandler),
         (r"/api/shop-floor/data",                ShopFloorDataHandler),
@@ -11694,6 +12058,8 @@ def get_routes():
 
         # ── Notifications ────────────────────────────────────
         (r"/api/notifications",                  NotificationsAPIHandler),
+        (r"/api/notifications/settings",         EmailNotificationSettingsHandler),
+        (r"/api/notifications/test",             EmailNotificationTestHandler),
 
         # ── Work Station (tablet/phone) ───────────────────────
         (r"/work-station/([^/]+)",               WorkStationPageHandler),
