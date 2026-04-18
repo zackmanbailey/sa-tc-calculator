@@ -746,6 +746,7 @@ function renderJobList() {
         div.addEventListener('click', () => {
             document.querySelectorAll('.job-item').forEach(j => j.classList.remove('selected'));
             div.classList.add('selected');
+            window.location.href = '/project/' + encodeURIComponent(job.job_code);
         });
         list.appendChild(div);
     });
@@ -841,6 +842,10 @@ function createGanttBar(wo, job, startDate, endDate, today) {
     });
 
     bar.addEventListener('mouseleave', () => hideTooltip());
+
+    bar.addEventListener('click', () => {
+        window.location.href = '/project/' + encodeURIComponent(job.job_code);
+    });
 
     return bar;
 }

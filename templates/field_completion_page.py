@@ -55,7 +55,10 @@ FIELD_COMPLETION_PAGE_HTML = r"""
         color: var(--tf-text);
         vertical-align: middle;
     }
-    .completion-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+    .completion-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .completion-table tbody tr:hover { background: rgba(255,255,255,0.05); }
+    .stage-badge { cursor: pointer; transition: opacity 0.15s; }
+    .stage-badge:hover { opacity: 0.8; }
     .progress-wrap {
         display: flex; align-items: center; gap: 10px;
     }
@@ -132,6 +135,7 @@ async function loadCompletion() {
         const resp = await fetch('/api/projects/full');
         const data = await resp.json();
         const projects = Array.isArray(data) ? data : (data.projects || []);
+        allCompletionProjects = projects;
         if (!projects.length) {
             wrap.innerHTML = '<div class="empty-state"><h3>No projects found</h3><p>Projects will appear here once created.</p></div>';
             return;
@@ -143,9 +147,10 @@ async function loadCompletion() {
             const stage = p.stage || p.status || '';
             const pct = p.completion_pct != null ? Math.round(p.completion_pct) : estimateProgress(stage);
             const updated = p.updated_at || p.last_updated || p.modified || '—';
-            html += '<tr>' +
+            const jobCode = p.job_code || p.id || '';
+            html += '<tr onclick="window.location.href=\'/field/ops?project=' + encodeURIComponent(jobCode) + '\'">' +
                 '<td style="font-weight:600">' + (p.project_name || p.name || p.job_code || '—') + '</td>' +
-                '<td><span class="stage-badge ' + stageClass(stage) + '">' + (stage || 'Unknown') + '</span></td>' +
+                '<td><span class="stage-badge ' + stageClass(stage) + '" onclick="event.stopPropagation(); filterByStage(\'' + stage + '\')">' + (stage || 'Unknown') + '</span></td>' +
                 '<td><div class="progress-wrap">' +
                     '<div class="progress-bar"><div class="progress-fill ' + fillClass(pct) + '" style="width:' + pct + '%"></div></div>' +
                     '<span class="progress-pct">' + pct + '%</span>' +
@@ -158,6 +163,45 @@ async function loadCompletion() {
     } catch (err) {
         wrap.innerHTML = '<div class="empty-state"><h3>Unable to load projects</h3><p>' + err.message + '</p></div>';
     }
+}
+
+var allCompletionProjects = [];
+
+function filterByStage(stage) {
+    if (!allCompletionProjects.length) return;
+    const wrap = document.getElementById('completionWrap');
+    const filtered = allCompletionProjects.filter(p => {
+        const s = (p.stage || p.status || '').toLowerCase();
+        return s.toLowerCase() === stage.toLowerCase();
+    });
+    if (!filtered.length) {
+        wrap.innerHTML = '<div class="empty-state"><h3>No projects in stage: ' + stage + '</h3><p><a href="#" onclick="loadCompletion(); return false;" style="color:var(--tf-blue);">Show all projects</a></p></div>';
+        return;
+    }
+    renderCompletionTable(filtered, wrap);
+}
+
+function renderCompletionTable(projects, wrap) {
+    let html = '<table class="completion-table"><thead><tr>' +
+        '<th>Project</th><th>Stage</th><th>Progress</th><th>Last Updated</th>' +
+        '</tr></thead><tbody>';
+    projects.forEach(p => {
+        const stage = p.stage || p.status || '';
+        const pct = p.completion_pct != null ? Math.round(p.completion_pct) : estimateProgress(stage);
+        const updated = p.updated_at || p.last_updated || p.modified || '—';
+        const jobCode = p.job_code || p.id || '';
+        html += '<tr onclick="window.location.href=\'/field/ops?project=' + encodeURIComponent(jobCode) + '\'">' +
+            '<td style="font-weight:600">' + (p.project_name || p.name || p.job_code || '—') + '</td>' +
+            '<td><span class="stage-badge ' + stageClass(stage) + '" onclick="event.stopPropagation(); filterByStage(\'' + stage + '\')">' + (stage || 'Unknown') + '</span></td>' +
+            '<td><div class="progress-wrap">' +
+                '<div class="progress-bar"><div class="progress-fill ' + fillClass(pct) + '" style="width:' + pct + '%"></div></div>' +
+                '<span class="progress-pct">' + pct + '%</span>' +
+            '</div></td>' +
+            '<td style="color:var(--tf-muted);font-size:13px">' + updated + '</td>' +
+            '</tr>';
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
 }
 
 loadCompletion();

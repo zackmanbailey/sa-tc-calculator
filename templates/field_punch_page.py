@@ -78,6 +78,12 @@ FIELD_PUNCH_PAGE_HTML = r"""
         border-bottom: 1px solid rgba(255,255,255,0.04);
         color: var(--tf-text);
     }
+    .punch-table tbody tr { cursor: pointer; transition: background 0.15s; }
+    .punch-table tbody tr:hover { background: rgba(59,130,246,0.06); }
+    .punch-table tbody tr.expanded { background: rgba(59,130,246,0.04); }
+    .punch-detail-row td { padding: 16px !important; background: rgba(15,23,42,0.5); }
+    .punch-detail-content { font-size: 13px; color: var(--tf-muted); line-height: 1.6; }
+    .punch-detail-content strong { color: var(--tf-text); }
     .empty-state {
         text-align: center; padding: 60px 20px; color: var(--tf-muted);
     }
@@ -128,8 +134,58 @@ async function loadProjects() {
     }
 }
 
-function filterByProject() {
-    // Placeholder — will filter punch items when backend is ready
+async function filterByProject() {
+    const jobCode = document.getElementById('projectSelector').value;
+    await loadPunchItems(jobCode);
+}
+
+async function loadPunchItems(jobCode) {
+    const wrap = document.getElementById('punchContent');
+    try {
+        let url = '/api/field/punch-list';
+        if (jobCode) url += '?job_code=' + encodeURIComponent(jobCode);
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const items = data.items || [];
+        if (!items.length) {
+            wrap.innerHTML = '<div class="empty-state"><h3>No punch list items</h3><p>Punch list items will appear here as they are created during field installation.</p><button class="btn-gold" onclick="addItem()">+ Add Item</button></div>';
+            return;
+        }
+        let html = '<table class="punch-table"><thead><tr><th>Title</th><th>Priority</th><th>Category</th><th>Location</th><th>Status</th><th>Created</th></tr></thead><tbody>';
+        items.forEach((item, idx) => {
+            const priClass = item.priority === 'critical' || item.priority === 'high' ? 'priority-high' : item.priority === 'medium' ? 'priority-medium' : 'priority-low';
+            html += '<tr onclick="togglePunchRow(this, ' + idx + ')" data-idx="' + idx + '">' +
+                '<td><strong>' + (item.title || '—') + '</strong></td>' +
+                '<td class="' + priClass + '">' + (item.priority || '—') + '</td>' +
+                '<td>' + (item.category_label || item.category || '—') + '</td>' +
+                '<td>' + (item.location || '—') + '</td>' +
+                '<td>' + (item.status || '—').replace(/_/g, ' ') + '</td>' +
+                '<td style="color:var(--tf-muted);font-size:12px">' + (item.created_at ? new Date(item.created_at).toLocaleDateString() : '—') + '</td>' +
+                '</tr>';
+            html += '<tr class="punch-detail-row" id="punchDetail' + idx + '" style="display:none"><td colspan="6"><div class="punch-detail-content">' +
+                '<strong>Description:</strong> ' + (item.description || 'No description') + '<br>' +
+                '<strong>Ship Mark:</strong> ' + (item.ship_mark || '—') + ' · ' +
+                '<strong>Created By:</strong> ' + (item.created_by || '—') +
+                '</div></td></tr>';
+        });
+        html += '</tbody></table>';
+        wrap.innerHTML = html;
+    } catch (e) {
+        wrap.innerHTML = '<div class="empty-state"><h3>No punch list items yet</h3><p>Punch list items will appear here as they are created during field installation.</p><button class="btn-gold" onclick="addItem()">+ Add Item</button></div>';
+    }
+}
+
+function togglePunchRow(tr, idx) {
+    const detailRow = document.getElementById('punchDetail' + idx);
+    if (!detailRow) return;
+    const isExpanded = tr.classList.contains('expanded');
+    // Collapse all first
+    document.querySelectorAll('.punch-table tbody tr.expanded').forEach(r => r.classList.remove('expanded'));
+    document.querySelectorAll('.punch-detail-row').forEach(r => r.style.display = 'none');
+    if (!isExpanded) {
+        tr.classList.add('expanded');
+        detailRow.style.display = '';
+    }
 }
 
 function addItem() {
@@ -137,5 +193,6 @@ function addItem() {
 }
 
 loadProjects();
+loadPunchItems('');
 </script>
 """

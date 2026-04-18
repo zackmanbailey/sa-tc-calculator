@@ -52,8 +52,9 @@ MACHINES_PAGE_HTML = r"""
         padding: 24px;
         border: 1px solid rgba(255,255,255,0.06);
         transition: border-color 0.2s;
+        cursor: pointer;
     }
-    .machine-card:hover { border-color: rgba(212,168,67,0.3); }
+    .machine-card:hover { border-color: rgba(212,168,67,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .machine-name {
         font-size: 18px; font-weight: 700; margin: 0 0 16px 0; color: var(--tf-text);
     }
@@ -110,8 +111,9 @@ async function loadMachines() {
         wrap.innerHTML = machines.map(m => {
             const util = m.utilization != null ? Math.round(m.utilization) : 0;
             const utilClass = util >= 70 ? 'util-high' : util >= 40 ? 'util-mid' : 'util-low';
-            return '<div class="machine-card">' +
-                '<h3 class="machine-name">' + (m.name || m.machine_name || 'Unknown') + '</h3>' +
+            var machineName = m.name || m.machine_name || 'Unknown';
+            return '<div class="machine-card" onclick="window.location.href=\'/work-station/' + encodeURIComponent(machineName) + '\'">' +
+                '<h3 class="machine-name">' + machineName + '</h3>' +
                 '<div class="stat-row"><span class="stat-label">Active Jobs</span><span class="stat-value">' + (m.active_jobs || m.active || 0) + '</span></div>' +
                 '<div class="stat-row"><span class="stat-label">Queued</span><span class="stat-value">' + (m.queued || m.queue_count || 0) + '</span></div>' +
                 '<div class="stat-row"><span class="stat-label">Completed</span><span class="stat-value">' + (m.completed || m.completed_count || 0) + '</span></div>' +

@@ -35,7 +35,9 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
         .kpi-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); padding: var(--tf-sp-5); text-align: center;
+            cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
         }
+        .kpi-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-color: var(--tf-blue-mid); }
         .kpi-card .val { font-size: var(--tf-text-2xl); font-weight: 800; color: var(--tf-gray-900); }
         .kpi-card .lbl { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
         .kpi-card.blue { border-left: 4px solid var(--tf-blue); }
@@ -78,7 +80,9 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
         .machine-card {
             border: 1px solid var(--tf-border); border-radius: var(--tf-radius-md);
             padding: var(--tf-sp-3); text-align: center;
+            cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
         }
+        .machine-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-color: var(--tf-blue-mid); }
         .machine-card .name { font-weight: 700; font-size: var(--tf-text-sm); margin-bottom: 4px; }
         .machine-card .stat-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--tf-gray-500); }
         .machine-card .stat-row .v { font-weight: 600; color: var(--tf-gray-800); }
@@ -114,8 +118,10 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
         .bottleneck-item {
             display: flex; justify-content: space-between; align-items: center;
             padding: var(--tf-sp-2) var(--tf-sp-3); border-bottom: 1px solid var(--tf-gray-100);
-            font-size: var(--tf-text-sm);
+            font-size: var(--tf-text-sm); cursor: pointer; border-radius: var(--tf-radius-sm);
+            transition: background 0.15s;
         }
+        .bottleneck-item:hover { background: var(--tf-gray-50); }
         .bottleneck-item:last-child { border-bottom: none; }
         .severity-badge {
             display: inline-block; padding: 2px 8px; border-radius: 999px;
@@ -161,11 +167,11 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
 
         <!-- KPI cards -->
         <div class="kpi-row">
-            <div class="kpi-card blue"><div class="val" id="kpiTotal">—</div><div class="lbl">Total Items</div></div>
-            <div class="kpi-card green"><div class="val" id="kpiCompleted">—</div><div class="lbl">Completed (Period)</div></div>
-            <div class="kpi-card amber"><div class="val" id="kpiThroughput">—</div><div class="lbl">Avg Daily Throughput</div></div>
-            <div class="kpi-card purple"><div class="val" id="kpiCycleTime">—</div><div class="lbl">Avg Cycle Time (min)</div></div>
-            <div class="kpi-card red"><div class="val" id="kpiAttention">—</div><div class="lbl">Needs Attention</div></div>
+            <div class="kpi-card blue" onclick="window.location.href='/shop-floor'"><div class="val" id="kpiTotal">—</div><div class="lbl">Total Items</div></div>
+            <div class="kpi-card green" onclick="window.location.href='/shop-floor'"><div class="val" id="kpiCompleted">—</div><div class="lbl">Completed (Period)</div></div>
+            <div class="kpi-card amber" onclick="document.getElementById('throughputChart').scrollIntoView({behavior:'smooth'})"><div class="val" id="kpiThroughput">—</div><div class="lbl">Avg Daily Throughput</div></div>
+            <div class="kpi-card purple" onclick="document.getElementById('cycleTimeGrid').scrollIntoView({behavior:'smooth'})"><div class="val" id="kpiCycleTime">—</div><div class="lbl">Avg Cycle Time (min)</div></div>
+            <div class="kpi-card red" onclick="document.getElementById('bottleneckList').scrollIntoView({behavior:'smooth'})"><div class="val" id="kpiAttention">—</div><div class="lbl">Needs Attention</div></div>
         </div>
 
         <!-- Phase Distribution -->
@@ -279,7 +285,7 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
                 '<li class="empty-state">No bottlenecks detected</li>';
         } else {
             document.getElementById('bottleneckList').innerHTML = bl.map(b =>
-                `<li class="bottleneck-item">
+                `<li class="bottleneck-item" onclick="window.location.href='/work-station/${encodeURIComponent(b.machine || b.label)}'">
                     <span>${b.label} <strong>(${b.count})</strong></span>
                     <span class="severity-badge ${b.severity}">${b.severity}</span>
                 </li>`
@@ -295,7 +301,7 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
             document.getElementById('machineGrid').innerHTML = mKeys.map(m => {
                 const d = mu[m];
                 const cls = d.active > 0 ? 'has-active' : '';
-                return `<div class="machine-card ${cls}">
+                return `<div class="machine-card ${cls}" onclick="window.location.href='/work-station/${encodeURIComponent(m)}'">
                     <div class="name">${m}</div>
                     <div class="stat-row"><span>Active</span><span class="v">${d.active}</span></div>
                     <div class="stat-row"><span>Queued</span><span class="v">${d.queued}</span></div>
@@ -313,7 +319,7 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
             document.getElementById('cycleTimeGrid').innerHTML = cKeys.map(m => {
                 const mins = ct[m];
                 const label = mu[m]?.label || m;
-                return `<div class="machine-card">
+                return `<div class="machine-card" onclick="window.location.href='/work-station/${encodeURIComponent(m)}'">
                     <div class="name">${label}</div>
                     <div style="font-size:var(--tf-text-2xl);font-weight:800;color:${mins > 60 ? 'var(--tf-amber)' : 'var(--tf-success)'};">${mins}</div>
                     <div style="font-size:11px;color:var(--tf-gray-500);">avg minutes</div>

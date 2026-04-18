@@ -60,7 +60,9 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
             border-radius: 10px;
             padding: 10px 18px;
             text-align: center;
+            cursor: pointer; transition: border-color 0.15s, background 0.15s;
         }
+        .mq-stat:hover { border-color: var(--tf-blue); background: rgba(59,130,246,0.08); }
         .mq-stat-val {
             font-size: 1.4rem;
             font-weight: 800;
@@ -115,6 +117,7 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
             border-radius: 10px;
             padding: 16px;
             transition: border-color 0.15s, box-shadow 0.15s;
+            cursor: pointer;
         }
         .mq-card:hover {
             border-color: var(--tf-blue);
@@ -224,15 +227,15 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
     <div class="mq-header">
         <h1>&#128190; My <span>Queue</span></h1>
         <div class="mq-stats">
-            <div class="mq-stat">
+            <div class="mq-stat" onclick="scrollToSection('in_progress')">
                 <div class="mq-stat-val" id="statActive" style="color:#60A5FA;">-</div>
                 <div class="mq-stat-label">Active</div>
             </div>
-            <div class="mq-stat">
+            <div class="mq-stat" onclick="scrollToSection('queued')">
                 <div class="mq-stat-val" id="statQueued" style="color:#F59E0B;">-</div>
                 <div class="mq-stat-label">Up Next</div>
             </div>
-            <div class="mq-stat">
+            <div class="mq-stat" onclick="scrollToSection('complete')">
                 <div class="mq-stat-val" id="statDone" style="color:#4ADE80;">-</div>
                 <div class="mq-stat-label">Done (7d)</div>
             </div>
@@ -283,7 +286,7 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
     }
 
     function renderSection(icon, title, items, statusClass) {
-        let html = '<div class="mq-section">';
+        let html = '<div class="mq-section" id="section-' + statusClass + '">';
         html += '<div class="mq-section-header">';
         html += '<span class="mq-section-icon">' + icon + '</span>';
         html += '<span class="mq-section-title">' + title + '</span>';
@@ -309,7 +312,8 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
         const jobCode = item.job_code || '';
         const woId = item.work_order_id || '';
 
-        let html = '<div class="mq-card">';
+        const cardHref = jobCode ? '/work-station/' + encodeURIComponent(jobCode) : '#';
+        let html = '<div class="mq-card" onclick="window.location.href=\'' + cardHref + '\'">';
         html += '<div class="mq-card-top">';
         html += '<span class="mq-card-mark">' + escHtml(item.ship_mark || item.item_id || 'Item') + '</span>';
         html += '<span class="mq-card-status status-' + sc + '">' + sc.replace(/_/g, ' ') + '</span>';
@@ -327,21 +331,26 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
 
         html += '<div class="mq-card-actions">';
         if (sc === 'queued') {
-            html += '<button class="mq-btn mq-btn-primary" onclick="startItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#9654; Start</button>';
+            html += '<button class="mq-btn mq-btn-primary" onclick="event.stopPropagation(); startItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#9654; Start</button>';
         }
         if (sc === 'in_progress') {
-            html += '<button class="mq-btn mq-btn-success" onclick="completeItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#10003; Complete</button>';
+            html += '<button class="mq-btn mq-btn-success" onclick="event.stopPropagation(); completeItem(\'' + escAttr(jobCode) + '\',\'' + escAttr(woId) + '\',\'' + escAttr(item.item_id) + '\')">&#10003; Complete</button>';
         }
         if (jobCode && item.drawing_ref) {
-            html += '<a class="mq-btn mq-btn-ghost" href="/shop-drawings/' + encodeURIComponent(jobCode) + '" target="_blank">&#128208; Drawing</a>';
+            html += '<a class="mq-btn mq-btn-ghost" href="/shop-drawings/' + encodeURIComponent(jobCode) + '" target="_blank" onclick="event.stopPropagation()">&#128208; Drawing</a>';
         }
         if (jobCode) {
-            html += '<a class="mq-btn mq-btn-ghost" href="/work-station/' + encodeURIComponent(jobCode) + '" target="_blank">&#128241; Station</a>';
+            html += '<a class="mq-btn mq-btn-ghost" href="/work-station/' + encodeURIComponent(jobCode) + '" target="_blank" onclick="event.stopPropagation()">&#128241; Station</a>';
         }
         html += '</div>';
         html += '</div>';
         return html;
     }
+
+    window.scrollToSection = function(sectionId) {
+        var el = document.getElementById('section-' + sectionId);
+        if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+    };
 
     window.startItem = async function(jobCode, woId, itemId) {
         try {

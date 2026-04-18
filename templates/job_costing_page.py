@@ -33,7 +33,9 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
   .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                gap: 12px; margin-bottom: 20px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
-               border-radius: 8px; padding: 16px; text-align: center; }
+               border-radius: 8px; padding: 16px; text-align: center;
+               cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .stat-card:hover { border-color: var(--accent); background: rgba(59,130,246,0.06); }
   .stat-card .value { font-size: 24px; font-weight: 700; }
   .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
@@ -58,6 +60,7 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
                    border-bottom: 2px solid var(--border); color: var(--muted);
                    font-weight: 600; font-size: 11px; text-transform: uppercase; }
   .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .data-table tbody tr { cursor: pointer; transition: background 0.15s; }
   .data-table tr:hover { background: rgba(59,130,246,0.05); }
   .text-right { text-align: right; }
   .text-muted { color: var(--muted); font-size: 12px; }
@@ -96,7 +99,9 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
                   border-radius: 8px; padding: 16px; }
   .sidebar-card h4 { font-size: 13px; color: var(--muted); margin-bottom: 12px;
                      text-transform: uppercase; letter-spacing: 0.5px; }
-  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;
+                  cursor: pointer; border-radius: 4px; padding: 4px 6px; transition: background 0.15s; }
+  .sidebar-item:hover { background: rgba(59,130,246,0.1); }
 
   .empty-state { text-align: center; padding: 40px; color: var(--muted); }
 
@@ -303,8 +308,9 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
 
   function closeModal(id) { $(id).classList.remove('show'); }
 
-  function statCard(val, label, color) {
-    return '<div class="stat-card"><div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
+  function statCard(val, label, color, onclick) {
+    return '<div class="stat-card" onclick="'+(onclick||'')+'">' +
+      '<div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
   }
 
   // Overview
@@ -313,23 +319,23 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
     if (!d.ok) return;
     const o = d.overview;
     $('statsRow').innerHTML =
-      statCard(o.total_jobs, 'Active Jobs', '--accent') +
-      statCard(fmt(o.total_contract_value), 'Total Contract', '--cyan') +
-      statCard(fmt(o.total_actual), 'Total Actual', '--orange') +
-      statCard(fmt(o.total_margin), 'Total Margin', o.total_margin>=0?'--green':'--red') +
-      statCard(fmtPct(o.margin_pct), 'Margin %', o.margin_pct>=15?'--green':'--yellow') +
-      statCard(o.jobs_over_budget, 'Over Budget', o.jobs_over_budget>0?'--red':'--green');
+      statCard(o.total_jobs, 'Active Jobs', '--accent', "switchTabByName('overview')") +
+      statCard(fmt(o.total_contract_value), 'Total Contract', '--cyan', "switchTabByName('estimates')") +
+      statCard(fmt(o.total_actual), 'Total Actual', '--orange', "switchTabByName('costs')") +
+      statCard(fmt(o.total_margin), 'Total Margin', o.total_margin>=0?'--green':'--red', "switchTabByName('overview')") +
+      statCard(fmtPct(o.margin_pct), 'Margin %', o.margin_pct>=15?'--green':'--yellow', "switchTabByName('overview')") +
+      statCard(o.jobs_over_budget, 'Over Budget', o.jobs_over_budget>0?'--red':'--green', "switchTabByName('overview')");
 
     // Sidebar
     let sb = '<div class="sidebar-card"><h4>Costs by Category</h4>';
     for (const [k,v] of Object.entries(o.costs_by_category||{}))
-      sb += '<div class="sidebar-item"><span>'+((CONFIG.cost_category_labels||{})[k]||k)+'</span><span>'+fmt(v)+'</span></div>';
+      sb += '<div class="sidebar-item" onclick="filterCostsByCategory(\''+k+'\')"><span>'+((CONFIG.cost_category_labels||{})[k]||k)+'</span><span>'+fmt(v)+'</span></div>';
     sb += '</div>';
 
     sb += '<div class="sidebar-card"><h4>Jobs</h4>';
     (o.jobs||[]).forEach(j => {
       const cls = j.cost_variance<0?'text-red':'text-green';
-      sb += '<div class="sidebar-item"><span>'+j.job_code+'</span><span class="'+cls+'">'+fmtPct(j.actual_margin_pct)+'</span></div>';
+      sb += '<div class="sidebar-item" onclick="loadJobFromSidebar(\''+j.job_code+'\')"><span>'+j.job_code+'</span><span class="'+cls+'">'+fmtPct(j.actual_margin_pct)+'</span></div>';
     });
     sb += '</div>';
     $('sidebar').innerHTML = sb;
@@ -375,14 +381,14 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
     const d = await api('/api/costing/estimates?job_code='+encodeURIComponent($('estJobFilter').value));
     const tb = $('estimatesBody');
     if (!d.ok||!d.estimates.length) { tb.innerHTML='<tr><td colspan="7" class="empty-state">No estimates</td></tr>'; return; }
-    tb.innerHTML = d.estimates.map(e => '<tr>'+
+    tb.innerHTML = d.estimates.map(e => '<tr onclick="loadJobFromSidebar(\''+e.job_code+'\')">'+
       '<td><strong>'+e.name+'</strong></td>'+
       '<td>'+e.job_code+'</td>'+
       '<td><span class="badge badge-'+e.status+'">'+e.status_label+'</span></td>'+
       '<td class="text-right">'+fmt(e.total_amount)+'</td>'+
       '<td class="text-right">'+fmt(e.contract_value)+'</td>'+
       '<td class="text-right '+(e.estimated_margin>=0?'text-green':'text-red')+'">'+fmt(e.estimated_margin)+' ('+fmtPct(e.estimated_margin_pct)+')</td>'+
-      '<td>'+(e.status==='draft'?'<button class="btn-success" style="padding:3px 8px;font-size:11px" onclick="approveEst(\\''+e.estimate_id+'\\')">Approve</button>':'-')+'</td>'+
+      '<td>'+(e.status==='draft'?'<button class="btn-success" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); approveEst(\\''+e.estimate_id+'\\')">Approve</button>':'-')+'</td>'+
     '</tr>').join('');
   }
 
@@ -405,7 +411,7 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
     const d = await api('/api/costing/costs?job_code='+encodeURIComponent($('costJobFilter').value)+'&category='+$('costCatFilter').value);
     const tb = $('costsBody');
     if (!d.ok||!d.entries.length) { tb.innerHTML='<tr><td colspan="8" class="empty-state">No cost entries</td></tr>'; return; }
-    tb.innerHTML = d.entries.map(e => '<tr>'+
+    tb.innerHTML = d.entries.map(e => '<tr onclick="loadJobFromSidebar(\''+e.job_code+'\')">'+
       '<td>'+e.description+'</td>'+
       '<td>'+e.category_label+'</td>'+
       '<td class="text-right">'+e.quantity+(e.unit?' '+e.unit:'')+'</td>'+
@@ -436,7 +442,7 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
     const d = await api('/api/costing/labor?job_code='+encodeURIComponent($('labJobFilter').value)+'&worker='+encodeURIComponent($('labWorkerFilter').value));
     const tb = $('laborBody');
     if (!d.ok||!d.entries.length) { tb.innerHTML='<tr><td colspan="9" class="empty-state">No labor entries</td></tr>'; return; }
-    tb.innerHTML = d.entries.map(e => '<tr>'+
+    tb.innerHTML = d.entries.map(e => '<tr onclick="loadJobFromSidebar(\''+e.job_code+'\')">'+
       '<td><strong>'+e.worker+'</strong></td>'+
       '<td>'+((CONFIG.labor_rate_labels||{})[e.labor_type]||e.labor_type)+'</td>'+
       '<td class="text-right">'+e.hours.toFixed(1)+'</td>'+
@@ -469,7 +475,7 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
     const d = await api('/api/costing/change-orders?job_code='+encodeURIComponent($('coJobFilter').value));
     const tb = $('coBody');
     if (!d.ok||!d.change_orders.length) { tb.innerHTML='<tr><td colspan="8" class="empty-state">No change orders</td></tr>'; return; }
-    tb.innerHTML = d.change_orders.map(c => '<tr>'+
+    tb.innerHTML = d.change_orders.map(c => '<tr onclick="loadJobFromSidebar(\''+c.job_code+'\')">'+
       '<td><strong>CO-'+c.change_order_number+'</strong></td>'+
       '<td>'+c.description+'</td>'+
       '<td class="text-right">'+fmt(c.material_impact)+'</td>'+
@@ -477,7 +483,7 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
       '<td class="text-right"><strong>'+fmt(c.total_impact)+'</strong></td>'+
       '<td>'+c.job_code+'</td>'+
       '<td>'+(c.approved?'<span class="badge badge-approved">Approved</span>':'<span class="badge badge-draft">Pending</span>')+'</td>'+
-      '<td>'+(!c.approved?'<button class="btn-success" style="padding:3px 8px;font-size:11px" onclick="approveCO(\\''+c.co_id+'\\')">Approve</button>':'-')+'</td>'+
+      '<td>'+(!c.approved?'<button class="btn-success" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); approveCO(\\''+c.co_id+'\\')">Approve</button>':'-')+'</td>'+
     '</tr>').join('');
   }
   function showCOModal() { $('coModal').classList.add('show'); }
@@ -493,6 +499,28 @@ JOB_COSTING_PAGE_HTML = r"""<!DOCTYPE html>
   async function approveCO(id) {
     const d = await api('/api/costing/change-order/approve','POST',{co_id:id});
     if (d.ok) { loadChangeOrders(); loadOverview(); } else alert(d.error);
+  }
+
+  function switchTabByName(name) {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    const tabs = document.querySelectorAll('.tab');
+    const tabNames = ['overview','estimates','costs','labor','changes'];
+    const idx = tabNames.indexOf(name);
+    if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+    $('tab-'+name).classList.add('active');
+  }
+
+  function loadJobFromSidebar(jobCode) {
+    $('ovJobFilter').value = jobCode;
+    switchTabByName('overview');
+    loadJobSummary();
+  }
+
+  function filterCostsByCategory(cat) {
+    $('costCatFilter').value = cat;
+    switchTabByName('costs');
+    loadCosts();
   }
 
   // Init

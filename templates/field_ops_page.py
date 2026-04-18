@@ -59,7 +59,9 @@ FIELD_OPS_PAGE_HTML = r"""
         .stat-box {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-md); padding: var(--tf-sp-3); text-align: center;
+            cursor: pointer; transition: border-color 0.15s, background 0.15s;
         }
+        .stat-box:hover { border-color: var(--tf-blue); background: rgba(59,130,246,0.06); }
         .stat-box .val { font-size: var(--tf-text-lg); font-weight: 800; color: var(--tf-gray-900); }
         .stat-box .lbl { font-size: 10px; color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; }
 
@@ -85,7 +87,9 @@ FIELD_OPS_PAGE_HTML = r"""
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-md); padding: var(--tf-sp-3) var(--tf-sp-4);
             margin-bottom: var(--tf-sp-3); position: relative;
+            cursor: pointer; transition: border-color 0.15s, background 0.15s;
         }
+        .punch-card:hover { border-color: var(--tf-blue); background: rgba(59,130,246,0.04); }
         .punch-card .priority-dot {
             width: 10px; height: 10px; border-radius: 50%;
             position: absolute; top: 14px; left: 10px;
@@ -127,7 +131,11 @@ FIELD_OPS_PAGE_HTML = r"""
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-md); padding: var(--tf-sp-3) var(--tf-sp-4);
             margin-bottom: var(--tf-sp-3);
+            cursor: pointer; transition: border-color 0.15s, background 0.15s;
         }
+        .report-card:hover { border-color: var(--tf-blue); background: rgba(59,130,246,0.04); }
+        .report-card .full-detail { display: none; margin-top: var(--tf-sp-2); padding-top: var(--tf-sp-2); border-top: 1px solid var(--tf-border); font-size: var(--tf-text-sm); color: var(--tf-gray-600); }
+        .report-card.expanded .full-detail { display: block; }
         .report-card .date { font-weight: 700; font-size: var(--tf-text-sm); }
         .report-card .crew-info { font-size: 12px; color: var(--tf-gray-500); margin-top: 2px; }
         .report-card .summary { font-size: var(--tf-text-sm); margin-top: var(--tf-sp-2); color: var(--tf-gray-700); }
@@ -182,10 +190,10 @@ FIELD_OPS_PAGE_HTML = r"""
 
         <!-- Stats strip -->
         <div class="stats-strip" id="statsStrip">
-            <div class="stat-box"><div class="val" id="statDelivered">—</div><div class="lbl">Delivered</div></div>
-            <div class="stat-box"><div class="val" id="statInstalled">—</div><div class="lbl">Installed</div></div>
-            <div class="stat-box"><div class="val" id="statPunchOpen">—</div><div class="lbl">Open Punch</div></div>
-            <div class="stat-box"><div class="val" id="statCompletion">—</div><div class="lbl">Complete</div></div>
+            <div class="stat-box" onclick="switchTab('install')"><div class="val" id="statDelivered">—</div><div class="lbl">Delivered</div></div>
+            <div class="stat-box" onclick="switchTab('install')"><div class="val" id="statInstalled">—</div><div class="lbl">Installed</div></div>
+            <div class="stat-box" onclick="switchTab('punch')"><div class="val" id="statPunchOpen">—</div><div class="lbl">Open Punch</div></div>
+            <div class="stat-box" onclick="if(currentProject) window.location.href='/field/completion'"><div class="val" id="statCompletion">—</div><div class="lbl">Complete</div></div>
         </div>
 
         <!-- Quick actions -->
@@ -331,7 +339,7 @@ FIELD_OPS_PAGE_HTML = r"""
                 container.innerHTML = '<p style="text-align:center;color:var(--tf-gray-400);padding:20px;">No punch items</p>';
                 return;
             }
-            container.innerHTML = data.items.map(p => `<div class="punch-card">
+            container.innerHTML = data.items.map(p => `<div class="punch-card" onclick="openPunchDetail(this, '${(p.title||'').replace(/'/g,"\\'")}', '${p.priority}', '${p.status}', '${(p.description||'').replace(/'/g,"\\'")}', '${p.location||''}', '${p.category_label||p.category}')">
                 <div class="priority-dot ${p.priority}"></div>
                 <div class="punch-title">${p.title} <span class="status-pill ${p.status}">${p.status.replace('_',' ')}</span></div>
                 <div class="punch-meta">${p.category_label || p.category} · ${p.location || 'No location'} · ${p.created_by} · ${p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}</div>
@@ -375,10 +383,11 @@ FIELD_OPS_PAGE_HTML = r"""
                 container.innerHTML = '<p style="text-align:center;color:var(--tf-gray-400);padding:20px;">No daily reports yet</p>';
                 return;
             }
-            container.innerHTML = data.reports.slice(0, 20).map(r => `<div class="report-card">
+            container.innerHTML = data.reports.slice(0, 20).map(r => `<div class="report-card" onclick="toggleReport(this)">
                 <div class="date">${r.date} <span style="font-weight:400;color:var(--tf-gray-400);font-size:11px;">${r.submitted_by}</span></div>
                 <div class="crew-info">${r.crew_count} crew · ${r.hours_worked}h · ${r.weather || 'N/A'}</div>
                 <div class="summary">${r.work_summary || 'No summary'}</div>
+                <div class="full-detail">${r.delays ? '<strong>Delays:</strong> ' + r.delays + '<br>' : ''}${r.issues ? '<strong>Issues:</strong> ' + r.issues : ''}${!r.delays && !r.issues ? 'No additional details' : ''}</div>
             </div>`).join('');
         } catch (e) {}
     }
@@ -473,6 +482,26 @@ FIELD_OPS_PAGE_HTML = r"""
         t.textContent = msg; t.className = 'toast ' + (type || '');
         t.style.display = 'block';
         setTimeout(() => { t.style.display = 'none'; }, 3500);
+    }
+
+    function openPunchDetail(el, title, priority, status, description, location, category) {
+        document.querySelectorAll('.punch-card.expanded').forEach(c => { if (c !== el) c.classList.remove('expanded'); });
+        el.classList.toggle('expanded');
+        if (el.classList.contains('expanded') && !el.querySelector('.full-detail')) {
+            const detail = document.createElement('div');
+            detail.className = 'full-detail';
+            detail.style.display = 'block';
+            detail.innerHTML = '<strong>Priority:</strong> ' + priority + ' · <strong>Category:</strong> ' + category +
+                (location ? ' · <strong>Location:</strong> ' + location : '') +
+                (description ? '<br><strong>Description:</strong> ' + description : '');
+            el.appendChild(detail);
+        }
+        const existing = el.querySelector('.full-detail');
+        if (existing) existing.style.display = el.classList.contains('expanded') ? 'block' : 'none';
+    }
+
+    function toggleReport(el) {
+        el.classList.toggle('expanded');
     }
 
     function refreshAll() { loadProjects(); if (currentProject) refreshProjectData(); }

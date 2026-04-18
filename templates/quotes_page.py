@@ -94,14 +94,31 @@ QUOTES_PAGE_HTML = r"""
         border-bottom: 1px solid rgba(255,255,255,0.04);
         color: var(--tf-text);
     }
-    .quotes-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+    .quotes-table tbody tr { cursor: pointer; transition: background 0.15s ease; }
+    .quotes-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+    .project-link {
+        color: var(--tf-text);
+        text-decoration: none;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .project-link:hover { color: var(--tf-blue); text-decoration: underline; }
+    .customer-link {
+        color: var(--tf-muted);
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .customer-link:hover { color: #60a5fa; text-decoration: underline; }
     .status-badge {
         display: inline-block;
         padding: 4px 10px;
         border-radius: 6px;
         font-size: 12px;
         font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s ease;
     }
+    .status-badge:hover { opacity: 0.75; }
     .status-draft { background: rgba(148,163,184,0.2); color: #94a3b8; }
     .status-sent { background: rgba(59,130,246,0.2); color: #60a5fa; }
     .status-approved { background: rgba(34,197,94,0.2); color: #4ade80; }
@@ -169,16 +186,20 @@ function renderQuotes(quotes) {
     let html = '<table class="quotes-table"><thead><tr>' +
         '<th>Job Code</th><th>Project Name</th><th>Customer</th><th>Quote Date</th>' +
         '<th>Material Cost</th><th>Sell Price</th><th>Status</th></tr></thead><tbody>';
+    let activeStatusFilter = null;
     quotes.forEach(q => {
         const statusCls = getStatusClass(q.stage || q.status);
-        html += '<tr>' +
-            '<td><a class="link-blue" href="/project/' + (q.id || q.job_code || '') + '">' + (q.job_code || q.id || '—') + '</a></td>' +
-            '<td>' + (q.project_name || q.name || '—') + '</td>' +
-            '<td>' + (q.customer || q.customer_name || '—') + '</td>' +
+        const projectUrl = '/project/' + encodeURIComponent(q.id || q.job_code || '');
+        const custName = q.customer || q.customer_name || '—';
+        const stageTxt = q.stage || q.status || 'Draft';
+        html += '<tr onclick="window.location.href=\'' + projectUrl + '\'" title="Click to view project">' +
+            '<td><a class="link-blue" href="' + projectUrl + '" onclick="event.stopPropagation()">' + (q.job_code || q.id || '—') + '</a></td>' +
+            '<td><a class="project-link" href="' + projectUrl + '" onclick="event.stopPropagation()">' + (q.project_name || q.name || '—') + '</a></td>' +
+            '<td><span class="customer-link" onclick="event.stopPropagation();window.location.href=\'/customers\'" title="View customers">' + custName + '</span></td>' +
             '<td>' + (q.quote_date || q.created_at || '—') + '</td>' +
             '<td>' + formatCurrency(q.material_cost || q.materialCost) + '</td>' +
             '<td>' + formatCurrency(q.sell_price || q.sellPrice || q.total_price) + '</td>' +
-            '<td><span class="status-badge ' + statusCls + '">' + (q.stage || q.status || 'Draft') + '</span></td>' +
+            '<td><span class="status-badge ' + statusCls + '" onclick="event.stopPropagation();filterByStatus(\'' + stageTxt.replace(/'/g, "\\'") + '\')" title="Filter by ' + stageTxt + '">' + stageTxt + '</span></td>' +
             '</tr>';
     });
     html += '</tbody></table>';
@@ -194,6 +215,19 @@ function filterQuotes() {
         (q.customer || q.customer_name || '').toLowerCase().includes(term)
     );
     renderQuotes(filtered);
+}
+
+function filterByStatus(status) {
+    const s = (status || '').toLowerCase();
+    const filtered = allQuotes.filter(q => {
+        const qs = (q.stage || q.status || 'draft').toLowerCase();
+        return qs === s || qs.includes(s);
+    });
+    if (filtered.length) {
+        renderQuotes(filtered);
+        // Put the filter term in the search box so user can clear it
+        document.getElementById('quoteSearch').value = status;
+    }
 }
 
 loadQuotes();

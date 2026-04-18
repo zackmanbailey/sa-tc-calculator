@@ -85,6 +85,13 @@ INVENTORY_PAGE_HTML = r'''
             border-radius: 8px;
             padding: 16px;
             text-align: center;
+            cursor: pointer;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--cyan);
         }
 
         .stat-label {
@@ -160,6 +167,12 @@ INVENTORY_PAGE_HTML = r'''
             padding: 8px;
             background-color: var(--bg);
             border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .status-item:hover {
+            background-color: var(--surface);
         }
 
         .status-label {
@@ -517,27 +530,27 @@ INVENTORY_PAGE_HTML = r'''
 
         <!-- Stats Row -->
         <div class="stats-row">
-            <div class="stat-card">
+            <div class="stat-card" onclick="document.getElementById('filter-status').value='';loadCoils();">
                 <div class="stat-label">Total Coils</div>
                 <div class="stat-value" id="stat-total-coils">0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="document.getElementById('filter-status').value='';loadCoils();">
                 <div class="stat-label">Total Stock</div>
                 <div class="stat-value" id="stat-total-stock">0 lbs</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="switchToTab('allocations');">
                 <div class="stat-label">Committed</div>
                 <div class="stat-value" id="stat-committed">0 lbs</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="document.getElementById('filter-status').value='active';loadCoils();">
                 <div class="stat-label">Available</div>
                 <div class="stat-value" id="stat-available">0 lbs</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="document.getElementById('filter-status').value='low_stock';loadCoils();">
                 <div class="stat-label">Low Stock</div>
                 <div class="stat-value" id="stat-low-stock">0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="document.getElementById('filter-status').value='';loadCoils();">
                 <div class="stat-label">Total Value</div>
                 <div class="stat-value" id="stat-total-value">$0</div>
             </div>
@@ -554,19 +567,19 @@ INVENTORY_PAGE_HTML = r'''
                 <div class="sidebar-section">
                     <div class="sidebar-title">Stock by Status</div>
                     <div class="status-summary">
-                        <div class="status-item">
+                        <div class="status-item" onclick="document.getElementById('filter-status').value='active';loadCoils();">
                             <span class="status-label">Available</span>
                             <span class="status-value" id="status-available">0</span>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" onclick="switchToTab('allocations');">
                             <span class="status-label">Committed</span>
                             <span class="status-value" id="status-committed">0</span>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" onclick="switchToTab('receiving');">
                             <span class="status-label">Pending</span>
                             <span class="status-value" id="status-pending">0</span>
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" onclick="document.getElementById('filter-status').value='low_stock';loadCoils();">
                             <span class="status-label">Low Stock</span>
                             <span class="status-value" id="status-low">0</span>
                         </div>
@@ -1025,6 +1038,20 @@ INVENTORY_PAGE_HTML = r'''
                 switchTab(tabName);
             });
         });
+
+        function switchToTab(tabName) {
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
+            });
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            $(`${tabName}-tab`).classList.add('active');
+            currentTab = tabName;
+            if (tabName === 'coils') loadCoils();
+            else if (tabName === 'transactions') loadTransactions();
+            else if (tabName === 'allocations') loadAllocations();
+            else if (tabName === 'receiving') loadReceiving();
+            else if (tabName === 'alerts') loadAlerts();
+        }
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));

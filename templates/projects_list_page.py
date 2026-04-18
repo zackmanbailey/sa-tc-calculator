@@ -178,6 +178,13 @@ PROJECTS_LIST_HTML = r"""
             border-radius: var(--tf-radius-lg);
             padding: var(--tf-sp-4) var(--tf-sp-5);
             text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .stat-card:hover {
+            border-color: var(--tf-amber);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
         }
         .stat-card .stat-value {
             font-size: var(--tf-text-2xl);
@@ -240,6 +247,7 @@ PROJECTS_LIST_HTML = r"""
         }
         .projects-table tbody tr {
             transition: background var(--tf-duration) var(--tf-ease);
+            cursor: pointer;
         }
         .projects-table tbody tr:hover {
             background: var(--pl-hover);
@@ -265,10 +273,28 @@ PROJECTS_LIST_HTML = r"""
             font-weight: 600;
             color: #F8FAFC;
         }
+        .project-name-link {
+            color: #F8FAFC;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .project-name-link:hover {
+            color: var(--tf-amber);
+            text-decoration: underline;
+        }
         .project-customer {
             font-size: var(--tf-text-xs);
             color: var(--pl-text-dim);
             margin-top: 2px;
+        }
+        .customer-link {
+            color: var(--pl-text-dim);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .customer-link:hover {
+            color: #60A5FA;
+            text-decoration: underline;
         }
 
         /* ── Status badges ───────────────────────────────────── */
@@ -283,6 +309,11 @@ PROJECTS_LIST_HTML = r"""
             text-transform: uppercase;
             letter-spacing: 0.04em;
             white-space: nowrap;
+            cursor: pointer;
+            transition: opacity 0.2s ease;
+        }
+        .stage-badge:hover {
+            opacity: 0.8;
         }
         .stage-badge.quote       { background: #1E3A5F; color: #60A5FA; }
         .stage-badge.engineering  { background: #312E81; color: #A78BFA; }
@@ -451,11 +482,11 @@ PROJECTS_LIST_HTML = r"""
 
     <!-- Stats Bar -->
     <div class="stats-bar" id="statsBar">
-        <div class="stat-card"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total Projects</div></div>
-        <div class="stat-card"><div class="stat-value" id="statEngineering">-</div><div class="stat-label">Engineering</div></div>
-        <div class="stat-card"><div class="stat-value" id="statFabrication">-</div><div class="stat-label">Fabrication</div></div>
-        <div class="stat-card"><div class="stat-value" id="statShipping">-</div><div class="stat-label">Shipping</div></div>
-        <div class="stat-card"><div class="stat-value" id="statInstalled">-</div><div class="stat-label">Installed</div></div>
+        <div class="stat-card" onclick="clickStatFilter('all')" title="Show all projects"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total Projects</div></div>
+        <div class="stat-card" onclick="clickStatFilter('engineering')" title="Filter to Engineering"><div class="stat-value" id="statEngineering">-</div><div class="stat-label">Engineering</div></div>
+        <div class="stat-card" onclick="clickStatFilter('fabrication')" title="Filter to Fabrication"><div class="stat-value" id="statFabrication">-</div><div class="stat-label">Fabrication</div></div>
+        <div class="stat-card" onclick="clickStatFilter('shipping')" title="Filter to Shipping"><div class="stat-value" id="statShipping">-</div><div class="stat-label">Shipping</div></div>
+        <div class="stat-card" onclick="clickStatFilter('installed')" title="Filter to Installed"><div class="stat-value" id="statInstalled">-</div><div class="stat-label">Installed</div></div>
     </div>
 
     <!-- Toolbar -->
@@ -668,17 +699,20 @@ PROJECTS_LIST_HTML = r"""
             const barClass = progress < 33 ? 'low' : progress < 66 ? 'mid' : 'high';
             const created = formatDate(p.created_at);
 
-            return '<tr>' +
-                '<td><a class="job-code-link" href="/project/' + encodeURIComponent(p.job_code || '') + '">' + jc + '</a></td>' +
-                '<td><div class="project-name">' + (pn || '(Untitled)') + '</div></td>' +
-                '<td><div class="project-customer">' + cn + '</div></td>' +
-                '<td><span class="stage-badge ' + escHtml(stage) + '"><span class="badge-dot"></span> ' + escHtml(stageLabel) + '</span></td>' +
+            var projectUrl = '/project/' + encodeURIComponent(p.job_code || '');
+            var custId = (p.customer && p.customer.id) || '';
+
+            return '<tr onclick="window.location.href=\'' + projectUrl + '\'" title="Click to view project">' +
+                '<td><a class="job-code-link" href="' + projectUrl + '" onclick="event.stopPropagation()">' + jc + '</a></td>' +
+                '<td><a class="project-name-link" href="' + projectUrl + '" onclick="event.stopPropagation()">' + (pn || '(Untitled)') + '</a></td>' +
+                '<td><span class="customer-link" onclick="event.stopPropagation();' + (custId ? 'window.location.href=\'/customers?id=' + encodeURIComponent(custId) + '\'' : '') + '" title="View customer">' + cn + '</span></td>' +
+                '<td><span class="stage-badge ' + escHtml(stage) + '" onclick="event.stopPropagation();clickStatFilter(\'' + escHtml(stage) + '\')" title="Filter by ' + escHtml(stageLabel) + '"><span class="badge-dot"></span> ' + escHtml(stageLabel) + '</span></td>' +
                 '<td class="progress-cell"><div class="progress-bar-wrap"><div class="progress-bar"><div class="progress-bar-fill ' + barClass + '" style="width:' + progress + '%"></div></div><span class="progress-pct">' + progress + '%</span></div></td>' +
                 '<td class="date-cell">' + created + '</td>' +
                 '<td><div class="action-btns">' +
-                    '<a class="action-btn" href="/project/' + encodeURIComponent(p.job_code || '') + '" title="View Project">&#x1F4CB; View</a>' +
-                    '<a class="action-btn view-quote" href="/tc?job=' + encodeURIComponent(p.job_code || '') + '" title="View Quote">&#x1F4B0; Quote</a>' +
-                    '<a class="action-btn view-drawings" href="/shop-drawings/' + encodeURIComponent(p.job_code || '') + '" title="View Shop Drawings">&#x1F4D0; Drawings</a>' +
+                    '<a class="action-btn" href="' + projectUrl + '" onclick="event.stopPropagation()" title="View Project">&#x1F4CB; View</a>' +
+                    '<a class="action-btn view-quote" href="/tc?job=' + encodeURIComponent(p.job_code || '') + '" onclick="event.stopPropagation()" title="View Quote">&#x1F4B0; Quote</a>' +
+                    '<a class="action-btn view-drawings" href="/shop-drawings/' + encodeURIComponent(p.job_code || '') + '" onclick="event.stopPropagation()" title="View Shop Drawings">&#x1F4D0; Drawings</a>' +
                 '</div></td>' +
             '</tr>';
         }).join('');
@@ -708,6 +742,15 @@ PROJECTS_LIST_HTML = r"""
         document.querySelectorAll('.stage-filter').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         renderTable();
+    };
+
+    window.clickStatFilter = function(stage) {
+        currentFilter = stage;
+        document.querySelectorAll('.stage-filter').forEach(b => {
+            b.classList.toggle('active', b.dataset.stage === stage);
+        });
+        renderTable();
+        document.getElementById('projectsTable').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     window.applySort = function() {

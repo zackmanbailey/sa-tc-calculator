@@ -106,8 +106,9 @@ INSTALL_TRACKER_PAGE_HTML = r"""
         }
         .panel-body { padding: var(--tf-sp-4); max-height: 300px; overflow-y: auto; }
 
-        .activity-item { padding: 6px 0; border-bottom: 1px solid var(--tf-gray-100); font-size: var(--tf-text-sm); }
+        .activity-item { padding: 6px 0; border-bottom: 1px solid var(--tf-gray-100); font-size: var(--tf-text-sm); cursor: pointer; transition: background 0.1s; }
         .activity-item:last-child { border-bottom: none; }
+        .activity-item:hover { background: var(--tf-gray-50); }
         .activity-item .ts { font-size: 11px; color: var(--tf-gray-400); }
 
         .empty-state { text-align: center; padding: var(--tf-sp-6); color: var(--tf-gray-400); font-size: var(--tf-text-sm); }
@@ -262,7 +263,7 @@ INSTALL_TRACKER_PAGE_HTML = r"""
             const count = counts[status] || 0;
             if (count > 0) {
                 const cls = ['installed','delivered','shipped','ready_to_ship','qc_approved','in_progress'].includes(status) ? status : 'other';
-                html += `<div class="item-tile ${cls}">
+                html += `<div class="item-tile ${cls}" onclick="window.location.href='/field?project=${currentProject}&status=${status}'" title="View ${statusLabels[status] || status} items">
                     <div class="mark">${count}</div>
                     <div class="sub">${statusLabels[status] || status}</div>
                 </div>`;
@@ -271,7 +272,7 @@ INSTALL_TRACKER_PAGE_HTML = r"""
         // Also show any remaining statuses
         Object.entries(counts).forEach(([status, count]) => {
             if (!statusOrder.includes(status) && count > 0) {
-                html += `<div class="item-tile other">
+                html += `<div class="item-tile other" onclick="window.location.href='/field?project=${currentProject}&status=${status}'" title="View ${statusLabels[status] || status} items">
                     <div class="mark">${count}</div>
                     <div class="sub">${statusLabels[status] || status}</div>
                 </div>`;
@@ -289,7 +290,7 @@ INSTALL_TRACKER_PAGE_HTML = r"""
             return;
         }
         container.innerHTML = records.slice(0, 15).map(r =>
-            `<div class="activity-item">
+            `<div class="activity-item" onclick="window.location.href='/field?project=${currentProject}&item=${r.item_id || r.ship_mark}'" title="View item details">
                 <strong>${r.ship_mark || r.item_id}</strong> installed by ${r.installed_by}
                 ${r.location ? ' at ' + r.location : ''}
                 <div class="ts">${r.installed_at ? new Date(r.installed_at).toLocaleString() : ''}</div>
@@ -312,7 +313,7 @@ INSTALL_TRACKER_PAGE_HTML = r"""
 
         let html = '<div style="margin-bottom:12px;">';
         Object.entries(byStat).forEach(([status, count]) => {
-            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;">
+            html += `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;cursor:pointer;border-radius:4px;padding-left:4px;padding-right:4px;" onclick="window.location.href='/field?project=${currentProject}&punch_status=${status}'" onmouseover="this.style.background='var(--tf-gray-50)'" onmouseout="this.style.background=''" title="View ${status.replace('_',' ')} punch items">
                 <span style="text-transform:capitalize;">${status.replace('_',' ')}</span>
                 <strong>${count}</strong>
             </div>`;
@@ -321,7 +322,7 @@ INSTALL_TRACKER_PAGE_HTML = r"""
         if (Object.keys(byPri).length > 0) {
             html += '<div style="border-top:1px solid var(--tf-gray-100);padding-top:8px;font-size:12px;color:var(--tf-gray-500);">';
             html += 'Active by priority: ';
-            html += Object.entries(byPri).map(([p, c]) => `${p}: ${c}`).join(', ');
+            html += Object.entries(byPri).map(([p, c]) => `<span style="cursor:pointer;text-decoration:underline;" onclick="window.location.href=\'/field?project=${currentProject}&punch_priority=${p}\'" title="View ${p} priority items">${p}: ${c}</span>`).join(', ');
             html += '</div>';
         }
         container.innerHTML = html;

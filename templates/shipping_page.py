@@ -1107,12 +1107,12 @@ SHIPPING_PAGE_HTML = """
                     }
 
                     const html = docs.map(doc => `
-                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;" onclick="printDocumentPreview('${doc.packing_list_id}', 'packing_list')" onmouseover="this.style.borderColor='var(--tf-gold)';this.style.boxShadow='0 2px 8px rgba(246,174,45,0.15)'" onmouseout="this.style.borderColor='var(--tf-border)';this.style.boxShadow='none'" title="Click to view and print">
                             <p><strong>${doc.packing_list_id}</strong> — ${doc.ship_date}</p>
                             <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
                                 ${doc.totals.total_pieces} pieces, ${doc.totals.total_weight_lbs} lbs
                             </p>
-                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.packing_list_id}', 'packing_list')">
+                            <button class="btn btn-small" onclick="event.stopPropagation(); printDocumentPreview('${doc.packing_list_id}', 'packing_list')">
                                 View & Print
                             </button>
                         </div>
@@ -1178,12 +1178,12 @@ SHIPPING_PAGE_HTML = """
                     }
 
                     const html = docs.map(doc => `
-                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;" onclick="printDocumentPreview('${doc.bol_number}', 'bill_of_lading')" onmouseover="this.style.borderColor='var(--tf-gold)';this.style.boxShadow='0 2px 8px rgba(246,174,45,0.15)'" onmouseout="this.style.borderColor='var(--tf-border)';this.style.boxShadow='none'" title="Click to view and print">
                             <p><strong>${doc.bol_number}</strong> — ${doc.bol_date}</p>
                             <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
                                 Carrier: ${doc.carrier.name} | Weight: ${doc.totals.total_weight_lbs} lbs
                             </p>
-                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.bol_number}', 'bill_of_lading')">
+                            <button class="btn btn-small" onclick="event.stopPropagation(); printDocumentPreview('${doc.bol_number}', 'bill_of_lading')">
                                 View & Print
                             </button>
                         </div>
@@ -1354,12 +1354,12 @@ SHIPPING_PAGE_HTML = """
                     }
 
                     const html = docs.map(doc => `
-                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius);">
+                        <div style="margin-bottom: var(--tf-sp-4); padding: var(--tf-sp-4); background-color: var(--tf-navy); border: 1px solid var(--tf-border); border-radius: var(--tf-radius); cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;" onclick="printDocumentPreview('${doc.po_number}', 'purchase_order')" onmouseover="this.style.borderColor='var(--tf-gold)';this.style.boxShadow='0 2px 8px rgba(246,174,45,0.15)'" onmouseout="this.style.borderColor='var(--tf-border)';this.style.boxShadow='none'" title="Click to view and print">
                             <p><strong>${doc.po_number}</strong> — ${doc.po_date}</p>
                             <p style="font-size: var(--tf-text-sm); color: var(--tf-text-muted);">
                                 Vendor: ${doc.vendor.name} | Total: $${doc.financial.total.toFixed(2)}
                             </p>
-                            <button class="btn btn-small" onclick="printDocumentPreview('${doc.po_number}', 'purchase_order')">
+                            <button class="btn btn-small" onclick="event.stopPropagation(); printDocumentPreview('${doc.po_number}', 'purchase_order')">
                                 View & Print
                             </button>
                         </div>

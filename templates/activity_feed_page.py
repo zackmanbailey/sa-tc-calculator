@@ -30,7 +30,9 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         .stat-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); padding: var(--tf-sp-4); text-align: center;
+            cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
         }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--tf-shadow-md); }
         .stat-card .val { font-size: var(--tf-text-2xl); font-weight: 800; }
         .stat-card .lbl { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
         .stat-card.blue .val { color: var(--tf-blue); }
@@ -61,6 +63,7 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         }
         .event-item:first-child { border-radius: var(--tf-radius-lg) var(--tf-radius-lg) 0 0; }
         .event-item:last-child { border-radius: 0 0 var(--tf-radius-lg) var(--tf-radius-lg); border-bottom: none; }
+        .event-item { cursor: pointer; }
         .event-item:hover { background: var(--tf-gray-50); }
 
         .event-icon {
@@ -143,10 +146,10 @@ ACTIVITY_FEED_PAGE_HTML = r"""
 
         <!-- Stat cards -->
         <div class="stat-row">
-            <div class="stat-card blue"><div class="val" id="statTotal">--</div><div class="lbl">Total Events</div></div>
-            <div class="stat-card green"><div class="val" id="statToday">--</div><div class="lbl">Today</div></div>
-            <div class="stat-card amber"><div class="val" id="statTypes">--</div><div class="lbl">Entity Types</div></div>
-            <div class="stat-card purple"><div class="val" id="statUsers">--</div><div class="lbl">Active Users</div></div>
+            <div class="stat-card blue" onclick="document.getElementById('filterEntityType').value='';resetAndLoad();"><div class="val" id="statTotal">--</div><div class="lbl">Total Events</div></div>
+            <div class="stat-card green" onclick="document.getElementById('filterEntityType').value='';resetAndLoad();"><div class="val" id="statToday">--</div><div class="lbl">Today</div></div>
+            <div class="stat-card amber" onclick="document.getElementById('filterEntityType').value='';resetAndLoad();"><div class="val" id="statTypes">--</div><div class="lbl">Entity Types</div></div>
+            <div class="stat-card purple" onclick="document.getElementById('filterEntityType').value='user';resetAndLoad();"><div class="val" id="statUsers">--</div><div class="lbl">Active Users</div></div>
         </div>
 
         <div class="main-grid">
@@ -321,7 +324,7 @@ ACTIVITY_FEED_PAGE_HTML = r"""
             if (details.role) desc += (desc ? ' | role: ' : '') + details.role;
             if (details.quantity) desc += (desc ? ' | ' : '') + details.quantity + ' lbs';
 
-            return `<li class="event-item">
+            return `<li class="event-item" onclick="navigateToEntity('${e.entity_type || ''}', '${(e.entity_id || '').replace(/'/g, "\\'")}', ${JSON.stringify(details).replace(/"/g, '&quot;')})">
                 <div class="event-icon ${color}">${icon}</div>
                 <div class="event-body">
                     <div class="event-title">${label}</div>
@@ -409,6 +412,30 @@ ACTIVITY_FEED_PAGE_HTML = r"""
         } else {
             actEl.innerHTML = '<div class="empty-state" style="padding:var(--tf-sp-3)">No actions</div>';
         }
+    }
+
+    function navigateToEntity(type, id, details) {
+        const jc = details && details.job_code ? details.job_code : '';
+        const routes = {
+            project: '/project/' + encodeURIComponent(id || jc),
+            customer: '/customers/' + encodeURIComponent(id),
+            coil: '/inventory',
+            quote: jc ? '/project/' + encodeURIComponent(jc) : '/projects',
+            work_order: jc ? '/work-orders/' + encodeURIComponent(jc) : '/work-orders',
+            work_order_item: jc ? '/work-orders/' + encodeURIComponent(jc) : '/work-orders',
+            inspection: jc ? '/qc/' + encodeURIComponent(jc) : '/qc-dashboard',
+            ncr: jc ? '/qc/' + encodeURIComponent(jc) + '#ncrs' : '/qc-dashboard',
+            traceability: jc ? '/qc/' + encodeURIComponent(jc) : '/inventory/traceability',
+            shipping: jc ? '/project/' + encodeURIComponent(jc) : '/shipping',
+            shop_drawing: jc ? '/shop-drawings/' + encodeURIComponent(jc) : '/shop-drawings',
+            user: '/admin/users',
+            welder: '/qa/welder-certs',
+            inspector: '/qa/inspector-registry',
+            calibration: '/qa/calibration',
+            wps: '/qa/wps',
+        };
+        const url = routes[type];
+        if (url) window.location.href = url;
     }
 
     loadAll();

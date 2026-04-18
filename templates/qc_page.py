@@ -199,11 +199,11 @@ QC_PAGE_HTML = r"""
 
         <!-- Stats -->
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:var(--tf-sp-4);margin-bottom:var(--tf-sp-6);">
-            <div class="stat-card"><div class="stat-icon blue">&#128203;</div><div class="stat-info"><div class="stat-label">Inspections</div><div class="stat-value" id="statInsp">0</div></div></div>
-            <div class="stat-card"><div class="stat-icon green">&#10003;</div><div class="stat-info"><div class="stat-label">Passed</div><div class="stat-value" id="statPassed">0</div></div></div>
-            <div class="stat-card"><div class="stat-icon amber">&#9888;</div><div class="stat-info"><div class="stat-label">Open NCRs</div><div class="stat-value" id="statNCR">0</div></div></div>
-            <div class="stat-card"><div class="stat-icon purple">&#128279;</div><div class="stat-info"><div class="stat-label">Heat Numbers</div><div class="stat-value" id="statHeats">0</div></div></div>
-            <div class="stat-card"><div class="stat-icon blue">&#128296;</div><div class="stat-info"><div class="stat-label">Members Traced</div><div class="stat-value" id="statMembers">0</div></div></div>
+            <div class="stat-card" style="cursor:pointer;" onclick="switchQCTab('inspections')"><div class="stat-icon blue">&#128203;</div><div class="stat-info"><div class="stat-label">Inspections</div><div class="stat-value" id="statInsp">0</div></div></div>
+            <div class="stat-card" style="cursor:pointer;" onclick="switchQCTab('inspections')"><div class="stat-icon green">&#10003;</div><div class="stat-info"><div class="stat-label">Passed</div><div class="stat-value" id="statPassed">0</div></div></div>
+            <div class="stat-card" style="cursor:pointer;" onclick="switchQCTab('ncrs')"><div class="stat-icon amber">&#9888;</div><div class="stat-info"><div class="stat-label">Open NCRs</div><div class="stat-value" id="statNCR">0</div></div></div>
+            <div class="stat-card" style="cursor:pointer;" onclick="switchQCTab('traceability')"><div class="stat-icon purple">&#128279;</div><div class="stat-info"><div class="stat-label">Heat Numbers</div><div class="stat-value" id="statHeats">0</div></div></div>
+            <div class="stat-card" style="cursor:pointer;" onclick="switchQCTab('traceability')"><div class="stat-icon blue">&#128296;</div><div class="stat-info"><div class="stat-label">Members Traced</div><div class="stat-value" id="statMembers">0</div></div></div>
         </div>
 
         <!-- Tabs -->

@@ -32,6 +32,8 @@ QC_QUEUE_PAGE_HTML = r"""
         .qc-stat-icon.total { background: var(--tf-blue-light); }
         .qc-stat-value { font-size: var(--tf-text-2xl); font-weight: 800; color: var(--tf-gray-900); }
         .qc-stat-label { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; }
+        .qc-stat { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+        .qc-stat:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 
         /* Filter bar */
         .filter-bar {
@@ -143,19 +145,19 @@ QC_QUEUE_PAGE_HTML = r"""
 
         <!-- Stats -->
         <div class="qc-stats">
-            <div class="qc-stat">
+            <div class="qc-stat" onclick="document.getElementById('filterStatus').value='fabricated';applyFilters();">
                 <div class="qc-stat-icon pending">&#9888;</div>
                 <div><div class="qc-stat-value" id="statPending">0</div><div class="qc-stat-label">Awaiting QC</div></div>
             </div>
-            <div class="qc-stat">
+            <div class="qc-stat" onclick="document.getElementById('filterStatus').value='';applyFilters();">
                 <div class="qc-stat-icon approved">&#10003;</div>
                 <div><div class="qc-stat-value" id="statApprovedToday">0</div><div class="qc-stat-label">Approved Today</div></div>
             </div>
-            <div class="qc-stat">
+            <div class="qc-stat" onclick="document.getElementById('filterStatus').value='';applyFilters();">
                 <div class="qc-stat-icon rejected">&#10007;</div>
                 <div><div class="qc-stat-value" id="statRejectedToday">0</div><div class="qc-stat-label">Rejected Today</div></div>
             </div>
-            <div class="qc-stat">
+            <div class="qc-stat" onclick="document.getElementById('filterStatus').value='';applyFilters();">
                 <div class="qc-stat-icon total">&#128203;</div>
                 <div><div class="qc-stat-value" id="statPassRate">—</div><div class="qc-stat-label">Pass Rate</div></div>
             </div>

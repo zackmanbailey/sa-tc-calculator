@@ -31,7 +31,9 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); padding: var(--tf-sp-5);
             text-align: center; position: relative;
+            cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
         }
+        .hero-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-color: var(--tf-blue-mid); }
         .hero-card .val { font-size: 36px; font-weight: 800; line-height: 1; }
         .hero-card .lbl { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
         .hero-card .sub { font-size: var(--tf-text-xs); color: var(--tf-gray-400); margin-top: 2px; }
@@ -45,7 +47,9 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
         .kpi-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-md); padding: var(--tf-sp-3) var(--tf-sp-4); text-align: center;
+            cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
         }
+        .kpi-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-color: var(--tf-blue-mid); }
         .kpi-card .val { font-size: var(--tf-text-lg); font-weight: 800; color: var(--tf-gray-900); }
         .kpi-card .lbl { font-size: 10px; color: var(--tf-gray-500); text-transform: uppercase; }
 
@@ -95,7 +99,9 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
         .machine-mini {
             border: 1px solid var(--tf-border); border-radius: var(--tf-radius-sm);
             padding: var(--tf-sp-2); text-align: center; font-size: 12px;
+            cursor: pointer; transition: border-color 0.2s, background 0.15s;
         }
+        .machine-mini:hover { border-color: var(--tf-blue-mid); background: var(--tf-gray-50); }
         .machine-mini .name { font-weight: 700; font-size: 11px; margin-bottom: 2px; }
         .machine-mini .active-dot {
             display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -161,19 +167,19 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
 
         <!-- Hero KPIs -->
         <div class="hero-row">
-            <div class="hero-card blue">
+            <div class="hero-card blue" onclick="window.location.href='/projects'">
                 <div class="val" id="heroProjects">—</div>
                 <div class="lbl">Active Projects</div>
             </div>
-            <div class="hero-card green">
+            <div class="hero-card green" onclick="window.location.href='/reports/production'">
                 <div class="val" id="heroFabPct">—</div>
                 <div class="lbl">Fabrication Complete</div>
             </div>
-            <div class="hero-card amber">
+            <div class="hero-card amber" onclick="window.location.href='/qc-dashboard'">
                 <div class="val" id="heroQCRate">—</div>
                 <div class="lbl">QC Pass Rate</div>
             </div>
-            <div class="hero-card" id="heroPunchCard">
+            <div class="hero-card" id="heroPunchCard" onclick="window.location.href='/field/completion'">
                 <div class="val" id="heroPunches">—</div>
                 <div class="lbl">Open Punch Items</div>
             </div>
@@ -181,13 +187,13 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
 
         <!-- Secondary KPIs -->
         <div class="kpi-row" id="secondaryKpis">
-            <div class="kpi-card"><div class="val" id="kpiTotalItems">—</div><div class="lbl">Total Items</div></div>
-            <div class="kpi-card"><div class="val" id="kpiShipped">—</div><div class="lbl">Items Shipped</div></div>
-            <div class="kpi-card"><div class="val" id="kpiInstalled">—</div><div class="lbl">Installed</div></div>
-            <div class="kpi-card"><div class="val" id="kpiFieldPct">—</div><div class="lbl">Field Complete</div></div>
-            <div class="kpi-card"><div class="val" id="kpiLoads">—</div><div class="lbl">Total Loads</div></div>
-            <div class="kpi-card"><div class="val" id="kpiWeight">—</div><div class="lbl">Lbs Shipped</div></div>
-            <div class="kpi-card"><div class="val" id="kpiAttention">—</div><div class="lbl">Needs Attention</div></div>
+            <div class="kpi-card" onclick="window.location.href='/shop-floor'"><div class="val" id="kpiTotalItems">—</div><div class="lbl">Total Items</div></div>
+            <div class="kpi-card" onclick="window.location.href='/shipping'"><div class="val" id="kpiShipped">—</div><div class="lbl">Items Shipped</div></div>
+            <div class="kpi-card" onclick="window.location.href='/field/completion'"><div class="val" id="kpiInstalled">—</div><div class="lbl">Installed</div></div>
+            <div class="kpi-card" onclick="window.location.href='/field/completion'"><div class="val" id="kpiFieldPct">—</div><div class="lbl">Field Complete</div></div>
+            <div class="kpi-card" onclick="window.location.href='/shipping'"><div class="val" id="kpiLoads">—</div><div class="lbl">Total Loads</div></div>
+            <div class="kpi-card" onclick="window.location.href='/shipping'"><div class="val" id="kpiWeight">—</div><div class="lbl">Lbs Shipped</div></div>
+            <div class="kpi-card" onclick="window.location.href='/shop-floor'"><div class="val" id="kpiAttention">—</div><div class="lbl">Needs Attention</div></div>
         </div>
 
         <!-- Shop Floor + Shipping -->
@@ -302,7 +308,7 @@ EXECUTIVE_SUMMARY_PAGE_HTML = r"""
             document.getElementById('machineGrid').innerHTML = mKeys.map(m => {
                 const d = machines[m];
                 const dot = d.active > 0 ? 'green' : d.queued > 0 ? 'amber' : 'red';
-                return `<div class="machine-mini">
+                return `<div class="machine-mini" onclick="window.location.href='/work-station/${encodeURIComponent(m)}'">
                     <div class="name">${d.label || m}</div>
                     <span class="active-dot" style="background:var(--tf-${dot === 'green' ? 'success' : dot === 'amber' ? 'amber' : 'gray-300'})"></span>
                     ${d.active} active · ${d.queued} queued

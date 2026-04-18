@@ -28,6 +28,8 @@ QC_DASHBOARD_PAGE_HTML = r"""
         .metric-card .value { font-size: var(--tf-text-2xl); font-weight: 800; color: var(--tf-gray-900); }
         .metric-card .label { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
         .metric-card .sublabel { font-size: 11px; color: var(--tf-gray-400); margin-top: 4px; }
+        .metric-card { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: var(--tf-shadow-md); }
         .metric-card.highlight { border-color: var(--tf-blue); border-width: 2px; }
         .metric-card.danger { border-left: 4px solid var(--tf-danger); }
         .metric-card.success { border-left: 4px solid var(--tf-success); }
@@ -47,7 +49,8 @@ QC_DASHBOARD_PAGE_HTML = r"""
 
         /* Bar chart */
         .bar-chart { display: flex; flex-direction: column; gap: 8px; }
-        .bar-row { display: flex; align-items: center; gap: 10px; }
+        .bar-row { display: flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 4px; padding: 2px 0; transition: background 0.15s; }
+        .bar-row:hover { background: var(--tf-blue-light); }
         .bar-label { width: 120px; font-size: var(--tf-text-xs); font-weight: 600; color: var(--tf-gray-700); text-align: right; }
         .bar-track { flex: 1; height: 22px; background: var(--tf-gray-100); border-radius: 4px; overflow: hidden; position: relative; }
         .bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; }
@@ -59,6 +62,7 @@ QC_DASHBOARD_PAGE_HTML = r"""
         .insp-table th { text-align: left; padding: 8px 10px; font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; border-bottom: 2px solid var(--tf-border); }
         .insp-table td { padding: 8px 10px; border-bottom: 1px solid var(--tf-border); }
         .insp-table tr:hover td { background: var(--tf-blue-light); }
+        .insp-table tbody tr { cursor: pointer; }
 
         /* Recent list */
         .recent-item {
@@ -68,6 +72,8 @@ QC_DASHBOARD_PAGE_HTML = r"""
         .recent-item:last-child { border-bottom: none; }
         .recent-item .left { display: flex; flex-direction: column; gap: 2px; }
         .recent-item .title { font-size: var(--tf-text-sm); font-weight: 600; color: var(--tf-gray-900); }
+        .recent-item { cursor: pointer; transition: background 0.15s; }
+        .recent-item:hover { background: var(--tf-blue-light); }
         .recent-item .meta { font-size: 11px; color: var(--tf-gray-500); }
 
         /* Status badges */
@@ -120,11 +126,11 @@ QC_DASHBOARD_PAGE_HTML = r"""
 
         <!-- Top metrics -->
         <div class="metric-row" id="metricsRow">
-            <div class="metric-card highlight"><div class="value" id="mTotal">—</div><div class="label">Total Inspections</div></div>
-            <div class="metric-card success"><div class="value" id="mPassed">—</div><div class="label">Passed</div></div>
-            <div class="metric-card danger"><div class="value" id="mFailed">—</div><div class="label">Failed</div></div>
-            <div class="metric-card danger"><div class="value" id="mOpenNCRs">—</div><div class="label">Open NCRs</div><div class="sublabel" id="mCritical"></div></div>
-            <div class="metric-card"><div class="value" id="mAwaiting">—</div><div class="label">Items Awaiting QC</div></div>
+            <div class="metric-card highlight" onclick="window.location.href='/qc-queue'"><div class="value" id="mTotal">—</div><div class="label">Total Inspections</div></div>
+            <div class="metric-card success" onclick="window.location.href='/qc-queue?status=passed'"><div class="value" id="mPassed">—</div><div class="label">Passed</div></div>
+            <div class="metric-card danger" onclick="window.location.href='/qc-queue?status=failed'"><div class="value" id="mFailed">—</div><div class="label">Failed</div></div>
+            <div class="metric-card danger" onclick="window.location.href='/qc-queue?status=open_ncrs'"><div class="value" id="mOpenNCRs">—</div><div class="label">Open NCRs</div><div class="sublabel" id="mCritical"></div></div>
+            <div class="metric-card" onclick="window.location.href='/qc-queue?status=fabricated'"><div class="value" id="mAwaiting">—</div><div class="label">Items Awaiting QC</div></div>
         </div>
 
         <!-- Dashboard grid -->
@@ -224,7 +230,7 @@ function renderDashboard() {
         .sort((a,b) => b[1]-a[1])
         .map(([k,v]) => {
             const pctW = Math.round(v/maxType*100);
-            return `<div class="bar-row">
+            return `<div class="bar-row" onclick="window.location.href='/qc-queue?type=${encodeURIComponent(k)}'">
                 <div class="bar-label">${TYPE_LABELS[k]||k}</div>
                 <div class="bar-track"><div class="bar-fill" style="width:${pctW}%;background:${typeColors[k]||'var(--tf-blue)'}"><span>${v}</span></div></div>
                 <div class="bar-count">${v}</div>
@@ -253,7 +259,7 @@ function renderDashboard() {
     // Recent NCRs
     const ncrs = m.recent_ncrs || [];
     document.getElementById('recentNCRs').innerHTML = ncrs.slice(0,8).map(n =>
-        `<div class="recent-item">
+        `<div class="recent-item" onclick="window.location.href='/qc/${encodeURIComponent(n.job_code)}#ncrs'">
             <div class="left">
                 <div class="title">${n.id}: ${n.title}</div>
                 <div class="meta">${n.job_code} &middot; ${n.reported_by} &middot; ${n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}</div>
@@ -270,7 +276,7 @@ function renderDashboard() {
         let html = `<table class="insp-table"><thead><tr><th>Inspector</th><th>Total</th><th>Passed</th><th>Failed</th><th>Rate</th></tr></thead><tbody>`;
         for (const [name, data] of Object.entries(inspectors).sort((a,b) => b[1].total - a[1].total)) {
             const rate = data.total ? Math.round(data.passed / data.total * 100) : 0;
-            html += `<tr><td style="font-weight:600;">${name}</td><td>${data.total}</td>
+            html += `<tr onclick="window.location.href='/qc-queue?inspector=${encodeURIComponent(name)}'"><td style="font-weight:600;">${name}</td><td>${data.total}</td>
                 <td style="color:var(--tf-success);">${data.passed}</td>
                 <td style="color:var(--tf-danger);">${data.failed}</td>
                 <td><strong>${rate}%</strong></td></tr>`;
@@ -284,7 +290,7 @@ function renderDashboard() {
     // Recent inspections
     const insp = m.recent_inspections || [];
     document.getElementById('recentInspections').innerHTML = insp.slice(0,10).map(i =>
-        `<div class="recent-item">
+        `<div class="recent-item" onclick="window.location.href='/qc/${encodeURIComponent(i.job_code)}'">
             <div class="left">
                 <div class="title">${i.type_label || i.type}</div>
                 <div class="meta">${i.job_code} &middot; ${i.inspector} &middot; ${i.created_at ? new Date(i.created_at).toLocaleDateString() : ''}</div>

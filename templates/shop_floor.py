@@ -100,10 +100,12 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     padding: 16px;
     text-align: center;
     transition: box-shadow 0.2s;
+    cursor: pointer;
 }
 
 .kpi-card:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-color: var(--tf-blue-mid);
 }
 
 .kpi-value {
@@ -161,10 +163,12 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     transition: all 0.2s;
     position: relative;
     overflow: hidden;
+    cursor: pointer;
 }
 
 .machine-card:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-color: var(--tf-blue-mid);
 }
 
 .machine-card.busy {
@@ -232,6 +236,13 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     align-items: center;
     padding: 4px 0;
     font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 4px 4px;
+}
+
+.machine-active-item:hover {
+    background: var(--tf-bg);
 }
 
 .machine-active-item .mark {
@@ -345,9 +356,15 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 .feed-item {
     display: flex;
     gap: 10px;
-    padding: 8px 0;
+    padding: 8px 4px;
     border-bottom: 1px solid var(--tf-border);
     font-size: 0.8rem;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.feed-item:hover {
+    background: var(--tf-bg);
 }
 
 .feed-item:last-child {
@@ -447,13 +464,13 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 
     <!-- KPI Row -->
     <div class="kpi-row" id="kpiRow">
-        <div class="kpi-card"><div class="kpi-value" id="kpiActiveWOs">-</div><div class="kpi-label">Active Work Orders</div></div>
-        <div class="kpi-card"><div class="kpi-value amber" id="kpiInProgress">-</div><div class="kpi-label">Items In Progress</div></div>
-        <div class="kpi-card"><div class="kpi-value green" id="kpiTodayCompleted">-</div><div class="kpi-label">Completed Today</div></div>
-        <div class="kpi-card"><div class="kpi-value blue" id="kpiTotalCompleted">-</div><div class="kpi-label">Total Completed</div></div>
-        <div class="kpi-card"><div class="kpi-value" id="kpiTotalItems">-</div><div class="kpi-label">Total Items</div></div>
-        <div class="kpi-card"><div class="kpi-value green" id="kpiAvgFab">-</div><div class="kpi-label">Avg Fab Time (min)</div></div>
-        <div class="kpi-card"><div class="kpi-value blue" id="kpiTotalFab">-</div><div class="kpi-label">Total Fab Time (hr)</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value" id="kpiActiveWOs">-</div><div class="kpi-label">Active Work Orders</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value amber" id="kpiInProgress">-</div><div class="kpi-label">Items In Progress</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value green" id="kpiTodayCompleted">-</div><div class="kpi-label">Completed Today</div></div>
+        <div class="kpi-card" onclick="window.location.href='/qc-dashboard'"><div class="kpi-value blue" id="kpiTotalCompleted">-</div><div class="kpi-label">Total Completed</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value" id="kpiTotalItems">-</div><div class="kpi-label">Total Items</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value green" id="kpiAvgFab">-</div><div class="kpi-label">Avg Fab Time (min)</div></div>
+        <div class="kpi-card" onclick="window.location.href='/reports/production'"><div class="kpi-value blue" id="kpiTotalFab">-</div><div class="kpi-label">Total Fab Time (hr)</div></div>
     </div>
 
     <!-- Status distribution -->
@@ -554,7 +571,7 @@ function renderDashboard(data) {
             for (const item of m.active_items.slice(0, 3)) {
                 const elapsed = item.started_at ? getElapsed(item.started_at) : '';
                 activeItemsHtml += `
-                    <div class="machine-active-item">
+                    <div class="machine-active-item" onclick="event.stopPropagation(); window.location.href='/work-station/${encodeURIComponent(mId)}'">
                         <span class="mark">${item.ship_mark}</span>
                         <span class="job">${item.job_code}</span>
                         <span class="elapsed">${elapsed}</span>
@@ -569,7 +586,7 @@ function renderDashboard(data) {
         const avgTime = m.completed > 0 ? (m.total_fab_minutes / m.completed).toFixed(1) : '-';
 
         mHtml += `
-        <div class="machine-card ${cls}">
+        <div class="machine-card ${cls}" onclick="window.location.href='/work-station/${encodeURIComponent(mId)}'">
             <div class="machine-name">${mId}</div>
             <div class="machine-location">${m.name}</div>
             <div class="machine-stats">
@@ -631,7 +648,7 @@ function renderDashboard(data) {
             const durStr = isFinished && evt.duration > 0 ? ` (${evt.duration.toFixed(1)} min)` : '';
 
             feedHtml += `
-            <div class="feed-item">
+            <div class="feed-item" onclick="window.location.href='/work-station/${encodeURIComponent(evt.machine)}'">
                 <div class="feed-dot ${evt.type}"></div>
                 <div class="feed-content">
                     <div class="feed-action">${evt.ship_mark} ${isFinished ? 'finished' : 'started'} on ${evt.machine}${durStr}</div>

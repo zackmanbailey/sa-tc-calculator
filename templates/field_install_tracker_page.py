@@ -36,7 +36,10 @@ FIELD_INSTALL_TRACKER_PAGE_HTML = r"""
         padding: 14px 22px;
         text-align: center;
         min-width: 140px;
+        cursor: pointer; transition: border-color 0.15s, background 0.15s;
     }
+    .summary-pill:hover { border-color: rgba(212,168,67,0.4); background: rgba(212,168,67,0.06); }
+    .summary-pill.active { border-color: var(--tf-gold); background: rgba(212,168,67,0.1); }
     .summary-pill .num {
         font-size: 24px; font-weight: 800; color: var(--tf-gold);
     }
@@ -53,8 +56,9 @@ FIELD_INSTALL_TRACKER_PAGE_HTML = r"""
         border-radius: 12px;
         padding: 24px;
         border: 1px solid rgba(255,255,255,0.06);
+        cursor: pointer; transition: border-color 0.15s, transform 0.15s;
     }
-    .install-card:hover { border-color: rgba(212,168,67,0.3); }
+    .install-card:hover { border-color: rgba(212,168,67,0.3); transform: translateY(-2px); }
     .card-title {
         font-size: 16px; font-weight: 700; margin: 0 0 4px 0; color: var(--tf-text);
     }
@@ -146,16 +150,18 @@ async function loadInstallProjects() {
         const completed = projects.filter(p => (p.stage||'').toLowerCase().includes('complete')).length;
         bar.style.display = 'flex';
         bar.innerHTML =
-            '<div class="summary-pill"><div class="num">' + projects.length + '</div><div class="lbl">Total</div></div>' +
-            '<div class="summary-pill"><div class="num">' + shipping + '</div><div class="lbl">Shipping</div></div>' +
-            '<div class="summary-pill"><div class="num">' + installing + '</div><div class="lbl">Installing</div></div>' +
-            '<div class="summary-pill"><div class="num">' + completed + '</div><div class="lbl">Completed</div></div>';
+            '<div class="summary-pill" onclick="filterInstallCards(\'all\')" data-filter="all"><div class="num">' + projects.length + '</div><div class="lbl">Total</div></div>' +
+            '<div class="summary-pill" onclick="filterInstallCards(\'ship\')" data-filter="ship"><div class="num">' + shipping + '</div><div class="lbl">Shipping</div></div>' +
+            '<div class="summary-pill" onclick="filterInstallCards(\'install\')" data-filter="install"><div class="num">' + installing + '</div><div class="lbl">Installing</div></div>' +
+            '<div class="summary-pill" onclick="filterInstallCards(\'complete\')" data-filter="complete"><div class="num">' + completed + '</div><div class="lbl">Completed</div></div>';
 
+        allInstallProjects = projects;
         wrap.className = 'project-grid';
         wrap.innerHTML = projects.map(p => {
             const stage = p.stage || p.status || '';
             const pct = p.completion_pct != null ? Math.round(p.completion_pct) : estimateProgress(stage);
-            return '<div class="install-card">' +
+            const jobCode = p.job_code || p.id || '';
+            return '<div class="install-card" data-stage="' + stage.toLowerCase() + '" onclick="window.location.href=\'/projects/' + encodeURIComponent(jobCode) + '\'">' +
                 '<h3 class="card-title">' + (p.project_name || p.name || 'Unnamed') + '</h3>' +
                 '<div class="card-code">' + (p.job_code || p.id || '') + '</div>' +
                 '<div class="card-row"><span class="label">Customer</span><span class="value">' + (p.customer || p.customer_name || '—') + '</span></div>' +
@@ -170,6 +176,25 @@ async function loadInstallProjects() {
         wrap.className = '';
         wrap.innerHTML = '<div class="empty-state"><h3>Unable to load projects</h3><p>' + err.message + '</p></div>';
     }
+}
+
+var allInstallProjects = [];
+
+function filterInstallCards(filter) {
+    // Highlight active pill
+    document.querySelectorAll('.summary-pill').forEach(p => p.classList.remove('active'));
+    const activePill = document.querySelector('.summary-pill[data-filter="' + filter + '"]');
+    if (activePill) activePill.classList.add('active');
+
+    const cards = document.querySelectorAll('.install-card');
+    cards.forEach(card => {
+        const stage = card.getAttribute('data-stage') || '';
+        if (filter === 'all') {
+            card.style.display = '';
+        } else {
+            card.style.display = stage.includes(filter) ? '' : 'none';
+        }
+    });
 }
 
 loadInstallProjects();

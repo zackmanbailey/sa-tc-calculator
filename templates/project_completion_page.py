@@ -30,7 +30,9 @@ PROJECT_COMPLETION_PAGE_HTML = r"""
         .summary-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); padding: var(--tf-sp-5); text-align: center;
+            cursor: pointer; transition: box-shadow 0.15s, transform 0.15s;
         }
+        .summary-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
         .summary-card .val { font-size: var(--tf-text-2xl); font-weight: 800; color: var(--tf-gray-900); }
         .summary-card .lbl { font-size: var(--tf-text-xs); color: var(--tf-gray-500); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
         .summary-card.green { border-left: 4px solid var(--tf-success); }
@@ -44,9 +46,9 @@ PROJECT_COMPLETION_PAGE_HTML = r"""
         .project-card {
             background: var(--tf-surface); border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius-lg); overflow: hidden;
-            transition: box-shadow 0.15s;
+            transition: box-shadow 0.15s, transform 0.15s; cursor: pointer;
         }
-        .project-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .project-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
         .project-card-header {
             padding: var(--tf-sp-4) var(--tf-sp-5);
             display: flex; justify-content: space-between; align-items: center;
@@ -133,11 +135,11 @@ PROJECT_COMPLETION_PAGE_HTML = r"""
 
         <!-- Summary cards -->
         <div class="summary-row" id="summaryRow">
-            <div class="summary-card blue"><div class="val" id="sumProjects">—</div><div class="lbl">Active Projects</div></div>
-            <div class="summary-card green"><div class="val" id="sumInstalled">—</div><div class="lbl">Items Installed</div></div>
-            <div class="summary-card purple"><div class="val" id="sumDelivered">—</div><div class="lbl">Items Delivered</div></div>
-            <div class="summary-card red"><div class="val" id="sumPunches">—</div><div class="lbl">Open Punch Items</div></div>
-            <div class="summary-card amber"><div class="val" id="sumCompletion">—</div><div class="lbl">Overall Completion</div></div>
+            <div class="summary-card blue" onclick="document.getElementById('projectsGrid').scrollIntoView({behavior:'smooth'})" title="View active projects"><div class="val" id="sumProjects">—</div><div class="lbl">Active Projects</div></div>
+            <div class="summary-card green" onclick="window.location.href='/field/install-tracker'" title="View installed items"><div class="val" id="sumInstalled">—</div><div class="lbl">Items Installed</div></div>
+            <div class="summary-card purple" onclick="window.location.href='/field/install-tracker'" title="View delivered items"><div class="val" id="sumDelivered">—</div><div class="lbl">Items Delivered</div></div>
+            <div class="summary-card red" onclick="window.location.href='/field'" title="View open punch items"><div class="val" id="sumPunches">—</div><div class="lbl">Open Punch Items</div></div>
+            <div class="summary-card amber" onclick="document.getElementById('projectsGrid').scrollIntoView({behavior:'smooth'})" title="View completion details"><div class="val" id="sumCompletion">—</div><div class="lbl">Overall Completion</div></div>
         </div>
 
         <!-- Project cards -->
@@ -204,7 +206,7 @@ PROJECT_COMPLETION_PAGE_HTML = r"""
                 punchHtml = '<span class="punch-badge ok">Clear</span>';
             }
 
-            return `<div class="project-card">
+            return `<div class="project-card" onclick="window.location.href='/project/${p.job_code}'" title="View project ${p.job_code}">
                 <div class="project-card-header">
                     <span class="job">${p.job_code}</span>
                     <span class="pct ${pctClass}">${pct}%</span>
@@ -226,8 +228,8 @@ PROJECT_COMPLETION_PAGE_HTML = r"""
                         ${p.daily_reports_count || 0} daily reports · ${p.total_work_orders || 0} work orders
                     </div>
                     <div class="card-actions">
-                        <a href="/field/install-tracker?project=${p.job_code}">Install Tracker</a>
-                        <a href="/field?project=${p.job_code}">Field Ops</a>
+                        <a href="/field/install-tracker?project=${p.job_code}" onclick="event.stopPropagation()">Install Tracker</a>
+                        <a href="/field?project=${p.job_code}" onclick="event.stopPropagation()">Field Ops</a>
                     </div>
                 </div>
             </div>`;

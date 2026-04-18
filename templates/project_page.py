@@ -144,6 +144,7 @@ PROJECT_PAGE_HTML = r"""
             transition: all 300ms var(--tf-ease);
             position: relative;
             z-index: 2;
+            cursor: pointer;
         }
 
         .pj-dot.done {
@@ -367,6 +368,12 @@ PROJECT_PAGE_HTML = r"""
             text-decoration: none;
         }
         .info-row .value a:hover { text-decoration: underline; }
+
+        .info-row .value.clickable {
+            cursor: pointer;
+            color: var(--tf-blue);
+        }
+        .info-row .value.clickable:hover { text-decoration: underline; }
 
         /* Document Card Grid */
         .docs-section {
@@ -658,6 +665,11 @@ PROJECT_PAGE_HTML = r"""
             font-size: var(--tf-text-md);
             font-weight: 700;
             color: var(--tf-gray-900);
+            cursor: pointer;
+        }
+
+        .intel-stat-value:hover {
+            text-decoration: underline;
         }
 
         .intel-stat-value.highlight { color: var(--tf-success); }
@@ -1025,12 +1037,40 @@ PROJECT_PAGE_HTML = r"""
             var container = document.getElementById('pipelineDots');
             container.innerHTML = '';
 
-            PJ_STAGES.forEach(function(s, i) {
+            var PJ_DESCRIPTIONS = {
+            'quote': 'Initial estimate and pricing for the customer.',
+            'contract': 'Signed agreement and deposit collected.',
+            'engineering': 'Structural calculations and PE-stamped drawings.',
+            'shop_drawings': 'Detailed fabrication drawings for the shop floor.',
+            'fabrication': 'Steel cutting, welding, and assembly in the shop.',
+            'shipping': 'Loading, transport, and delivery to the job site.',
+            'install': 'On-site erection and final installation.'
+        };
+
+        PJ_STAGES.forEach(function(s, i) {
                 var dot = document.createElement('div');
                 dot.className = 'pj-step';
 
                 var circle = document.createElement('div');
                 circle.className = 'pj-dot';
+                circle.title = (PJ_LABELS[s] || s) + ': ' + (PJ_DESCRIPTIONS[s] || '');
+                circle.onclick = (function(stage, idx) {
+                    return function(e) {
+                        e.stopPropagation();
+                        var desc = PJ_DESCRIPTIONS[stage] || 'Project stage.';
+                        var status = (isComplete || idx < currentIdx) ? 'Completed' : (idx === currentIdx ? 'Current Stage' : 'Upcoming');
+                        var existing = document.getElementById('pj-stage-info');
+                        if (existing) existing.remove();
+                        var popup = document.createElement('div');
+                        popup.id = 'pj-stage-info';
+                        popup.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--tf-surface);border:2px solid var(--tf-blue);border-radius:var(--tf-radius-lg);padding:20px 24px;z-index:200;box-shadow:var(--tf-shadow-lg);max-width:340px;text-align:center;';
+                        popup.innerHTML = '<div style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin-bottom:8px;">' + (PJ_LABELS[stage] || stage) + '</div>' +
+                            '<div style="font-size:var(--tf-text-sm);color:var(--tf-gray-600);margin-bottom:8px;">' + desc + '</div>' +
+                            '<div style="font-size:var(--tf-text-xs);font-weight:600;color:' + (status === 'Completed' ? 'var(--tf-success)' : status === 'Current Stage' ? 'var(--tf-blue)' : 'var(--tf-gray-400)') + ';">' + status + '</div>' +
+                            '<button onclick="this.parentElement.remove()" style="margin-top:12px;padding:4px 16px;border:1px solid var(--tf-border);border-radius:var(--tf-radius);background:var(--tf-surface);color:var(--tf-gray-700);cursor:pointer;font-size:var(--tf-text-sm);">Close</button>';
+                        document.body.appendChild(popup);
+                    };
+                })(s, i);
 
                 var label = document.createElement('div');
                 label.className = 'pj-label';
@@ -1076,7 +1116,10 @@ PROJECT_PAGE_HTML = r"""
         function renderCustomerCard() {
             var c = METADATA.customer || {};
             var html = '';
-            if (c.name) html += '<div class="info-row"><span class="label">Name</span><span class="value">' + esc(c.name) + '</span></div>';
+            if (c.name) {
+                var custUrl = c.id ? '/customers/' + encodeURIComponent(c.id) : '/customers';
+                html += '<div class="info-row"><span class="label">Name</span><span class="value clickable" onclick="window.location.href=\'' + custUrl + '\'" title="View customer details">' + esc(c.name) + '</span></div>';
+            }
             if (c.phone) html += '<div class="info-row"><span class="label">Phone</span><span class="value"><a href="tel:' + esc(c.phone) + '">' + esc(c.phone) + '</a></span></div>';
             if (c.email) html += '<div class="info-row"><span class="label">Email</span><span class="value"><a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a></span></div>';
             if (!html) html = '<div style="color: var(--tf-gray-400); font-size: var(--tf-text-sm);">No customer info yet</div>';
@@ -1086,11 +1129,13 @@ PROJECT_PAGE_HTML = r"""
         function renderLocationCard() {
             var loc = METADATA.location || {};
             var html = '';
-            if (loc.street) html += '<div class="info-row"><span class="label">Street</span><span class="value">' + esc(loc.street) + '</span></div>';
+            var fullAddress = [loc.street, loc.city, loc.state, loc.zip].filter(Boolean).join(' ');
+            var mapsUrl = fullAddress ? 'https://www.google.com/maps/search/' + encodeURIComponent(fullAddress) : '';
+            if (loc.street) html += '<div class="info-row"><span class="label">Street</span><span class="value clickable" onclick="if(\'' + esc(mapsUrl) + '\') window.open(\'' + esc(mapsUrl) + '\', \'_blank\')" title="Open in Google Maps">' + esc(loc.street) + '</span></div>';
             if (loc.city || loc.state || loc.zip) {
                 var csz = [loc.city, loc.state].filter(Boolean).join(', ');
                 if (loc.zip) csz += ' ' + loc.zip;
-                html += '<div class="info-row"><span class="label">City/State</span><span class="value">' + esc(csz) + '</span></div>';
+                html += '<div class="info-row"><span class="label">City/State</span><span class="value clickable" onclick="if(\'' + esc(mapsUrl) + '\') window.open(\'' + esc(mapsUrl) + '\', \'_blank\')" title="Open in Google Maps">' + esc(csz) + '</span></div>';
             }
             if (!html) html = '<div style="color: var(--tf-gray-400); font-size: var(--tf-text-sm);">No location info yet</div>';
             document.getElementById('locationInfo').innerHTML = html;
@@ -1590,30 +1635,32 @@ PROJECT_PAGE_HTML = r"""
             var sqft = project.width && project.length ? (parseFloat(project.width) * parseFloat(project.length)) : 0;
             var pricePerSqft = sqft > 0 ? (sellPrice / sqft) : 0;
 
+            var costingUrl = '/job-costing?project=' + encodeURIComponent(JOB_CODE);
+
             if (sellPrice > 0) {
-                html += '<div class="intel-stat"><span class="intel-stat-label">Sell Price</span><span class="intel-stat-value highlight">$' + Number(sellPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span></div>';
+                html += '<div class="intel-stat"><span class="intel-stat-label">Sell Price</span><span class="intel-stat-value highlight" onclick="window.location.href=\'' + costingUrl + '\'" title="View in Job Costing">$' + Number(sellPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span></div>';
             }
 
             if (pricePerSqft > 0) {
-                html += '<div class="intel-stat"><span class="intel-stat-label">Price / Sq Ft</span><span class="intel-stat-value">$' + pricePerSqft.toFixed(2) + '</span></div>';
+                html += '<div class="intel-stat"><span class="intel-stat-label">Price / Sq Ft</span><span class="intel-stat-value" onclick="window.location.href=\'' + costingUrl + '\'" title="View in Job Costing">$' + pricePerSqft.toFixed(2) + '</span></div>';
             }
 
             // Steel weight
             var steelWeight = totals.totalWeight || totals.total_weight || 0;
             if (steelWeight > 0) {
-                html += '<div class="intel-stat"><span class="intel-stat-label">Steel Weight</span><span class="intel-stat-value">' + Number(steelWeight).toLocaleString() + ' lbs</span></div>';
+                html += '<div class="intel-stat"><span class="intel-stat-label">Steel Weight</span><span class="intel-stat-value" onclick="window.location.href=\'' + costingUrl + '\'" title="View in Job Costing">' + Number(steelWeight).toLocaleString() + ' lbs</span></div>';
             }
 
             // Sq footage
             if (sqft > 0) {
-                html += '<div class="intel-stat"><span class="intel-stat-label">Square Footage</span><span class="intel-stat-value">' + Number(sqft).toLocaleString() + ' sq ft</span></div>';
+                html += '<div class="intel-stat"><span class="intel-stat-label">Square Footage</span><span class="intel-stat-value" onclick="window.location.href=\'' + costingUrl + '\'" title="View in Job Costing">' + Number(sqft).toLocaleString() + ' sq ft</span></div>';
             }
 
             // Options checked
             var options = calcData.options || tc.options || {};
             var checkedOpts = Object.keys(options).filter(function(k) { return options[k] === true || options[k] === 'yes'; });
             if (checkedOpts.length > 0) {
-                html += '<div class="intel-stat"><span class="intel-stat-label">Options Selected</span><span class="intel-stat-value">' + checkedOpts.length + '</span></div>';
+                html += '<div class="intel-stat"><span class="intel-stat-label">Options Selected</span><span class="intel-stat-value" onclick="window.location.href=\'' + costingUrl + '\'" title="View in Job Costing">' + checkedOpts.length + '</span></div>';
             }
 
             if (!html) {

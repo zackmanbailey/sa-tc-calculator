@@ -90,6 +90,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     padding: 8px 10px; border-bottom: 1px solid var(--tf-gray-200);
     vertical-align: middle;
 }
+.fp-table tbody tr { cursor: pointer; transition: background 0.15s; }
 .fp-table tr:hover { background: #f8faff; }
 .fp-table .status-badge {
     display: inline-block; padding: 2px 8px; border-radius: 12px;
@@ -132,7 +133,9 @@ input.fp-priority {
 .fp-attention {
     background: #fef3c7; border-left: 3px solid var(--tf-yellow);
     padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 8px;
+    cursor: pointer; transition: background 0.15s;
 }
+.fp-attention:hover { background: #fde68a; }
 .fp-attention .title { font-weight: 600; font-size: 0.85rem; }
 .fp-attention .detail { font-size: 0.78rem; color: var(--tf-gray-600); margin-top: 2px; }
 
@@ -349,7 +352,7 @@ function renderAttention(items) {
         return;
     }
     el.innerHTML = items.slice(0, 10).map(i => `
-        <div class="fp-attention">
+        <div class="fp-attention" onclick="window.location.href='/work-station/${encodeURIComponent(i.job_code)}'">
             <div class="title">${i.ship_mark} — ${i.component_type} (${i.job_code})</div>
             <div class="detail">Status: ${statusLabel(i.status)} | Machine: ${i.machine}
                 ${i.qc_notes ? ' | QC: ' + i.qc_notes : ''}</div>
@@ -375,20 +378,20 @@ function renderUnassigned() {
     }
 
     body.innerHTML = unassigned.map(i => `
-        <tr data-item='${JSON.stringify({job_code: i._job_code, item_id: i.item_id})}'>
-            <td><input type="checkbox" class="item-check" value="${i.item_id}"></td>
+        <tr data-item='${JSON.stringify({job_code: i._job_code, item_id: i.item_id})}' onclick="window.location.href='/work-station/${encodeURIComponent(i._job_code)}'">
+            <td><input type="checkbox" class="item-check" value="${i.item_id}" onclick="event.stopPropagation()"></td>
             <td><strong>${i.ship_mark}</strong></td>
             <td>${i.component_type}</td>
             <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${i.description}</td>
             <td>${i._job_code}</td>
             <td>${i.machine}</td>
             <td><span class="status-badge ${statusColor(i.status)}">${statusLabel(i.status)}</span></td>
-            <td><input class="fp-priority" type="number" value="${i.priority || 50}" min="1" max="99"></td>
-            <td><select class="fp-select operator-select">
+            <td><input class="fp-priority" type="number" value="${i.priority || 50}" min="1" max="99" onclick="event.stopPropagation()"></td>
+            <td><select class="fp-select operator-select" onclick="event.stopPropagation()">
                 <option value="">Select...</option>
                 ${operators.map(o => `<option value="${o}">${o}</option>`).join('')}
             </select></td>
-            <td><button class="fp-assign-btn" onclick="assignItem(this)">Assign</button></td>
+            <td><button class="fp-assign-btn" onclick="event.stopPropagation(); assignItem(this)">Assign</button></td>
         </tr>
     `).join('');
 }
@@ -406,7 +409,7 @@ function renderAssigned() {
     }
 
     body.innerHTML = assigned.map(i => `
-        <tr>
+        <tr onclick="window.location.href='/work-station/${encodeURIComponent(i._job_code)}'">
             <td><strong>${i.ship_mark}</strong></td>
             <td>${i.component_type}</td>
             <td>${i._job_code}</td>
@@ -416,7 +419,7 @@ function renderAssigned() {
             <td><span class="status-badge ${statusColor(i.status)}">${statusLabel(i.status)}</span></td>
             <td>${i.started_at ? new Date(i.started_at).toLocaleTimeString() : '—'}</td>
             <td>
-                <select class="fp-select" onchange="reassignItem('${i._job_code}','${i.item_id}',this.value)">
+                <select class="fp-select" onclick="event.stopPropagation()" onchange="event.stopPropagation(); reassignItem('${i._job_code}','${i.item_id}',this.value)">
                     <option value="${i.assigned_to}">${i.assigned_to}</option>
                     ${operators.filter(o=>o!==i.assigned_to).map(o => `<option value="${o}">${o}</option>`).join('')}
                 </select>

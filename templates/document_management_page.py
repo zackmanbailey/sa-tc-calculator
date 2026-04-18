@@ -33,7 +33,9 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
   .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
                gap: 12px; margin-bottom: 20px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
-               border-radius: 8px; padding: 16px; text-align: center; }
+               border-radius: 8px; padding: 16px; text-align: center;
+               cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .stat-card:hover { border-color: var(--accent); background: rgba(59,130,246,0.06); }
   .stat-card .value { font-size: 28px; font-weight: 700; }
   .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
@@ -64,6 +66,7 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
                    border-bottom: 2px solid var(--border); color: var(--muted);
                    font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
   .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tbody tr { cursor: pointer; transition: background 0.15s; }
   .data-table tr:hover { background: rgba(59,130,246,0.05); }
 
   /* Badges */
@@ -118,8 +121,9 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
                   border-radius: 8px; padding: 16px; }
   .sidebar-card h4 { font-size: 13px; color: var(--muted); margin-bottom: 12px;
                      text-transform: uppercase; letter-spacing: 0.5px; }
-  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 0;
-                  font-size: 13px; }
+  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 6px;
+                  font-size: 13px; cursor: pointer; border-radius: 4px; transition: background 0.15s; }
+  .sidebar-item:hover { background: rgba(59,130,246,0.1); }
 
   @media (max-width: 1100px) {
     .page-layout { grid-template-columns: 1fr; }
@@ -402,7 +406,7 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
     const data = await api(url);
     const tb = document.getElementById('revisionsBody');
     if (!data.ok || !data.revisions.length) { tb.innerHTML='<tr><td colspan="8" class="empty-state">No revisions found</td></tr>'; return; }
-    tb.innerHTML = data.revisions.map(r => '<tr>'+
+    tb.innerHTML = data.revisions.map(r => '<tr onclick="showTransition(\\''+r.revision_id+'\\',\\''+r.status+'\\')">'+
       '<td><strong>'+r.drawing_number+'</strong></td>'+
       '<td>'+r.title+'</td>'+
       '<td>'+(r.revision||'-')+'</td>'+
@@ -411,7 +415,7 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
       '<td>'+r.job_code+'</td>'+
       '<td class="text-muted">'+fmtDate(r.created_at)+'</td>'+
       '<td><button class="btn-primary" style="padding:3px 8px;font-size:11px" '+
-        'onclick="showTransition(\\''+r.revision_id+'\\',\\''+r.status+'\\')">Status</button></td>'+
+        'onclick="event.stopPropagation(); showTransition(\\''+r.revision_id+'\\',\\''+r.status+'\\')">Status</button></td>'+
     '</tr>').join('');
   }
 
@@ -458,7 +462,7 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
     const data = await api('/api/documents/rfis?job_code='+encodeURIComponent(j)+'&status='+s);
     const tb = document.getElementById('rfisBody');
     if (!data.ok || !data.rfis.length) { tb.innerHTML='<tr><td colspan="8" class="empty-state">No RFIs found</td></tr>'; return; }
-    tb.innerHTML = data.rfis.map(r => '<tr>'+
+    tb.innerHTML = data.rfis.map(r => '<tr onclick="handleRFIRowClick(\\''+r.rfi_id+'\\',\\''+r.status+'\\')">'+
       '<td><strong>RFI-'+r.rfi_number+'</strong></td>'+
       '<td>'+r.subject+'</td>'+
       '<td>'+priBadge(r.priority)+'</td>'+
@@ -472,12 +476,16 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
   function rfiActions(r) {
     let btns = '';
     if (r.status==='open'||r.status==='pending')
-      btns += '<button class="btn-success" style="padding:3px 8px;font-size:11px;margin:1px" onclick="showRespondModal(\\''+r.rfi_id+'\\')">Respond</button>';
+      btns += '<button class="btn-success" style="padding:3px 8px;font-size:11px;margin:1px" onclick="event.stopPropagation(); showRespondModal(\\''+r.rfi_id+'\\')">Respond</button>';
     if (r.status==='answered')
-      btns += '<button class="btn-primary" style="padding:3px 8px;font-size:11px;margin:1px" onclick="closeRFI(\\''+r.rfi_id+'\\')">Close</button>';
+      btns += '<button class="btn-primary" style="padding:3px 8px;font-size:11px;margin:1px" onclick="event.stopPropagation(); closeRFI(\\''+r.rfi_id+'\\')">Close</button>';
     if (r.status!=='void'&&r.status!=='closed')
-      btns += '<button class="btn-danger" style="padding:3px 8px;font-size:11px;margin:1px" onclick="voidRFI(\\''+r.rfi_id+'\\')">Void</button>';
+      btns += '<button class="btn-danger" style="padding:3px 8px;font-size:11px;margin:1px" onclick="event.stopPropagation(); voidRFI(\\''+r.rfi_id+'\\')">Void</button>';
     return btns || '-';
+  }
+
+  function handleRFIRowClick(rfiId, status) {
+    if (status === 'open' || status === 'pending') showRespondModal(rfiId);
   }
   function showRFIModal() { document.getElementById('rfiModal').classList.add('show'); }
   async function createRFI() {
@@ -522,7 +530,7 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
     const data = await api('/api/documents/transmittals?job_code='+encodeURIComponent(j)+'&status='+s);
     const tb = document.getElementById('transmittalsBody');
     if (!data.ok || !data.transmittals.length) { tb.innerHTML='<tr><td colspan="7" class="empty-state">No transmittals found</td></tr>'; return; }
-    tb.innerHTML = data.transmittals.map(x => '<tr>'+
+    tb.innerHTML = data.transmittals.map(x => '<tr onclick="handleXmitRowClick(\\''+x.transmittal_id+'\\',\\''+x.status+'\\')">'+
       '<td><strong>XMIT-'+x.transmittal_number+'</strong></td>'+
       '<td>'+x.recipient+'</td>'+
       '<td>'+((CONFIG.transmittal_purpose_labels||{})[x.purpose]||x.purpose)+'</td>'+
@@ -535,10 +543,15 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
   function xmitActions(x) {
     let btns = '';
     if (x.status==='draft')
-      btns += '<button class="btn-primary" style="padding:3px 8px;font-size:11px;margin:1px" onclick="sendXmit(\\''+x.transmittal_id+'\\')">Send</button>';
+      btns += '<button class="btn-primary" style="padding:3px 8px;font-size:11px;margin:1px" onclick="event.stopPropagation(); sendXmit(\\''+x.transmittal_id+'\\')">Send</button>';
     if (x.status==='sent')
-      btns += '<button class="btn-success" style="padding:3px 8px;font-size:11px;margin:1px" onclick="ackXmit(\\''+x.transmittal_id+'\\')">Acknowledge</button>';
+      btns += '<button class="btn-success" style="padding:3px 8px;font-size:11px;margin:1px" onclick="event.stopPropagation(); ackXmit(\\''+x.transmittal_id+'\\')">Acknowledge</button>';
     return btns || '-';
+  }
+
+  function handleXmitRowClick(xmitId, status) {
+    if (status === 'draft') sendXmit(xmitId);
+    else if (status === 'sent') ackXmit(xmitId);
   }
   function showTransmittalModal() { document.getElementById('transmittalModal').classList.add('show'); }
   async function createTransmittal() {
@@ -601,36 +614,65 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
     if (!data.ok) return;
     const s = data.summary;
     document.getElementById('statsRow').innerHTML =
-      statCard(s.total_revisions||0, 'Total Revisions', '--accent') +
-      statCard(s.revisions_by_status?.approved||0, 'Approved', '--green') +
-      statCard(s.revisions_by_status?.in_review||0, 'In Review', '--yellow') +
-      statCard(s.rfi_stats?.open||0, 'Open RFIs', '--orange') +
-      statCard(s.rfi_stats?.overdue||0, 'Overdue RFIs', '--red') +
-      statCard(s.transmittal_stats?.total||0, 'Transmittals', '--cyan');
+      statCard(s.total_revisions||0, 'Total Revisions', '--accent', "switchDocTab('revisions')") +
+      statCard(s.revisions_by_status?.approved||0, 'Approved', '--green', "filterRevisionsByStatus('approved')") +
+      statCard(s.revisions_by_status?.in_review||0, 'In Review', '--yellow', "filterRevisionsByStatus('in_review')") +
+      statCard(s.rfi_stats?.open||0, 'Open RFIs', '--orange', "filterRFIsByStatus('open')") +
+      statCard(s.rfi_stats?.overdue||0, 'Overdue RFIs', '--red', "switchDocTab('rfis')") +
+      statCard(s.transmittal_stats?.total||0, 'Transmittals', '--cyan', "switchDocTab('transmittals')");
 
     // Sidebar
     let sb = '<div class="sidebar-card"><h4>Revisions by Status</h4>';
     for (const [k,v] of Object.entries(s.revisions_by_status||{}))
-      sb += '<div class="sidebar-item"><span>'+((CONFIG.revision_status_labels||{})[k]||k)+'</span><span>'+v+'</span></div>';
+      sb += '<div class="sidebar-item" onclick="filterRevisionsByStatus(\''+k+'\')"><span>'+((CONFIG.revision_status_labels||{})[k]||k)+'</span><span>'+v+'</span></div>';
     sb += '</div>';
     sb += '<div class="sidebar-card"><h4>By Category</h4>';
     for (const [k,v] of Object.entries(s.revisions_by_category||{}))
-      sb += '<div class="sidebar-item"><span>'+((CONFIG.document_category_labels||{})[k]||k)+'</span><span>'+v+'</span></div>';
+      sb += '<div class="sidebar-item" onclick="filterRevisionsByCategory(\''+k+'\')"><span>'+((CONFIG.document_category_labels||{})[k]||k)+'</span><span>'+v+'</span></div>';
     sb += '</div>';
     sb += '<div class="sidebar-card"><h4>RFI Summary</h4>';
     const rs = s.rfi_stats||{};
-    sb += '<div class="sidebar-item"><span>Total</span><span>'+(rs.total||0)+'</span></div>';
-    sb += '<div class="sidebar-item"><span>Open</span><span>'+(rs.open||0)+'</span></div>';
-    sb += '<div class="sidebar-item"><span>Overdue</span><span class="'+(rs.overdue?'text-overdue':'')+'">'+(rs.overdue||0)+'</span></div>';
-    sb += '<div class="sidebar-item"><span>Answered</span><span>'+(rs.answered||0)+'</span></div>';
+    sb += '<div class="sidebar-item" onclick="switchDocTab(\'rfis\')"><span>Total</span><span>'+(rs.total||0)+'</span></div>';
+    sb += '<div class="sidebar-item" onclick="filterRFIsByStatus(\'open\')"><span>Open</span><span>'+(rs.open||0)+'</span></div>';
+    sb += '<div class="sidebar-item" onclick="switchDocTab(\'rfis\')"><span>Overdue</span><span class="'+(rs.overdue?'text-overdue':'')+'">'+(rs.overdue||0)+'</span></div>';
+    sb += '<div class="sidebar-item" onclick="filterRFIsByStatus(\'answered\')"><span>Answered</span><span>'+(rs.answered||0)+'</span></div>';
     sb += '</div>';
     document.getElementById('sidebar').innerHTML = sb;
   }
-  function statCard(val, label, color) {
-    return '<div class="stat-card"><div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
+  function statCard(val, label, color, onclick) {
+    return '<div class="stat-card" onclick="'+(onclick||'')+'">' +
+      '<div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
   }
 
   function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+  function switchDocTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    const tabs = document.querySelectorAll('.tab');
+    const tabNames = ['revisions','rfis','transmittals','bom'];
+    const idx = tabNames.indexOf(name);
+    if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+    document.getElementById('tab-'+name).classList.add('active');
+  }
+
+  function filterRevisionsByStatus(status) {
+    document.getElementById('revStatusFilter').value = status;
+    switchDocTab('revisions');
+    loadRevisions();
+  }
+
+  function filterRevisionsByCategory(cat) {
+    document.getElementById('revCategoryFilter').value = cat;
+    switchDocTab('revisions');
+    loadRevisions();
+  }
+
+  function filterRFIsByStatus(status) {
+    document.getElementById('rfiStatusFilter').value = status;
+    switchDocTab('rfis');
+    loadRFIs();
+  }
 
   // Init
   loadConfig().then(() => { loadRevisions(); loadRFIs(); loadTransmittals(); loadBOMChanges(); loadSummary(); });

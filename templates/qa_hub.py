@@ -33,7 +33,9 @@ QA_HUB_HTML = """<!DOCTYPE html>
   .audit-stat {
     background: #0F172A; border-radius: 10px; padding: 14px 20px;
     border: 1px solid #1E293B; min-width: 140px; flex: 1;
+    cursor: pointer; transition: transform 0.15s, border-color 0.15s;
   }
+  .audit-stat:hover { transform: translateY(-2px); border-color: #334155; }
   .audit-stat .as-val { font-size: 28px; font-weight: 800; color: #FFF; }
   .audit-stat .as-val.green { color: #10B981; }
   .audit-stat .as-val.amber { color: #F59E0B; }
@@ -92,8 +94,10 @@ QA_HUB_HTML = """<!DOCTYPE html>
   .aisc-checklist li {
     display: flex; align-items: flex-start; gap: 12px;
     padding: 12px 0; border-bottom: 1px solid #1E293B;
-    font-size: 14px;
+    font-size: 14px; cursor: pointer; transition: background 0.15s;
+    border-radius: 6px; padding-left: 8px; padding-right: 8px;
   }
+  .aisc-checklist li:hover { background: rgba(255,255,255,0.04); }
   .aisc-checklist li:last-child { border-bottom: none; }
   .aisc-check {
     width: 22px; height: 22px; border-radius: 6px;
@@ -125,23 +129,23 @@ QA_HUB_HTML = """<!DOCTYPE html>
       <button onclick="window.open('/api/reports/qa/pdf')" style="background:#C89A2E;color:#FFF;border:none;padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;margin-top:4px">Export Report</button>
     </div>
     <div class="audit-bar" id="auditBar">
-      <div class="audit-stat">
+      <div class="audit-stat" onclick="window.location.href='/qa/wps'">
         <div class="as-val green" id="abWPS">4</div>
         <div class="as-lbl">Active WPS</div>
       </div>
-      <div class="audit-stat">
+      <div class="audit-stat" onclick="window.location.href='/qa/welder-certs'">
         <div class="as-val green" id="abWelders">&mdash;</div>
         <div class="as-lbl">Certified Welders</div>
       </div>
-      <div class="audit-stat">
+      <div class="audit-stat" onclick="window.location.href='/qc-dashboard'">
         <div class="as-val" id="abInspections">&mdash;</div>
         <div class="as-lbl">Inspections (30d)</div>
       </div>
-      <div class="audit-stat">
+      <div class="audit-stat" onclick="window.location.href='/qa/ncr-log'">
         <div class="as-val amber" id="abNCR">&mdash;</div>
         <div class="as-lbl">Open NCRs</div>
       </div>
-      <div class="audit-stat">
+      <div class="audit-stat" onclick="window.location.href='/qa/calibration'">
         <div class="as-val" id="abCalib">&mdash;</div>
         <div class="as-lbl">Calibrated Tools</div>
       </div>
@@ -239,7 +243,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
     <p class="aisc-sub">Requirements per AISC 360 Chapter M, AWS D1.1, and AISC Quality Systems Manual</p>
 
     <ul class="aisc-checklist">
-      <li>
+      <li onclick="window.location.href='/qa/procedures'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Quality Manual</strong>
@@ -247,7 +251,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC 360 Ch. M</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/wps'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Welding Procedure Specifications (WPS)</strong>
@@ -255,7 +259,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AWS D1.1 §4</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/pqr'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Procedure Qualification Records (PQR)</strong>
@@ -263,7 +267,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AWS D1.1 §4.8</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/welder-certs'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Welder Qualification / Continuity</strong>
@@ -271,7 +275,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AWS D1.1 §4.19</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/inventory/traceability'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Material Test Reports (MTRs)</strong>
@@ -279,7 +283,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC 360 §A3.1</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/inventory/traceability'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Material Traceability</strong>
@@ -287,7 +291,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC 360 §M5</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/procedures'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Receiving Inspection Procedure</strong>
@@ -295,7 +299,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC QM §5.3</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qc-dashboard'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Visual Weld Inspection</strong>
@@ -303,7 +307,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AWS D1.1 §6.9</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/procedures'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>NDT (Ultrasonic) Procedures</strong>
@@ -311,7 +315,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AWS D1.1 §6.12</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/ncr-log'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Non-Conformance Reporting (NCR)</strong>
@@ -319,7 +323,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC QM §8.3</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/inspector-registry'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Inspector Qualification Registry</strong>
@@ -327,7 +331,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC 360 Ch.N / AWS QC1</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/calibration'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Calibration Program</strong>
@@ -335,7 +339,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC QM §7.6</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/ncr-log'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Corrective Action Procedure</strong>
@@ -343,7 +347,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC QM §8.5</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qa/procedures'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Document Control</strong>
@@ -351,7 +355,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC QM §4.2</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/shop-drawings'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Shop Drawing Control</strong>
@@ -359,7 +363,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         </div>
         <div class="aisc-ref">AISC 360 §M4</div>
       </li>
-      <li>
+      <li onclick="window.location.href='/qc-dashboard'">
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Coating / Galvanizing Inspection</strong>

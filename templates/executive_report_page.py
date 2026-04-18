@@ -38,7 +38,10 @@ EXECUTIVE_REPORT_PAGE_HTML = r"""
         padding: 24px;
         border: 1px solid rgba(255,255,255,0.06);
         text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s;
     }
+    .kpi-card:hover { border-color: rgba(212,168,67,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .kpi-value {
         font-size: 36px; font-weight: 800; color: var(--tf-gold); margin-bottom: 6px;
     }
@@ -64,8 +67,10 @@ EXECUTIVE_REPORT_PAGE_HTML = r"""
     .stat-row {
         display: flex; justify-content: space-between; align-items: center;
         padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-        font-size: 14px;
+        font-size: 14px; cursor: pointer; border-radius: 6px; padding: 10px 8px;
+        transition: background 0.15s;
     }
+    .stat-row:hover { background: rgba(255,255,255,0.04); }
     .stat-row:last-child { border-bottom: none; }
     .stat-label { color: var(--tf-muted); }
     .stat-value { font-weight: 700; color: var(--tf-text); }
@@ -83,6 +88,11 @@ EXECUTIVE_REPORT_PAGE_HTML = r"""
         color: var(--tf-muted);
         border-bottom: 1px solid rgba(255,255,255,0.06);
     }
+    .pipeline-table tbody tr {
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .pipeline-table tbody tr:hover { background: rgba(255,255,255,0.04); }
     .pipeline-table tbody td {
         padding: 10px 14px;
         border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -104,19 +114,19 @@ EXECUTIVE_REPORT_PAGE_HTML = r"""
     </div>
 
     <div class="kpi-grid">
-        <div class="kpi-card">
+        <div class="kpi-card" onclick="window.location.href='/projects'">
             <div class="kpi-value" id="kpiActiveProjects">—</div>
             <div class="kpi-label">Active Projects</div>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card" onclick="window.location.href='/projects'">
             <div class="kpi-value" id="kpiRevenue">—</div>
             <div class="kpi-label">Revenue Pipeline</div>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card" onclick="window.location.href='/reports/production'">
             <div class="kpi-value" id="kpiCycleTime">—</div>
             <div class="kpi-label">Avg Cycle Time</div>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card" onclick="window.location.href='/shipping'">
             <div class="kpi-value" id="kpiOnTime">—</div>
             <div class="kpi-label">On-Time Delivery %</div>
         </div>
@@ -185,7 +195,7 @@ async function loadData() {
         };
         for (const [label, val] of Object.entries(statsMap)) {
             if (val != null) {
-                statsHtml += '<div class="stat-row"><span class="stat-label">' + label + '</span><span class="stat-value">' + val + '</span></div>';
+                statsHtml += '<div class="stat-row" onclick="window.location.href=\'/reports/production\'"><span class="stat-label">' + label + '</span><span class="stat-value">' + val + '</span></div>';
             }
         }
         document.getElementById('productionStats').innerHTML = statsHtml || '<div style="color:var(--tf-muted);text-align:center;padding:20px">No production data available</div>';
@@ -208,7 +218,7 @@ async function loadData() {
         for (const [stage, info] of Object.entries(stages)) {
             const cls = stage.toLowerCase().includes('complete') ? 'stage-complete' :
                         stage.toLowerCase().includes('draft') || stage.toLowerCase().includes('quote') ? 'stage-pending' : 'stage-active';
-            html += '<tr><td><span class="stage-badge ' + cls + '">' + stage + '</span></td>' +
+            html += '<tr onclick="window.location.href=\'/projects?stage=' + encodeURIComponent(stage) + '\'"><td><span class="stage-badge ' + cls + '">' + stage + '</span></td>' +
                 '<td>' + info.count + '</td><td>' + fmtCurrency(info.value) + '</td></tr>';
         }
         html += '</tbody></table>';

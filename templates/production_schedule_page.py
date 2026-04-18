@@ -34,7 +34,9 @@ PRODUCTION_SCHEDULE_PAGE_HTML = """<!DOCTYPE html>
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
            gap: 12px; margin-bottom: 20px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
-               border-radius: 8px; padding: 16px; }
+               border-radius: 8px; padding: 16px; cursor: pointer;
+               transition: border-color 0.2s, box-shadow 0.2s; }
+  .stat-card:hover { border-color: var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
   .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase;
                       letter-spacing: 0.05em; }
   .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
@@ -62,7 +64,9 @@ PRODUCTION_SCHEDULE_PAGE_HTML = """<!DOCTYPE html>
   .section-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
   .capacity-grid { display: grid; gap: 10px; margin-bottom: 20px; }
   .cap-row { background: var(--surface); border: 1px solid var(--border);
-             border-radius: 8px; padding: 12px 16px; }
+             border-radius: 8px; padding: 12px 16px; cursor: pointer;
+             transition: border-color 0.2s; }
+  .cap-row:hover { border-color: var(--accent); }
   .cap-header { display: flex; justify-content: space-between; align-items: center;
                 margin-bottom: 8px; }
   .cap-label { font-weight: 600; font-size: 14px; }
@@ -77,7 +81,9 @@ PRODUCTION_SCHEDULE_PAGE_HTML = """<!DOCTYPE html>
                 padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .entry-list { display: grid; gap: 8px; }
   .entry-card { background: var(--surface); border: 1px solid var(--border);
-                border-radius: 8px; padding: 12px; border-left: 3px solid var(--accent); }
+                border-radius: 8px; padding: 12px; border-left: 3px solid var(--accent);
+                cursor: pointer; transition: border-color 0.2s; }
+  .entry-card:hover { border-color: var(--accent); }
   .entry-card.priority-1 { border-left-color: var(--red); }
   .entry-card.priority-2 { border-left-color: var(--orange); }
   .entry-card.priority-4 { border-left-color: var(--muted); }
@@ -98,16 +104,22 @@ PRODUCTION_SCHEDULE_PAGE_HTML = """<!DOCTYPE html>
                 border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .side-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
   .bottleneck-item { padding: 8px 0; border-bottom: 1px solid var(--border);
-                     font-size: 13px; }
+                     font-size: 13px; cursor: pointer; border-radius: 4px;
+                     padding: 8px 6px; transition: background 0.15s; }
+  .bottleneck-item:hover { background: rgba(255,255,255,0.04); }
   .bottleneck-item:last-child { border-bottom: none; }
   .bn-label { font-weight: 600; }
   .bn-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
-  .job-item { display: flex; justify-content: space-between; padding: 6px 0;
-              border-bottom: 1px solid var(--border); font-size: 13px; }
+  .job-item { display: flex; justify-content: space-between; padding: 6px 4px;
+              border-bottom: 1px solid var(--border); font-size: 13px;
+              cursor: pointer; border-radius: 4px; transition: background 0.15s; }
+  .job-item:hover { background: rgba(255,255,255,0.04); }
   .job-item:last-child { border-bottom: none; }
 
-  .overdue-item { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .overdue-item { padding: 8px 6px; border-bottom: 1px solid var(--border); font-size: 13px;
+                  cursor: pointer; border-radius: 4px; transition: background 0.15s; }
+  .overdue-item:hover { background: rgba(255,255,255,0.04); }
   .overdue-item:last-child { border-bottom: none; }
   .overdue-mark { font-weight: 600; color: var(--red); }
 
@@ -129,19 +141,19 @@ PRODUCTION_SCHEDULE_PAGE_HTML = """<!DOCTYPE html>
 <div class="container">
   <!-- Stats -->
   <div class="stats">
-    <div class="stat-card"><div class="label">Scheduled Today</div>
+    <div class="stat-card" onclick="window.location.href='/shop-floor'"><div class="label">Scheduled Today</div>
       <div class="value val-blue" id="statTodayCount">—</div>
       <div class="sub" id="statTodayMinutes"></div></div>
-    <div class="stat-card"><div class="label">This Week</div>
+    <div class="stat-card" onclick="window.location.href='/reports/production'"><div class="label">This Week</div>
       <div class="value" id="statWeekCount">—</div>
       <div class="sub" id="statWeekMinutes"></div></div>
-    <div class="stat-card"><div class="label">Pending</div>
+    <div class="stat-card" onclick="window.location.href='/shop-floor'"><div class="label">Pending</div>
       <div class="value val-orange" id="statPending">—</div></div>
-    <div class="stat-card"><div class="label">Overdue</div>
+    <div class="stat-card" onclick="document.getElementById('overdueList').scrollIntoView({behavior:'smooth'})"><div class="label">Overdue</div>
       <div class="value val-red" id="statOverdue">—</div></div>
-    <div class="stat-card"><div class="label">Completed</div>
+    <div class="stat-card" onclick="window.location.href='/reports/production'"><div class="label">Completed</div>
       <div class="value val-green" id="statCompleted">—</div></div>
-    <div class="stat-card"><div class="label">All Entries</div>
+    <div class="stat-card" onclick="window.location.href='/reports/production'"><div class="label">All Entries</div>
       <div class="value" id="statTotal">—</div></div>
   </div>
 
@@ -245,7 +257,7 @@ async function loadSummary() {
     jobDiv.innerHTML = '<div class="empty-msg">No jobs scheduled</div>';
   } else {
     jobDiv.innerHTML = jobs.map(([jc, d]) =>
-      `<div class="job-item"><span>${jc}</span><span>${d.count} items · ${d.minutes} min</span></div>`
+      `<div class="job-item" onclick="window.location.href='/work-orders/${encodeURIComponent(jc)}'"><span>${jc}</span><span>${d.count} items · ${d.minutes} min</span></div>`
     ).join('');
   }
 }
@@ -265,7 +277,7 @@ async function loadCapacity() {
     const pct = m.utilization_pct;
     const color = m.over_capacity ? 'var(--red)' : pct > 80 ? 'var(--orange)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
     const pctColor = m.over_capacity ? 'color:var(--red)' : pct > 80 ? 'color:var(--orange)' : '';
-    return `<div class="cap-row">
+    return `<div class="cap-row" onclick="window.location.href='/work-station/${encodeURIComponent(m.machine || m.label)}'">
       <div class="cap-header">
         <span class="cap-label">${m.label}</span>
         <span class="cap-pct" style="${pctColor}">${pct}%${m.over_capacity ? ' OVER' : ''}</span>
@@ -305,7 +317,7 @@ async function loadDay() {
     div.innerHTML = '<div class="empty-msg">No items scheduled for this date</div>';
   } else {
     div.innerHTML = '<div class="entry-list">' + data.entries.map(e =>
-      `<div class="entry-card priority-${e.priority}">
+      `<div class="entry-card priority-${e.priority}" onclick="window.location.href='/work-orders/${encodeURIComponent(e.job_code)}'">
         <div class="entry-top">
           <span class="entry-mark">${e.ship_mark || e.item_id}</span>
           <span>${priorityBadge(e.priority)} ${statusBadge(e.status)}</span>
@@ -332,7 +344,7 @@ async function loadBottlenecks() {
     return;
   }
   div.innerHTML = data.bottlenecks.slice(0, 8).map(b =>
-    `<div class="bottleneck-item">
+    `<div class="bottleneck-item" onclick="window.location.href='/work-station/${encodeURIComponent(b.machine || b.label)}'">
       <div class="bn-label" style="color:${b.over_by_minutes > 0 ? 'var(--red)' : 'var(--orange)'}">
         ${b.label} — ${b.date}
       </div>
@@ -350,7 +362,7 @@ async function loadOverdue() {
     return;
   }
   div.innerHTML = data.overdue.slice(0, 8).map(e =>
-    `<div class="overdue-item">
+    `<div class="overdue-item" onclick="window.location.href='/work-station/${encodeURIComponent(e.machine)}'">
       <span class="overdue-mark">${e.ship_mark || e.item_id}</span>
       <span style="color:var(--muted);font-size:12px"> · ${e.machine} · due ${e.scheduled_date}</span>
     </div>`

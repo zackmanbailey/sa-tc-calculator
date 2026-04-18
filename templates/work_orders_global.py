@@ -66,7 +66,9 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 .stat-pill {
     background: var(--tf-surface); border: 1px solid var(--tf-border);
     border-radius: 10px; padding: 14px 16px; text-align: center;
+    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
 }
+.stat-pill:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
 .stat-pill .stat-val {
     font-size: 1.6rem; font-weight: 800; color: var(--tf-navy);
     font-family: 'SF Mono', monospace;
@@ -332,12 +334,12 @@ function renderStats() {
     const completedItems = allItems.filter(i => ['qc_approved', 'ready_to_ship', 'shipped', 'delivered', 'installed', 'complete'].includes(i.status)).length;
 
     document.getElementById('statsRow').innerHTML = `
-        <div class="stat-pill"><div class="stat-val">${total}</div><div class="stat-label">Total WOs</div></div>
-        <div class="stat-pill"><div class="stat-val">${active}</div><div class="stat-label">Active</div></div>
-        <div class="stat-pill"><div class="stat-val">${qcItems}</div><div class="stat-label">QC Queue</div></div>
-        <div class="stat-pill"><div class="stat-val">${readyToShip}</div><div class="stat-label">Ready to Ship</div></div>
-        <div class="stat-pill"><div class="stat-val">${onHold}</div><div class="stat-label">On Hold</div></div>
-        <div class="stat-pill"><div class="stat-val">${totalItems > 0 ? Math.round(100 * completedItems / totalItems) : 0}%</div><div class="stat-label">Overall Progress</div></div>
+        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('all');applyFilters();"><div class="stat-val">${total}</div><div class="stat-label">Total WOs</div></div>
+        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('active');"><div class="stat-val">${active}</div><div class="stat-label">Active</div></div>
+        <div class="stat-pill" onclick="switchTab('qc');"><div class="stat-val">${qcItems}</div><div class="stat-label">QC Queue</div></div>
+        <div class="stat-pill" onclick="switchTab('shipping');"><div class="stat-val">${readyToShip}</div><div class="stat-label">Ready to Ship</div></div>
+        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='on_hold';switchTab('all');applyFilters();"><div class="stat-val">${onHold}</div><div class="stat-label">On Hold</div></div>
+        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('all');applyFilters();"><div class="stat-val">${totalItems > 0 ? Math.round(100 * completedItems / totalItems) : 0}%</div><div class="stat-label">Overall Progress</div></div>
     `;
 }
 

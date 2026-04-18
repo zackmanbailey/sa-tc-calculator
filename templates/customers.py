@@ -264,19 +264,19 @@ CUSTOMERS_HTML = r"""
 
         <!-- Stats -->
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--tf-sp-4);margin-bottom:var(--tf-sp-6);">
-            <div class="stat-card">
+            <div class="stat-card" onclick="clickStatFilter('all')" style="cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" title="Show all customers">
                 <div class="stat-icon blue">&#127970;</div>
                 <div class="stat-info"><div class="stat-label">Total Customers</div><div class="stat-value" id="statTotal">0</div></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="clickStatFilter('solar')" style="cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" title="Filter to Solar customers">
                 <div class="stat-icon amber">&#9728;</div>
                 <div class="stat-info"><div class="stat-label">Solar</div><div class="stat-value" id="statSolar">0</div></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="clickStatFilter('commercial')" style="cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" title="Filter to Commercial customers">
                 <div class="stat-icon green">&#127959;</div>
                 <div class="stat-info"><div class="stat-label">Commercial</div><div class="stat-value" id="statCommercial">0</div></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" onclick="clickStatFilter('residential')" style="cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''" title="Filter to Residential customers">
                 <div class="stat-icon purple">&#127968;</div>
                 <div class="stat-info"><div class="stat-label">Residential</div><div class="stat-value" id="statResidential">0</div></div>
             </div>
@@ -483,7 +483,7 @@ function renderCustomers() {
         const contact = primaryFromArr || c.primary_contact || {};
         const contactStr = [contact.name, contact.phone, contact.email].filter(Boolean).join(' &middot; ');
         const contactCount = (c.contacts||[]).length;
-        const contactBadge = contactCount > 1 ? `<span class="cc-project-count">${contactCount} contacts</span>` : '';
+        const contactBadge = contactCount > 1 ? `<span class="cc-project-count" style="cursor:pointer;" onclick="event.stopPropagation();openDetail('${c.id}')" title="View all ${contactCount} contacts">${contactCount} contacts</span>` : '';
         return `<div class="customer-card" onclick="openDetail('${c.id}')">
             <div class="cc-header">
                 <div class="cc-company">${c.company || 'Unnamed'}</div>
@@ -512,6 +512,16 @@ function setTagFilter(tag, btn) {
     document.querySelectorAll('.tag-filter').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderCustomers();
+}
+
+function clickStatFilter(tag) {
+    activeTagFilter = tag;
+    document.querySelectorAll('.tag-filter').forEach(b => {
+        b.classList.toggle('active', b.dataset.tag === tag);
+    });
+    renderCustomers();
+    // Scroll to the customer grid
+    document.getElementById('customersGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── Add / Edit Modal ──

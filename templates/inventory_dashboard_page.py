@@ -33,7 +33,9 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
   .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
                gap: 12px; margin-bottom: 20px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
-               border-radius: 8px; padding: 16px; text-align: center; }
+               border-radius: 8px; padding: 16px; text-align: center;
+               cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
+  .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
   .stat-card .value { font-size: 28px; font-weight: 700; }
   .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
@@ -115,7 +117,9 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
                   border-radius: 8px; padding: 16px; }
   .sidebar-card h4 { font-size: 13px; color: var(--muted); margin-bottom: 12px;
                      text-transform: uppercase; letter-spacing: 0.5px; }
-  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .sidebar-item { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px;
+                  cursor: pointer; border-radius: 4px; padding-left: 4px; padding-right: 4px; transition: background 0.15s; }
+  .sidebar-item:hover { background: rgba(59,130,246,0.1); }
   .gauge-bar { display: flex; gap: 2px; margin-top: 8px; height: 12px; border-radius: 4px; overflow: hidden; }
   .gauge-segment { flex-shrink: 0; border-radius: 2px; }
 
@@ -373,8 +377,9 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
 
   function closeModal(id) { $(id).classList.remove('show'); }
 
-  function statCard(val, label, color) {
-    return '<div class="stat-card"><div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
+  function statCard(val, label, color, onclick) {
+    return '<div class="stat-card" onclick="'+( onclick || '' )+'">' +
+      '<div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
   }
 
   // Load summary stats
@@ -383,12 +388,12 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
     if (!d.ok) return;
     const s = d.summary;
     $('statsRow').innerHTML =
-      statCard(fmtNum(s.total_coils), 'Total Coils', '--accent') +
-      statCard(fmtNum(s.total_stock_lbs), 'Total Stock', '--cyan') +
-      statCard(fmtNum(s.total_committed_lbs), 'Committed', '--orange') +
-      statCard(fmtNum(s.total_available_lbs), 'Available', '--green') +
-      statCard(fmtNum(s.low_stock_count), 'Low Stock Alerts', s.low_stock_count > 0 ? '--red' : '--green') +
-      statCard(fmtDollars(s.total_value), 'Total Value', '--yellow');
+      statCard(fmtNum(s.total_coils), 'Total Coils', '--accent', "filterStatus.value=\\'\\';loadCoils()") +
+      statCard(fmtNum(s.total_stock_lbs), 'Total Stock', '--cyan', "filterStatus.value=\\'\\';loadCoils()") +
+      statCard(fmtNum(s.total_committed_lbs), 'Committed', '--orange', "document.querySelector(\\'.tab[data-tab=allocations]\\').click()") +
+      statCard(fmtNum(s.total_available_lbs), 'Available', '--green', "filterStatus.value=\\'active\\';loadCoils()") +
+      statCard(fmtNum(s.low_stock_count), 'Low Stock Alerts', s.low_stock_count > 0 ? '--red' : '--green', "filterStatus.value=\\'low_stock\\';loadCoils()") +
+      statCard(fmtDollars(s.total_value), 'Total Value', '--yellow', "filterStatus.value=\\'\\';loadCoils()");
 
     // Sidebar
     let sb = '<div class="sidebar-card"><h4>Stock by Gauge</h4>';
@@ -404,9 +409,9 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
 
     sb += '<div class="sidebar-card"><h4>Stock by Status</h4>';
     const statusData = s.stock_by_status || {};
-    sb += '<div class="sidebar-item"><span>Active</span><span>' + fmtNum(statusData.active_count || 0) + '</span></div>';
-    sb += '<div class="sidebar-item"><span>Low Stock</span><span style="color:var(--yellow)">' + fmtNum(statusData.low_stock_count || 0) + '</span></div>';
-    sb += '<div class="sidebar-item"><span>Depleted</span><span style="color:var(--red)">' + fmtNum(statusData.depleted_count || 0) + '</span></div>';
+    sb += '<div class="sidebar-item" onclick="filterStatus.value=\'active\';loadCoils()"><span>Active</span><span>' + fmtNum(statusData.active_count || 0) + '</span></div>';
+    sb += '<div class="sidebar-item" onclick="filterStatus.value=\'low_stock\';loadCoils()"><span>Low Stock</span><span style="color:var(--yellow)">' + fmtNum(statusData.low_stock_count || 0) + '</span></div>';
+    sb += '<div class="sidebar-item" onclick="filterStatus.value=\'depleted\';loadCoils()"><span>Depleted</span><span style="color:var(--red)">' + fmtNum(statusData.depleted_count || 0) + '</span></div>';
     sb += '</div>';
     $('sidebar').innerHTML = sb;
   }

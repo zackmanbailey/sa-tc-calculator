@@ -308,8 +308,14 @@ DASHBOARD_HTML = r"""
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding: 10px 0;
+            padding: 10px 4px;
             border-bottom: 1px solid var(--dash-border-subtle);
+            cursor: pointer;
+            border-radius: var(--dash-radius-xs);
+            transition: background 0.2s ease;
+        }
+        .activity-item:hover {
+            background: rgba(59,130,246,0.06);
         }
 
         .activity-item:last-child { border-bottom: none; }
@@ -355,6 +361,13 @@ DASHBOARD_HTML = r"""
             background: rgba(255,255,255,0.02);
             border-radius: var(--dash-radius-sm);
             border: 1px solid var(--dash-border-subtle);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .health-item:hover {
+            background: rgba(59,130,246,0.08);
+            border-color: rgba(59,130,246,0.25);
+            transform: translateY(-1px);
         }
 
         .health-value {
@@ -532,6 +545,13 @@ DASHBOARD_HTML = r"""
             background: rgba(255,255,255,0.02);
             border-radius: var(--dash-radius-sm);
             border: 1px solid var(--dash-border-subtle);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .gam-stat:hover {
+            background: rgba(139,92,246,0.08);
+            border-color: rgba(139,92,246,0.25);
+            transform: translateY(-1px);
         }
 
         .gam-value {
@@ -1410,27 +1430,27 @@ DASHBOARD_HTML = r"""
                 </div>
                 <div class="dash-card-body">
                     <div class="health-grid" id="businessOverview">
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View all projects">
                             <div class="health-value" id="bizActiveProjects">--</div>
                             <div class="health-label">Active Projects</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/work-orders'" title="View work orders">
                             <div class="health-value" id="bizTotalWOs">--</div>
                             <div class="health-label">Total Work Orders</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View projects">
                             <div class="health-value" id="bizTeamUtil">--</div>
                             <div class="health-label">Team Utilization</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View engineering projects">
                             <div class="health-value" id="bizInEngineering">--</div>
                             <div class="health-label">In Engineering</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View fabrication projects">
                             <div class="health-value" id="bizInFabrication">--</div>
                             <div class="health-label">In Fabrication</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/shipping'" title="View shipping hub">
                             <div class="health-value" id="bizReadyToShip">--</div>
                             <div class="health-label">Ready to Ship</div>
                         </div>
@@ -1456,15 +1476,15 @@ DASHBOARD_HTML = r"""
                 </div>
                 <div class="dash-card-body">
                     <div class="health-grid" id="systemHealth">
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/admin'" title="View admin panel">
                             <div class="health-value"><span class="status-dot green"></span> <span id="sysUsersOnline">--</span></div>
                             <div class="health-label">Active Users</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/qc-dashboard'" title="View pending QC actions">
                             <div class="health-value" id="sysPendingActions">--</div>
                             <div class="health-label">Pending Actions</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/admin'" title="View system status">
                             <div class="health-value"><span class="status-dot green"></span> <span id="sysStatus">Online</span></div>
                             <div class="health-label">System Status</div>
                         </div>
@@ -1538,15 +1558,15 @@ DASHBOARD_HTML = r"""
                 </div>
                 <div class="dash-card-body">
                     <div class="health-grid" id="qcInspectionStats">
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/qc-dashboard'" title="View QC dashboard">
                             <div class="health-value" id="qcTotalInspected">--</div>
                             <div class="health-label">Total Inspected</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/qc-dashboard'" title="View QC dashboard">
                             <div class="health-value" id="qcPassRate">--</div>
                             <div class="health-label">Pass Rate</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/qc-dashboard'" title="View calibration records">
                             <div class="health-value" id="qcCalibDue">--</div>
                             <div class="health-label">Calibration Due</div>
                         </div>
@@ -1631,19 +1651,19 @@ DASHBOARD_HTML = r"""
                 </div>
                 <div class="dash-card-body">
                     <div class="gamification-grid" id="fabGamification">
-                        <div class="gam-stat">
+                        <div class="gam-stat" onclick="showGamificationModal('xp')" title="View XP breakdown">
                             <div class="gam-value" id="fabXP">0</div>
                             <div class="gam-label">XP Earned</div>
                         </div>
-                        <div class="gam-stat">
+                        <div class="gam-stat" onclick="showGamificationModal('streak')" title="View streak history">
                             <div class="gam-value" id="fabStreak">0</div>
                             <div class="gam-label">Day Streak</div>
                         </div>
-                        <div class="gam-stat">
+                        <div class="gam-stat" onclick="showGamificationModal('achievements')" title="View achievements">
                             <div class="gam-value" id="fabAchievements">0</div>
                             <div class="gam-label">Achievements</div>
                         </div>
-                        <div class="gam-stat">
+                        <div class="gam-stat" onclick="showGamificationModal('level')" title="View level progress">
                             <div class="gam-value" id="fabLevel">1</div>
                             <div class="gam-label">Level</div>
                         </div>
@@ -1729,15 +1749,15 @@ DASHBOARD_HTML = r"""
                 </div>
                 <div class="dash-card-body">
                     <div class="health-grid" id="viewerOverview">
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View projects">
                             <div class="health-value" id="viewerActiveProjects">--</div>
                             <div class="health-label">Active Projects</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/work-orders'" title="View work orders">
                             <div class="health-value" id="viewerTotalWOs">--</div>
                             <div class="health-label">Open Work Orders</div>
                         </div>
-                        <div class="health-item">
+                        <div class="health-item" onclick="window.location.href='/projects'" title="View fabrication projects">
                             <div class="health-value" id="viewerInFab">--</div>
                             <div class="health-label">In Fabrication</div>
                         </div>
@@ -2456,7 +2476,7 @@ DASHBOARD_HTML = r"""
                 var entity = a.entity_id || '';
                 var timeAgo = formatTimeAgo(a.timestamp || a.created_at || '');
 
-                html += '<div class="activity-item">';
+                html += '<div class="activity-item" onclick="navigateActivity(\'' + esc(action) + '\',\'' + esc(entity) + '\')" title="Click to view details">';
                 html += '<div class="activity-dot ' + dotColor + '"></div>';
                 html += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
                 if (entity) html += ' <strong>' + esc(entity) + '</strong>';
@@ -2678,9 +2698,9 @@ DASHBOARD_HTML = r"""
             quotesEl.innerHTML = '<div class="no-data">No quotes pending. Pipeline is clear.</div>';
         } else {
             quotesEl.innerHTML = '<div class="health-grid">' +
-                '<div class="health-item"><div class="health-value">' + (stages['quote'] || 0) + '</div><div class="health-label">In Quoting</div></div>' +
-                '<div class="health-item"><div class="health-value">' + (stages['contract'] || 0) + '</div><div class="health-label">Awaiting Contract</div></div>' +
-                '<div class="health-item"><div class="health-value">' + activeCount + '</div><div class="health-label">Total Active</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/quotes\'" title="View quotes"><div class="health-value">' + (stages['quote'] || 0) + '</div><div class="health-label">In Quoting</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/quotes\'" title="View contracts"><div class="health-value">' + (stages['contract'] || 0) + '</div><div class="health-label">Awaiting Contract</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/projects\'" title="View all active"><div class="health-value">' + activeCount + '</div><div class="health-label">Total Active</div></div>' +
                 '</div>';
         }
 
@@ -2701,7 +2721,7 @@ DASHBOARD_HTML = r"""
                 var desc = (a.action || 'action').replace(/_/g, ' ');
                 var entity = a.entity_id || '';
                 var timeAgo = formatTimeAgo(a.timestamp || a.created_at || '');
-                ahtml += '<div class="activity-item">';
+                ahtml += '<div class="activity-item" onclick="navigateActivity(\'' + esc(action) + '\',\'' + esc(entity) + '\')" title="Click to view details">';
                 ahtml += '<div class="activity-dot ' + dotColor + '"></div>';
                 ahtml += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
                 if (entity) ahtml += ' <strong>' + esc(entity) + '</strong>';
@@ -2784,9 +2804,9 @@ DASHBOARD_HTML = r"""
             readyEl.innerHTML = '<div class="no-data">No items ready to ship.</div>';
         } else {
             readyEl.innerHTML = '<div class="health-grid">' +
-                '<div class="health-item"><div class="health-value">' + readyCount + '</div><div class="health-label">Ready to Ship</div></div>' +
-                '<div class="health-item"><div class="health-value">' + (data.in_fabrication || 0) + '</div><div class="health-label">In Fabrication</div></div>' +
-                '<div class="health-item"><div class="health-value">' + (data.active_projects || 0) + '</div><div class="health-label">Active Projects</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/shipping\'" title="View shipping hub"><div class="health-value">' + readyCount + '</div><div class="health-label">Ready to Ship</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/projects\'" title="View fabrication"><div class="health-value">' + (data.in_fabrication || 0) + '</div><div class="health-label">In Fabrication</div></div>' +
+                '<div class="health-item" onclick="window.location.href=\'/projects\'" title="View projects"><div class="health-value">' + (data.active_projects || 0) + '</div><div class="health-label">Active Projects</div></div>' +
                 '</div>';
         }
 
@@ -2881,7 +2901,11 @@ DASHBOARD_HTML = r"""
         } else {
             var mhtml = '';
             milestones.forEach(function(m) {
-                mhtml += '<div class="activity-item">';
+                var mRoute = '/projects';
+                if (m.text.indexOf('ship') >= 0) mRoute = '/shipping';
+                else if (m.text.indexOf('QC') >= 0) mRoute = '/qc-dashboard';
+                else if (m.text.indexOf('fabrication') >= 0) mRoute = '/work-orders';
+                mhtml += '<div class="activity-item" onclick="window.location.href=\'' + mRoute + '\'" title="Click to view details">';
                 mhtml += '<div class="activity-dot ' + m.icon + '"></div>';
                 mhtml += '<div><div class="activity-text">' + esc(m.text) + '</div></div>';
                 mhtml += '</div>';
@@ -2902,7 +2926,7 @@ DASHBOARD_HTML = r"""
                 if (action.indexOf('create') >= 0) dotColor = 'green';
                 else if (action.indexOf('update') >= 0) dotColor = 'amber';
                 var desc = (a.action || 'action').replace(/_/g, ' ');
-                cahtml += '<div class="activity-item">';
+                cahtml += '<div class="activity-item" onclick="navigateActivity(\'' + esc(action) + '\',\'' + esc(a.entity_id || '') + '\')" title="Click to view details">';
                 cahtml += '<div class="activity-dot ' + dotColor + '"></div>';
                 cahtml += '<div><div class="activity-text"><strong>' + esc(a.user || 'system') + '</strong> ' + esc(desc);
                 if (a.entity_id) cahtml += ' <strong>' + esc(a.entity_id) + '</strong>';
@@ -3614,6 +3638,65 @@ DASHBOARD_HTML = r"""
             else { alert('Error: ' + (data.error || 'Unknown')); }
         })
         .catch(function(e) { alert('Upload error: ' + e.message); });
+    }
+    // ── Gamification Modal ──────────────────────────
+    function showGamificationModal(section) {
+        var xp = document.getElementById('fabXP') ? document.getElementById('fabXP').textContent : '0';
+        var streak = document.getElementById('fabStreak') ? document.getElementById('fabStreak').textContent : '0';
+        var level = document.getElementById('fabLevel') ? document.getElementById('fabLevel').textContent : '1';
+        var achievements = document.getElementById('fabAchievements') ? document.getElementById('fabAchievements').textContent : '0';
+        var nextLevelXP = parseInt(level) * 500;
+        var currentXP = parseInt(xp) || 0;
+        var progress = Math.min(100, Math.round((currentXP % 500) / 5));
+
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+        var titles = { xp: 'XP Breakdown', streak: 'Streak History', achievements: 'Achievements', level: 'Level Progress' };
+        var modal = document.createElement('div');
+        modal.style.cssText = 'background:var(--dash-surface,#141D2F);border:1px solid var(--dash-border,rgba(59,130,246,0.12));border-radius:16px;padding:28px 32px;max-width:420px;width:90%;color:#E2E8F0;';
+        modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">'
+            + '<h3 style="margin:0;font-size:1.2rem;color:#F8FAFC;">' + (titles[section] || 'My Stats') + '</h3>'
+            + '<button onclick="this.closest(\'div[style*=position\\:fixed]\').remove()" style="background:none;border:none;color:#94A3B8;font-size:1.5rem;cursor:pointer;">&times;</button></div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+            + '<div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);"><div style="font-size:1.5rem;font-weight:800;color:#F8FAFC;">' + xp + '</div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;">Total XP</div></div>'
+            + '<div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);"><div style="font-size:1.5rem;font-weight:800;color:#F8FAFC;">Lv ' + level + '</div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;">Current Level</div></div>'
+            + '<div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);"><div style="font-size:1.5rem;font-weight:800;color:#F59E0B;">' + streak + '</div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;">Day Streak</div></div>'
+            + '<div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);"><div style="font-size:1.5rem;font-weight:800;color:#8B5CF6;">' + achievements + '</div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;">Achievements</div></div>'
+            + '</div>'
+            + '<div style="margin-top:12px;"><div style="font-size:0.75rem;color:#94A3B8;margin-bottom:6px;">Progress to Level ' + (parseInt(level) + 1) + '</div>'
+            + '<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + progress + '%;background:linear-gradient(90deg,#3B82F6,#8B5CF6);border-radius:4px;"></div></div>'
+            + '<div style="font-size:0.7rem;color:#64748B;margin-top:4px;">' + (currentXP % 500) + ' / 500 XP to next level</div></div>';
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+    }
+
+    // ── Activity item click navigation ───────────────
+    function navigateActivity(action, entityId) {
+        action = (action || '').toLowerCase();
+        entityId = entityId || '';
+        if (action.indexOf('project') >= 0 || action.indexOf('stage') >= 0) {
+            if (entityId) window.location.href = '/project/' + encodeURIComponent(entityId);
+            else window.location.href = '/projects';
+        } else if (action.indexOf('work_order') >= 0 || action.indexOf('wo_') >= 0 || action.indexOf('fabricat') >= 0) {
+            window.location.href = '/work-orders';
+        } else if (action.indexOf('customer') >= 0 || action.indexOf('client') >= 0) {
+            window.location.href = '/customers';
+        } else if (action.indexOf('quote') >= 0) {
+            window.location.href = '/quotes';
+        } else if (action.indexOf('ship') >= 0) {
+            window.location.href = '/shipping';
+        } else if (action.indexOf('inspect') >= 0 || action.indexOf('qc') >= 0 || action.indexOf('ncr') >= 0) {
+            window.location.href = '/qc-dashboard';
+        } else if (action.indexOf('inventory') >= 0 || action.indexOf('coil') >= 0) {
+            window.location.href = '/inventory';
+        } else if (entityId) {
+            window.location.href = '/project/' + encodeURIComponent(entityId);
+        } else {
+            window.location.href = '/activity';
+        }
     }
     </script>
 </body>
