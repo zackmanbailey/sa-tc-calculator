@@ -10962,6 +10962,762 @@ class QCQueuePageHandler(BaseHandler):
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{e}</p>")
 
+# ── Sales Page Handlers ───────────────────────────────────────────
+class SalesLeadsPageHandler(BaseHandler):
+    """GET /sales/leads — Sales lead tracking."""
+    def get(self):
+        try:
+            from templates.sales_leads_page import SALES_LEADS_PAGE_HTML
+            self.render_with_nav(SALES_LEADS_PAGE_HTML, active_page="sales")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class SalesPipelinePageHandler(BaseHandler):
+    """GET /sales/pipeline — Sales pipeline kanban board."""
+    def get(self):
+        try:
+            from templates.sales_pipeline_page import SALES_PIPELINE_PAGE_HTML
+            self.render_with_nav(SALES_PIPELINE_PAGE_HTML, active_page="sales")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class SalesQuotesPageHandler(BaseHandler):
+    """GET /sales/quotes — Sales quotes management."""
+    def get(self):
+        try:
+            from templates.sales_quotes_page import SALES_QUOTES_PAGE_HTML
+            self.render_with_nav(SALES_QUOTES_PAGE_HTML, active_page="sales")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+# ── Financial Page Handlers ───────────────────────────────────────
+class FinancialDashboardPageHandler(BaseHandler):
+    """GET /financial — Financial dashboard overview."""
+    def get(self):
+        try:
+            from templates.financial_dashboard_page import FINANCIAL_DASHBOARD_PAGE_HTML
+            self.render_with_nav(FINANCIAL_DASHBOARD_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialInvoicesPageHandler(BaseHandler):
+    """GET /financial/invoices — Invoice management."""
+    def get(self):
+        try:
+            from templates.financial_invoices_page import FINANCIAL_INVOICES_PAGE_HTML
+            self.render_with_nav(FINANCIAL_INVOICES_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialExpensesPageHandler(BaseHandler):
+    """GET /financial/expenses — Expense tracking."""
+    def get(self):
+        try:
+            from templates.financial_expenses_page import FINANCIAL_EXPENSES_PAGE_HTML
+            self.render_with_nav(FINANCIAL_EXPENSES_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialVendorBillsPageHandler(BaseHandler):
+    """GET /financial/vendor-bills — Vendor bill management."""
+    def get(self):
+        try:
+            from templates.financial_vendor_bills_page import FINANCIAL_VENDOR_BILLS_PAGE_HTML
+            self.render_with_nav(FINANCIAL_VENDOR_BILLS_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialEquipmentPageHandler(BaseHandler):
+    """GET /financial/equipment — Equipment cost tracking."""
+    def get(self):
+        try:
+            from templates.financial_equipment_page import FINANCIAL_EQUIPMENT_PAGE_HTML
+            self.render_with_nav(FINANCIAL_EQUIPMENT_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialProjectsPageHandler(BaseHandler):
+    """GET /financial/projects — Per-project financial breakdown."""
+    def get(self):
+        try:
+            from templates.financial_projects_page import FINANCIAL_PROJECTS_PAGE_HTML
+            self.render_with_nav(FINANCIAL_PROJECTS_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FinancialReportsPageHandler(BaseHandler):
+    """GET /financial/reports — Financial reports (P&L, balance sheet, cash flow)."""
+    def get(self):
+        try:
+            from templates.financial_reports_page import FINANCIAL_REPORTS_PAGE_HTML
+            self.render_with_nav(FINANCIAL_REPORTS_PAGE_HTML, active_page="financial")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class BudgetPageHandler(BaseHandler):
+    """GET /budget — Budget overview with category breakdowns."""
+    def get(self):
+        try:
+            from templates.budget_page import BUDGET_PAGE_HTML
+            self.render_with_nav(BUDGET_PAGE_HTML, active_page="budget")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+# ── Sales & Financial API Stub Handlers ───────────────────────────
+class FinancialSummaryAPIHandler(BaseHandler):
+    """GET /api/financial/summary — Returns financial summary stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"revenue": 0, "expenses": 0, "profit": 0, "outstanding": 0, "transactions": []})
+
+class FinancialInvoicesAPIHandler(BaseHandler):
+    """GET/POST /api/financial/invoices — Invoice API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"invoices": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Invoice created (stub)"})
+
+class FinancialExpensesAPIHandler(BaseHandler):
+    """GET/POST /api/financial/expenses — Expense API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"expenses": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Expense created (stub)"})
+
+class FinancialVendorBillsAPIHandler(BaseHandler):
+    """GET/POST /api/financial/vendor-bills — Vendor bills API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"bills": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Bill created (stub)"})
+
+class FinancialEquipmentAPIHandler(BaseHandler):
+    """GET/POST /api/financial/equipment — Equipment API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"equipment": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Equipment added (stub)"})
+
+class FinancialProjectsAPIHandler(BaseHandler):
+    """GET /api/financial/projects — Project financials API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"projects": []})
+
+class SalesLeadsAPIHandler(BaseHandler):
+    """GET/POST /api/sales/leads — Sales leads API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"leads": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Lead created (stub)"})
+
+class SalesPipelineAPIHandler(BaseHandler):
+    """GET /api/sales/pipeline — Sales pipeline API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"stages": []})
+
+class SalesQuotesAPIHandler(BaseHandler):
+    """GET/POST /api/sales/quotes — Sales quotes API stub."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"quotes": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok", "message": "Quote created (stub)"})
+
+# ═══════════════════════════════════════════════════════════════════════
+#  FIELD & SAFETY PAGE HANDLERS
+# ═══════════════════════════════════════════════════════════════════════
+
+class FieldDailyPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_daily_page import FIELD_DAILY_PAGE_HTML
+        self.render_with_nav(FIELD_DAILY_PAGE_HTML, active_page="field")
+
+class FieldDocsPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_docs_page import FIELD_DOCS_PAGE_HTML
+        self.render_with_nav(FIELD_DOCS_PAGE_HTML, active_page="field")
+
+class FieldEquipmentPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_equipment_page import FIELD_EQUIPMENT_PAGE_HTML
+        self.render_with_nav(FIELD_EQUIPMENT_PAGE_HTML, active_page="field")
+
+class FieldExpensesPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_expenses_page import FIELD_EXPENSES_PAGE_HTML
+        self.render_with_nav(FIELD_EXPENSES_PAGE_HTML, active_page="field")
+
+class FieldJHAPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_jha_page import FIELD_JHA_PAGE_HTML
+        self.render_with_nav(FIELD_JHA_PAGE_HTML, active_page="field")
+
+class FieldPhotosPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_photos_page import FIELD_PHOTOS_PAGE_HTML
+        self.render_with_nav(FIELD_PHOTOS_PAGE_HTML, active_page="field")
+
+class FieldProjectsPageHandler(BaseHandler):
+    def get(self):
+        from templates.field_projects_page import FIELD_PROJECTS_PAGE_HTML
+        self.render_with_nav(FIELD_PROJECTS_PAGE_HTML, active_page="field")
+
+class SafetyEquipmentPageHandler(BaseHandler):
+    def get(self):
+        from templates.safety_equipment_page import SAFETY_EQUIPMENT_PAGE_HTML
+        self.render_with_nav(SAFETY_EQUIPMENT_PAGE_HTML, active_page="safety")
+
+class SafetyIncidentsPageHandler(BaseHandler):
+    def get(self):
+        from templates.safety_incidents_page import SAFETY_INCIDENTS_PAGE_HTML
+        self.render_with_nav(SAFETY_INCIDENTS_PAGE_HTML, active_page="safety")
+
+class SafetyJHAPageHandler(BaseHandler):
+    def get(self):
+        from templates.safety_jha_page import SAFETY_JHA_PAGE_HTML
+        self.render_with_nav(SAFETY_JHA_PAGE_HTML, active_page="safety")
+
+class SafetyMetricsPageHandler(BaseHandler):
+    def get(self):
+        from templates.safety_metrics_page import SAFETY_METRICS_PAGE_HTML
+        self.render_with_nav(SAFETY_METRICS_PAGE_HTML, active_page="safety")
+
+class SafetyTrainingPageHandler(BaseHandler):
+    def get(self):
+        from templates.safety_training_page import SAFETY_TRAINING_PAGE_HTML
+        self.render_with_nav(SAFETY_TRAINING_PAGE_HTML, active_page="safety")
+
+class CrewPageHandler(BaseHandler):
+    def get(self):
+        from templates.crew_page import CREW_PAGE_HTML
+        self.render_with_nav(CREW_PAGE_HTML, active_page="crew")
+
+# ── Field & Safety API Stubs ──
+
+class FieldDailyAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"reports": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldDocsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"documents": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldEquipmentAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"equipment": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldExpensesAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"expenses": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldJHAAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"jha_records": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldPhotosAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"photos": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class FieldProjectsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"projects": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class SafetyEquipmentAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"equipment": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class SafetyIncidentsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"incidents": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class SafetyJHAAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"jha_records": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class SafetyMetricsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"metrics": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class SafetyTrainingAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"training": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class CrewAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"crew": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+# ═══════════════════════════════════════════════════════════════════════
+#  INVENTORY & PROCUREMENT PAGE HANDLERS
+# ═══════════════════════════════════════════════════════════════════════
+
+class AllocationsPageHandler(BaseHandler):
+    def get(self):
+        from templates.allocations_page import ALLOCATIONS_PAGE_HTML
+        self.render_with_nav(ALLOCATIONS_PAGE_HTML, active_page="inventory")
+
+class CertsPageHandler(BaseHandler):
+    def get(self):
+        from templates.certs_page import CERTS_PAGE_HTML
+        self.render_with_nav(CERTS_PAGE_HTML, active_page="inventory")
+
+class MaterialReqsPageHandler(BaseHandler):
+    def get(self):
+        from templates.material_reqs_page import MATERIAL_REQS_PAGE_HTML
+        self.render_with_nav(MATERIAL_REQS_PAGE_HTML, active_page="inventory")
+
+class PurchaseOrdersPageHandler(BaseHandler):
+    def get(self):
+        from templates.purchase_orders_page import PURCHASE_ORDERS_PAGE_HTML
+        self.render_with_nav(PURCHASE_ORDERS_PAGE_HTML, active_page="inventory")
+
+class PricesPageHandler(BaseHandler):
+    def get(self):
+        from templates.prices_page import PRICES_PAGE_HTML
+        self.render_with_nav(PRICES_PAGE_HTML, active_page="inventory")
+
+class ReceiptsPageHandler(BaseHandler):
+    def get(self):
+        from templates.receipts_page import RECEIPTS_PAGE_HTML
+        self.render_with_nav(RECEIPTS_PAGE_HTML, active_page="inventory")
+
+class ReceivingPageHandler(BaseHandler):
+    def get(self):
+        from templates.receiving_page import RECEIVING_PAGE_HTML
+        self.render_with_nav(RECEIVING_PAGE_HTML, active_page="inventory")
+
+class VendorsPageHandler(BaseHandler):
+    def get(self):
+        from templates.vendors_page import VENDORS_PAGE_HTML
+        self.render_with_nav(VENDORS_PAGE_HTML, active_page="inventory")
+
+# ── Inventory & Procurement API Stubs ──
+
+class AllocationsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"allocations": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class CertsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"certs": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class MaterialReqsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"requisitions": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class PurchaseOrdersAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"purchase_orders": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class PricesAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"prices": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ReceiptsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"receipts": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ReceivingAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"deliveries": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class VendorsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"vendors": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class AdminSettingsPageHandler(BaseHandler):
+    def get(self):
+        from templates.admin_settings_page import ADMIN_SETTINGS_PAGE_HTML
+        self.render_with_nav(ADMIN_SETTINGS_PAGE_HTML, active_page="admin")
+
+class TasksPageHandler(BaseHandler):
+    def get(self):
+        from templates.tasks_page import TASKS_PAGE_HTML
+        self.render_with_nav(TASKS_PAGE_HTML, active_page="tasks")
+
+class TimelinePageHandler(BaseHandler):
+    def get(self):
+        from templates.timeline_page import TIMELINE_PAGE_HTML
+        self.render_with_nav(TIMELINE_PAGE_HTML, active_page="timeline")
+
+class WorkflowsPageHandler(BaseHandler):
+    def get(self):
+        from templates.workflows_page import WORKFLOWS_PAGE_HTML
+        self.render_with_nav(WORKFLOWS_PAGE_HTML, active_page="workflows")
+
+class TraceabilityPageHandler(BaseHandler):
+    def get(self):
+        from templates.traceability_page import TRACEABILITY_PAGE_HTML
+        self.render_with_nav(TRACEABILITY_PAGE_HTML, active_page="traceability")
+
+class AuditPageHandler(BaseHandler):
+    def get(self):
+        from templates.audit_page import AUDIT_PAGE_HTML
+        self.render_with_nav(AUDIT_PAGE_HTML, active_page="audit")
+
+class AISCPageHandler(BaseHandler):
+    def get(self):
+        from templates.aisc_page import AISC_PAGE_HTML
+        self.render_with_nav(AISC_PAGE_HTML, active_page="aisc")
+
+class QCMainPageHandler(BaseHandler):
+    def get(self):
+        from templates.qc_main_page import QC_MAIN_PAGE_HTML
+        self.render_with_nav(QC_MAIN_PAGE_HTML, active_page="qc")
+
+class QCNCRPageHandler(BaseHandler):
+    def get(self):
+        from templates.qc_ncr_page import QC_NCR_PAGE_HTML
+        self.render_with_nav(QC_NCR_PAGE_HTML, active_page="qc")
+
+class ScanPageHandler(BaseHandler):
+    def get(self):
+        from templates.scan_page import SCAN_PAGE_HTML
+        self.render_with_nav(SCAN_PAGE_HTML, active_page="scan")
+
+class PortalDocsPageHandler(BaseHandler):
+    def get(self):
+        from templates.portal_docs_page import PORTAL_DOCS_PAGE_HTML
+        self.render_with_nav(PORTAL_DOCS_PAGE_HTML, active_page="portal")
+
+class PortalPhotosPageHandler(BaseHandler):
+    def get(self):
+        from templates.portal_photos_page import PORTAL_PHOTOS_PAGE_HTML
+        self.render_with_nav(PORTAL_PHOTOS_PAGE_HTML, active_page="portal")
+
+class PortalStatusPageHandler(BaseHandler):
+    def get(self):
+        from templates.portal_status_page import PORTAL_STATUS_PAGE_HTML
+        self.render_with_nav(PORTAL_STATUS_PAGE_HTML, active_page="portal")
+
+class WorkstationCoilPageHandler(BaseHandler):
+    def get(self):
+        from templates.workstation_coil_page import WORKSTATION_COIL_PAGE_HTML
+        self.render_with_nav(WORKSTATION_COIL_PAGE_HTML, active_page="work-station")
+
+class WorkstationCompletedPageHandler(BaseHandler):
+    def get(self):
+        from templates.workstation_completed_page import WORKSTATION_COMPLETED_PAGE_HTML
+        self.render_with_nav(WORKSTATION_COMPLETED_PAGE_HTML, active_page="work-station")
+
+class WorkstationCutsPageHandler(BaseHandler):
+    def get(self):
+        from templates.workstation_cuts_page import WORKSTATION_CUTS_PAGE_HTML
+        self.render_with_nav(WORKSTATION_CUTS_PAGE_HTML, active_page="work-station")
+
+class WorkstationLogPageHandler(BaseHandler):
+    def get(self):
+        from templates.workstation_log_page import WORKSTATION_LOG_PAGE_HTML
+        self.render_with_nav(WORKSTATION_LOG_PAGE_HTML, active_page="work-station")
+
+class WorkstationQueuePageHandler(BaseHandler):
+    def get(self):
+        from templates.workstation_queue_page import WORKSTATION_QUEUE_PAGE_HTML
+        self.render_with_nav(WORKSTATION_QUEUE_PAGE_HTML, active_page="work-station")
+
+class ShippingActivePageHandler(BaseHandler):
+    def get(self):
+        from templates.shipping_active_page import SHIPPING_ACTIVE_PAGE_HTML
+        self.render_with_nav(SHIPPING_ACTIVE_PAGE_HTML, active_page="shipping")
+
+class ShippingBOLPageHandler(BaseHandler):
+    def get(self):
+        from templates.shipping_bol_page import SHIPPING_BOL_PAGE_HTML
+        self.render_with_nav(SHIPPING_BOL_PAGE_HTML, active_page="shipping")
+
+class ShippingBuildPageHandler(BaseHandler):
+    def get(self):
+        from templates.shipping_build_page import SHIPPING_BUILD_PAGE_HTML
+        self.render_with_nav(SHIPPING_BUILD_PAGE_HTML, active_page="shipping")
+
+# ── API Stub Handlers for Operations & Admin pages ──────────────
+
+class AdminSettingsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class TasksAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class TimelineAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkflowsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class TraceabilityMainAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class AuditAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class AISCAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class QCSummaryAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class QCNCRsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ScanHistoryAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class PortalDocsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class PortalPhotosAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class PortalStatusAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkStationCoilAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkStationCompletedAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkStationCutsAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkStationLogAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class WorkStationQueueAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ShippingActiveAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ShippingBOLAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
+class ShippingBuildAPIHandler(BaseHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"data": []})
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        self.write({"status": "ok"})
+
 class ComingSoonPageHandler(BaseHandler):
     """Generic 'Coming Soon' placeholder for sidebar links without full implementations."""
 
@@ -13199,12 +13955,17 @@ def get_routes():
         (r"/api/notifications/test",             EmailNotificationTestHandler),
 
         # ── Work Station (tablet/phone) ───────────────────────
-        (r"/work-station/coil",                  ComingSoonPageHandler),
-        (r"/work-station/completed",             ComingSoonPageHandler),
-        (r"/work-station/cuts",                  ComingSoonPageHandler),
-        (r"/work-station/log",                   ComingSoonPageHandler),
-        (r"/work-station/queue",                 ComingSoonPageHandler),
+        (r"/work-station/coil",                  WorkstationCoilPageHandler),
+        (r"/work-station/completed",             WorkstationCompletedPageHandler),
+        (r"/work-station/cuts",                  WorkstationCutsPageHandler),
+        (r"/work-station/log",                   WorkstationLogPageHandler),
+        (r"/work-station/queue",                 WorkstationQueuePageHandler),
         (r"/work-station/([^/]+)",               WorkStationPageHandler),
+        (r"/api/work-station/coil",              WorkStationCoilAPIHandler),
+        (r"/api/work-station/completed",         WorkStationCompletedAPIHandler),
+        (r"/api/work-station/cuts",              WorkStationCutsAPIHandler),
+        (r"/api/work-station/log",               WorkStationLogAPIHandler),
+        (r"/api/work-station/queue",             WorkStationQueueAPIHandler),
         (r"/api/work-station/data",              WorkStationDataHandler),
         (r"/api/work-station/steps",             WorkStationStepsHandler),
         (r"/api/work-station/steps/override",    WorkStationStepOverrideHandler),
@@ -13251,9 +14012,11 @@ def get_routes():
         (r"/api/tc/load",                    TCLoadHandler),
 
         # ── AISC QC Module ─────────────────────────────────────
-        (r"/qc/ncr",                         ComingSoonPageHandler),
-        (r"/qc",                             ComingSoonPageHandler),
+        (r"/qc/ncr",                         QCNCRPageHandler),
+        (r"/qc",                             QCMainPageHandler),
         (r"/qc/([^/]+)",                     QCPageHandler),
+        (r"/api/qc/summary",                 QCSummaryAPIHandler),
+        (r"/api/qc/ncrs",                    QCNCRsAPIHandler),
         (r"/api/qc/types",                   QCInspectionTypesHandler),
         (r"/api/qc/data",                    QCDataHandler),
         (r"/api/qc/inspection/create",       QCInspectionCreateHandler),
@@ -13301,10 +14064,13 @@ def get_routes():
         (r"/api/load-builder/delete",            LoadBuilderDeleteHandler),
 
         # ── Shipping ─────────────────────────────────────────
-        (r"/shipping/active",                    ComingSoonPageHandler),
-        (r"/shipping/bol",                       ComingSoonPageHandler),
-        (r"/shipping/build",                     ComingSoonPageHandler),
+        (r"/shipping/active",                    ShippingActivePageHandler),
+        (r"/shipping/bol",                       ShippingBOLPageHandler),
+        (r"/shipping/build",                     ShippingBuildPageHandler),
         (r"/shipping/([^/]+)",                   ShippingPageHandler),
+        (r"/api/shipping/active",                ShippingActiveAPIHandler),
+        (r"/api/shipping/bol-data",              ShippingBOLAPIHandler),
+        (r"/api/shipping/build",                 ShippingBuildAPIHandler),
         (r"/api/shipping/packing-list",          ShippingPackingListHandler),
         (r"/api/shipping/bol",                   ShippingBOLHandler),
         (r"/api/shipping/manifest",              ShippingManifestHandler),
@@ -13364,6 +14130,42 @@ def get_routes():
         (r"/api/reports/qa/pdf",                 QAReportPDFHandler),
         (r"/api/reports/export",                 ReportsExportCSVHandler),
 
+        # ── Sales & Financial API stubs ───────────────────────────
+        (r"/api/financial/summary",              FinancialSummaryAPIHandler),
+        (r"/api/financial/invoices",             FinancialInvoicesAPIHandler),
+        (r"/api/financial/expenses",             FinancialExpensesAPIHandler),
+        (r"/api/financial/vendor-bills",         FinancialVendorBillsAPIHandler),
+        (r"/api/financial/equipment",            FinancialEquipmentAPIHandler),
+        (r"/api/financial/projects",             FinancialProjectsAPIHandler),
+        (r"/api/sales/leads",                    SalesLeadsAPIHandler),
+        (r"/api/sales/pipeline",                 SalesPipelineAPIHandler),
+        (r"/api/sales/quotes",                   SalesQuotesAPIHandler),
+
+        # ── Field & Safety APIs ───────────────────────────────
+        (r"/api/field/daily",                    FieldDailyAPIHandler),
+        (r"/api/field/docs",                     FieldDocsAPIHandler),
+        (r"/api/field/equipment",                FieldEquipmentAPIHandler),
+        (r"/api/field/expenses",                 FieldExpensesAPIHandler),
+        (r"/api/field/jha",                      FieldJHAAPIHandler),
+        (r"/api/field/photos",                   FieldPhotosAPIHandler),
+        (r"/api/field/projects",                 FieldProjectsAPIHandler),
+        (r"/api/safety/equipment",               SafetyEquipmentAPIHandler),
+        (r"/api/safety/incidents",               SafetyIncidentsAPIHandler),
+        (r"/api/safety/jha",                     SafetyJHAAPIHandler),
+        (r"/api/safety/metrics",                 SafetyMetricsAPIHandler),
+        (r"/api/safety/training",                SafetyTrainingAPIHandler),
+        (r"/api/crew",                           CrewAPIHandler),
+
+        # ── Inventory & Procurement APIs ──────────────────────
+        (r"/api/allocations",                    AllocationsAPIHandler),
+        (r"/api/certs",                          CertsAPIHandler),
+        (r"/api/material-reqs",                  MaterialReqsAPIHandler),
+        (r"/api/pos",                            PurchaseOrdersAPIHandler),
+        (r"/api/prices",                         PricesAPIHandler),
+        (r"/api/receipts",                       ReceiptsAPIHandler),
+        (r"/api/receiving",                      ReceivingAPIHandler),
+        (r"/api/vendors",                        VendorsAPIHandler),
+
         # ── Missing Pages (fix sidebar 404s) ──────────────────
         (r"/dashboard",                          DashboardHandler),
         (r"/quotes",                             QuotesPageHandler),
@@ -13375,50 +14177,63 @@ def get_routes():
         (r"/admin/users",                        AdminPageHandler),
         (r"/work-orders/all",                    WorkOrdersGlobalPageHandler),
 
-        # ── Coming Soon stubs (all remaining sidebar links) ──
-        (r"/admin/settings",                     ComingSoonPageHandler),
-        (r"/aisc",                               ComingSoonPageHandler),
-        (r"/budget",                             ComingSoonPageHandler),
-        (r"/financial/equipment",                ComingSoonPageHandler),
-        (r"/financial/expenses",                 ComingSoonPageHandler),
-        (r"/financial/invoices",                 ComingSoonPageHandler),
-        (r"/financial/projects",                 ComingSoonPageHandler),
-        (r"/financial/reports",                  ComingSoonPageHandler),
-        (r"/financial/vendor-bills",             ComingSoonPageHandler),
-        (r"/financial",                          ComingSoonPageHandler),
-        (r"/sales/leads",                        ComingSoonPageHandler),
-        (r"/sales/pipeline",                     ComingSoonPageHandler),
-        (r"/sales/quotes",                       ComingSoonPageHandler),
-        (r"/field/daily",                        ComingSoonPageHandler),
-        (r"/field/docs",                         ComingSoonPageHandler),
-        (r"/field/equipment",                    ComingSoonPageHandler),
-        (r"/field/expenses",                     ComingSoonPageHandler),
-        (r"/field/jha",                          ComingSoonPageHandler),
-        (r"/field/photos",                       ComingSoonPageHandler),
-        (r"/field/projects",                     ComingSoonPageHandler),
-        (r"/allocations",                        ComingSoonPageHandler),
-        (r"/certs",                              ComingSoonPageHandler),
-        (r"/crew",                               ComingSoonPageHandler),
-        (r"/material-reqs",                      ComingSoonPageHandler),
-        (r"/pos",                                ComingSoonPageHandler),
-        (r"/prices",                             ComingSoonPageHandler),
-        (r"/receipts",                           ComingSoonPageHandler),
-        (r"/receiving",                          ComingSoonPageHandler),
-        (r"/vendors",                            ComingSoonPageHandler),
-        (r"/audit",                              ComingSoonPageHandler),
-        (r"/safety/equipment",                   ComingSoonPageHandler),
-        (r"/safety/incidents",                   ComingSoonPageHandler),
-        (r"/safety/jha",                         ComingSoonPageHandler),
-        (r"/safety/metrics",                     ComingSoonPageHandler),
-        (r"/safety/training",                    ComingSoonPageHandler),
-        (r"/portal/docs",                        ComingSoonPageHandler),
-        (r"/portal/photos",                      ComingSoonPageHandler),
-        (r"/portal/status",                      ComingSoonPageHandler),
-        (r"/scan",                               ComingSoonPageHandler),
-        (r"/tasks",                              ComingSoonPageHandler),
-        (r"/timeline",                           ComingSoonPageHandler),
-        (r"/traceability",                       ComingSoonPageHandler),
-        (r"/workflows",                          ComingSoonPageHandler),
+        # ── Operations & Admin pages ─────────────────────────
+        (r"/admin/settings",                     AdminSettingsPageHandler),
+        (r"/aisc",                               AISCPageHandler),
+        (r"/budget",                             BudgetPageHandler),
+        (r"/financial/equipment",                FinancialEquipmentPageHandler),
+        (r"/financial/expenses",                 FinancialExpensesPageHandler),
+        (r"/financial/invoices",                 FinancialInvoicesPageHandler),
+        (r"/financial/projects",                 FinancialProjectsPageHandler),
+        (r"/financial/reports",                  FinancialReportsPageHandler),
+        (r"/financial/vendor-bills",             FinancialVendorBillsPageHandler),
+        (r"/financial",                          FinancialDashboardPageHandler),
+        (r"/sales/leads",                        SalesLeadsPageHandler),
+        (r"/sales/pipeline",                     SalesPipelinePageHandler),
+        (r"/sales/quotes",                       SalesQuotesPageHandler),
+        (r"/field/daily",                        FieldDailyPageHandler),
+        (r"/field/docs",                         FieldDocsPageHandler),
+        (r"/field/equipment",                    FieldEquipmentPageHandler),
+        (r"/field/expenses",                     FieldExpensesPageHandler),
+        (r"/field/jha",                          FieldJHAPageHandler),
+        (r"/field/photos",                       FieldPhotosPageHandler),
+        (r"/field/projects",                     FieldProjectsPageHandler),
+        (r"/allocations",                        AllocationsPageHandler),
+        (r"/certs",                              CertsPageHandler),
+        (r"/crew",                               CrewPageHandler),
+        (r"/material-reqs",                      MaterialReqsPageHandler),
+        (r"/pos",                                PurchaseOrdersPageHandler),
+        (r"/prices",                             PricesPageHandler),
+        (r"/receipts",                           ReceiptsPageHandler),
+        (r"/receiving",                          ReceivingPageHandler),
+        (r"/vendors",                            VendorsPageHandler),
+        (r"/audit",                              AuditPageHandler),
+        (r"/safety/equipment",                   SafetyEquipmentPageHandler),
+        (r"/safety/incidents",                   SafetyIncidentsPageHandler),
+        (r"/safety/jha",                         SafetyJHAPageHandler),
+        (r"/safety/metrics",                     SafetyMetricsPageHandler),
+        (r"/safety/training",                    SafetyTrainingPageHandler),
+        (r"/portal/docs",                        PortalDocsPageHandler),
+        (r"/portal/photos",                      PortalPhotosPageHandler),
+        (r"/portal/status",                      PortalStatusPageHandler),
+        (r"/scan",                               ScanPageHandler),
+        (r"/tasks",                              TasksPageHandler),
+        (r"/timeline",                           TimelinePageHandler),
+        (r"/traceability",                       TraceabilityPageHandler),
+        (r"/workflows",                          WorkflowsPageHandler),
+
+        # ── Operations & Admin API stubs ─────────────────────
+        (r"/api/admin/settings",                 AdminSettingsAPIHandler),
+        (r"/api/tasks",                          TasksAPIHandler),
+        (r"/api/timeline",                       TimelineAPIHandler),
+        (r"/api/workflows",                      WorkflowsAPIHandler),
+        (r"/api/traceability",                   TraceabilityMainAPIHandler),
+        (r"/api/audit",                          AuditAPIHandler),
+        (r"/api/aisc",                           AISCAPIHandler),
+        (r"/api/scan/history",                   ScanHistoryAPIHandler),
+        (r"/api/portal/docs",                    PortalDocsAPIHandler),
+        (r"/api/portal/photos",                  PortalPhotosAPIHandler),
+        (r"/api/portal/status",                  PortalStatusAPIHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),

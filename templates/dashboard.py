@@ -2146,7 +2146,7 @@ DASHBOARD_HTML = r"""
                 <div id="modalPipeline" style="margin-bottom:20px;"></div>
                 <div class="info-grid" id="overviewInfo"></div>
                 <div style="margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button class="dash-action-btn primary" id="openFullPageBtn" onclick="">Open Project</button>
+                    <button class="dash-action-btn primary" id="openFullPageBtn">Open Project</button>
                     <button class="dash-action-btn" id="openShopDrawingsBtn">Shop Drawings</button>
                     <button class="dash-action-btn" id="openWorkOrdersBtn">Work Orders</button>
                     <button class="dash-action-btn" onclick="closeProjectModal()">Close</button>
