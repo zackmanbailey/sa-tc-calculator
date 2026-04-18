@@ -1388,6 +1388,7 @@ class DashboardStatsAPIHandler(BaseHandler):
             result["recent_activity"] = recent_activity
 
             # ── Users online estimate (admin) ──
+            admin_roles = ["admin", "god_mode", "owner", "general_manager"]
             if role in admin_roles:
                 result["users_online"] = max(1, len([u for u in users_db.values()
                                                        if isinstance(u, dict)
