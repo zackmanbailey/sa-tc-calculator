@@ -142,6 +142,23 @@ RECEIVING_PAGE_HTML = r"""
         border: 1px solid rgba(255,255,255,0.06);
     }
     .checklist li input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--tf-green); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row, .delivery-cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-row { grid-template-columns: 1fr; }
+    .delivery-cards { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+    .stat-row, .delivery-cards { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+    .delivery-cards { grid-template-columns: 1fr; }
+}
 </style>
 
 <div class="recv-container">

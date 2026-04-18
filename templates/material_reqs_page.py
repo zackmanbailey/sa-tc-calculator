@@ -123,6 +123,22 @@ MATERIAL_REQS_PAGE_HTML = r"""
         display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: center; margin-bottom: 8px;
     }
     .line-item input { background: var(--tf-bg); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px; color: var(--tf-text); font-size: 13px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-row { grid-template-columns: 1fr; }
+    .line-items { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="mr-container">

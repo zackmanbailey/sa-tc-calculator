@@ -167,6 +167,22 @@ SALES_QUOTES_PAGE_HTML = r"""
         font-size: 13px; cursor: pointer; width: 100%;
     }
     .btn-add-line:hover { color: var(--tf-text); border-color: rgba(255,255,255,0.2); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-row { grid-template-columns: 1fr; }
+    .sq-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .line-items { display: block; overflow-x: auto; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="quotes-container">

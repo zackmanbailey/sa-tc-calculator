@@ -121,6 +121,20 @@ PQR_PAGE_HTML = r"""<!DOCTYPE html>
     border-radius: 6px; cursor: pointer;
   }
   .pqr-cancel-btn:hover { background: #475569; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .pqr-test-grid { grid-template-columns: 1fr; }
+    .pqr-form-grid { grid-template-columns: 1fr; }
+    .pqr-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .pqr-table { display: block; overflow-x: auto; }
+}
+@media (max-width: 480px) {
+    .pqr-test-grid { grid-template-columns: 1fr; }
+    .pqr-add-btn, .pqr-save-btn, .pqr-cancel-btn { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="pqr-page">

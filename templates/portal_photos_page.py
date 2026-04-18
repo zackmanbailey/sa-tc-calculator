@@ -64,6 +64,19 @@ PORTAL_PHOTOS_PAGE_HTML = r"""
     .lightbox { max-width: 90vw; max-height: 80vh; background: #000; border-radius: 12px; padding: 0; overflow: hidden; text-align: center; }
     .lightbox img { max-width: 100%; max-height: 75vh; object-fit: contain; }
     .lightbox-info { padding: 16px; text-align: left; background: var(--tf-card); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .photo-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .photo-grid { grid-template-columns: 1fr 1fr; }
+}
 </style>
 
 <div class="photos-container">

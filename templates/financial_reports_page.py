@@ -83,6 +83,21 @@ FINANCIAL_REPORTS_PAGE_HTML = r"""
 
     .empty-state { text-align: center; padding: 60px 20px; color: var(--tf-muted); }
     .empty-state h3 { color: var(--tf-text); margin-bottom: 8px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .report-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+    .report-tab { white-space: nowrap; }
+    .report-panel { padding: 12px; }
+    .report-card { padding: 12px; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .btn-gold { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="fr-container">

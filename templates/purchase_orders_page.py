@@ -123,6 +123,22 @@ PURCHASE_ORDERS_PAGE_HTML = r"""
     .line-items-table td { padding: 4px 8px; }
     .line-items-table input { background: var(--tf-bg); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 10px; color: var(--tf-text); font-size: 13px; width: 100%; }
     .po-total { font-size: 18px; font-weight: 700; color: var(--tf-gold); text-align: right; margin-top: 12px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-row { grid-template-columns: 1fr; }
+    .line-items-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="po-container">

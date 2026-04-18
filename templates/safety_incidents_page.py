@@ -126,6 +126,21 @@ SAFETY_INCIDENTS_PAGE_HTML = r"""
     .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--tf-blue); }
     .form-full { grid-column: 1 / -1; }
     .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .days-counter { font-size: 36px; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="incidents-container">

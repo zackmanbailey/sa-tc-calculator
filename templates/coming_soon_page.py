@@ -63,6 +63,17 @@ COMING_SOON_PAGE_HTML = r"""
     background: rgba(99,102,241,0.25);
     color: #a5b4fc;
 }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .coming-soon-container { padding: 20px; }
+    .coming-soon-icon { font-size: 48px; }
+    .coming-soon-title { font-size: 22px; }
+}
+@media (max-width: 480px) {
+    .coming-soon-desc { font-size: 14px; }
+}
 </style>
 
 <div class="coming-soon-container">

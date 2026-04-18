@@ -70,6 +70,22 @@ WORKFLOWS_PAGE_HTML = r"""
     .step-item input { flex: 1; }
     .step-item select { width: 140px; }
     .btn-remove { background: rgba(239,68,68,0.2); color: #f87171; border: none; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .wf-grid { grid-template-columns: 1fr; }
+    .step-builder { padding: 12px; }
+    .step-item { flex-direction: column; gap: 8px; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .wf-grid { grid-template-columns: 1fr; }
+    .btn-gold, .btn-blue { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="wf-container">

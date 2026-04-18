@@ -379,6 +379,15 @@ TOOLTIP_CSS = """
 }
 .tf-glossary-item.expanded .gi-detail { display: block; }
 .tf-glossary-item.expanded { border-left-color: #1E40AF; }
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .tf-glossary-panel { width: 95%; max-width: 95vw; }
+    .tf-help { font-size: 14px; }
+}
+@media (max-width: 480px) {
+    .tf-glossary-search { width: 100%; }
+}
 """
 
 

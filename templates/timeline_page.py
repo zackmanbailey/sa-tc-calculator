@@ -61,6 +61,20 @@ TIMELINE_PAGE_HTML = r"""
     .empty-state { text-align: center; padding: 60px 20px; color: var(--tf-muted); }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
     .loading { text-align: center; padding: 40px; color: var(--tf-muted); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .gantt-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .gantt-label-col { min-width: 120px; }
+    .legend { flex-wrap: wrap; gap: 8px; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .btn-gold { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="timeline-container">

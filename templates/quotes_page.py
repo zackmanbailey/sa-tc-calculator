@@ -132,6 +132,19 @@ QUOTES_PAGE_HTML = r"""
     .loading { text-align: center; padding: 40px; color: var(--tf-muted); }
     a.link-blue { color: var(--tf-blue); text-decoration: none; }
     a.link-blue:hover { text-decoration: underline; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .quotes-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .quotes-card { padding: 12px; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .btn-gold { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="quotes-container">

@@ -128,6 +128,21 @@ SALES_PIPELINE_PAGE_HTML = r"""
         text-align: center; padding: 30px 10px; color: var(--tf-muted);
         font-size: 13px; opacity: 0.6;
     }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .kanban-board { flex-direction: column; }
+    .kanban-column { min-width: unset; width: 100%; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+    .kanban-card { padding: 10px; }
+}
 </style>
 
 <div class="pipeline-container">

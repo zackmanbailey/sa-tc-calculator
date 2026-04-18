@@ -170,6 +170,21 @@ body {
 }
 .ms-modal .btn-save { background: var(--tf-blue); color: #fff; }
 .ms-modal .btn-cancel { background: var(--tf-gray-200); color: var(--tf-gray-600); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .ms-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .ms-scan-row { flex-direction: column; gap: 8px; }
+    .ms-scan-row input { width: 100%; }
+    .ms-active-card { padding: 12px; }
+}
+@media (max-width: 480px) {
+    .ms-stats { grid-template-columns: 1fr; }
+    .ms-stats { grid-template-columns: 1fr; }
+    .ms-scan-btn { width: 100%; text-align: center; }
+}
 </style>
 </head>
 <body>

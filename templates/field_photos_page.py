@@ -116,6 +116,21 @@ FIELD_PHOTOS_PAGE_HTML = r"""
     .lightbox img { max-width: 90%; max-height: 90vh; border-radius: 8px; }
     .lightbox-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: #fff; font-size: 32px; cursor: pointer; }
     .lightbox-info { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--tf-card); padding: 16px 24px; border-radius: 12px; text-align: center; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .photo-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+    .photo-grid { grid-template-columns: 1fr 1fr; }
+}
 </style>
 
 <div class="photos-container">

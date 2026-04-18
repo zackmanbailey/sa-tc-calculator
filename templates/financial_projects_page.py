@@ -92,6 +92,19 @@ FINANCIAL_PROJECTS_PAGE_HTML = r"""
 
     .empty-state { text-align: center; padding: 60px 20px; color: var(--tf-muted); }
     .empty-state h3 { color: var(--tf-text); margin-bottom: 8px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pf-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="pf-container">

@@ -82,6 +82,20 @@ MACHINES_PAGE_HTML = r"""
         text-align: center; padding: 60px 20px; color: var(--tf-muted);
     }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .machine-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+    .machine-grid { grid-template-columns: 1fr; }
+}
 </style>
 
 <div class="machines-container">

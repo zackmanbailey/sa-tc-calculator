@@ -111,6 +111,18 @@ QA_HUB_HTML = """<!DOCTYPE html>
   .aisc-item-text strong { color: #FFF; display: block; }
   .aisc-item-text span { color: #94A3B8; font-size: 12px; }
   .aisc-ref { font-size: 11px; color: #475569; font-style: italic; white-space: nowrap; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .qa-grid { grid-template-columns: 1fr; }
+    .aisc-checklist { padding: 12px; }
+    .audit-bar { flex-direction: column; gap: 8px; }
+}
+@media (max-width: 480px) {
+    .qa-grid { grid-template-columns: 1fr; }
+    .qa-card { padding: 12px; }
+}
 </style>
 
 <div class="qa-page">

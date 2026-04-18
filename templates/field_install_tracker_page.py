@@ -90,6 +90,17 @@ FIELD_INSTALL_TRACKER_PAGE_HTML = r"""
         text-align: center; padding: 60px 20px; color: var(--tf-muted);
     }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .project-grid { grid-template-columns: 1fr; }
+    .summary-bar { flex-direction: column; gap: 8px; }
+    .install-card { min-width: unset; }
+}
+@media (max-width: 480px) {
+    .summary-pill { font-size: 12px; }
+}
 </style>
 
 <div class="tracker-container">

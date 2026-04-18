@@ -118,6 +118,22 @@ PRICES_PAGE_HTML = r"""
     .markup-calc h3 { font-size: 14px; font-weight: 700; margin: 0 0 12px 0; color: var(--tf-gold); }
     .markup-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: end; }
     .markup-result { font-size: 24px; font-weight: 800; color: var(--tf-gold); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .stat-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
+    .form-row { grid-template-columns: 1fr; }
+    .markup-row { flex-direction: column; gap: 8px; }
+}
+@media (max-width: 480px) {
+    .stat-row { grid-template-columns: 1fr; }
+    .toolbar { gap: 8px; }
+}
 </style>
 
 <div class="prices-container">

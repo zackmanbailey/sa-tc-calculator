@@ -88,6 +88,16 @@ FIELD_COMPLETION_PAGE_HTML = r"""
         text-align: center; padding: 60px 20px; color: var(--tf-muted);
     }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .completion-card { padding: 12px; }
+    .completion-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 480px) {
+    .stage-badge { font-size: 11px; padding: 2px 6px; }
+}
 </style>
 
 <div class="completion-container">

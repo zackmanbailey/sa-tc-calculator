@@ -92,6 +92,19 @@ FIELD_PUNCH_PAGE_HTML = r"""
     .priority-high { color: #f87171; font-weight: 600; }
     .priority-medium { color: var(--tf-gold); font-weight: 600; }
     .priority-low { color: #4ade80; font-weight: 600; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar input[type="text"] { width: 100%; }
+    .punch-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .punch-card { padding: 12px; }
+}
+@media (max-width: 480px) {
+    .toolbar { gap: 8px; }
+    .project-select { width: 100%; }
+}
 </style>
 
 <div class="punch-container">
@@ -142,7 +155,7 @@ async function filterByProject() {
 async function loadPunchItems(jobCode) {
     const wrap = document.getElementById('punchContent');
     try {
-        let url = '/api/field/punch-list';
+        let url = '/api/field/punch-items';
         if (jobCode) url += '?job_code=' + encodeURIComponent(jobCode);
         const resp = await fetch(url);
         const data = await resp.json();
@@ -189,7 +202,98 @@ function togglePunchRow(tr, idx) {
 }
 
 function addItem() {
-    alert('Coming soon — punch list item creation will be available in a future update.');
+    // Build modal overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'punchModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    overlay.innerHTML = '<div style="background:#1e293b;border-radius:16px;border:1px solid rgba(255,255,255,0.08);padding:32px;width:540px;max-height:90vh;overflow-y:auto;color:#e2e8f0;font-family:Inter,Segoe UI,sans-serif;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">'
+      + '<h2 style="margin:0;font-size:20px;font-weight:800;color:#fff;">New Punch List Item</h2>'
+      + '<button onclick="closePunchModal()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">&times;</button></div>'
+      + '<form id="punchForm" onsubmit="submitPunchItem(event)">'
+      + '<div style="margin-bottom:16px;">'
+      + '<label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Title / Description *</label>'
+      + '<textarea id="pi_description" required rows="3" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;resize:vertical;" placeholder="Describe the punch list item..."></textarea></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Location / Area</label>'
+      + '<input id="pi_location" type="text" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;" placeholder="e.g. Bay 3, North Wall"></div>'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Priority *</label>'
+      + '<select id="pi_priority" required style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;">'
+      + '<option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Assigned To</label>'
+      + '<input id="pi_assigned" type="text" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;" placeholder="Name or crew"></div>'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Due Date</label>'
+      + '<input id="pi_due" type="date" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;"></div></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Status</label>'
+      + '<select id="pi_status" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;">'
+      + '<option value="open" selected>Open</option><option value="in-progress">In Progress</option><option value="resolved">Resolved</option></select></div>'
+      + '<div><label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Photo Reference</label>'
+      + '<input id="pi_photo" type="text" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;" placeholder="Photo filename or URL (optional)"></div></div>'
+      + '<div style="margin-bottom:20px;">'
+      + '<label style="display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">Project</label>'
+      + '<select id="pi_project" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;">'
+      + '<option value="">-- No project --</option></select></div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:12px;">'
+      + '<button type="button" onclick="closePunchModal()" style="background:#334155;color:#e2e8f0;border:none;border-radius:8px;padding:10px 20px;font-weight:600;font-size:14px;cursor:pointer;">Cancel</button>'
+      + '<button type="submit" id="punchSubmitBtn" style="background:#d4a843;color:#0f172a;border:none;border-radius:8px;padding:10px 24px;font-weight:700;font-size:14px;cursor:pointer;">Save Item</button></div>'
+      + '</form></div>';
+    document.body.appendChild(overlay);
+    // Populate project dropdown from main selector
+    var mainSel = document.getElementById('projectSelector');
+    var modalSel = document.getElementById('pi_project');
+    for (var i = 1; i < mainSel.options.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = mainSel.options[i].value;
+        opt.textContent = mainSel.options[i].textContent;
+        modalSel.appendChild(opt);
+    }
+    if (mainSel.value) modalSel.value = mainSel.value;
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closePunchModal(); });
+}
+
+function closePunchModal() {
+    var m = document.getElementById('punchModal');
+    if (m) m.remove();
+}
+
+async function submitPunchItem(e) {
+    e.preventDefault();
+    var btn = document.getElementById('punchSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    var payload = {
+        title: document.getElementById('pi_description').value.split('\n')[0].substring(0, 120),
+        description: document.getElementById('pi_description').value,
+        location: document.getElementById('pi_location').value,
+        priority: document.getElementById('pi_priority').value,
+        assigned_to: document.getElementById('pi_assigned').value,
+        due_date: document.getElementById('pi_due').value,
+        status: document.getElementById('pi_status').value,
+        photo_ref: document.getElementById('pi_photo').value,
+        job_code: document.getElementById('pi_project').value
+    };
+    try {
+        var resp = await fetch('/api/field/punch-items', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.status === 'ok') {
+            closePunchModal();
+            await loadPunchItems(document.getElementById('projectSelector').value);
+        } else {
+            alert('Error: ' + (data.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.textContent = 'Save Item';
+        }
+    } catch (err) {
+        alert('Failed to save: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Save Item';
+    }
 }
 
 loadProjects();

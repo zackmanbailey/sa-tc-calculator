@@ -76,6 +76,19 @@ SCAN_PAGE_HTML = r"""
     .empty-state { text-align: center; padding: 40px 20px; color: var(--tf-muted); }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
     .camera-controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .scan-container { padding: 12px; }
+    .camera-box { max-width: 100%; }
+    .manual-input { flex-direction: column; gap: 8px; }
+    .manual-input input { width: 100%; }
+}
+@media (max-width: 480px) {
+    .btn-gold, .btn-blue { width: 100%; text-align: center; }
+}
 </style>
 
 <div class="scan-container">

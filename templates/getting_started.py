@@ -132,6 +132,19 @@ GETTING_STARTED_HTML = """
 
   .role-section { display: none; }
   .role-section.active { display: block; }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .ref-grid { grid-template-columns: 1fr; }
+    .role-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+    .role-tab { white-space: nowrap; }
+    .step-card { padding: 16px; }
+}
+@media (max-width: 480px) {
+    .ref-grid { grid-template-columns: 1fr; }
+    .legend-row { flex-direction: column; gap: 8px; }
+}
 </style>
 </head>
 <body>

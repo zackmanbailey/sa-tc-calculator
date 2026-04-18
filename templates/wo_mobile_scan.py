@@ -268,6 +268,20 @@ body {
   flex: 1; padding: 10px; border: 1px solid var(--gray-300);
   border-radius: 8px; font-size: 14px;
 }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+    .tab { white-space: nowrap; font-size: 12px; }
+    .piece-card { padding: 12px; }
+    .detail-row { flex-direction: column; gap: 4px; }
+    .drawing-card { flex-direction: column; }
+}
+@media (max-width: 480px) {
+    .btn-start, .btn-finish, .action-btn { width: 100%; text-align: center; }
+    .qc-actions { flex-direction: column; gap: 8px; }
+}
 </style>
 </head>
 <body>

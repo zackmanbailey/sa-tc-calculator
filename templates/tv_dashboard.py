@@ -198,6 +198,20 @@ TV_DASHBOARD_HTML = """
     position: absolute; top: -20px; width: 10px; height: 10px;
     animation: confetti 3s ease-out forwards;
   }
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .page-header h1 { font-size: 22px; }
+    .kpi-strip { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .machine-grid { grid-template-columns: 1fr; }
+    .top-bar { flex-direction: column; gap: 8px; }
+    .leaderboard { padding: 12px; }
+}
+@media (max-width: 480px) {
+    .kpi-strip { grid-template-columns: 1fr; }
+    .kpi-strip { grid-template-columns: 1fr; }
+    .machine-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
