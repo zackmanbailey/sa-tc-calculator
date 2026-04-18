@@ -4402,7 +4402,7 @@ class CustomerUpdateHandler(BaseHandler):
             customers = load_customers()
             found = False
             for i, c in enumerate(customers):
-                if c["id"] == cid:
+                if str(c["id"]) == str(cid):
                     for k, v in body.items():
                         if k != "id":
                             customers[i][k] = v
@@ -4429,7 +4429,7 @@ class CustomerDeleteHandler(BaseHandler):
             body = json_decode(self.request.body)
             cid = body.get("id", "")
             customers = load_customers()
-            customers = [c for c in customers if c["id"] != cid]
+            customers = [c for c in customers if str(c["id"]) != str(cid)]
             save_customers(customers)
             self._log("deleted_customer", "customer", cid)
             self.set_header("Content-Type", "application/json")
@@ -4450,7 +4450,7 @@ class CustomerContactHandler(BaseHandler):
             customers = load_customers()
             found_idx = None
             for i, c in enumerate(customers):
-                if c["id"] == cid:
+                if str(c["id"]) == str(cid):
                     found_idx = i
                     break
             if found_idx is None:
@@ -4540,7 +4540,7 @@ class CustomerDetailHandler(BaseHandler):
     def get(self):
         cid = self.get_query_argument("id", "")
         customers = load_customers()
-        customer = next((c for c in customers if c["id"] == cid), None)
+        customer = next((c for c in customers if str(c["id"]) == str(cid)), None)
         if not customer:
             self.write(json_encode({"ok": False, "error": "Not found"}))
             return
@@ -12519,7 +12519,7 @@ class CustomerReportPDFHandler(BaseHandler):
             customers = load_customers()
 
             if cid:
-                customers = [c for c in customers if c.get("id") == cid]
+                customers = [c for c in customers if str(c.get("id", "")) == str(cid)]
                 if not customers:
                     self.set_status(404)
                     self.write("Customer not found")
