@@ -856,12 +856,12 @@ class BaseHandler(tornado.web.RequestHandler):
                 f"<br><a href='/'>← Back to Dashboard</a></div></body></html>"
             )
 
-    def _log(self, action, entity_type="", entity_id="", details=None):
+    def _log(self, action, entity_type="", entity_id="", details=None, user_override=None):
         """Log an activity for the current user and award XP. Safe to call even if db not available."""
         try:
             if USE_SQLITE:
                 import db as _db
-                username = self.get_current_user() or "anonymous"
+                username = user_override or self.get_current_user() or "anonymous"
                 _db.log_activity(
                     user=username,
                     action=action,
@@ -934,12 +934,13 @@ class LoginHandler(BaseHandler):
             users = load_users()
             user  = users.get(username)
             if not user or not verify_password(user["password"], password):
+                self.set_status(401)
                 self.set_header("Content-Type", "application/json")
                 self.write(json_encode({"ok": False, "error": "Invalid username or password."}))
                 return
 
             self.set_secure_cookie("sa_user", username, expires_days=30)
-            self._log("login", "user", username)
+            self._log("login", "user", username, user_override=username)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "redirect": "/"}))
 

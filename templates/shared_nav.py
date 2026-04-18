@@ -1243,7 +1243,7 @@ function escNavHtml(s) {
             html += '    <div class="tf-notif-time">' + ago + '</div>';
             html += '  </div>';
             if (!n.is_read) {
-                html += '  <button class="tf-notif-read-btn" onclick="markNotifRead(\'' + (n.id || '') + '\', this)" title="Mark read">&#10003;</button>';
+                html += '  <button class="tf-notif-read-btn" onclick="markNotifRead(\\x27' + (n.id || '') + '\\x27, this)" title="Mark read">&#10003;</button>';
             }
             html += '</div>';
         }
@@ -1489,7 +1489,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         if perm.can("view_work_orders"):
             items.append(("/work-orders", "&#128203;", "Work Orders", "workorders_global"))
         if perm.can("view_shop_drawings"):
-            items.append(("/documents", "&#128208;", "Shop Drawings", "shopdrw"))
+            items.append(("/shop-drawings", "&#128208;", "Shop Drawings", "shopdrw"))
         sections.append(("Shop Floor", items))
 
     # My Station (operator roles)

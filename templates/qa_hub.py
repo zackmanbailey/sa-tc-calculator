@@ -6,7 +6,14 @@ Covers AISC certification requirements, WPS library, welder certs, procedures,
 NCR log, calibration records, and audit readiness status.
 """
 
-QA_HUB_HTML = """
+QA_HUB_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TitanForge — QA/QC Hub</title>
+</head>
+<body>
 <style>
   .qa-page { padding: 24px; max-width: 1200px; }
   .qa-hero {
@@ -109,8 +116,8 @@ QA_HUB_HTML = """
     <h1>QA / QC <span>Hub</span></h1>
     <p class="sub">
       Central hub for all quality documentation required by AISC, AWS D1.1, and company quality manual.
-      Everything an auditor needs — WPS library, welder certifications, inspection records, NCRs,
-      traceability, calibration logs, and procedures — all in one place.
+      Everything an auditor needs &mdash; WPS library, welder certifications, inspection records, NCRs,
+      traceability, calibration logs, and procedures &mdash; all in one place.
     </p>
     <div class="audit-bar" id="auditBar">
       <div class="audit-stat">
@@ -380,4 +387,6 @@ QA_HUB_HTML = """
     }).catch(function(){});
   })();
 </script>
+</body>
+</html>
 """
