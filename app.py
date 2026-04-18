@@ -80,9 +80,11 @@ if __name__ == "__main__":
     app = make_app()
 
     # Bind to 0.0.0.0 for cloud hosting (Railway, Render, DigitalOcean)
+    # Always use 0.0.0.0 when AUTH_ENABLED env var is set (even if DISABLE_AUTH overrides it)
+    is_hosted = os.environ.get("AUTH_ENABLED", "").lower() in ("1", "true", "yes") or os.environ.get("RAILWAY_ENVIRONMENT", "")
     bind_addr = os.environ.get(
         "BIND_ADDR",
-        "0.0.0.0" if tf_handlers.AUTH_ENABLED else "127.0.0.1"
+        "0.0.0.0" if (tf_handlers.AUTH_ENABLED or is_hosted) else "127.0.0.1"
     )
     app.listen(args.port, address=bind_addr)
 
