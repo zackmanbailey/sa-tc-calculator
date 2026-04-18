@@ -347,13 +347,47 @@ function savePdfToProject() {
     var svgW = vb.width || 1100;
     var svgH = vb.height || 850;
 
+    var pdfW = svgW + 40;
+    var pdfH = svgH + 80;
     var pdf = new jspdf.jsPDF({
       orientation: 'landscape',
       unit: 'pt',
-      format: [svgW, svgH]
+      format: [pdfW, pdfH]
     });
 
-    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
+    // ── Branded Header ──
+    pdf.setFontSize(14);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(30, 64, 175);
+    pdf.text('TITAN CARPORTS', 20, 22);
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(150, 150, 150);
+    pdf.text('Quality Steel Structures  |  710 Honea Egypt Rd, Conroe, TX 77385  |  (303) 909-5698  |  www.titancarports.com', 20, 32);
+    // Title block info on right
+    var drawingTitle = '%(dt_upper)s SHOP DRAWING';
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(31, 78, 121);
+    pdf.text(drawingTitle, pdfW - 20, 18, {align: 'right'});
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Job: ' + jobCode + '  |  Date: ' + new Date().toLocaleDateString(), pdfW - 20, 28, {align: 'right'});
+    // Header line
+    pdf.setDrawColor(192, 0, 0);
+    pdf.setLineWidth(1.5);
+    pdf.line(20, 36, pdfW - 20, 36);
+
+    svg2pdf.svg2pdf(svgEl, pdf, { x: 20, y: 42, width: svgW, height: svgH }).then(function() {
+      // ── Branded Footer ──
+      var footY = pdfH - 16;
+      pdf.setDrawColor(192, 0, 0);
+      pdf.setLineWidth(0.5);
+      pdf.line(20, footY - 8, pdfW - 20, footY - 8);
+      pdf.setFontSize(6);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(140, 140, 140);
+      pdf.text('Titan Carports — Quality Steel Structures  |  www.titancarports.com  |  Page 1 of 1', pdfW / 2, footY, {align: 'center'});
       var pdfData = pdf.output('arraybuffer');
       var blob = new Blob([pdfData], { type: 'application/pdf' });
 
@@ -439,10 +473,11 @@ function drawTitleBlock(svg, opts) {
   });
 
   // ── Col 1: Company info + design authority ──
-  svg.appendChild($t(c1 + 110, ty + 20, 'Structures America', 'lblb', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 34, '14369 FM 1314', 'lbl', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 46, 'Conroe, TX 77302', 'lbl', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 58, '505-270-1877', 'lbl', 'middle'));
+  svg.appendChild($t(c1 + 110, ty + 16, 'Titan Carports', 'lblb', 'middle'));
+  svg.appendChild($t(c1 + 110, ty + 28, 'Quality Steel Structures', 'note', 'middle'));
+  svg.appendChild($t(c1 + 110, ty + 40, '710 Honea Egypt Rd', 'lbl', 'middle'));
+  svg.appendChild($t(c1 + 110, ty + 50, 'Conroe, TX 77385', 'lbl', 'middle'));
+  svg.appendChild($t(c1 + 110, ty + 60, '(303) 909-5698 | www.titancarports.com', 'note', 'middle'));
   svg.appendChild($l(c1, ty + 68, c2, ty + 68, 'obj hair'));
   svg.appendChild($t(c1 + 8, ty + 80, 'DESIGN/REVIEW AUTHORITY:', 'noteb'));
   svg.appendChild($t(c1 + 8, ty + 92, 'PLEASE REVIEW THIS DRAWING CAREFULLY', 'note'));

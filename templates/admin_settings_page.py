@@ -171,6 +171,53 @@ ADMIN_SETTINGS_PAGE_HTML = r"""
                 </div>
             </div>
         </div>
+        <!-- Data Management -->
+        <div class="settings-card" style="grid-column: 1 / -1;">
+            <h3>Data Management</h3>
+            <p class="card-desc">Clean up test data, manage notifications, and view system info</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                <div style="background:var(--tf-bg);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;">
+                    <div style="font-size:14px;font-weight:700;color:var(--tf-text);margin-bottom:8px;">Notifications</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn-outline" onclick="clearTestNotifications()" style="font-size:12px;">Clear Test Notifications</button>
+                        <button class="btn-outline" onclick="resetNotificationCount()" style="font-size:12px;">Reset Notification Count</button>
+                    </div>
+                    <div id="notifCleanStatus" style="font-size:12px;color:#4ade80;margin-top:8px;display:none;"></div>
+                </div>
+                <div style="background:var(--tf-bg);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;">
+                    <div style="font-size:14px;font-weight:700;color:var(--tf-text);margin-bottom:8px;">Project Cleanup</div>
+                    <button class="btn-outline" onclick="cleanDemoProjects()" style="font-size:12px;border-color:rgba(239,68,68,0.3);color:#f87171;">Clean Demo Projects</button>
+                    <div style="font-size:11px;color:var(--tf-muted);margin-top:6px;">Removes projects with "test" or "demo" in the name (requires confirmation)</div>
+                    <div id="projectCleanStatus" style="font-size:12px;color:#4ade80;margin-top:8px;display:none;"></div>
+                </div>
+            </div>
+
+            <!-- System Info Card -->
+            <div style="background:var(--tf-bg);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <div style="font-size:14px;font-weight:700;color:var(--tf-text);">System Information</div>
+                    <button class="btn-outline" onclick="loadSystemInfo()" style="font-size:12px;padding:6px 14px;">Refresh</button>
+                </div>
+                <div id="systemInfoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
+                    <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <div id="sysProjects" style="font-size:1.5rem;font-weight:800;color:var(--tf-blue);">--</div>
+                        <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase;">Projects</div>
+                    </div>
+                    <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <div id="sysCustomers" style="font-size:1.5rem;font-weight:800;color:var(--tf-gold);">--</div>
+                        <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase;">Customers</div>
+                    </div>
+                    <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <div id="sysWorkOrders" style="font-size:1.5rem;font-weight:800;color:#10b981;">--</div>
+                        <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase;">Work Orders</div>
+                    </div>
+                    <div style="text-align:center;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                        <div id="sysDiskUsed" style="font-size:1.5rem;font-weight:800;color:#8b5cf6;">--</div>
+                        <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase;">Data Size (MB)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -272,5 +319,80 @@ function importSettings() {
 }
 
 loadSettings();
+
+// ── Data Management Functions ──
+async function clearTestNotifications() {
+    try {
+        const resp = await fetch('/api/admin/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'clear_notifications'})
+        });
+        const data = await resp.json();
+        const el = document.getElementById('notifCleanStatus');
+        el.textContent = data.ok ? 'Notifications cleared!' : ('Error: ' + (data.error || 'unknown'));
+        el.style.color = data.ok ? '#4ade80' : '#f87171';
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 4000);
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function resetNotificationCount() {
+    try {
+        const resp = await fetch('/api/admin/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'reset_notification_count'})
+        });
+        const data = await resp.json();
+        const el = document.getElementById('notifCleanStatus');
+        el.textContent = data.ok ? 'Notification count reset!' : ('Error: ' + (data.error || 'unknown'));
+        el.style.color = data.ok ? '#4ade80' : '#f87171';
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 4000);
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function cleanDemoProjects() {
+    if (!confirm('This will permanently delete all projects with "test" or "demo" in the name. This cannot be undone. Continue?')) return;
+    try {
+        const resp = await fetch('/api/admin/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'clean_demo_projects'})
+        });
+        const data = await resp.json();
+        const el = document.getElementById('projectCleanStatus');
+        if (data.ok) {
+            el.textContent = 'Removed ' + (data.count || 0) + ' demo projects' + (data.removed && data.removed.length ? ': ' + data.removed.join(', ') : '');
+            el.style.color = '#4ade80';
+        } else {
+            el.textContent = 'Error: ' + (data.error || 'unknown');
+            el.style.color = '#f87171';
+        }
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 8000);
+    } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function loadSystemInfo() {
+    try {
+        const resp = await fetch('/api/admin/cleanup', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'system_info'})
+        });
+        const data = await resp.json();
+        if (data.ok && data.info) {
+            document.getElementById('sysProjects').textContent = data.info.total_projects || 0;
+            document.getElementById('sysCustomers').textContent = data.info.total_customers || 0;
+            document.getElementById('sysWorkOrders').textContent = data.info.total_work_orders || 0;
+            document.getElementById('sysDiskUsed').textContent = data.info.data_dir_mb || '--';
+        }
+    } catch(e) { console.log('System info load error:', e); }
+}
+
+// Auto-load system info on page load
+loadSystemInfo();
 </script>
 """

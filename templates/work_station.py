@@ -551,10 +551,126 @@ body {
 /* Fix bottom padding for action bar */
 .ws-content { padding-bottom: 90px; }
 
+/* ── Current Job Card ─── */
+.current-job-card {
+    background: linear-gradient(135deg, #1E3A5F 0%, var(--tf-navy) 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 16px rgba(15,23,42,0.18);
+}
+.current-job-card .cj-top {
+    display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;
+}
+.current-job-card .cj-wo-id {
+    font-family: 'SF Mono', monospace; font-size: 1.2rem; font-weight: 700;
+}
+.current-job-card .cj-priority {
+    padding: 3px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+}
+.cj-priority.urgent { background: #DC2626; }
+.cj-priority.high { background: #F59E0B; color: #1E293B; }
+.cj-priority.normal { background: rgba(255,255,255,0.2); }
+.cj-priority.low { background: rgba(255,255,255,0.1); }
+
+.current-job-card .cj-meta {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; opacity: 0.85; margin-bottom: 12px;
+}
+.current-job-card .cj-progress-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.cj-progress-bar {
+    flex: 1; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden;
+}
+.cj-progress-bar .fill { height: 100%; border-radius: 4px; background: var(--tf-green); transition: width 0.3s; }
+.cj-progress-pct { font-family: 'SF Mono', monospace; font-weight: 700; font-size: 0.9rem; }
+
+.current-job-card .cj-timer-row {
+    display: flex; justify-content: space-between; align-items: center;
+    background: rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; margin-top: 10px;
+}
+.cj-timer-label { font-size: 0.8rem; opacity: 0.7; }
+.cj-timer-val { font-family: 'SF Mono', monospace; font-size: 1.3rem; font-weight: 700; }
+.cj-est-hours { font-size: 0.8rem; opacity: 0.7; }
+
+/* ── WO Action Buttons ─── */
+.wo-action-btns {
+    display: flex; gap: 8px; margin-top: 12px;
+}
+.wo-action-btns button {
+    flex: 1; padding: 14px; border: none; border-radius: 10px;
+    font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.wo-action-btns button:active { transform: scale(0.97); }
+.wo-btn-start { background: var(--tf-green); color: white; }
+.wo-btn-pause { background: #F59E0B; color: #1E293B; }
+.wo-btn-complete { background: var(--tf-blue); color: white; }
+.wo-btn-disabled { opacity: 0.4; cursor: not-allowed !important; }
+
+/* ── Item Checklist ─── */
+.item-checklist {
+    background: white; border-radius: 10px; box-shadow: var(--tf-shadow);
+    margin-bottom: 16px; overflow: hidden;
+}
+.item-checklist-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--tf-border);
+    font-weight: 700; font-size: 0.95rem; color: var(--tf-navy);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.checklist-item {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
+}
+.checklist-item:hover { background: #F8FAFC; }
+.checklist-item:last-child { border-bottom: none; }
+.checklist-item.done { background: #F0FDF4; }
+.checklist-item.done .cl-mark { text-decoration: line-through; opacity: 0.6; }
+.cl-check {
+    width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--tf-border);
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+    flex-shrink: 0; transition: all 0.2s;
+}
+.checklist-item.done .cl-check { background: var(--tf-green); border-color: var(--tf-green); color: white; }
+.cl-info { flex: 1; min-width: 0; }
+.cl-mark { font-weight: 700; font-size: 0.95rem; color: var(--tf-navy); }
+.cl-desc { font-size: 0.78rem; color: var(--tf-gray); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-status { font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; white-space: nowrap; }
+
+/* ── My Queue ─── */
+.my-queue-card {
+    background: white; border-radius: 10px; box-shadow: var(--tf-shadow);
+    margin-bottom: 16px; overflow: hidden;
+}
+.my-queue-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--tf-border);
+    font-weight: 700; font-size: 0.95rem; color: var(--tf-navy);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.queue-wo-item {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
+}
+.queue-wo-item:hover { background: #F8FAFC; }
+.queue-wo-item:last-child { border-bottom: none; }
+.queue-wo-item .qw-priority {
+    width: 6px; height: 40px; border-radius: 3px; flex-shrink: 0;
+}
+.qw-priority.urgent { background: #DC2626; }
+.qw-priority.high { background: #F59E0B; }
+.qw-priority.normal { background: #D1D5DB; }
+.qw-priority.low { background: #E5E7EB; }
+.queue-wo-item .qw-info { flex: 1; }
+.qw-info .qw-id { font-family: 'SF Mono', monospace; font-weight: 700; font-size: 0.85rem; }
+.qw-info .qw-detail { font-size: 0.78rem; color: var(--tf-gray); margin-top: 2px; }
+.queue-wo-item .qw-items { font-size: 0.78rem; color: var(--tf-gray); text-align: right; }
+
 /* ── Responsive ─── */
 @media (max-width: 600px) {
     .machine-grid { grid-template-columns: repeat(2, 1fr); }
     .ws-topbar h1 { font-size: 1rem; }
+    .current-job-card { padding: 14px; }
+    .wo-action-btns button { padding: 12px; font-size: 0.9rem; }
 }
 </style>
 <!-- html5-qrcode CDN for camera scanning -->
@@ -580,16 +696,25 @@ body {
     <!-- View Tabs -->
     <div class="ws-tabs">
         <button class="ws-tab active" onclick="switchTab('machine')" id="tabMachine">My Machine</button>
+        <button class="ws-tab" onclick="switchTab('myqueue')" id="tabMyqueue">My Queue</button>
         <button class="ws-tab" onclick="switchTab('all')" id="tabAll">All Items</button>
         <button class="ws-tab" onclick="switchTab('scan')" id="tabScan">QR Scan</button>
     </div>
 
     <div class="ws-content">
 
+        <!-- Current Job Card (shown at top when a WO is in_progress) -->
+        <div id="currentJobCard" style="display:none;"></div>
+
         <!-- Machine Queue View (default) -->
         <div id="machineView">
             <div class="machine-grid" id="machineGrid"></div>
             <div id="machineQueue"></div>
+        </div>
+
+        <!-- My Queue View -->
+        <div id="myqueueView" style="display:none;">
+            <div id="myQueueContent"></div>
         </div>
 
         <!-- All Items View -->
@@ -695,18 +820,27 @@ document.addEventListener('DOMContentLoaded', loadWorkStation);
 
 async function loadWorkStation() {
     try {
-        const resp = await fetch('/api/work-station/data?job_code=' + encodeURIComponent(JOB_CODE));
-        const data = await resp.json();
-        if (!data.ok) { showToast('Error: ' + (data.error || 'Failed to load'), 'error'); return; }
+        const [wsResp, woResp] = await Promise.all([
+            fetch('/api/work-station/data?job_code=' + encodeURIComponent(JOB_CODE)).then(r => r.json()),
+            fetch('/api/work-orders/all').then(r => r.json()).catch(() => ({ok:false}))
+        ]);
 
-        workOrderData = data;
-        allItems = data.items || [];
+        if (!wsResp.ok) { showToast('Error: ' + (wsResp.error || 'Failed to load'), 'error'); return; }
 
-        renderMachineGrid(data.machines || {});
+        workOrderData = wsResp;
+        allItems = wsResp.items || [];
+
+        // Load WOs - filter to current job if available
+        if (woResp.ok) {
+            allWorkOrders = (woResp.work_orders || []).filter(wo => wo.job_code === JOB_CODE);
+        }
+
+        renderMachineGrid(wsResp.machines || {});
         renderAllItems();
+        renderCurrentJobCard();
 
         // Auto-select machine if only one has items
-        const machinesWithItems = Object.entries(data.machines || {}).filter(([k,v]) => v.item_count > 0);
+        const machinesWithItems = Object.entries(wsResp.machines || {}).filter(([k,v]) => v.item_count > 0);
         if (machinesWithItems.length === 1) {
             selectMachine(machinesWithItems[0][0]);
         }
@@ -1074,6 +1208,7 @@ function switchTab(tab) {
     document.querySelectorAll('.ws-tab').forEach(t => t.classList.remove('active'));
 
     document.getElementById('machineView').style.display = 'none';
+    document.getElementById('myqueueView').style.display = 'none';
     document.getElementById('allView').style.display = 'none';
     document.getElementById('scanView').style.display = 'none';
     document.getElementById('stepView').className = 'step-view';
@@ -1085,6 +1220,10 @@ function switchTab(tab) {
     if (tab === 'machine') {
         document.getElementById('tabMachine').classList.add('active');
         document.getElementById('machineView').style.display = 'block';
+    } else if (tab === 'myqueue') {
+        document.getElementById('tabMyqueue').classList.add('active');
+        document.getElementById('myqueueView').style.display = 'block';
+        renderMyQueue();
     } else if (tab === 'all') {
         document.getElementById('tabAll').classList.add('active');
         document.getElementById('allView').style.display = 'block';
@@ -1092,6 +1231,256 @@ function switchTab(tab) {
         document.getElementById('tabScan').classList.add('active');
         document.getElementById('scanView').style.display = 'block';
         setTimeout(() => document.getElementById('scanInput').focus(), 100);
+    }
+}
+
+// ── Current Job Card ──
+let allWorkOrders = [];
+let woTimerInterval = null;
+
+function renderCurrentJobCard() {
+    const container = document.getElementById('currentJobCard');
+    // Find in-progress WO for the current machine
+    const activeWO = allWorkOrders.find(wo =>
+        wo.status === 'in_progress' && (!selectedMachine || wo.machine_id === selectedMachine)
+    );
+
+    if (!activeWO) {
+        container.style.display = 'none';
+        return;
+    }
+
+    const pri = activeWO.priority || 'normal';
+    const totalItems = activeWO.total_items || 0;
+    const completedItems = activeWO.completed_items || 0;
+    const pct = totalItems > 0 ? Math.round(100 * completedItems / totalItems) : 0;
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div class="current-job-card">
+            <div class="cj-top">
+                <div>
+                    <div class="cj-wo-id">${escHtml(activeWO.work_order_id)}</div>
+                    <div style="font-size:0.82rem;opacity:0.7;margin-top:2px;">${escHtml(activeWO.job_code)}</div>
+                </div>
+                <span class="cj-priority ${pri}">${pri.toUpperCase()}</span>
+            </div>
+            <div class="cj-meta">
+                <span>Machine: <strong>${escHtml(activeWO.machine_id || '-')}</strong></span>
+                <span>Operator: <strong>${escHtml(activeWO.operator || USER_NAME)}</strong></span>
+                ${activeWO.estimated_hours ? '<span>Est: <strong>' + activeWO.estimated_hours.toFixed(1) + 'h</strong></span>' : ''}
+            </div>
+            <div class="cj-progress-row">
+                <div class="cj-progress-bar"><div class="fill" style="width:${pct}%"></div></div>
+                <span class="cj-progress-pct">${pct}%</span>
+                <span style="font-size:0.78rem;opacity:0.7;">${completedItems}/${totalItems}</span>
+            </div>
+            <div class="cj-timer-row">
+                <div>
+                    <div class="cj-timer-label">Elapsed Time</div>
+                    <div class="cj-timer-val" id="woTimerVal">00:00:00</div>
+                </div>
+                ${activeWO.estimated_hours ? '<div class="cj-est-hours">Est. ' + activeWO.estimated_hours.toFixed(1) + ' hrs</div>' : ''}
+            </div>
+            <div class="wo-action-btns">
+                <button class="wo-btn-pause" onclick="pauseWorkOrder('${escHtml(activeWO.work_order_id)}', '${escHtml(activeWO.job_code)}')">&#9208; Pause</button>
+                <button class="wo-btn-complete" onclick="completeWorkOrder('${escHtml(activeWO.work_order_id)}', '${escHtml(activeWO.job_code)}')">&#9632; Complete WO</button>
+            </div>
+        </div>
+    `;
+
+    // Start WO-level timer
+    if (activeWO.start_time) {
+        startWOTimer(activeWO.start_time);
+    }
+
+    // Render item checklist for this WO
+    renderItemChecklist(activeWO);
+}
+
+function startWOTimer(startTime) {
+    if (woTimerInterval) clearInterval(woTimerInterval);
+    const start = new Date(startTime).getTime();
+    const el = document.getElementById('woTimerVal');
+    if (!el) return;
+    woTimerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - start) / 1000);
+        const h = Math.floor(elapsed / 3600);
+        const m = Math.floor((elapsed % 3600) / 60);
+        const s = elapsed % 60;
+        el.textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }, 1000);
+}
+
+function renderItemChecklist(wo) {
+    const woItems = allItems.filter(i => i.work_order_id === wo.work_order_id);
+    if (woItems.length === 0) return;
+
+    // Sort: in_progress first, then queued, then complete
+    const order = {'in_progress':0, 'approved':1, 'stickers_printed':1, 'queued':2, 'fabricated':3, 'qc_pending':3, 'complete':4, 'qc_approved':4};
+    woItems.sort((a,b) => (order[a.status]||2) - (order[b.status]||2));
+
+    const doneStatuses = ['complete', 'qc_approved', 'qc_pending', 'fabricated', 'ready_to_ship', 'shipped', 'delivered', 'installed'];
+    const doneCount = woItems.filter(i => doneStatuses.includes(i.status)).length;
+
+    let html = '<div class="item-checklist">';
+    html += '<div class="item-checklist-header"><span>Item Checklist</span><span style="font-size:0.82rem;color:var(--tf-gray);font-weight:400;">' + doneCount + '/' + woItems.length + ' done</span></div>';
+
+    woItems.forEach(item => {
+        const isDone = doneStatuses.includes(item.status);
+        const statusColors = {
+            'in_progress': 'background:#D1FAE5;color:#065F46;',
+            'queued': 'background:#F1F5F9;color:#64748B;',
+            'approved': 'background:#DBEAFE;color:#1E40AF;',
+            'stickers_printed': 'background:#FEF3C7;color:#92400E;',
+            'fabricated': 'background:#ECFDF5;color:#065F46;',
+            'qc_pending': 'background:#FFF7ED;color:#9A3412;',
+            'qc_approved': 'background:#D1FAE5;color:#065F46;',
+            'complete': 'background:#D1FAE5;color:#065F46;'
+        };
+        const stStyle = statusColors[item.status] || 'background:#F1F5F9;color:#64748B;';
+        html += '<div class="checklist-item ' + (isDone ? 'done' : '') + '" onclick="openItem(\\'' + item.item_id + '\\')">' +
+            '<div class="cl-check">' + (isDone ? '&#10003;' : '') + '</div>' +
+            '<div class="cl-info"><div class="cl-mark">' + escHtml(item.ship_mark) + '</div>' +
+            '<div class="cl-desc">' + escHtml(item.description || item.component_type || '') + '</div></div>' +
+            '<span class="cl-status" style="' + stStyle + '">' + (item.status||'').replace(/_/g,' ') + '</span></div>';
+    });
+    html += '</div>';
+
+    // Insert after the current job card
+    const container = document.getElementById('currentJobCard');
+    container.innerHTML += html;
+}
+
+// ── My Queue ──
+function renderMyQueue() {
+    const container = document.getElementById('myQueueContent');
+    // Show WOs assigned to this machine or operator, sorted by priority
+    const pOrder = {urgent:0, high:1, normal:2, low:3};
+    let myWOs = allWorkOrders.filter(wo => {
+        if (selectedMachine && wo.machine_id === selectedMachine) return true;
+        if (wo.operator && wo.operator === USER_NAME) return true;
+        return false;
+    });
+
+    // Also show unassigned WOs if no machine selected
+    if (!selectedMachine) {
+        myWOs = allWorkOrders.filter(wo => !['complete', 'shipped', 'installed'].includes(wo.status));
+    }
+
+    // Sort: in_progress first, then by priority, then by due_date
+    myWOs.sort((a,b) => {
+        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+        if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+        const pa = pOrder[a.priority || 'normal'] || 2;
+        const pb = pOrder[b.priority || 'normal'] || 2;
+        if (pa !== pb) return pa - pb;
+        if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+        return 0;
+    });
+
+    if (myWOs.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128203;</div>' +
+            '<h3>No Work Orders</h3><p>No work orders assigned to your machine or operator.</p></div>';
+        return;
+    }
+
+    let html = '<div class="my-queue-card">';
+    html += '<div class="my-queue-header"><span>Work Order Queue</span><span style="font-size:0.82rem;color:var(--tf-gray);font-weight:400;">' + myWOs.length + ' orders</span></div>';
+
+    myWOs.forEach(wo => {
+        const pri = wo.priority || 'normal';
+        const totalI = wo.total_items || 0;
+        const compI = wo.completed_items || 0;
+        const isActive = wo.status === 'in_progress';
+        html += '<div class="queue-wo-item" onclick="selectWOFromQueue(\\'' + escHtml(wo.work_order_id) + '\\', \\'' + escHtml(wo.job_code) + '\\')" style="' + (isActive ? 'background:#F0FDF4;' : '') + '">' +
+            '<div class="qw-priority ' + pri + '"></div>' +
+            '<div class="qw-info"><div class="qw-id">' + (isActive ? '<span style="color:var(--tf-green);">&#9654; </span>' : '') + escHtml(wo.work_order_id) + '</div>' +
+            '<div class="qw-detail">' + escHtml(wo.job_code) + ' &middot; ' + escHtml(wo.machine_id || 'Unassigned') + '</div></div>' +
+            '<div class="qw-items">' + compI + '/' + totalI + '<br><span style="font-size:0.7rem;text-transform:uppercase;">' + (wo.status||'').replace(/_/g,' ') + '</span></div></div>';
+    });
+
+    html += '</div>';
+
+    // Show start next button if no WO is in_progress
+    const hasActive = myWOs.some(wo => wo.status === 'in_progress');
+    if (!hasActive && myWOs.length > 0) {
+        const nextWO = myWOs[0];
+        html += '<div style="text-align:center;margin-top:12px;">' +
+            '<button class="wo-btn-start" style="padding:16px 32px;border:none;border-radius:10px;font-size:1.1rem;font-weight:700;cursor:pointer;background:var(--tf-green);color:white;" ' +
+            'onclick="startWorkOrder(\\'' + escHtml(nextWO.work_order_id) + '\\', \\'' + escHtml(nextWO.job_code) + '\\')">&#9654; Start Next: ' + escHtml(nextWO.work_order_id) + '</button></div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function selectWOFromQueue(woId, jobCode) {
+    // Switch to machine view and show items for this WO
+    const wo = allWorkOrders.find(w => w.work_order_id === woId);
+    if (wo && wo.machine_id) {
+        selectedMachine = wo.machine_id;
+    }
+    switchTab('machine');
+    renderCurrentJobCard();
+}
+
+async function startWorkOrder(woId, jobCode) {
+    try {
+        const resp = await fetch('/api/work-orders/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_code: jobCode, work_order_id: woId, new_status: 'in_progress' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('Work order started!', 'success');
+            await loadWorkStation();
+        } else {
+            showToast(data.error || 'Failed to start WO', 'error');
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+async function pauseWorkOrder(woId, jobCode) {
+    try {
+        const resp = await fetch('/api/work-orders/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_code: jobCode, work_order_id: woId, new_status: 'queued' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('Work order paused', 'info');
+            if (woTimerInterval) { clearInterval(woTimerInterval); woTimerInterval = null; }
+            await loadWorkStation();
+        } else {
+            showToast(data.error || 'Failed to pause WO', 'error');
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+}
+
+async function completeWorkOrder(woId, jobCode) {
+    if (!confirm('Mark this work order as complete?')) return;
+    try {
+        const resp = await fetch('/api/work-orders/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_code: jobCode, work_order_id: woId, new_status: 'complete' })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('Work order completed!', 'success');
+            if (woTimerInterval) { clearInterval(woTimerInterval); woTimerInterval = null; }
+            await loadWorkStation();
+        } else {
+            showToast(data.error || 'Failed to complete WO', 'error');
+        }
+    } catch(e) {
+        showToast('Network error: ' + e.message, 'error');
     }
 }
 

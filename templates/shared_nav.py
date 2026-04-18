@@ -800,6 +800,9 @@ NAV_HTML = r"""
                 <div class="tf-notif-list" id="notifList">
                     <div class="tf-notif-empty">No notifications</div>
                 </div>
+                <div style="padding:8px 12px;border-top:1px solid #334155;text-align:center;">
+                    <button onclick="clearAllNotifications()" style="background:none;border:1px solid #475569;color:#EF4444;font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600;">Clear All</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1314,12 +1317,21 @@ function escNavHtml(s) {
     window.markAllNotifRead = async function() {
         try {
             await fetch('/api/notifications', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({action: 'mark_all_read'})
+                method: 'PUT'
             });
             loadNotifications();
         } catch(e) { console.debug('Mark all read failed', e); }
+    };
+
+    window.clearAllNotifications = async function() {
+        try {
+            await fetch('/api/notifications', {
+                method: 'DELETE'
+            });
+            loadNotifications();
+            var dd = document.getElementById('notifDropdown');
+            if (dd) dd.classList.remove('show');
+        } catch(e) { console.debug('Clear all failed', e); }
     };
 
     // Poll notifications every 60 seconds + initial load
@@ -1611,6 +1623,9 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
                 </div>
                 <div class="tf-notif-list" id="notifList">
                     <div class="tf-notif-empty">No notifications</div>
+                </div>
+                <div style="padding:8px 12px;border-top:1px solid #334155;text-align:center;">
+                    <button onclick="clearAllNotifications()" style="background:none;border:1px solid #475569;color:#EF4444;font-size:11px;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600;">Clear All</button>
                 </div>
             </div>
         </div>

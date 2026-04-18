@@ -1,7 +1,7 @@
 """
-TitanForge v4 — Material Traceability
+TitanForge v4 -- Material Traceability
 =======================================
-Heat number lookup, mill cert chain, coil-through-install tracking, compliance.
+Heat number lookup, full chain traceability, mill cert chain, coil-through-install tracking.
 """
 
 TRACEABILITY_PAGE_HTML = r"""
@@ -13,6 +13,9 @@ TRACEABILITY_PAGE_HTML = r"""
         --tf-muted: #94a3b8;
         --tf-gold: #d4a843;
         --tf-blue: #3b82f6;
+        --tf-green: #10b981;
+        --tf-red: #ef4444;
+        --tf-orange: #f59e0b;
     }
     .trace-container {
         max-width: 1400px; margin: 0 auto; padding: 24px 32px;
@@ -39,17 +42,9 @@ TRACEABILITY_PAGE_HTML = r"""
     .stat-card .stat-value.blue { color: var(--tf-blue); }
     .stat-card .stat-value.green { color: #4ade80; }
     .stat-card .stat-value.red { color: #f87171; }
-    .data-card {
-        background: var(--tf-card); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);
-        padding: 0; overflow: hidden;
-    }
+    .data-card { background: var(--tf-card); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); padding: 0; overflow: hidden; }
     .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .data-table thead th {
-        background: #1a2744; padding: 14px 16px; text-align: left; font-weight: 700;
-        font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tf-muted);
-        border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer;
-    }
-    .data-table thead th:hover { color: var(--tf-text); }
+    .data-table thead th { background: #1a2744; padding: 14px 16px; text-align: left; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tf-muted); border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
     .data-table tbody td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
     .data-table tbody tr { transition: background 0.15s; cursor: pointer; }
     .data-table tbody tr:hover { background: rgba(255,255,255,0.04); }
@@ -58,12 +53,39 @@ TRACEABILITY_PAGE_HTML = r"""
     .badge-yellow { background: rgba(212,168,67,0.2); color: var(--tf-gold); }
     .badge-red { background: rgba(239,68,68,0.2); color: #f87171; }
     .badge-blue { background: rgba(59,130,246,0.2); color: #60a5fa; }
-    .chain-view { padding: 20px; }
-    .chain-node { display: inline-flex; align-items: center; gap: 8px; background: var(--tf-bg); border-radius: 8px; padding: 10px 16px; font-size: 13px; }
-    .chain-arrow { color: var(--tf-muted); font-size: 18px; margin: 0 8px; }
+
+    /* Heat Number Lookup Section */
+    .lookup-section {
+        background: var(--tf-card); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);
+        padding: 24px; margin-bottom: 24px;
+    }
+    .lookup-section h2 { font-size: 18px; font-weight: 700; margin: 0 0 16px 0; color: var(--tf-gold); }
+    .lookup-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .lookup-row input { flex: 1; min-width: 250px; background: var(--tf-bg); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; color: var(--tf-text); font-size: 15px; }
+    .lookup-row input:focus { outline: none; border-color: var(--tf-gold); }
+
+    /* Chain Visualization */
+    .chain-container { margin-top: 20px; display: none; }
+    .chain-container.visible { display: block; }
+    .chain-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 20px; padding: 16px; background: var(--tf-bg); border-radius: 10px; }
+    .chain-node { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; background: var(--tf-card); border-radius: 10px; padding: 12px 18px; border: 1px solid rgba(255,255,255,0.06); min-width: 120px; }
+    .chain-node.active { border-color: var(--tf-gold); }
+    .chain-node .node-label { font-size: 10px; color: var(--tf-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .chain-node .node-value { font-size: 13px; font-weight: 600; color: var(--tf-text); text-align: center; }
+    .chain-node .node-count { font-size: 11px; color: var(--tf-gold); }
+    .chain-arrow { color: var(--tf-gold); font-size: 20px; font-weight: 700; }
+
+    .chain-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .detail-card { background: var(--tf-bg); border-radius: 10px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); }
+    .detail-card h3 { font-size: 13px; font-weight: 700; color: var(--tf-gold); text-transform: uppercase; margin: 0 0 12px 0; }
+    .detail-item { font-size: 13px; color: var(--tf-text); padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .detail-item:last-child { border-bottom: none; }
+    .detail-item .dl { color: var(--tf-muted); font-size: 11px; }
+
     .empty-state { text-align: center; padding: 60px 20px; color: var(--tf-muted); }
     .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--tf-text); }
     .loading { text-align: center; padding: 40px; color: var(--tf-muted); }
+
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
     .modal-overlay.active { display: flex; }
     .modal { background: var(--tf-card); border-radius: 12px; padding: 28px; width: 600px; max-width: 90vw; border: 1px solid rgba(255,255,255,0.1); max-height: 80vh; overflow-y: auto; }
@@ -75,6 +97,13 @@ TRACEABILITY_PAGE_HTML = r"""
         width: 100%; background: var(--tf-bg); border: 1px solid rgba(255,255,255,0.08);
         border-radius: 8px; padding: 10px 14px; color: var(--tf-text); font-size: 14px; font-family: inherit; box-sizing: border-box;
     }
+
+    @media (max-width: 768px) {
+        .lookup-row { flex-direction: column; }
+        .chain-flow { flex-direction: column; }
+        .chain-details { grid-template-columns: 1fr; }
+        .stats-row { grid-template-columns: 1fr 1fr; }
+    }
 </style>
 
 <div class="trace-container">
@@ -82,12 +111,27 @@ TRACEABILITY_PAGE_HTML = r"""
         <h1>Material Traceability</h1>
         <p>Track materials from coil through fabrication to installation with full chain of custody</p>
     </div>
+
+    <!-- Heat Number Lookup -->
+    <div class="lookup-section">
+        <h2>Heat Number Chain Lookup</h2>
+        <div class="lookup-row">
+            <input type="text" id="lookupInput" placeholder="Enter heat number (e.g., H2024-1234)..." onkeydown="if(event.key==='Enter')lookupHeat()">
+            <button class="btn-gold" onclick="lookupHeat()">Trace Chain</button>
+        </div>
+        <div class="chain-container" id="chainContainer">
+            <div id="chainFlow" class="chain-flow"></div>
+            <div id="chainDetails" class="chain-details"></div>
+        </div>
+    </div>
+
     <div class="stats-row" id="traceStats">
         <div class="stat-card"><div class="stat-label">Tracked Heats</div><div class="stat-value gold" id="statHeats">--</div></div>
         <div class="stat-card"><div class="stat-label">Active Coils</div><div class="stat-value blue" id="statCoils">--</div></div>
         <div class="stat-card"><div class="stat-label">Mill Certs on File</div><div class="stat-value green" id="statCerts">--</div></div>
         <div class="stat-card"><div class="stat-label">Pending Verification</div><div class="stat-value red" id="statPending">--</div></div>
     </div>
+
     <div class="toolbar">
         <div style="display:flex;gap:10px;align-items:center;">
             <input type="text" id="traceSearch" placeholder="Search heat number, coil ID, project..." oninput="filterTrace()">
@@ -104,11 +148,13 @@ TRACEABILITY_PAGE_HTML = r"""
             <button class="btn-gold" onclick="openModal('traceModal')">+ Log Material</button>
         </div>
     </div>
+
     <div class="data-card">
         <div id="traceTableWrap" class="loading">Loading traceability data...</div>
     </div>
 </div>
 
+<!-- Log Material Modal -->
 <div class="modal-overlay" id="traceModal">
     <div class="modal">
         <h2>Log Material Entry</h2>
@@ -128,20 +174,110 @@ TRACEABILITY_PAGE_HTML = r"""
     </div>
 </div>
 
-<div class="modal-overlay" id="chainModal">
-    <div class="modal" style="width:700px;">
-        <h2 id="chainTitle">Traceability Chain</h2>
-        <div id="chainContent" class="chain-view"></div>
-        <div class="modal-actions"><button class="btn-outline" onclick="closeModal('chainModal')">Close</button></div>
-    </div>
-</div>
-
 <script>
 let allMaterials = [];
 
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', function(e) { if (e.target === this) closeModal(this.id); }));
+
+async function lookupHeat() {
+    const heat = document.getElementById('lookupInput').value.trim();
+    if (!heat) return;
+    const container = document.getElementById('chainContainer');
+    const flowEl = document.getElementById('chainFlow');
+    const detailEl = document.getElementById('chainDetails');
+
+    flowEl.innerHTML = '<span style="color:var(--tf-muted)">Looking up...</span>';
+    container.classList.add('visible');
+
+    try {
+        const resp = await fetch('/api/traceability/lookup?heat_number=' + encodeURIComponent(heat));
+        const data = await resp.json();
+        if (!data.ok) { flowEl.innerHTML = '<span style="color:var(--tf-red)">Not found: ' + (data.error || heat) + '</span>'; detailEl.innerHTML = ''; return; }
+
+        // Build chain flow
+        let flowHTML = '';
+        flowHTML += '<div class="chain-node active"><div class="node-label">Heat Number</div><div class="node-value">' + data.heat_number + '</div></div>';
+        flowHTML += '<span class="chain-arrow">&rarr;</span>';
+
+        if (data.coil) {
+            flowHTML += '<div class="chain-node active"><div class="node-label">Coil</div><div class="node-value">' + (data.coil.name || data.coil.coil_id) + '</div><div class="node-count">' + (data.coil.stock_lbs || 0).toLocaleString() + ' lbs</div></div>';
+        } else {
+            flowHTML += '<div class="chain-node"><div class="node-label">Coil</div><div class="node-value">Not linked</div></div>';
+        }
+        flowHTML += '<span class="chain-arrow">&rarr;</span>';
+
+        flowHTML += '<div class="chain-node' + (data.work_orders.length ? ' active' : '') + '"><div class="node-label">Work Orders</div><div class="node-value">' + data.work_orders.length + ' allocations</div></div>';
+        flowHTML += '<span class="chain-arrow">&rarr;</span>';
+
+        flowHTML += '<div class="chain-node' + (data.projects.length ? ' active' : '') + '"><div class="node-label">Projects</div><div class="node-value">' + data.projects.length + ' projects</div></div>';
+        flowHTML += '<span class="chain-arrow">&rarr;</span>';
+
+        flowHTML += '<div class="chain-node' + (data.shipments.length ? ' active' : '') + '"><div class="node-label">Shipments</div><div class="node-value">' + data.shipments.length + ' shipments</div></div>';
+        flowEl.innerHTML = flowHTML;
+
+        // Build detail cards
+        let detHTML = '';
+
+        if (data.coil) {
+            detHTML += '<div class="detail-card"><h3>Coil Details</h3>';
+            detHTML += '<div class="detail-item"><div class="dl">Coil ID</div>' + (data.coil.coil_id || '--') + '</div>';
+            detHTML += '<div class="detail-item"><div class="dl">Gauge / Type</div>' + (data.coil.gauge || '--') + ' / ' + (data.coil.type || '--') + '</div>';
+            detHTML += '<div class="detail-item"><div class="dl">Material Spec</div>' + (data.coil.material_spec || '--') + '</div>';
+            detHTML += '<div class="detail-item"><div class="dl">Mill</div>' + (data.coil.mill_name || data.coil.supplier || '--') + '</div>';
+            detHTML += '<div class="detail-item"><div class="dl">Stock</div>' + (data.coil.stock_lbs || 0).toLocaleString() + ' lbs (' + (data.coil.committed_lbs || 0).toLocaleString() + ' committed)</div>';
+            detHTML += '</div>';
+        }
+
+        if (data.work_orders.length) {
+            detHTML += '<div class="detail-card"><h3>Allocations / Work Orders</h3>';
+            data.work_orders.forEach(wo => {
+                detHTML += '<div class="detail-item"><div class="dl">' + (wo.allocation_id || '') + ' - ' + (wo.status || '') + '</div>';
+                detHTML += 'Job: ' + (wo.job_code || '--') + ' | ' + (wo.quantity_lbs || 0).toLocaleString() + ' lbs';
+                if (wo.work_order_ref) detHTML += ' | WO: ' + wo.work_order_ref;
+                detHTML += '</div>';
+            });
+            detHTML += '</div>';
+        }
+
+        if (data.projects.length) {
+            detHTML += '<div class="detail-card"><h3>Projects</h3>';
+            data.projects.forEach(p => {
+                detHTML += '<div class="detail-item"><div class="dl">' + p.job_code + '</div>';
+                detHTML += '<a href="/project/' + p.job_code + '" style="color:var(--tf-blue);text-decoration:none;">' + (p.project_name || p.job_code) + '</a>';
+                if (p.customer) detHTML += ' - ' + p.customer;
+                detHTML += ' <span class="badge badge-blue">' + (p.stage || 'active') + '</span></div>';
+            });
+            detHTML += '</div>';
+        }
+
+        if (data.shipments.length) {
+            detHTML += '<div class="detail-card"><h3>Shipments</h3>';
+            data.shipments.forEach(s => {
+                detHTML += '<div class="detail-item"><div class="dl">' + (s.manifest_id || '') + '</div>';
+                detHTML += (s.ship_date || 'No date') + ' | ' + (s.carrier || 'No carrier') + ' | <span class="badge badge-green">' + (s.status || '') + '</span></div>';
+            });
+            detHTML += '</div>';
+        }
+
+        if (data.members && data.members.length) {
+            detHTML += '<div class="detail-card"><h3>Fabricated Members</h3>';
+            data.members.forEach(m => {
+                detHTML += '<div class="detail-item"><div class="dl">' + m.job_code + '</div>' + m.member_mark + (m.description ? ' - ' + m.description : '') + '</div>';
+            });
+            detHTML += '</div>';
+        }
+
+        if (!detHTML) {
+            detHTML = '<div class="detail-card" style="grid-column:1/-1"><h3>No Chain Data</h3><div class="detail-item">This heat number has no linked coils, allocations, or projects yet.</div></div>';
+        }
+        detailEl.innerHTML = detHTML;
+    } catch(e) {
+        flowEl.innerHTML = '<span style="color:var(--tf-red)">Error: ' + e.message + '</span>';
+        detailEl.innerHTML = '';
+    }
+}
 
 function renderTable(materials) {
     const wrap = document.getElementById('traceTableWrap');
@@ -151,15 +287,15 @@ function renderTable(materials) {
     }
     let html = '<table class="data-table"><thead><tr><th>Heat Number</th><th>Coil ID</th><th>Grade</th><th>Supplier</th><th>Project</th><th>Status</th><th>Mill Cert</th></tr></thead><tbody>';
     materials.forEach(m => {
-        const statusCls = m.status === 'verified' ? 'badge-green' : (m.status === 'pending' ? 'badge-yellow' : (m.status === 'consumed' ? 'badge-blue' : 'badge-blue'));
-        html += '<tr onclick="showChain(\'' + (m.heat_number||'') + '\')">' +
+        const statusCls = m.status === 'verified' ? 'badge-green' : (m.status === 'in_use' ? 'badge-blue' : 'badge-yellow');
+        html += '<tr onclick="document.getElementById(\'lookupInput\').value=\'' + (m.heat_number||'') + '\';lookupHeat()">' +
             '<td style="font-weight:600;color:var(--tf-gold);">' + (m.heat_number || '--') + '</td>' +
             '<td>' + (m.coil_id || '--') + '</td>' +
             '<td>' + (m.grade || '--') + '</td>' +
             '<td>' + (m.supplier || '--') + '</td>' +
             '<td>' + (m.project || '--') + '</td>' +
             '<td><span class="badge ' + statusCls + '">' + (m.status || 'unknown') + '</span></td>' +
-            '<td>' + (m.mill_cert ? '<span style="color:var(--tf-blue);cursor:pointer;">View</span>' : '--') + '</td></tr>';
+            '<td>' + (m.mill_cert ? '<span style="color:var(--tf-blue);">On File</span>' : '--') + '</td></tr>';
     });
     html += '</tbody></table>';
     wrap.innerHTML = html;
@@ -182,15 +318,6 @@ function filterTrace() {
         return true;
     });
     renderTable(filtered);
-}
-
-function showChain(heat) {
-    document.getElementById('chainTitle').textContent = 'Chain: ' + heat;
-    const steps = ['Mill Origin', 'Coil Receipt', 'QC Inspection', 'Fabrication', 'Assembly', 'Shipping'];
-    document.getElementById('chainContent').innerHTML = steps.map(s =>
-        '<span class="chain-node">' + s + '</span>'
-    ).join('<span class="chain-arrow">&rarr;</span>');
-    openModal('chainModal');
 }
 
 function exportTrace() {
@@ -224,7 +351,7 @@ async function loadTrace() {
     try {
         const resp = await fetch('/api/traceability');
         const data = await resp.json();
-        allMaterials = Array.isArray(data) ? data : (data.materials || []);
+        allMaterials = data.materials || (Array.isArray(data) ? data : []);
         updateStats(allMaterials);
         renderTable(allMaterials);
     } catch(e) { renderTable([]); }

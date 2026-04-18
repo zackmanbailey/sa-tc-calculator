@@ -464,8 +464,87 @@ GETTING_STARTED_HTML = """
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- INTERACTIVE ONBOARDING WIZARD -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div style="margin-top:32px;border-top:2px solid #1E293B;padding-top:32px;">
+    <h2 style="font-size:18px;color:#FFF;margin-bottom:4px;">Your Onboarding Progress</h2>
+    <p style="font-size:13px;color:#94A3B8;margin-bottom:16px;">Complete these steps to get up and running. Your progress is saved automatically.</p>
+
+    <!-- Progress Bar -->
+    <div style="background:#1E293B;border-radius:8px;height:12px;overflow:hidden;margin-bottom:20px;">
+      <div id="onboardProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#C89A2E,#F59E0B);border-radius:8px;transition:width 0.6s ease;"></div>
+    </div>
+    <div id="onboardProgressText" style="font-size:12px;color:#94A3B8;margin-bottom:20px;text-align:center;">0 of 5 steps completed</div>
+
+    <!-- Step 1 -->
+    <div class="step-card" id="onboard-step-1" style="border-left:3px solid #334155;">
+      <div class="step-icon blue">1</div>
+      <div class="step-body" style="flex:1;">
+        <h3>Create your first customer</h3>
+        <p>Every project starts with a customer. Go to the Customers page and click "+ New Customer" to add one.</p>
+        <a class="go-link" href="/customers">Open Customers &rarr;</a>
+      </div>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:#94A3B8;font-size:12px;">
+        <input type="checkbox" class="onboard-check" data-step="1" onchange="toggleOnboardStep(1, this.checked)"> Done
+      </label>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-card" id="onboard-step-2" style="border-left:3px solid #334155;">
+      <div class="step-icon green">2</div>
+      <div class="step-body" style="flex:1;">
+        <h3>Start an estimate</h3>
+        <p>Open the SA Estimator, fill in building dimensions (width, length, height, pitch), and click CALCULATE BOM to generate a full bill of materials.</p>
+        <a class="go-link" href="/sa">Open SA Estimator &rarr;</a>
+      </div>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:#94A3B8;font-size:12px;">
+        <input type="checkbox" class="onboard-check" data-step="2" onchange="toggleOnboardStep(2, this.checked)"> Done
+      </label>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-card" id="onboard-step-3" style="border-left:3px solid #334155;">
+      <div class="step-icon amber">3</div>
+      <div class="step-body" style="flex:1;">
+        <h3>Generate shop drawings</h3>
+        <p>From the project page, click "Shop Drawings" to access interactive drawings for rafters, columns, purlins, and more. These are parametric SVG drawings you can customize and save as PDFs.</p>
+        <a class="go-link" href="/shop-drawings">Open Shop Drawings &rarr;</a>
+      </div>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:#94A3B8;font-size:12px;">
+        <input type="checkbox" class="onboard-check" data-step="3" onchange="toggleOnboardStep(3, this.checked)"> Done
+      </label>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-card" id="onboard-step-4" style="border-left:3px solid #334155;">
+      <div class="step-icon purple">4</div>
+      <div class="step-body" style="flex:1;">
+        <h3>Create work orders</h3>
+        <p>Once shop drawings are ready, create a work order from the project page. This assigns items to machines, generates QR stickers, and pushes work to the shop floor queue.</p>
+        <a class="go-link" href="/work-orders">View Work Orders &rarr;</a>
+      </div>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:#94A3B8;font-size:12px;">
+        <input type="checkbox" class="onboard-check" data-step="4" onchange="toggleOnboardStep(4, this.checked)"> Done
+      </label>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-card" id="onboard-step-5" style="border-left:3px solid #334155;">
+      <div class="step-icon blue">5</div>
+      <div class="step-body" style="flex:1;">
+        <h3>Track through shipping</h3>
+        <p>As items are fabricated, track progress via the Shop Floor dashboard. When complete, generate packing lists and bills of lading from the Shipping Hub to send the order out.</p>
+        <a class="go-link" href="/shipping">Open Shipping Hub &rarr;</a>
+      </div>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;color:#94A3B8;font-size:12px;">
+        <input type="checkbox" class="onboard-check" data-step="5" onchange="toggleOnboardStep(5, this.checked)"> Done
+      </label>
+    </div>
+  </div>
+
   <div class="gs-footer">
-    TitanForge v4.0 &mdash; Structures America &mdash; <a href="/">Back to Dashboard</a>
+    TitanForge v4.0 &mdash; Titan Carports &mdash; <a href="/">Back to Dashboard</a>
   </div>
 
 </div>
@@ -485,6 +564,104 @@ GETTING_STARTED_HTML = """
   else if (userRole === 'estimator') showRole('estimator');
   else if (userRole === 'admin') showRole('admin');
   else showRole('shop'); // Default
+
+  // ── Onboarding Progress Tracking ──
+  var ONBOARD_STEPS = 5;
+
+  function loadOnboardProgress() {
+    fetch('/api/onboarding/progress')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok && data.steps) {
+          Object.keys(data.steps).forEach(function(stepKey) {
+            var stepNum = parseInt(stepKey);
+            if (data.steps[stepKey]) {
+              var cb = document.querySelector('.onboard-check[data-step="' + stepNum + '"]');
+              if (cb) cb.checked = true;
+              markStepDone(stepNum);
+            }
+          });
+          updateProgressBar();
+        }
+      })
+      .catch(function() {
+        // Fallback to cookie
+        var cookie = getCookie('tf_onboard');
+        if (cookie) {
+          try {
+            var steps = JSON.parse(cookie);
+            for (var i = 1; i <= ONBOARD_STEPS; i++) {
+              if (steps[i]) {
+                var cb = document.querySelector('.onboard-check[data-step="' + i + '"]');
+                if (cb) cb.checked = true;
+                markStepDone(i);
+              }
+            }
+            updateProgressBar();
+          } catch(e) {}
+        }
+      });
+  }
+
+  function toggleOnboardStep(step, done) {
+    if (done) markStepDone(step);
+    else markStepUndone(step);
+    updateProgressBar();
+    saveOnboardProgress();
+  }
+
+  function markStepDone(step) {
+    var card = document.getElementById('onboard-step-' + step);
+    if (card) {
+      card.style.borderLeftColor = '#10B981';
+      card.style.background = '#0D2818';
+    }
+  }
+
+  function markStepUndone(step) {
+    var card = document.getElementById('onboard-step-' + step);
+    if (card) {
+      card.style.borderLeftColor = '#334155';
+      card.style.background = '';
+    }
+  }
+
+  function updateProgressBar() {
+    var done = document.querySelectorAll('.onboard-check:checked').length;
+    var pct = Math.round((done / ONBOARD_STEPS) * 100);
+    var bar = document.getElementById('onboardProgressBar');
+    var txt = document.getElementById('onboardProgressText');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = done + ' of ' + ONBOARD_STEPS + ' steps completed' + (done === ONBOARD_STEPS ? ' — You are all set!' : '');
+  }
+
+  function saveOnboardProgress() {
+    var steps = {};
+    for (var i = 1; i <= ONBOARD_STEPS; i++) {
+      var cb = document.querySelector('.onboard-check[data-step="' + i + '"]');
+      steps[i] = cb ? cb.checked : false;
+    }
+    // Save to API
+    fetch('/api/onboarding/progress', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({steps: steps})
+    }).catch(function() {});
+    // Also save to cookie as fallback
+    setCookie('tf_onboard', JSON.stringify(steps), 365);
+  }
+
+  function getCookie(name) {
+    var m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+  function setCookie(name, value, days) {
+    var d = new Date();
+    d.setTime(d.getTime() + days * 86400000);
+    document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/';
+  }
+
+  loadOnboardProgress();
 </script>
 </body>
 </html>

@@ -3698,6 +3698,159 @@ DASHBOARD_HTML = r"""
             window.location.href = '/activity';
         }
     }
+    // ── First-Visit Tour Overlay ───────────────
+    (function() {
+        var TOUR_STEPS = [
+            {
+                target: '.tf-sidebar',
+                title: 'Sidebar Navigation',
+                desc: 'Access all modules from here: projects, shop floor, inventory, shipping, and more. The sidebar collapses for more screen space.',
+                position: 'right'
+            },
+            {
+                target: '.metrics-row',
+                title: 'Dashboard Metrics',
+                desc: 'Key KPIs at a glance: active projects, open work orders, pending shipments, and items in production. Click any card for details.',
+                position: 'bottom'
+            },
+            {
+                target: '.dash-grid',
+                title: 'Recent Projects & Activity',
+                desc: 'Your active projects and recent activity feed. Click any project name to open it, or click an activity item to navigate to that record.',
+                position: 'top'
+            },
+            {
+                target: '.dash-header-actions',
+                title: 'Quick Actions',
+                desc: 'Start a new estimate, create a project, or view your production schedule. These shortcuts save you clicks.',
+                position: 'bottom'
+            },
+            {
+                target: '.tf-sidebar-search',
+                title: 'Global Search',
+                desc: 'Press Ctrl+K to search for anything: projects, customers, job codes, coils. Results link directly to the record.',
+                position: 'right'
+            }
+        ];
+
+        function getCookie(name) {
+            var m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+            return m ? decodeURIComponent(m[2]) : null;
+        }
+        function setCookie(name, value, days) {
+            var d = new Date();
+            d.setTime(d.getTime() + days * 86400000);
+            document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + d.toUTCString() + ';path=/';
+        }
+
+        if (getCookie('tf_tour_done') === '1') return;
+
+        var currentStep = 0;
+
+        function createTourOverlay() {
+            var overlay = document.createElement('div');
+            overlay.id = 'tourOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:99990;pointer-events:none;';
+
+            var backdrop = document.createElement('div');
+            backdrop.id = 'tourBackdrop';
+            backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99991;pointer-events:auto;';
+
+            var card = document.createElement('div');
+            card.id = 'tourCard';
+            card.style.cssText = 'position:fixed;z-index:99993;background:#1E293B;border:2px solid #C89A2E;border-radius:12px;padding:20px 24px;max-width:360px;color:#E2E8F0;box-shadow:0 8px 32px rgba(0,0,0,0.5);pointer-events:auto;';
+            card.innerHTML = '<div id="tourTitle" style="font-size:16px;font-weight:700;color:#C89A2E;margin-bottom:8px;"></div>'
+                + '<div id="tourDesc" style="font-size:13px;color:#CBD5E1;line-height:1.6;margin-bottom:16px;"></div>'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                + '  <span id="tourStepCount" style="font-size:11px;color:#64748B;"></span>'
+                + '  <div style="display:flex;gap:8px;">'
+                + '    <button id="tourSkip" onclick="window._skipTour()" style="padding:6px 14px;border-radius:6px;border:1px solid #475569;background:transparent;color:#94A3B8;font-size:12px;cursor:pointer;font-weight:600;">Skip Tour</button>'
+                + '    <button id="tourNext" onclick="window._nextTourStep()" style="padding:6px 14px;border-radius:6px;border:none;background:#C89A2E;color:#0F172A;font-size:12px;cursor:pointer;font-weight:700;">Next</button>'
+                + '  </div>'
+                + '</div>';
+
+            document.body.appendChild(backdrop);
+            document.body.appendChild(overlay);
+            document.body.appendChild(card);
+        }
+
+        function showStep(idx) {
+            if (idx >= TOUR_STEPS.length) {
+                endTour();
+                return;
+            }
+            currentStep = idx;
+            var step = TOUR_STEPS[idx];
+            var el = document.querySelector(step.target);
+
+            document.getElementById('tourTitle').textContent = step.title;
+            document.getElementById('tourDesc').textContent = step.desc;
+            document.getElementById('tourStepCount').textContent = (idx + 1) + ' of ' + TOUR_STEPS.length;
+            document.getElementById('tourNext').textContent = idx === TOUR_STEPS.length - 1 ? 'Finish' : 'Next';
+
+            var card = document.getElementById('tourCard');
+            if (el) {
+                var rect = el.getBoundingClientRect();
+                // Highlight element
+                el.style.position = el.style.position || 'relative';
+                el.style.zIndex = '99992';
+                el.style.boxShadow = '0 0 0 4px rgba(200,154,46,0.4)';
+                el.style.borderRadius = el.style.borderRadius || '8px';
+
+                // Position card
+                if (step.position === 'right') {
+                    card.style.left = Math.min(rect.right + 16, window.innerWidth - 380) + 'px';
+                    card.style.top = Math.max(rect.top, 20) + 'px';
+                } else if (step.position === 'bottom') {
+                    card.style.left = Math.max(rect.left, 20) + 'px';
+                    card.style.top = (rect.bottom + 16) + 'px';
+                } else {
+                    card.style.left = Math.max(rect.left, 20) + 'px';
+                    card.style.top = Math.max(rect.top - 200, 20) + 'px';
+                }
+            } else {
+                card.style.left = '50%';
+                card.style.top = '50%';
+                card.style.transform = 'translate(-50%,-50%)';
+            }
+        }
+
+        function clearHighlights() {
+            TOUR_STEPS.forEach(function(step) {
+                var el = document.querySelector(step.target);
+                if (el) {
+                    el.style.zIndex = '';
+                    el.style.boxShadow = '';
+                }
+            });
+        }
+
+        function endTour() {
+            clearHighlights();
+            var bd = document.getElementById('tourBackdrop');
+            var ov = document.getElementById('tourOverlay');
+            var cd = document.getElementById('tourCard');
+            if (bd) bd.remove();
+            if (ov) ov.remove();
+            if (cd) cd.remove();
+            setCookie('tf_tour_done', '1', 365);
+        }
+
+        window._nextTourStep = function() {
+            clearHighlights();
+            showStep(currentStep + 1);
+        };
+
+        window._skipTour = function() {
+            endTour();
+        };
+
+        // Start tour after page loads
+        setTimeout(function() {
+            createTourOverlay();
+            showStep(0);
+        }, 1500);
+    })();
     </script>
 </body>
 </html>

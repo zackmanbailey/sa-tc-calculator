@@ -234,18 +234,40 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
             <option value="approved">Approved</option>
             <option value="stickers_printed">Stickers Printed</option>
             <option value="in_progress">In Progress</option>
+            <option value="qc_hold">QC Hold</option>
             <option value="on_hold">On Hold</option>
-            <option value="fabricated">Fabricated</option>
-            <option value="qc_pending">QC Pending</option>
-            <option value="qc_approved">QC Approved</option>
-            <option value="ready_to_ship">Ready to Ship</option>
+            <option value="complete">Complete</option>
             <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="installed">Installed</option>
+        </select>
+        <select id="priorityFilter" onchange="applyFilters()">
+            <option value="">All Priorities</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+        </select>
+        <select id="machineFilter" onchange="applyFilters()">
+            <option value="">All Machines</option>
         </select>
         <select id="projectFilter" onchange="applyFilters()">
             <option value="">All Projects</option>
         </select>
+    </div>
+    <!-- Bulk Actions -->
+    <div id="bulkBar" style="display:none;background:var(--tf-blue-light);border:1px solid var(--tf-blue);border-radius:8px;padding:10px 16px;margin-bottom:16px;display:none;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:0.85rem;font-weight:600;color:var(--tf-blue);" id="bulkCount">0 selected</span>
+        <select id="bulkMachine" style="padding:6px 10px;border:1px solid var(--tf-border);border-radius:6px;font-size:0.8rem;">
+            <option value="">Assign Machine...</option>
+        </select>
+        <button onclick="bulkAssignMachine()" style="padding:6px 14px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;background:var(--tf-blue);color:white;">Apply</button>
+        <select id="bulkPriority" style="padding:6px 10px;border:1px solid var(--tf-border);border-radius:6px;font-size:0.8rem;">
+            <option value="">Change Priority...</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+        </select>
+        <button onclick="bulkChangePriority()" style="padding:6px 14px;border:none;border-radius:6px;font-size:0.8rem;font-weight:600;cursor:pointer;background:#F59E0B;color:white;">Apply</button>
     </div>
 
     <!-- TAB: ALL -->
@@ -315,6 +337,8 @@ async function loadData() {
     applyFilters();
 }
 
+let selectedWOs = new Set();
+
 function populateProjectFilter() {
     const projects = [...new Set(allWOs.map(w => w.job_code))].sort();
     const sel = document.getElementById('projectFilter');
@@ -322,25 +346,51 @@ function populateProjectFilter() {
     projects.forEach(p => {
         sel.innerHTML += `<option value="${p}">${p}</option>`;
     });
+    // Populate machine filter
+    const machines = [...new Set(allWOs.map(w => w.machine_id).filter(Boolean))].sort();
+    const msel = document.getElementById('machineFilter');
+    msel.innerHTML = '<option value="">All Machines</option><option value="_unassigned">Unassigned</option>';
+    machines.forEach(m => {
+        msel.innerHTML += `<option value="${m}">${m}</option>`;
+    });
+    // Populate bulk machine dropdown
+    const bmsel = document.getElementById('bulkMachine');
+    bmsel.innerHTML = '<option value="">Assign Machine...</option>';
+    machines.forEach(m => {
+        bmsel.innerHTML += `<option value="${m}">${m}</option>`;
+    });
 }
 
 function renderStats() {
     const total = allWOs.length;
-    const active = allWOs.filter(w => !['installed', 'complete'].includes(w.status)).length;
+    const active = allWOs.filter(w => !['installed', 'complete', 'shipped'].includes(w.status)).length;
     const qcItems = allItems.filter(i => ['qc_pending', 'fabricated'].includes(i.status)).length;
     const readyToShip = allItems.filter(i => i.status === 'ready_to_ship').length;
-    const onHold = allWOs.filter(w => w.status === 'on_hold').length;
+    const onHold = allWOs.filter(w => w.status === 'on_hold' || w.status === 'qc_hold').length;
     const totalItems = allItems.length;
     const completedItems = allItems.filter(i => ['qc_approved', 'ready_to_ship', 'shipped', 'delivered', 'installed', 'complete'].includes(i.status)).length;
+    const urgent = allWOs.filter(w => w.priority === 'urgent').length;
+    const inProgress = allWOs.filter(w => w.status === 'in_progress').length;
+    const unassigned = allWOs.filter(w => !w.machine_id).length;
 
-    document.getElementById('statsRow').innerHTML = `
+    let html = `
         <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('all');applyFilters();"><div class="stat-val">${total}</div><div class="stat-label">Total WOs</div></div>
-        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('active');"><div class="stat-val">${active}</div><div class="stat-label">Active</div></div>
+        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='in_progress';switchTab('all');applyFilters();"><div class="stat-val">${inProgress}</div><div class="stat-label">In Progress</div></div>
         <div class="stat-pill" onclick="switchTab('qc');"><div class="stat-val">${qcItems}</div><div class="stat-label">QC Queue</div></div>
         <div class="stat-pill" onclick="switchTab('shipping');"><div class="stat-val">${readyToShip}</div><div class="stat-label">Ready to Ship</div></div>
-        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='on_hold';switchTab('all');applyFilters();"><div class="stat-val">${onHold}</div><div class="stat-label">On Hold</div></div>
-        <div class="stat-pill" onclick="document.getElementById('statusFilter').value='';switchTab('all');applyFilters();"><div class="stat-val">${totalItems > 0 ? Math.round(100 * completedItems / totalItems) : 0}%</div><div class="stat-label">Overall Progress</div></div>
     `;
+    if (urgent > 0) {
+        html += `<div class="stat-pill" style="border-color:#FCA5A5;" onclick="document.getElementById('priorityFilter').value='urgent';applyFilters();"><div class="stat-val" style="color:#DC2626;">${urgent}</div><div class="stat-label">Urgent</div></div>`;
+    }
+    if (unassigned > 0) {
+        html += `<div class="stat-pill" style="border-color:#FDE68A;" onclick="document.getElementById('machineFilter').value='_unassigned';applyFilters();"><div class="stat-val" style="color:#D97706;">${unassigned}</div><div class="stat-label">Unassigned</div></div>`;
+    }
+    if (onHold > 0) {
+        html += `<div class="stat-pill" onclick="document.getElementById('statusFilter').value='on_hold';switchTab('all');applyFilters();"><div class="stat-val">${onHold}</div><div class="stat-label">On Hold</div></div>`;
+    }
+    html += `<div class="stat-pill"><div class="stat-val">${totalItems > 0 ? Math.round(100 * completedItems / totalItems) : 0}%</div><div class="stat-label">Overall Progress</div></div>`;
+
+    document.getElementById('statsRow').innerHTML = html;
 }
 
 function updateCounts() {
@@ -361,21 +411,32 @@ function applyFilters() {
     const q = document.getElementById('searchInput').value.toLowerCase().trim();
     const statusF = document.getElementById('statusFilter').value;
     const projectF = document.getElementById('projectFilter').value;
+    const priorityF = document.getElementById('priorityFilter').value;
+    const machineF = document.getElementById('machineFilter').value;
 
     let filtered = allWOs.filter(wo => {
         if (statusF && wo.status !== statusF) return false;
         if (projectF && wo.job_code !== projectF) return false;
+        if (priorityF && (wo.priority || 'normal') !== priorityF) return false;
+        if (machineF === '_unassigned' && wo.machine_id) return false;
+        if (machineF && machineF !== '_unassigned' && wo.machine_id !== machineF) return false;
         if (q) {
-            const haystack = `${wo.work_order_id} ${wo.job_code} ${wo.status} ${wo.status_label || ''}`.toLowerCase();
+            const haystack = `${wo.work_order_id} ${wo.job_code} ${wo.status} ${wo.status_label || ''} ${wo.machine_id || ''} ${wo.operator || ''}`.toLowerCase();
             if (!haystack.includes(q)) return false;
         }
         return true;
     });
 
+    // Sort by priority then due_date
+    const pOrder = {urgent:0, high:1, normal:2, low:3};
+    filtered.sort((a,b) => (pOrder[a.priority||'normal']||2) - (pOrder[b.priority||'normal']||2));
+
     if (currentTab === 'all') renderAllTable(filtered);
-    else if (currentTab === 'active') renderAllTable(filtered.filter(w => !['installed', 'complete'].includes(w.status)));
+    else if (currentTab === 'active') renderAllTable(filtered.filter(w => !['installed', 'complete', 'shipped'].includes(w.status)));
     else if (currentTab === 'qc') renderQCQueue(q, projectF);
     else if (currentTab === 'shipping') renderShippingQueue(q, projectF);
+
+    updateBulkBar();
 }
 
 function renderAllTable(wos) {
@@ -385,16 +446,27 @@ function renderAllTable(wos) {
         return;
     }
 
+    const priorityColors = {urgent:'#DC2626',high:'#F59E0B',normal:'#6B7280',low:'#94A3B8'};
+    const priorityLabels = {urgent:'URGENT',high:'High',normal:'Normal',low:'Low'};
+
     let html = `<table class="wo-table"><thead><tr>
-        <th>Work Order</th><th>Project</th><th>Status</th><th>Items</th><th>Progress</th>
+        <th style="width:36px;"><input type="checkbox" onchange="toggleSelectAll(this)" title="Select all"></th>
+        <th>Work Order</th><th>Project</th><th>Priority</th><th>Machine</th><th>Operator</th>
+        <th>Status</th><th>Items</th><th>Progress</th>
         <th>Created</th><th>QC Pending</th></tr></thead><tbody>`;
 
     wos.forEach(wo => {
         const pct = wo.progress_pct || 0;
         const qcPending = wo.qc_pending_items || 0;
-        html += `<tr onclick="window.location.href='/work-orders/${encodeURIComponent(wo.job_code)}'">
-            <td><span class="wo-id">${wo.work_order_id}</span></td>
+        const pri = wo.priority || 'normal';
+        const checked = selectedWOs.has(wo.work_order_id) ? 'checked' : '';
+        html += `<tr>
+            <td onclick="event.stopPropagation()"><input type="checkbox" ${checked} onchange="toggleWOSelect('${wo.work_order_id}', this.checked)"></td>
+            <td onclick="window.location.href='/work-orders/${encodeURIComponent(wo.job_code)}'" style="cursor:pointer;"><span class="wo-id">${wo.work_order_id}</span></td>
             <td><a class="job-code-link" href="/project/${encodeURIComponent(wo.job_code)}" onclick="event.stopPropagation()">${wo.job_code}</a></td>
+            <td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:700;color:white;background:${priorityColors[pri]||'#6B7280'};text-transform:uppercase;">${priorityLabels[pri]||pri}</span></td>
+            <td style="font-size:0.82rem;font-weight:600;">${wo.machine_id || '<span style="color:var(--tf-slate);">-</span>'}</td>
+            <td style="font-size:0.82rem;">${wo.operator || '<span style="color:var(--tf-slate);">-</span>'}</td>
             <td><span class="status-badge ${wo.status}">${wo.status_label || wo.status}</span></td>
             <td>${wo.completed_items || 0}/${wo.total_items || 0}</td>
             <td>
@@ -410,6 +482,83 @@ function renderAllTable(wos) {
 
     html += '</tbody></table>';
     document.getElementById(currentTab === 'active' ? 'activeTableArea' : 'allTableArea').innerHTML = html;
+}
+
+function toggleSelectAll(cb) {
+    const checkboxes = document.querySelectorAll('.wo-table tbody input[type=checkbox]');
+    checkboxes.forEach(c => { c.checked = cb.checked; });
+    if (cb.checked) {
+        allWOs.forEach(wo => selectedWOs.add(wo.work_order_id));
+    } else {
+        selectedWOs.clear();
+    }
+    updateBulkBar();
+}
+
+function toggleWOSelect(woId, checked) {
+    if (checked) selectedWOs.add(woId);
+    else selectedWOs.delete(woId);
+    updateBulkBar();
+}
+
+function updateBulkBar() {
+    const bar = document.getElementById('bulkBar');
+    if (selectedWOs.size > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = selectedWOs.size + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+async function bulkAssignMachine() {
+    const machine = document.getElementById('bulkMachine').value;
+    if (!machine) { showToast('Select a machine first', 'error'); return; }
+    if (selectedWOs.size === 0) { showToast('No work orders selected', 'error'); return; }
+
+    let success = 0, fail = 0;
+    for (const woId of selectedWOs) {
+        const wo = allWOs.find(w => w.work_order_id === woId);
+        if (!wo) continue;
+        try {
+            const resp = await fetch('/api/work-orders/assign', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ job_code: wo.job_code, work_order_id: woId, machine_id: machine })
+            });
+            const data = await resp.json();
+            if (data.ok) { success++; wo.machine_id = machine; }
+            else fail++;
+        } catch(e) { fail++; }
+    }
+    selectedWOs.clear();
+    showToast(`Assigned ${success} WO(s) to ${machine}` + (fail ? `, ${fail} failed` : ''), success ? 'success' : 'error');
+    await loadData();
+}
+
+async function bulkChangePriority() {
+    const priority = document.getElementById('bulkPriority').value;
+    if (!priority) { showToast('Select a priority first', 'error'); return; }
+    if (selectedWOs.size === 0) { showToast('No work orders selected', 'error'); return; }
+
+    let success = 0, fail = 0;
+    for (const woId of selectedWOs) {
+        const wo = allWOs.find(w => w.work_order_id === woId);
+        if (!wo) continue;
+        try {
+            const resp = await fetch('/api/work-orders/edit', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ job_code: wo.job_code, work_order_id: woId, priority: priority })
+            });
+            const data = await resp.json();
+            if (data.ok) { success++; wo.priority = priority; }
+            else fail++;
+        } catch(e) { fail++; }
+    }
+    selectedWOs.clear();
+    showToast(`Changed priority to ${priority} for ${success} WO(s)` + (fail ? `, ${fail} failed` : ''), success ? 'success' : 'error');
+    await loadData();
 }
 
 function renderQCQueue(q, projectF) {

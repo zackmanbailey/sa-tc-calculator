@@ -252,6 +252,60 @@ GLOSSARY = {
         "detail": "AISC (American Institute of Steel Construction) certification proves the shop follows documented quality procedures — WPS, welder certs, inspection records, calibration, NCRs, and traceability. Auditors visit periodically to verify compliance."
     },
 
+    # ── SA Calculator Fields ──
+    "sa_width": {
+        "term": "Building Width",
+        "short": "Clear span width of the structure in feet",
+        "detail": "The total width measured from outside column face to outside column face. For carports, this is the clear span. Buildings up to 45' use a single tee-frame; wider buildings use multi-column frames."
+    },
+    "sa_slope": {
+        "term": "Roof Slope / Pitch",
+        "short": "Roof pitch in degrees. Standard carport slope is 1.19 degrees",
+        "detail": "The angle of the roof from horizontal. A 1/4:12 pitch equals approximately 1.19 degrees — the most common for flat-style carports. Steeper pitches (5, 7.5, 10 degrees) shed water faster and handle snow loads better."
+    },
+    "sa_frame_type": {
+        "term": "Frame Type",
+        "short": "2-post for carports, 3-post for wider structures",
+        "detail": "Frame type is automatically determined by width. Buildings 45 feet and under use a tee-frame (single column per side). Wider structures add intermediate columns. Multi-column frames use heavier connections."
+    },
+    "sa_purlin_spacing": {
+        "term": "Purlin Spacing",
+        "short": "Distance between purlins in feet. Typical: 5 feet for standard, 2.5 feet for solar",
+        "detail": "Purlin on-center (OC) spacing determines how many purlins span between rafters. Standard carports use 5-foot spacing. Solar installations require 2.5-foot spacing for additional panel mount points. Closer spacing increases material cost but adds structural capacity."
+    },
+    "sa_bay_size": {
+        "term": "Max Bay Size",
+        "short": "Maximum distance between frame lines along the building length",
+        "detail": "Bay size is the spacing between frames measured along the building length. Typical bays are 20-25 feet for carports. Longer bays require heavier purlins. Bay size affects the number of frames, columns, and total steel weight."
+    },
+    "sa_clear_height": {
+        "term": "Clear Height / Eave Height",
+        "short": "Height from ground to the bottom of the rafter at the eave",
+        "detail": "The usable vertical clearance under the structure at the sidewall. Standard carport height is 12 feet. RV covers may need 14-16 feet. This measurement determines column length, which is the biggest factor in steel weight."
+    },
+
+    # ── TC Quote Fields ──
+    "tc_concrete": {
+        "term": "Concrete Costs",
+        "short": "Footing and slab costs for installation",
+        "detail": "Includes pier footings (drilled holes filled with concrete) and any slab work. Typical pier footings for carports are 24-36 inches in diameter and 36-48 inches deep. Cost varies significantly by soil conditions and local concrete prices."
+    },
+    "tc_labor": {
+        "term": "Labor — Installation",
+        "short": "Crew labor for erecting the structure on site",
+        "detail": "The cost for the installation crew to erect the building on site. Includes unloading, assembly, welding, and bolting. Labor is typically estimated per man-hour and depends on building size, complexity, and site conditions."
+    },
+    "tc_equipment": {
+        "term": "Equipment Rental",
+        "short": "Crane, forklift, and tool rentals for the install",
+        "detail": "Equipment needed for installation: typically a crane or boom truck for lifting rafters, a forklift for material handling, and various hand tools. Rental rates are usually per day or per week."
+    },
+    "tc_shipping": {
+        "term": "Shipping & Freight",
+        "short": "Cost to transport fabricated steel from shop to job site",
+        "detail": "Freight cost depends on total weight, distance from the fabrication shop, and whether the load requires an oversize permit. Steel is shipped on flatbed trailers. Typical loads are 40,000-45,000 lbs max."
+    },
+
     # ── Production Planning ──
     "gantt_chart": {
         "term": "Gantt Chart / Production Schedule",

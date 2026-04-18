@@ -1,7 +1,8 @@
 """
 TitanForge v4 -- Price Lists
 ==============================
-Material pricing, vendor price comparison, price history, markup calculator, bulk update.
+Material pricing with trend indicators, price history from API, last purchased info,
+vendor price comparison, markup calculator, mini sparkline trends.
 """
 
 PRICES_PAGE_HTML = r"""
@@ -92,7 +93,7 @@ PRICES_PAGE_HTML = r"""
     .modal {
         background: var(--tf-card); border-radius: 16px; padding: 32px;
         width: 90%; max-width: 650px; border: 1px solid rgba(255,255,255,0.1);
-        max-height: 80vh; overflow-y: auto;
+        max-height: 85vh; overflow-y: auto;
     }
     .modal h2 { font-size: 20px; font-weight: 700; margin: 0 0 24px 0; }
     .form-group { margin-bottom: 18px; }
@@ -106,10 +107,18 @@ PRICES_PAGE_HTML = r"""
     .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 
-    .price-change { font-size: 12px; font-weight: 600; }
+    .price-change { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
     .price-up { color: var(--tf-red); }
     .price-down { color: var(--tf-green); }
     .price-flat { color: var(--tf-muted); }
+
+    /* Sparkline */
+    .sparkline { display: inline-block; vertical-align: middle; }
+    .sparkline svg { display: block; }
+
+    /* Last purchased info */
+    .last-purchased { font-size: 11px; color: var(--tf-muted); line-height: 1.4; }
+    .last-purchased strong { color: var(--tf-text); }
 
     .markup-calc {
         background: var(--tf-bg); border-radius: 12px; padding: 20px; margin-top: 16px;
@@ -119,7 +128,12 @@ PRICES_PAGE_HTML = r"""
     .markup-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: end; }
     .markup-result { font-size: 24px; font-weight: 800; color: var(--tf-gold); }
 
-/* ── Responsive ── */
+    /* Detail section */
+    .history-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .history-table th { padding: 8px 10px; font-size: 11px; color: var(--tf-muted); text-transform: uppercase; text-align: left; background: rgba(0,0,0,0.15); }
+    .history-table td { padding: 8px 10px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+
+/* Responsive */
 @media (max-width: 768px) {
     .page-header h1 { font-size: 22px; }
     .toolbar { flex-direction: column; align-items: stretch; }
@@ -128,7 +142,7 @@ PRICES_PAGE_HTML = r"""
     table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
     .form-row { grid-template-columns: 1fr; }
-    .markup-row { flex-direction: column; gap: 8px; }
+    .markup-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
     .stat-row { grid-template-columns: 1fr; }
@@ -139,7 +153,7 @@ PRICES_PAGE_HTML = r"""
 <div class="prices-container">
     <div class="page-header">
         <h1>Price Lists</h1>
-        <p>Material pricing, vendor comparisons, price history, and markup calculations</p>
+        <p>Material pricing, trend analysis, vendor comparisons, and markup calculations</p>
     </div>
 
     <div class="stat-row">
@@ -175,10 +189,16 @@ PRICES_PAGE_HTML = r"""
             <select id="vendor-filter" onchange="filterTable()">
                 <option value="">All Vendors</option>
             </select>
+            <select id="trend-filter" onchange="filterTable()">
+                <option value="">All Trends</option>
+                <option value="up">Prices Up</option>
+                <option value="down">Prices Down</option>
+                <option value="stable">Stable</option>
+            </select>
         </div>
         <div style="display:flex;gap:10px;">
             <button class="btn btn-secondary" onclick="openMarkupCalc()">Markup Calculator</button>
-            <button class="btn btn-primary" onclick="openModal()">+ Add Price</button>
+            <button class="btn btn-primary" onclick="openAddModal()">+ Add Price</button>
         </div>
     </div>
 
@@ -191,8 +211,8 @@ PRICES_PAGE_HTML = r"""
                     <th>Unit</th>
                     <th>Base Price</th>
                     <th>Vendor</th>
-                    <th>Last Updated</th>
                     <th>Trend</th>
+                    <th>Last Purchased</th>
                     <th>Markup %</th>
                     <th>Sell Price</th>
                     <th>Actions</th>
@@ -204,7 +224,7 @@ PRICES_PAGE_HTML = r"""
             <div class="icon">&#x1F4B2;</div>
             <h3>No Price Data</h3>
             <p>Add material pricing to track costs, compare vendors, and calculate markups.</p>
-            <button class="btn btn-primary" onclick="openModal()">+ Add Price</button>
+            <button class="btn btn-primary" onclick="openAddModal()">+ Add Price</button>
         </div>
     </div>
 
@@ -228,10 +248,11 @@ PRICES_PAGE_HTML = r"""
     </div>
 </div>
 
-<!-- Price Modal -->
+<!-- Add/Edit Price Modal -->
 <div class="modal-overlay" id="price-modal">
     <div class="modal">
         <h2 id="modal-title">Add Material Price</h2>
+        <input type="hidden" id="price-edit-id" value="">
         <div class="form-row">
             <div class="form-group">
                 <label>Material</label>
@@ -278,8 +299,19 @@ PRICES_PAGE_HTML = r"""
             <textarea id="price-notes" rows="2" placeholder="Price notes, min order qty, etc."></textarea>
         </div>
         <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="savePrice()">Save Price</button>
+            <button class="btn btn-secondary" onclick="closeModal('price-modal')">Cancel</button>
+            <button class="btn btn-primary" id="price-save-btn" onclick="savePrice()">Save Price</button>
+        </div>
+    </div>
+</div>
+
+<!-- Price History Modal -->
+<div class="modal-overlay" id="history-modal">
+    <div class="modal" style="max-width:700px;">
+        <h2 id="history-title">Price History</h2>
+        <div id="history-content"></div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('history-modal')">Close</button>
         </div>
     </div>
 </div>
@@ -294,15 +326,38 @@ async function loadPrices() {
         prices = data.prices || [];
         renderTable();
         updateStats();
+        populateVendorFilter();
     } catch(e) { console.error('Failed to load prices:', e); renderTable(); }
 }
 
 function updateStats() {
     document.getElementById('stat-total').textContent = prices.length;
-    const vendors = new Set(prices.map(p => p.vendor)).size;
-    document.getElementById('stat-vendors').textContent = vendors;
+    const vendors = new Set(prices.map(p => p.vendor).filter(Boolean));
+    document.getElementById('stat-vendors').textContent = vendors.size;
     document.getElementById('stat-up').textContent = prices.filter(p => p.trend === 'up').length;
     document.getElementById('stat-down').textContent = prices.filter(p => p.trend === 'down').length;
+}
+
+function populateVendorFilter() {
+    const vendors = [...new Set(prices.map(p => p.vendor).filter(Boolean))].sort();
+    const sel = document.getElementById('vendor-filter');
+    const first = sel.options[0].outerHTML;
+    sel.innerHTML = first + vendors.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function buildSparkline(history, width, height) {
+    if (!history || history.length < 2) return '';
+    const vals = history.slice(-10).map(h => parseFloat(h.price) || 0);
+    if (vals.length < 2) return '';
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const range = max - min || 1;
+    const step = width / (vals.length - 1);
+    const points = vals.map((v, i) => `${i * step},${height - ((v - min) / range) * height}`).join(' ');
+    const lastVal = vals[vals.length - 1];
+    const prevVal = vals[vals.length - 2];
+    const color = lastVal > prevVal ? '#ef4444' : lastVal < prevVal ? '#10b981' : '#94a3b8';
+    return `<span class="sparkline"><svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 }
 
 function renderTable() {
@@ -312,20 +367,43 @@ function renderTable() {
     if (filtered.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
     empty.style.display = 'none';
     tbody.innerHTML = filtered.map(p => {
-        const sell = (p.base_price || 0) * (1 + (p.markup || 25) / 100);
-        const trendClass = p.trend === 'up' ? 'price-up' : p.trend === 'down' ? 'price-down' : 'price-flat';
-        const trendIcon = p.trend === 'up' ? '&#9650;' : p.trend === 'down' ? '&#9660;' : '&#9644;';
-        return `<tr>
+        const basePrice = parseFloat(p.base_price) || 0;
+        const markup = parseFloat(p.markup) || 25;
+        const sell = basePrice * (1 + markup / 100);
+        const trend = p.trend || 'stable';
+        const change = p.change_pct || p.change || '';
+        const trendClass = trend === 'up' ? 'price-up' : trend === 'down' ? 'price-down' : 'price-flat';
+        const trendIcon = trend === 'up' ? '&#9650;' : trend === 'down' ? '&#9660;' : '&#9644;';
+        const sparkline = buildSparkline(p.price_history || p.history, 60, 20);
+
+        // Last purchased info
+        let lastPurchasedHtml = '--';
+        if (p.last_purchased || p.last_vendor) {
+            lastPurchasedHtml = `<div class="last-purchased">`;
+            if (p.last_purchased) lastPurchasedHtml += `<strong>${(p.last_purchased + '').slice(0,10)}</strong><br>`;
+            if (p.last_vendor) lastPurchasedHtml += `${p.last_vendor}`;
+            lastPurchasedHtml += `</div>`;
+        }
+
+        return `<tr onclick="viewPriceHistory('${p.id}')">
             <td><strong>${p.material || '--'}</strong></td>
             <td>${p.category || '--'}</td>
             <td>${p.unit || '--'}</td>
-            <td>$${(p.base_price || 0).toFixed(2)}</td>
+            <td style="font-weight:700">$${basePrice.toFixed(2)}</td>
             <td>${p.vendor || '--'}</td>
-            <td>${p.last_updated || '--'}</td>
-            <td><span class="price-change ${trendClass}">${trendIcon} ${p.change || '0%'}</span></td>
-            <td>${p.markup || 25}%</td>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="price-change ${trendClass}">${trendIcon} ${change ? (typeof change === 'number' ? change.toFixed(1) : change) + '%' : ''}</span>
+                    ${sparkline}
+                </div>
+            </td>
+            <td>${lastPurchasedHtml}</td>
+            <td>${markup}%</td>
             <td style="color:var(--tf-gold);font-weight:700">$${sell.toFixed(2)}</td>
-            <td><button class="btn btn-sm btn-secondary" onclick="editPrice('${p.id}')">Edit</button></td>
+            <td>
+                <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();editPrice('${p.id}')" style="margin-right:4px;">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();viewPriceHistory('${p.id}')" style="font-size:11px;">History</button>
+            </td>
         </tr>`;
     }).join('');
 }
@@ -334,18 +412,47 @@ function getFiltered() {
     const search = (document.getElementById('search-input').value || '').toLowerCase();
     const cat = document.getElementById('category-filter').value;
     const vendor = document.getElementById('vendor-filter').value;
+    const trend = document.getElementById('trend-filter').value;
     return prices.filter(p => {
         if (search && !JSON.stringify(p).toLowerCase().includes(search)) return false;
         if (cat && p.category !== cat) return false;
         if (vendor && p.vendor !== vendor) return false;
+        if (trend && (p.trend || 'stable') !== trend) return false;
         return true;
     });
 }
 
 function filterTable() { renderTable(); }
-function openModal() { document.getElementById('price-modal').classList.add('active'); }
-function closeModal() { document.getElementById('price-modal').classList.remove('active'); }
-function editPrice(id) { openModal(); }
+
+function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Add Material Price';
+    document.getElementById('price-save-btn').textContent = 'Save Price';
+    document.getElementById('price-edit-id').value = '';
+    ['price-material','price-vendor','price-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('price-base').value = '';
+    document.getElementById('price-category').value = '';
+    document.getElementById('price-unit').value = 'lb';
+    document.getElementById('price-markup').value = '25';
+    document.getElementById('price-modal').classList.add('active');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editPrice(id) {
+    const p = prices.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('modal-title').textContent = 'Edit Price';
+    document.getElementById('price-save-btn').textContent = 'Update Price';
+    document.getElementById('price-edit-id').value = id;
+    document.getElementById('price-material').value = p.material || '';
+    document.getElementById('price-category').value = p.category || '';
+    document.getElementById('price-base').value = p.base_price || '';
+    document.getElementById('price-unit').value = p.unit || 'lb';
+    document.getElementById('price-markup').value = p.markup || 25;
+    document.getElementById('price-vendor').value = p.vendor || '';
+    document.getElementById('price-notes').value = p.notes || '';
+    document.getElementById('price-modal').classList.add('active');
+}
 
 function openMarkupCalc() {
     const el = document.getElementById('markup-calc');
@@ -360,20 +467,96 @@ function calculateMarkup() {
 }
 
 async function savePrice() {
+    const editId = document.getElementById('price-edit-id').value;
     const payload = {
         material: document.getElementById('price-material').value,
         category: document.getElementById('price-category').value,
-        base_price: document.getElementById('price-base').value,
+        base_price: parseFloat(document.getElementById('price-base').value) || 0,
         unit: document.getElementById('price-unit').value,
-        markup: document.getElementById('price-markup').value,
+        markup: parseFloat(document.getElementById('price-markup').value) || 25,
         vendor: document.getElementById('price-vendor').value,
         notes: document.getElementById('price-notes').value,
     };
+    if (!payload.material) { showToast('Material name is required', 'error'); return; }
+
+    if (editId) {
+        payload.price_id = editId;
+        payload.action = 'update';
+    }
+
     try {
-        await fetch('/api/prices', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        closeModal();
+        const resp = await fetch('/api/prices', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const data = await resp.json();
+        if (data.error) { showToast(data.error, 'error'); return; }
+        closeModal('price-modal');
+        showToast(editId ? 'Price updated' : 'Price added', 'success');
         loadPrices();
-    } catch(e) { console.error('Save failed:', e); }
+    } catch(e) { showToast('Save failed', 'error'); }
+}
+
+function viewPriceHistory(id) {
+    const p = prices.find(x => x.id === id);
+    if (!p) return;
+    const history = p.price_history || p.history || [];
+
+    let historyHtml = '';
+    if (history.length > 0) {
+        historyHtml = `<table class="history-table" style="border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);">
+            <thead><tr><th>Date</th><th>Price</th><th>Vendor</th><th>Change</th></tr></thead>
+            <tbody>${history.slice().reverse().map((h, i, arr) => {
+                const price = parseFloat(h.price) || 0;
+                const prev = i < arr.length - 1 ? (parseFloat(arr[i+1].price) || 0) : price;
+                const diff = price - prev;
+                const pct = prev > 0 ? ((diff / prev) * 100).toFixed(1) : '0.0';
+                const changeClass = diff > 0 ? 'price-up' : diff < 0 ? 'price-down' : 'price-flat';
+                const changeIcon = diff > 0 ? '&#9650;' : diff < 0 ? '&#9660;' : '&#9644;';
+                return `<tr>
+                    <td>${(h.date || h.timestamp || '').slice(0,10)}</td>
+                    <td style="font-weight:700">$${price.toFixed(2)}</td>
+                    <td>${h.vendor || p.vendor || '--'}</td>
+                    <td><span class="price-change ${changeClass}">${changeIcon} ${pct}%</span></td>
+                </tr>`;
+            }).join('')}
+            </tbody>
+        </table>`;
+    } else {
+        historyHtml = '<p style="color:var(--tf-muted);text-align:center;padding:20px;">No price history records yet</p>';
+    }
+
+    // Build sparkline chart (larger)
+    const chartHtml = buildSparkline(history, 300, 60);
+
+    document.getElementById('history-title').textContent = 'Price History: ' + (p.material || '--');
+    document.getElementById('history-content').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;">
+            <div style="background:var(--tf-bg);border-radius:10px;padding:16px;text-align:center;border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:20px;font-weight:800;color:var(--tf-gold)">$${(parseFloat(p.base_price) || 0).toFixed(2)}</div>
+                <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase">Current Price</div>
+            </div>
+            <div style="background:var(--tf-bg);border-radius:10px;padding:16px;text-align:center;border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:20px;font-weight:800;color:${p.trend === 'up' ? 'var(--tf-red)' : p.trend === 'down' ? 'var(--tf-green)' : 'var(--tf-muted)'}">${p.trend === 'up' ? '&#9650;' : p.trend === 'down' ? '&#9660;' : '&#9644;'} ${p.change_pct || p.change || '0'}%</div>
+                <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase">Trend</div>
+            </div>
+            <div style="background:var(--tf-bg);border-radius:10px;padding:16px;text-align:center;border:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:20px;font-weight:800;color:var(--tf-blue)">${history.length}</div>
+                <div style="font-size:11px;color:var(--tf-muted);text-transform:uppercase">Records</div>
+            </div>
+        </div>
+        ${chartHtml ? `<div style="text-align:center;margin-bottom:20px;padding:16px;background:var(--tf-bg);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">${chartHtml}</div>` : ''}
+        ${historyHtml}`;
+    document.getElementById('history-modal').classList.add('active');
+}
+
+function showToast(msg, type) {
+    const existing = document.querySelector('.toast-notification');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    const bg = type === 'error' ? 'var(--tf-red)' : type === 'success' ? 'var(--tf-green)' : 'var(--tf-blue)';
+    toast.style.cssText = `position:fixed;top:20px;right:20px;z-index:9999;background:${bg};color:#fff;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.3);transition:opacity 0.3s;`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
 }
 
 document.addEventListener('DOMContentLoaded', loadPrices);

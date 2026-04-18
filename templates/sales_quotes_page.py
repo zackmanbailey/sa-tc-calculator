@@ -1,7 +1,8 @@
 """
-TitanForge v4 — Sales Quotes
-==============================
-Manage pre-project sales quotes for prospective customers.
+TitanForge v4 — Sales Quotes (Production)
+===========================================
+Quote management with status tracking, revision history,
+accept/reject actions, and sent tracking.
 """
 
 SALES_QUOTES_PAGE_HTML = r"""
@@ -15,19 +16,16 @@ SALES_QUOTES_PAGE_HTML = r"""
         --tf-blue: #3b82f6;
         --tf-green: #10b981;
         --tf-red: #ef4444;
+        --tf-orange: #fb923c;
     }
     .quotes-container {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
-        color: var(--tf-text);
+        max-width: 1400px; margin: 0 auto; padding: 24px 32px;
+        font-family: 'Inter', 'Segoe UI', sans-serif; color: var(--tf-text);
     }
     .page-header { margin-bottom: 28px; }
     .page-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px 0; }
     .page-header p { font-size: 14px; color: var(--tf-muted); margin: 0; }
 
-    /* Stat Cards */
     .stat-row {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 16px; margin-bottom: 24px;
@@ -44,9 +42,8 @@ SALES_QUOTES_PAGE_HTML = r"""
     .stat-gold .value { color: var(--tf-gold); }
     .stat-blue .value { color: var(--tf-blue); }
     .stat-green .value { color: var(--tf-green); }
-    .stat-orange .value { color: #fb923c; }
+    .stat-orange .value { color: var(--tf-orange); }
 
-    /* Toolbar */
     .toolbar {
         display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
@@ -64,15 +61,21 @@ SALES_QUOTES_PAGE_HTML = r"""
         padding: 10px 20px; font-weight: 700; font-size: 14px; cursor: pointer;
     }
     .btn-gold:hover { opacity: 0.9; }
+    .btn-sm {
+        padding: 5px 12px; font-size: 12px; border-radius: 6px; border: none;
+        font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-sm:hover { opacity: 0.8; }
+    .btn-send { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .btn-accept { background: rgba(16,185,129,0.15); color: #34d399; }
+    .btn-reject { background: rgba(239,68,68,0.15); color: #f87171; }
+    .btn-revise { background: rgba(212,168,67,0.15); color: #d4a843; }
 
-    /* Table */
     .table-card {
         background: var(--tf-card); border-radius: 12px;
         border: 1px solid rgba(255,255,255,0.06); overflow: hidden;
     }
-    .sq-table {
-        width: 100%; border-collapse: collapse; font-size: 14px;
-    }
+    .sq-table { width: 100%; border-collapse: collapse; font-size: 14px; }
     .sq-table th {
         text-align: left; padding: 14px 16px; font-size: 11px;
         text-transform: uppercase; letter-spacing: 0.5px; color: var(--tf-muted);
@@ -93,26 +96,18 @@ SALES_QUOTES_PAGE_HTML = r"""
     }
     .badge-draft { background: rgba(148,163,184,0.15); color: #94a3b8; }
     .badge-sent { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .badge-revised { background: rgba(212,168,67,0.15); color: #d4a843; }
     .badge-accepted { background: rgba(16,185,129,0.15); color: #34d399; }
-    .badge-declined { background: rgba(239,68,68,0.15); color: #f87171; }
+    .badge-rejected { background: rgba(239,68,68,0.15); color: #f87171; }
     .badge-expired { background: rgba(249,115,22,0.15); color: #fb923c; }
 
+    .revision-tag { font-size: 10px; color: var(--tf-muted); margin-left: 6px; }
     .expiry-warn { color: var(--tf-red); font-weight: 600; }
 
-    .empty-state {
-        text-align: center; padding: 60px 20px; color: var(--tf-muted);
-    }
-    .empty-state svg { margin-bottom: 16px; opacity: 0.4; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--tf-muted); }
     .empty-state h3 { color: var(--tf-text); margin-bottom: 8px; }
 
-    .actions-cell { display: flex; gap: 6px; }
-    .btn-icon {
-        background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 6px; width: 32px; height: 32px; display: inline-flex;
-        align-items: center; justify-content: center; cursor: pointer; color: var(--tf-muted);
-        transition: all 0.15s;
-    }
-    .btn-icon:hover { color: var(--tf-text); border-color: rgba(255,255,255,0.15); }
+    .sent-info { font-size: 11px; color: var(--tf-muted); margin-top: 4px; }
 
     /* Modal */
     .modal-overlay {
@@ -123,7 +118,7 @@ SALES_QUOTES_PAGE_HTML = r"""
     .modal {
         background: var(--tf-card); border-radius: 12px;
         border: 1px solid rgba(255,255,255,0.1); padding: 32px;
-        width: 580px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
+        width: 680px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
     }
     .modal h2 { margin: 0 0 24px 0; font-size: 20px; font-weight: 700; }
     .form-group { margin-bottom: 16px; }
@@ -146,10 +141,9 @@ SALES_QUOTES_PAGE_HTML = r"""
     }
     .btn-secondary:hover { color: var(--tf-text); border-color: rgba(255,255,255,0.2); }
 
-    /* Line items in modal */
     .line-items { margin-bottom: 16px; }
     .line-item {
-        display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px;
+        display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px;
         align-items: center; margin-bottom: 8px;
     }
     .line-item input {
@@ -157,10 +151,8 @@ SALES_QUOTES_PAGE_HTML = r"""
         border-radius: 8px; padding: 8px 12px; color: var(--tf-text); font-size: 13px;
         box-sizing: border-box;
     }
-    .btn-remove {
-        background: none; border: none; color: var(--tf-red); cursor: pointer;
-        font-size: 18px; padding: 4px; line-height: 1;
-    }
+    .line-item .li-total { font-size: 13px; font-weight: 600; color: var(--tf-gold); padding: 0 4px; }
+    .btn-remove { background: none; border: none; color: var(--tf-red); cursor: pointer; font-size: 18px; padding: 4px; line-height: 1; }
     .btn-add-line {
         background: none; border: 1px dashed rgba(255,255,255,0.1);
         border-radius: 8px; padding: 8px 16px; color: var(--tf-muted);
@@ -168,7 +160,21 @@ SALES_QUOTES_PAGE_HTML = r"""
     }
     .btn-add-line:hover { color: var(--tf-text); border-color: rgba(255,255,255,0.2); }
 
-/* ── Responsive ── */
+    /* Revision History */
+    .revision-list { margin-top: 16px; }
+    .revision-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: 8px;
+        margin-bottom: 6px; font-size: 13px;
+    }
+    .revision-item .rev-version { font-weight: 700; color: var(--tf-gold); }
+    .revision-item .rev-amount { font-weight: 600; }
+    .revision-item .rev-date { color: var(--tf-muted); font-size: 12px; }
+
+    /* Send Tracking */
+    .send-modal-group { background: rgba(255,255,255,0.02); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+
+/* Responsive */
 @media (max-width: 768px) {
     .page-header h1 { font-size: 22px; }
     .toolbar { flex-direction: column; align-items: stretch; }
@@ -177,11 +183,10 @@ SALES_QUOTES_PAGE_HTML = r"""
     .modal-overlay .modal, .modal { width: 95%; max-width: 95vw; margin: 20px auto; padding: 20px; }
     .form-row { grid-template-columns: 1fr; }
     .sq-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .line-items { display: block; overflow-x: auto; }
+    .line-item { grid-template-columns: 1fr 1fr auto; }
 }
 @media (max-width: 480px) {
     .stat-row { grid-template-columns: 1fr; }
-    .toolbar { gap: 8px; }
 }
 </style>
 
@@ -221,8 +226,9 @@ SALES_QUOTES_PAGE_HTML = r"""
                 <option value="">All Statuses</option>
                 <option value="draft">Draft</option>
                 <option value="sent">Sent</option>
+                <option value="revised">Revised</option>
                 <option value="accepted">Accepted</option>
-                <option value="declined">Declined</option>
+                <option value="rejected">Rejected</option>
             </select>
         </div>
         <button class="btn-gold" onclick="openCreateModal()">+ Create Quote</button>
@@ -236,10 +242,10 @@ SALES_QUOTES_PAGE_HTML = r"""
                     <th>Customer</th>
                     <th>Description</th>
                     <th>Amount</th>
-                    <th>Date</th>
-                    <th>Expiry</th>
+                    <th>Sent</th>
+                    <th>Follow-Up</th>
                     <th>Status</th>
-                    <th></th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="quotesTableBody">
@@ -249,11 +255,12 @@ SALES_QUOTES_PAGE_HTML = r"""
     </div>
 </div>
 
-<!-- Create Quote Modal -->
+<!-- Create/Edit Quote Modal -->
 <div class="modal-overlay" id="createQuoteModal">
     <div class="modal">
-        <h2>Create Sales Quote</h2>
+        <h2 id="quoteModalTitle">Create Sales Quote</h2>
         <form id="createQuoteForm" onsubmit="submitQuote(event)">
+            <input type="hidden" id="editQuoteId" value="">
             <div class="form-row">
                 <div class="form-group">
                     <label>Customer Name</label>
@@ -273,8 +280,9 @@ SALES_QUOTES_PAGE_HTML = r"""
                 <div class="line-items" id="lineItems">
                     <div class="line-item">
                         <input type="text" placeholder="Item description" class="li-desc">
-                        <input type="number" placeholder="Qty" class="li-qty" value="1" min="1">
-                        <input type="number" placeholder="Unit price" class="li-price" step="0.01">
+                        <input type="number" placeholder="Qty" class="li-qty" value="1" min="1" oninput="calcTotal(this)">
+                        <input type="number" placeholder="Unit price" class="li-price" step="0.01" oninput="calcTotal(this)">
+                        <div class="li-total">$0</div>
                         <button type="button" class="btn-remove" onclick="removeLine(this)" title="Remove">&times;</button>
                     </div>
                 </div>
@@ -286,22 +294,57 @@ SALES_QUOTES_PAGE_HTML = r"""
                     <input type="date" name="expiry" required>
                 </div>
                 <div class="form-group">
-                    <label>Status</label>
-                    <select name="status">
-                        <option value="draft">Draft</option>
-                        <option value="sent">Sent</option>
-                    </select>
+                    <label>Follow-Up Date</label>
+                    <input type="date" name="follow_up_date">
                 </div>
             </div>
             <div class="form-group">
-                <label>Notes</label>
-                <textarea name="notes" placeholder="Internal notes, terms, conditions..." style="min-height:60px"></textarea>
+                <label>Notes / Terms</label>
+                <textarea name="notes" placeholder="Payment terms, conditions, validity..." style="min-height:60px"></textarea>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="closeCreateModal()">Cancel</button>
-                <button type="submit" class="btn-gold">Create Quote</button>
+                <button type="submit" class="btn-gold" id="quoteSubmitBtn">Create Quote</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Send Quote Modal -->
+<div class="modal-overlay" id="sendModal">
+    <div class="modal" style="width:460px;">
+        <h2>Send Quote</h2>
+        <input type="hidden" id="sendQuoteId">
+        <div class="send-modal-group">
+            <div class="form-group">
+                <label>Send Method</label>
+                <select id="sendMethod">
+                    <option value="email">Email</option>
+                    <option value="hand_delivered">Hand-Delivered</option>
+                    <option value="mail">Mail</option>
+                    <option value="fax">Fax</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Follow-Up Date</label>
+                <input type="date" id="sendFollowUp">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeSendModal()">Cancel</button>
+            <button type="button" class="btn-gold" onclick="doSendQuote()">Mark as Sent</button>
+        </div>
+    </div>
+</div>
+
+<!-- Revision History Modal -->
+<div class="modal-overlay" id="revisionModal">
+    <div class="modal" style="width:500px;">
+        <h2>Revision History</h2>
+        <div id="revisionContent"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary" onclick="closeRevisionModal()">Close</button>
+        </div>
     </div>
 </div>
 
@@ -310,9 +353,15 @@ let allQuotes = [];
 
 function formatCurrency(val) {
     if (val == null) return '$0';
-    return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
+function formatCurrencyShort(val) {
+    if (val == null) return '$0';
+    const n = Number(val);
+    if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'K';
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 function formatDate(d) {
     if (!d) return '--';
     const dt = new Date(d);
@@ -320,59 +369,73 @@ function formatDate(d) {
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function isExpiringSoon(expiry) {
-    if (!expiry) return false;
-    const exp = new Date(expiry);
-    const daysLeft = (exp - Date.now()) / 86400000;
-    return daysLeft >= 0 && daysLeft <= 7;
-}
-
 function isExpired(expiry) {
     if (!expiry) return false;
     return new Date(expiry) < new Date();
 }
 
-function statusBadge(status, expiry) {
-    let s = (status || 'draft').toLowerCase();
-    if (s === 'sent' && isExpired(expiry)) s = 'expired';
-    const labels = { draft:'Draft', sent:'Sent', accepted:'Accepted', declined:'Declined', expired:'Expired' };
-    return '<span class="badge badge-' + s + '">' + (labels[s] || s) + '</span>';
+function getEffectiveStatus(q) {
+    let s = (q.status || 'draft').toLowerCase();
+    if (s === 'sent' && isExpired(q.expiry)) return 'expired';
+    return s;
+}
+
+function statusBadge(q) {
+    const s = getEffectiveStatus(q);
+    const labels = { draft:'Draft', sent:'Sent', revised:'Revised', accepted:'Accepted', rejected:'Rejected', expired:'Expired' };
+    let extra = '';
+    if (q.revision && q.revision > 1) extra = '<span class="revision-tag">Rev ' + q.revision + '</span>';
+    return '<span class="badge badge-' + s + '">' + (labels[s] || s) + '</span>' + extra;
 }
 
 function updateStats(quotes) {
     document.getElementById('stat-total').textContent = quotes.length;
-    const pending = quotes.filter(q => (q.status||'').toLowerCase() === 'sent' && !isExpired(q.expiry)).length;
+    const pending = quotes.filter(q => getEffectiveStatus(q) === 'sent').length;
     document.getElementById('stat-pending').textContent = pending;
-    const accepted = quotes.filter(q => (q.status||'').toLowerCase() === 'accepted').length;
+    const accepted = quotes.filter(q => getEffectiveStatus(q) === 'accepted').length;
     document.getElementById('stat-accepted').textContent = accepted;
     const totalVal = quotes.reduce((s, q) => s + (Number(q.amount) || 0), 0);
-    document.getElementById('stat-value').textContent = formatCurrency(totalVal);
+    document.getElementById('stat-value').textContent = formatCurrencyShort(totalVal);
 }
 
 function renderTable(quotes) {
     const tbody = document.getElementById('quotesTableBody');
     if (!quotes.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">' +
-            '<svg width="48" height="48" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="1.5" d="M9 12h6m-3-3v6m-7 4h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>' +
-            '<h3>No quotes found</h3><p>Create your first sales quote to get started</p></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><h3>No quotes found</h3><p>Create your first sales quote to get started</p></td></tr>';
         return;
     }
     tbody.innerHTML = quotes.map(q => {
-        const expiryClass = isExpiringSoon(q.expiry) || isExpired(q.expiry) ? ' expiry-warn' : '';
+        const es = getEffectiveStatus(q);
+        const isActive = ['draft','sent','revised'].includes(es);
         return '<tr>' +
             '<td><span class="quote-num">' + (q.quote_number || q.id || '--') + '</span></td>' +
             '<td style="font-weight:600">' + (q.customer || '--') + '</td>' +
             '<td style="color:var(--tf-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (q.description || '--') + '</td>' +
             '<td style="font-weight:700">' + formatCurrency(q.amount) + '</td>' +
-            '<td style="color:var(--tf-muted)">' + formatDate(q.created_at || q.date) + '</td>' +
-            '<td class="' + expiryClass + '">' + formatDate(q.expiry) + '</td>' +
-            '<td>' + statusBadge(q.status, q.expiry) + '</td>' +
-            '<td><div class="actions-cell">' +
-                '<button class="btn-icon" title="View" onclick="viewQuote(\'' + (q.id||'') + '\')"><svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke="currentColor" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>' +
-                '<button class="btn-icon" title="Duplicate" onclick="duplicateQuote(\'' + (q.id||'') + '\')"><svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>' +
-            '</div></td>' +
+            '<td>' + (q.sent_date ? '<div style="font-size:13px">' + formatDate(q.sent_date) + '</div><div class="sent-info">' + (q.send_method || '') + '</div>' : '<span style="color:var(--tf-muted)">Not sent</span>') + '</td>' +
+            '<td style="color:var(--tf-muted);font-size:13px">' + (q.follow_up_date ? formatDate(q.follow_up_date) : '--') + '</td>' +
+            '<td>' + statusBadge(q) + '</td>' +
+            '<td>' + renderActions(q, es) + '</td>' +
             '</tr>';
     }).join('');
+}
+
+function renderActions(q, es) {
+    let html = '';
+    if (es === 'draft') {
+        html += '<button class="btn-sm btn-send" onclick="openSendModal(\'' + q.id + '\')">Send</button> ';
+    }
+    if (['sent','revised'].includes(es)) {
+        html += '<button class="btn-sm btn-accept" onclick="updateQuoteStatus(\'' + q.id + '\',\'accepted\')">Accept</button> ';
+        html += '<button class="btn-sm btn-reject" onclick="updateQuoteStatus(\'' + q.id + '\',\'rejected\')">Reject</button> ';
+    }
+    if (['sent','revised','rejected','expired'].includes(es)) {
+        html += '<button class="btn-sm btn-revise" onclick="reviseQuote(\'' + q.id + '\')">Revise</button> ';
+    }
+    if ((q.revisions || []).length > 0) {
+        html += '<button class="btn-sm" style="background:rgba(255,255,255,0.04);color:var(--tf-muted)" onclick="showRevisions(\'' + q.id + '\')">History</button>';
+    }
+    return html;
 }
 
 function applyFilters() {
@@ -380,37 +443,62 @@ function applyFilters() {
     const status = document.getElementById('statusFilter').value;
     let filtered = allQuotes.filter(qt => {
         if (q && !(qt.customer||'').toLowerCase().includes(q) && !(qt.description||'').toLowerCase().includes(q) && !(qt.quote_number||'').toLowerCase().includes(q)) return false;
-        if (status && (qt.status||'').toLowerCase() !== status) return false;
+        if (status) {
+            const es = getEffectiveStatus(qt);
+            if (es !== status) return false;
+        }
         return true;
     });
     renderTable(filtered);
 }
+function filterByStatus(s) { document.getElementById('statusFilter').value = s; applyFilters(); }
 
-function filterByStatus(s) {
-    document.getElementById('statusFilter').value = s;
-    applyFilters();
-}
-
-function openCreateModal() {
-    document.getElementById('createQuoteModal').classList.add('active');
-    // Default expiry to 30 days from now
+// --- Create Modal ---
+function openCreateModal(prefill) {
+    document.getElementById('editQuoteId').value = '';
+    document.getElementById('quoteModalTitle').textContent = 'Create Sales Quote';
+    document.getElementById('quoteSubmitBtn').textContent = 'Create Quote';
+    document.getElementById('createQuoteForm').reset();
     const expiryInput = document.querySelector('input[name="expiry"]');
-    if (expiryInput && !expiryInput.value) {
-        const d = new Date(); d.setDate(d.getDate() + 30);
-        expiryInput.value = d.toISOString().split('T')[0];
+    const fuInput = document.querySelector('input[name="follow_up_date"]');
+    const d = new Date(); d.setDate(d.getDate() + 30);
+    expiryInput.value = d.toISOString().split('T')[0];
+    const fu = new Date(); fu.setDate(fu.getDate() + 7);
+    fuInput.value = fu.toISOString().split('T')[0];
+    resetLineItems();
+    if (prefill) {
+        if (prefill.customer) document.querySelector('[name="customer"]').value = prefill.customer;
+        if (prefill.description) document.querySelector('[name="description"]').value = prefill.description;
+        if (prefill.email) document.querySelector('[name="email"]').value = prefill.email;
+        if (prefill.line_items) {
+            document.getElementById('lineItems').innerHTML = '';
+            prefill.line_items.forEach(li => addLine(li.description, li.quantity, li.unit_price));
+        }
     }
+    document.getElementById('createQuoteModal').classList.add('active');
 }
 function closeCreateModal() { document.getElementById('createQuoteModal').classList.remove('active'); }
 
-function addLine() {
+function resetLineItems() {
+    document.getElementById('lineItems').innerHTML = '<div class="line-item">' +
+        '<input type="text" placeholder="Item description" class="li-desc">' +
+        '<input type="number" placeholder="Qty" class="li-qty" value="1" min="1" oninput="calcTotal(this)">' +
+        '<input type="number" placeholder="Unit price" class="li-price" step="0.01" oninput="calcTotal(this)">' +
+        '<div class="li-total">$0</div>' +
+        '<button type="button" class="btn-remove" onclick="removeLine(this)" title="Remove">&times;</button></div>';
+}
+
+function addLine(desc, qty, price) {
     const container = document.getElementById('lineItems');
     const div = document.createElement('div');
     div.className = 'line-item';
-    div.innerHTML = '<input type="text" placeholder="Item description" class="li-desc">' +
-        '<input type="number" placeholder="Qty" class="li-qty" value="1" min="1">' +
-        '<input type="number" placeholder="Unit price" class="li-price" step="0.01">' +
+    div.innerHTML = '<input type="text" placeholder="Item description" class="li-desc" value="' + (desc||'') + '">' +
+        '<input type="number" placeholder="Qty" class="li-qty" value="' + (qty||1) + '" min="1" oninput="calcTotal(this)">' +
+        '<input type="number" placeholder="Unit price" class="li-price" step="0.01" value="' + (price||'') + '" oninput="calcTotal(this)">' +
+        '<div class="li-total">$0</div>' +
         '<button type="button" class="btn-remove" onclick="removeLine(this)" title="Remove">&times;</button>';
     container.appendChild(div);
+    if (price) calcTotal(div.querySelector('.li-price'));
 }
 
 function removeLine(btn) {
@@ -418,13 +506,18 @@ function removeLine(btn) {
     if (items.length > 1) btn.parentElement.remove();
 }
 
+function calcTotal(el) {
+    const row = el.closest('.line-item');
+    const qty = Number(row.querySelector('.li-qty').value) || 0;
+    const price = Number(row.querySelector('.li-price').value) || 0;
+    row.querySelector('.li-total').textContent = formatCurrency(qty * price);
+}
+
 async function submitQuote(e) {
     e.preventDefault();
     const form = e.target;
     const fd = new FormData(form);
     const data = Object.fromEntries(fd);
-
-    // Collect line items
     const lines = [];
     document.querySelectorAll('.line-item').forEach(li => {
         const desc = li.querySelector('.li-desc').value;
@@ -434,59 +527,103 @@ async function submitQuote(e) {
     });
     data.line_items = lines;
     data.amount = lines.reduce((s, l) => s + l.total, 0);
+    data.status = 'draft';
     data.created_at = new Date().toISOString();
 
-    try {
-        const res = await fetch('/api/sales/quotes', {
-            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
-        });
-        if (res.ok) {
-            closeCreateModal();
-            form.reset();
-            document.getElementById('lineItems').innerHTML = '<div class="line-item">' +
-                '<input type="text" placeholder="Item description" class="li-desc">' +
-                '<input type="number" placeholder="Qty" class="li-qty" value="1" min="1">' +
-                '<input type="number" placeholder="Unit price" class="li-price" step="0.01">' +
-                '<button type="button" class="btn-remove" onclick="removeLine(this)" title="Remove">&times;</button></div>';
-            loadQuotes();
-        }
-    } catch(err) {
-        console.error('Failed to create quote:', err);
+    const editId = document.getElementById('editQuoteId').value;
+    if (editId) {
+        data.id = editId;
+        try {
+            await fetch('/api/sales/quotes', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            closeCreateModal(); form.reset(); loadQuotes();
+        } catch(err) { console.error(err); }
+    } else {
+        try {
+            const res = await fetch('/api/sales/quotes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+            if (res.ok) { closeCreateModal(); form.reset(); resetLineItems(); loadQuotes(); }
+        } catch(err) { console.error(err); }
     }
 }
 
-function viewQuote(id) {
-    // Navigate to quote detail if route exists, otherwise log
-    if (id) window.location.href = '/sales/quotes/' + id;
+// --- Status Actions ---
+async function updateQuoteStatus(id, newStatus) {
+    const data = { id, status: newStatus };
+    if (newStatus === 'accepted') data.accepted_at = new Date().toISOString();
+    if (newStatus === 'rejected') data.rejected_at = new Date().toISOString();
+    try {
+        await fetch('/api/sales/quotes', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        loadQuotes();
+    } catch(e) { console.error(e); }
 }
 
-function duplicateQuote(id) {
-    const q = allQuotes.find(qt => String(qt.id) === id);
+// --- Send ---
+function openSendModal(id) {
+    document.getElementById('sendQuoteId').value = id;
+    const fu = new Date(); fu.setDate(fu.getDate() + 7);
+    document.getElementById('sendFollowUp').value = fu.toISOString().split('T')[0];
+    document.getElementById('sendModal').classList.add('active');
+}
+function closeSendModal() { document.getElementById('sendModal').classList.remove('active'); }
+
+async function doSendQuote() {
+    const id = document.getElementById('sendQuoteId').value;
+    const data = {
+        id, status: 'sent',
+        sent_date: new Date().toISOString(),
+        send_method: document.getElementById('sendMethod').value,
+        follow_up_date: document.getElementById('sendFollowUp').value,
+    };
+    try {
+        await fetch('/api/sales/quotes', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        closeSendModal(); loadQuotes();
+    } catch(e) { console.error(e); }
+}
+
+// --- Revise ---
+function reviseQuote(id) {
+    const q = allQuotes.find(qt => qt.id === id);
     if (!q) return;
-    openCreateModal();
-    const form = document.getElementById('createQuoteForm');
-    if (q.customer) form.querySelector('[name="customer"]').value = q.customer;
-    if (q.description) form.querySelector('[name="description"]').value = q.description;
-    if (q.email) form.querySelector('[name="email"]').value = q.email;
+    openCreateModal({
+        customer: q.customer, description: q.description + ' (Revised)',
+        email: q.email, line_items: q.line_items || []
+    });
+    // Mark original as revised
+    updateQuoteStatus(id, 'revised');
 }
 
+// --- Revision History ---
+function showRevisions(id) {
+    const q = allQuotes.find(qt => qt.id === id);
+    if (!q) return;
+    const revs = q.revisions || [];
+    let html = '<div class="revision-list">';
+    if (revs.length) {
+        revs.forEach((r, i) => {
+            html += '<div class="revision-item"><span class="rev-version">v' + (i+1) + '</span><span class="rev-amount">' + formatCurrency(r.amount) + '</span><span class="rev-date">' + formatDate(r.date) + '</span></div>';
+        });
+    } else {
+        html += '<div style="color:var(--tf-muted);text-align:center;padding:20px;">No revision history available</div>';
+    }
+    html += '</div>';
+    document.getElementById('revisionContent').innerHTML = html;
+    document.getElementById('revisionModal').classList.add('active');
+}
+function closeRevisionModal() { document.getElementById('revisionModal').classList.remove('active'); }
+
+// --- Load ---
 async function loadQuotes() {
     try {
         const res = await fetch('/api/sales/quotes');
         if (!res.ok) throw new Error('API error');
         const data = await res.json();
         allQuotes = Array.isArray(data) ? data : (data.quotes || data.data || []);
-    } catch(err) {
-        console.warn('Could not load quotes:', err);
-        allQuotes = [];
-    }
+    } catch(err) { console.warn('Could not load quotes:', err); allQuotes = []; }
     updateStats(allQuotes);
     applyFilters();
 }
 
-// Close modal on overlay click
-document.getElementById('createQuoteModal').addEventListener('click', function(e) {
-    if (e.target === this) closeCreateModal();
+['createQuoteModal','sendModal','revisionModal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', function(e) { if (e.target === this) this.classList.remove('active'); });
 });
 
 loadQuotes();

@@ -1,7 +1,8 @@
 """
-TitanForge v4 — Sales Pipeline (Kanban)
-=========================================
-Visual kanban board for tracking leads through pipeline stages.
+TitanForge v4 — Sales Pipeline Kanban (Production)
+====================================================
+Real kanban pipeline with drag-and-drop, column value summaries,
+and full 7-stage pipeline.
 """
 
 SALES_PIPELINE_PAGE_HTML = r"""
@@ -17,17 +18,13 @@ SALES_PIPELINE_PAGE_HTML = r"""
         --tf-red: #ef4444;
     }
     .pipeline-container {
-        max-width: 1600px;
-        margin: 0 auto;
-        padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
-        color: var(--tf-text);
+        max-width: 1600px; margin: 0 auto; padding: 24px 32px;
+        font-family: 'Inter', 'Segoe UI', sans-serif; color: var(--tf-text);
     }
     .page-header { margin-bottom: 28px; }
     .page-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px 0; }
     .page-header p { font-size: 14px; color: var(--tf-muted); margin: 0; }
 
-    /* Stat Cards */
     .stat-row {
         display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 16px; margin-bottom: 24px;
@@ -45,7 +42,6 @@ SALES_PIPELINE_PAGE_HTML = r"""
     .stat-blue .value { color: var(--tf-blue); }
     .stat-green .value { color: var(--tf-green); }
 
-    /* Toolbar */
     .toolbar {
         display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
@@ -63,30 +59,32 @@ SALES_PIPELINE_PAGE_HTML = r"""
 
     /* Kanban Board */
     .kanban-board {
-        display: flex; gap: 16px; overflow-x: auto;
+        display: flex; gap: 14px; overflow-x: auto;
         padding-bottom: 16px; min-height: 500px;
     }
     .kanban-column {
-        min-width: 260px; width: 260px; flex-shrink: 0;
+        min-width: 230px; width: 230px; flex-shrink: 0;
         display: flex; flex-direction: column;
     }
     .column-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 14px 16px; background: var(--tf-card); border-radius: 12px 12px 0 0;
+        display: flex; flex-direction: column; gap: 6px;
+        padding: 14px 14px 10px; background: var(--tf-card); border-radius: 12px 12px 0 0;
         border: 1px solid rgba(255,255,255,0.06); border-bottom: none;
     }
-    .column-header .col-title {
-        font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    .col-top { display: flex; justify-content: space-between; align-items: center; }
+    .col-title {
+        font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .column-header .col-count {
+    .col-count {
         background: rgba(255,255,255,0.06); border-radius: 12px;
         padding: 2px 10px; font-size: 12px; font-weight: 600; color: var(--tf-muted);
     }
+    .col-value { font-size: 13px; font-weight: 700; color: var(--tf-gold); }
     .column-body {
         flex: 1; background: rgba(30,41,59,0.5); border-radius: 0 0 12px 12px;
         border: 1px solid rgba(255,255,255,0.06); border-top: none;
-        padding: 10px; display: flex; flex-direction: column; gap: 10px;
-        min-height: 200px;
+        padding: 8px; display: flex; flex-direction: column; gap: 8px;
+        min-height: 200px; transition: background 0.2s;
     }
     .column-body.drag-over { background: rgba(212,168,67,0.08); border-color: rgba(212,168,67,0.3); }
 
@@ -94,42 +92,45 @@ SALES_PIPELINE_PAGE_HTML = r"""
     .kanban-card {
         background: var(--tf-card); border-radius: 10px;
         border: 1px solid rgba(255,255,255,0.06);
-        padding: 14px 16px; cursor: grab; transition: border-color 0.2s, transform 0.15s;
+        padding: 12px 14px; cursor: grab; transition: border-color 0.2s, transform 0.15s;
     }
     .kanban-card:hover { border-color: var(--tf-gold); transform: translateY(-1px); }
     .kanban-card:active { cursor: grabbing; }
     .kanban-card.dragging { opacity: 0.5; }
-    .kc-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
-    .kc-company { font-size: 12px; color: var(--tf-muted); margin-bottom: 10px; }
+    .kc-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+    .kc-company { font-size: 11px; color: var(--tf-muted); margin-bottom: 8px; }
     .kc-footer { display: flex; justify-content: space-between; align-items: center; }
-    .kc-value { font-size: 14px; font-weight: 700; color: var(--tf-gold); }
+    .kc-value { font-size: 13px; font-weight: 700; color: var(--tf-gold); }
     .kc-days {
-        font-size: 11px; color: var(--tf-muted); background: rgba(255,255,255,0.04);
-        padding: 2px 8px; border-radius: 4px;
+        font-size: 10px; color: var(--tf-muted); background: rgba(255,255,255,0.04);
+        padding: 2px 6px; border-radius: 4px;
     }
+    .kc-days.overdue { color: var(--tf-red); background: rgba(239,68,68,0.1); }
+    .kc-action { font-size: 10px; color: var(--tf-muted); margin-top: 6px; }
     .kc-assigned {
-        font-size: 11px; color: var(--tf-muted); margin-top: 8px;
+        font-size: 10px; color: var(--tf-muted); margin-top: 6px;
         display: flex; align-items: center; gap: 4px;
     }
     .kc-avatar {
-        width: 18px; height: 18px; border-radius: 50%;
+        width: 16px; height: 16px; border-radius: 50%;
         background: var(--tf-blue); display: inline-flex; align-items: center;
-        justify-content: center; font-size: 9px; font-weight: 700; color: #fff;
+        justify-content: center; font-size: 8px; font-weight: 700; color: #fff;
     }
 
     .col-new .column-header { border-left: 3px solid var(--tf-blue); }
     .col-contacted .column-header { border-left: 3px solid var(--tf-gold); }
     .col-qualified .column-header { border-left: 3px solid #a78bfa; }
     .col-proposal .column-header { border-left: 3px solid #fb923c; }
+    .col-negotiation .column-header { border-left: 3px solid #38bdf8; }
     .col-won .column-header { border-left: 3px solid var(--tf-green); }
     .col-lost .column-header { border-left: 3px solid var(--tf-red); }
 
     .empty-col {
         text-align: center; padding: 30px 10px; color: var(--tf-muted);
-        font-size: 13px; opacity: 0.6;
+        font-size: 12px; opacity: 0.6;
     }
 
-/* ── Responsive ── */
+/* Responsive */
 @media (max-width: 768px) {
     .page-header h1 { font-size: 22px; }
     .toolbar { flex-direction: column; align-items: stretch; }
@@ -140,7 +141,6 @@ SALES_PIPELINE_PAGE_HTML = r"""
 }
 @media (max-width: 480px) {
     .stat-row { grid-template-columns: 1fr; }
-    .toolbar { gap: 8px; }
     .kanban-card { padding: 10px; }
 }
 </style>
@@ -163,14 +163,14 @@ SALES_PIPELINE_PAGE_HTML = r"""
             <div class="sub">Across all leads</div>
         </div>
         <div class="stat-card stat-green">
-            <div class="label">Avg Time to Close</div>
-            <div class="value" id="stat-avg-time">--</div>
-            <div class="sub">Won deals</div>
-        </div>
-        <div class="stat-card stat-green">
-            <div class="label">Conversion Rate</div>
+            <div class="label">Win Rate</div>
             <div class="value" id="stat-conversion">--</div>
             <div class="sub">Lead to Won</div>
+        </div>
+        <div class="stat-card stat-green">
+            <div class="label">Won Value</div>
+            <div class="value" id="stat-won-value">--</div>
+            <div class="sub">Closed revenue</div>
         </div>
     </div>
 
@@ -186,43 +186,50 @@ SALES_PIPELINE_PAGE_HTML = r"""
     <div class="kanban-board" id="kanbanBoard">
         <div class="kanban-column col-new" data-stage="new">
             <div class="column-header">
-                <span class="col-title">New</span>
-                <span class="col-count" id="count-new">0</span>
+                <div class="col-top"><span class="col-title">New</span><span class="col-count" id="count-new">0</span></div>
+                <div class="col-value" id="value-new">$0</div>
             </div>
             <div class="column-body" id="col-new"></div>
         </div>
         <div class="kanban-column col-contacted" data-stage="contacted">
             <div class="column-header">
-                <span class="col-title">Contacted</span>
-                <span class="col-count" id="count-contacted">0</span>
+                <div class="col-top"><span class="col-title">Contacted</span><span class="col-count" id="count-contacted">0</span></div>
+                <div class="col-value" id="value-contacted">$0</div>
             </div>
             <div class="column-body" id="col-contacted"></div>
         </div>
         <div class="kanban-column col-qualified" data-stage="qualified">
             <div class="column-header">
-                <span class="col-title">Qualified</span>
-                <span class="col-count" id="count-qualified">0</span>
+                <div class="col-top"><span class="col-title">Qualified</span><span class="col-count" id="count-qualified">0</span></div>
+                <div class="col-value" id="value-qualified">$0</div>
             </div>
             <div class="column-body" id="col-qualified"></div>
         </div>
         <div class="kanban-column col-proposal" data-stage="proposal">
             <div class="column-header">
-                <span class="col-title">Proposal</span>
-                <span class="col-count" id="count-proposal">0</span>
+                <div class="col-top"><span class="col-title">Proposal Sent</span><span class="col-count" id="count-proposal">0</span></div>
+                <div class="col-value" id="value-proposal">$0</div>
             </div>
             <div class="column-body" id="col-proposal"></div>
         </div>
+        <div class="kanban-column col-negotiation" data-stage="negotiation">
+            <div class="column-header">
+                <div class="col-top"><span class="col-title">Negotiation</span><span class="col-count" id="count-negotiation">0</span></div>
+                <div class="col-value" id="value-negotiation">$0</div>
+            </div>
+            <div class="column-body" id="col-negotiation"></div>
+        </div>
         <div class="kanban-column col-won" data-stage="won">
             <div class="column-header">
-                <span class="col-title">Won</span>
-                <span class="col-count" id="count-won">0</span>
+                <div class="col-top"><span class="col-title">Won</span><span class="col-count" id="count-won">0</span></div>
+                <div class="col-value" id="value-won">$0</div>
             </div>
             <div class="column-body" id="col-won"></div>
         </div>
         <div class="kanban-column col-lost" data-stage="lost">
             <div class="column-header">
-                <span class="col-title">Lost</span>
-                <span class="col-count" id="count-lost">0</span>
+                <div class="col-top"><span class="col-title">Lost</span><span class="col-count" id="count-lost">0</span></div>
+                <div class="col-value" id="value-lost">$0</div>
             </div>
             <div class="column-body" id="col-lost"></div>
         </div>
@@ -231,17 +238,25 @@ SALES_PIPELINE_PAGE_HTML = r"""
 
 <script>
 let allLeads = [];
-const stages = ['new','contacted','qualified','proposal','won','lost'];
+const stages = ['new','contacted','qualified','proposal','negotiation','won','lost'];
 
 function formatCurrency(val) {
     if (val == null) return '$0';
-    return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const n = Number(val);
+    if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'K';
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function daysInStage(lead) {
     const entered = lead.stage_entered_at || lead.last_contact || lead.created_at;
     if (!entered) return 0;
     return Math.max(0, Math.floor((Date.now() - new Date(entered).getTime()) / 86400000));
+}
+
+function isFollowUpOverdue(lead) {
+    if (!lead.follow_up_date || ['won','lost'].includes(lead.status)) return false;
+    return new Date(lead.follow_up_date + 'T23:59:59') < new Date();
 }
 
 function initials(name) {
@@ -258,36 +273,30 @@ function updateStats(leads) {
     const avg = withValue.length ? withValue.reduce((s, l) => s + Number(l.value), 0) / withValue.length : 0;
     document.getElementById('stat-avg-deal').textContent = formatCurrency(avg);
 
-    const won = leads.filter(l => (l.status||'').toLowerCase() === 'won');
-    let avgDays = 0;
-    if (won.length) {
-        const totalDays = won.reduce((s, l) => {
-            const created = l.created_at ? new Date(l.created_at) : null;
-            const closed = l.closed_at ? new Date(l.closed_at) : new Date();
-            if (!created) return s;
-            return s + Math.floor((closed - created) / 86400000);
-        }, 0);
-        avgDays = Math.round(totalDays / won.length);
-    }
-    document.getElementById('stat-avg-time').textContent = avgDays ? avgDays + 'd' : '--';
-
     const total = leads.length;
-    const wonCount = won.length;
-    const rate = total > 0 ? Math.round((wonCount / total) * 100) : 0;
+    const won = leads.filter(l => (l.status||'').toLowerCase() === 'won');
+    const closed = leads.filter(l => ['won','lost'].includes((l.status||'').toLowerCase()));
+    const rate = closed.length > 0 ? Math.round((won.length / closed.length) * 100) : 0;
     document.getElementById('stat-conversion').textContent = rate + '%';
+
+    const wonValue = won.reduce((s, l) => s + (Number(l.value) || 0), 0);
+    document.getElementById('stat-won-value').textContent = formatCurrency(wonValue);
 }
 
 function buildCard(lead) {
     const days = daysInStage(lead);
-    return `<div class="kanban-card" draggable="true" data-id="${lead.id || ''}" data-name="${(lead.name||'').toLowerCase()}" data-assigned="${(lead.assigned_to||'').toLowerCase()}">
-        <div class="kc-name">${lead.name || 'Unnamed Lead'}</div>
-        <div class="kc-company">${lead.company || 'No company'}</div>
-        <div class="kc-footer">
-            <span class="kc-value">${formatCurrency(lead.value)}</span>
-            <span class="kc-days">${days}d in stage</span>
-        </div>
-        ${lead.assigned_to ? `<div class="kc-assigned"><span class="kc-avatar">${initials(lead.assigned_to)}</span> ${lead.assigned_to}</div>` : ''}
-    </div>`;
+    const isOverdue = isFollowUpOverdue(lead);
+    const daysClass = days > 14 ? ' overdue' : '';
+    return '<div class="kanban-card" draggable="true" data-id="' + (lead.id || '') + '" data-name="' + (lead.name||'').toLowerCase() + '" data-assigned="' + (lead.assigned_to||'').toLowerCase() + '">' +
+        '<div class="kc-name">' + (lead.name || 'Unnamed Lead') + '</div>' +
+        '<div class="kc-company">' + (lead.company || 'No company') + '</div>' +
+        '<div class="kc-footer">' +
+            '<span class="kc-value">' + formatCurrency(lead.value) + '</span>' +
+            '<span class="kc-days' + daysClass + '">' + days + 'd in stage</span>' +
+        '</div>' +
+        (isOverdue ? '<div class="kc-action" style="color:var(--tf-red);font-weight:600;">Follow-up overdue!</div>' : '') +
+        (lead.assigned_to ? '<div class="kc-assigned"><span class="kc-avatar">' + initials(lead.assigned_to) + '</span> ' + lead.assigned_to + '</div>' : '') +
+    '</div>';
 }
 
 function renderBoard(leads) {
@@ -295,6 +304,8 @@ function renderBoard(leads) {
         const col = document.getElementById('col-' + stage);
         const stageLeads = leads.filter(l => (l.status||'new').toLowerCase() === stage);
         document.getElementById('count-' + stage).textContent = stageLeads.length;
+        const stageValue = stageLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
+        document.getElementById('value-' + stage).textContent = formatCurrency(stageValue);
         if (!stageLeads.length) {
             col.innerHTML = '<div class="empty-col">No leads in this stage</div>';
         } else {
@@ -307,6 +318,7 @@ function renderBoard(leads) {
 function populateAssigneeFilter(leads) {
     const reps = [...new Set(leads.map(l => l.assigned_to).filter(Boolean))];
     const sel = document.getElementById('assigneeFilter');
+    sel.innerHTML = '<option value="">All Reps</option>';
     reps.forEach(r => {
         const opt = document.createElement('option');
         opt.value = r; opt.textContent = r;
@@ -346,14 +358,21 @@ function initDragDrop() {
             const leadId = e.dataTransfer.getData('text/plain');
             const newStage = body.parentElement.dataset.stage;
             const lead = allLeads.find(l => String(l.id) === leadId);
-            if (lead) {
+            if (lead && lead.status !== newStage) {
                 lead.status = newStage;
                 lead.stage_entered_at = new Date().toISOString();
-                // Attempt to persist the change
-                fetch('/api/sales/leads/' + leadId, {
-                    method: 'PATCH',
+                lead.last_contact = new Date().toISOString();
+                if (newStage === 'won') lead.closed_at = new Date().toISOString();
+                // Persist
+                fetch('/api/sales/leads', {
+                    method: 'PUT',
                     headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ status: newStage })
+                    body: JSON.stringify({
+                        id: leadId, status: newStage,
+                        stage_entered_at: lead.stage_entered_at,
+                        last_contact: lead.last_contact,
+                        closed_at: lead.closed_at || undefined
+                    })
                 }).catch(() => {});
                 applyFilter();
                 updateStats(allLeads);

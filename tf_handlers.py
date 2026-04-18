@@ -204,6 +204,7 @@ def _auto_advance_stage(job_code, target_stage):
 
     Returns the new stage (or current stage if already at or past target).
     Returns None if project metadata not found.
+    Logs the transition in the activity feed and sends notification if enabled.
     """
     if target_stage not in PROJECT_STAGES:
         return None
@@ -221,6 +222,33 @@ def _auto_advance_stage(job_code, target_stage):
         metadata["updated_at"] = datetime.datetime.now().isoformat()
         with open(meta_path, "w") as f:
             json.dump(metadata, f, indent=2)
+
+        # Log stage transition in activity feed
+        try:
+            if USE_SQLITE:
+                import db as _db
+                _db.log_activity(
+                    user="system",
+                    action="stage_auto_advance",
+                    entity_type="project",
+                    entity_id=job_code,
+                    details=json.dumps({"from": current, "to": target_stage}),
+                )
+        except Exception:
+            pass
+
+        # Send notification if email system available
+        try:
+            if HAS_EMAIL_NOTIFICATIONS:
+                send_notification("stage_change", {
+                    "job_code": job_code,
+                    "project_name": metadata.get("project_name", ""),
+                    "from_stage": current,
+                    "to_stage": target_stage,
+                })
+        except Exception:
+            pass
+
         return target_stage
     return current
 
@@ -4553,6 +4581,24 @@ class CustomerListHandler(BaseHandler):
                              or any(q in ct.get("name","").lower() for ct in c.get("contacts",[]))]
             if tag:
                 customers = [c for c in customers if tag in [t.lower() for t in c.get("tags",[])]]
+            # Enrich with invoice revenue data
+            try:
+                inv_path = os.path.join(DATA_DIR, "invoices.json")
+                if os.path.isfile(inv_path):
+                    with open(inv_path) as f:
+                        all_inv = json.load(f)
+                    for cust in customers:
+                        cname = (cust.get("company","") or "").lower()
+                        if not cname: continue
+                        cust_inv = [i for i in all_inv if cname in (i.get("customer","") or "").lower()]
+                        if cust_inv:
+                            total_rev = sum(float(i.get("amount",0) or 0) for i in cust_inv)
+                            total_paid = sum(float(i.get("amount",0) or 0) for i in cust_inv if i.get("status") == "paid")
+                            cust["total_revenue"] = round(total_rev, 2)
+                            cust["total_outstanding"] = round(total_rev - total_paid, 2)
+                            cust["invoice_count"] = len(cust_inv)
+            except Exception:
+                pass
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": True, "customers": customers}))
 
@@ -4776,6 +4822,22 @@ class CustomerDetailHandler(BaseHandler):
                 except Exception:
                     pass
         customer["projects"] = projects
+        # Attach invoice summary
+        try:
+            inv_path = os.path.join(DATA_DIR, "invoices.json")
+            if os.path.isfile(inv_path):
+                with open(inv_path) as f:
+                    all_inv = json.load(f)
+                cust_inv = [i for i in all_inv if cname and cname in (i.get("customer","")).lower()]
+                total_rev = sum(float(i.get("amount",0) or 0) for i in cust_inv)
+                total_paid = sum(float(i.get("amount",0) or 0) for i in cust_inv if i.get("status") == "paid")
+                total_outstanding = total_rev - total_paid
+                customer["total_revenue"] = round(total_rev, 2)
+                customer["total_paid"] = round(total_paid, 2)
+                customer["total_outstanding"] = round(total_outstanding, 2)
+                customer["invoice_count"] = len(cust_inv)
+        except Exception:
+            pass
         self.set_header("Content-Type", "application/json")
         self.write(json_encode({"ok": True, "customer": customer}))
 
@@ -6780,7 +6842,10 @@ try:
     from shop_drawings.work_orders import (
         WorkOrder, WorkOrderItem, STATUS_QUEUED, STATUS_APPROVED,
         STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
-        STATUS_ON_HOLD, STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
+        STATUS_ON_HOLD, STATUS_QC_HOLD, STATUS_SHIPPED_WO,
+        STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
+        VALID_PRIORITIES, PRIORITY_ORDER,
+        estimate_fabrication_hours,
         create_work_order, save_work_order, load_work_order,
         delete_work_order,
         list_work_orders, list_all_work_orders, load_all_active_items,
@@ -6790,6 +6855,7 @@ try:
         check_qc_hold_for_loading,
         init_fab_checklist, check_fab_step,
         LOADING_FLOW, LOADING_LABELS,
+        transition_item_status,
     )
     from shop_drawings.wo_stickers import (
         generate_wo_sticker_pdf, generate_wo_sticker_zpl,
@@ -8204,9 +8270,13 @@ class WorkOrderCreateHandler(BaseHandler):
             project_name = body.get("project_name", "")
             customer_name = body.get("customer_name", "")
             priority = body.get("priority", "normal")
+            if priority not in ("urgent", "high", "normal", "low"):
+                priority = "normal"
             due_date = body.get("due_date", "")
             delivery_date = body.get("delivery_date", "")
             ship_to = body.get("ship_to", "")
+            machine_id = body.get("machine_id", "")
+            operator = body.get("operator", "")
             total_weight_lbs = 0.0
             total_sell = 0.0
             building_specs = ""
@@ -8263,6 +8333,8 @@ class WorkOrderCreateHandler(BaseHandler):
                 total_weight_lbs=total_weight_lbs,
                 total_sell=total_sell,
                 building_specs=building_specs,
+                machine_id=machine_id,
+                operator=operator,
             )
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
@@ -8297,6 +8369,80 @@ class WorkOrderCreateHandler(BaseHandler):
             except Exception:
                 pass  # Non-critical — work order is still created
 
+            # ── Inventory Allocation: commit coil stock to this WO ──
+            allocation_ids = []
+            material_status = ""
+            try:
+                if total_weight_lbs > 0:
+                    inv = load_inventory()
+                    coils = inv.get("coils", {})
+                    required_gauge = str(cfg_dict.get("gauge", "10"))
+                    remaining_need = total_weight_lbs
+
+                    # Find matching coils sorted by stock descending
+                    matching_coils = sorted(
+                        [(cid, c) for cid, c in (coils.items() if isinstance(coils, dict) else [])
+                         if str(c.get("gauge", "")) == required_gauge],
+                        key=lambda x: float(x[1].get("stock_lbs", 0)) - float(x[1].get("committed_lbs", 0)),
+                        reverse=True
+                    )
+
+                    alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+                    allocs = []
+                    if os.path.isfile(alloc_path):
+                        with open(alloc_path) as f:
+                            allocs = json.load(f)
+
+                    for coil_id, coil in matching_coils:
+                        if remaining_need <= 0:
+                            break
+                        available = float(coil.get("stock_lbs", 0)) - float(coil.get("committed_lbs", 0))
+                        if available <= 0:
+                            continue
+                        alloc_qty = min(available, remaining_need)
+
+                        # Commit the stock
+                        coil["committed_lbs"] = float(coil.get("committed_lbs", 0)) + alloc_qty
+
+                        alloc_id = f"ALLOC-{len(allocs)+1:04d}"
+                        allocs.append({
+                            "allocation_id": alloc_id,
+                            "coil_id": coil_id,
+                            "job_code": job_code,
+                            "quantity_lbs": alloc_qty,
+                            "consumed_lbs": 0,
+                            "status": "active",
+                            "work_order_ref": wo.work_order_id,
+                            "notes": f"Auto-allocated at WO creation",
+                            "date": datetime.datetime.now().isoformat(),
+                        })
+                        allocation_ids.append(alloc_id)
+                        remaining_need -= alloc_qty
+
+                    save_inventory(inv)
+                    with open(alloc_path, "w") as f:
+                        json.dump(allocs, f, indent=2)
+
+                    if remaining_need <= 0:
+                        material_status = "allocated"
+                    elif allocation_ids:
+                        material_status = "partial"
+                    else:
+                        material_status = "awaiting_material"
+
+                    # Update WO with allocation info
+                    wo.allocation_ids = allocation_ids
+                    wo.material_status = material_status
+                    if material_status == "awaiting_material":
+                        # Mark all fabricated items as awaiting_material in notes
+                        for item in wo.items:
+                            if getattr(item, "item_category", "fabricated") == "fabricated":
+                                item.notes = "[AWAITING MATERIAL] " + (item.notes or "")
+                    save_work_order(SHOP_DRAWINGS_DIR, wo)
+            except Exception as alloc_err:
+                logger.warning(f"Inventory allocation failed for WO {wo.work_order_id}: {alloc_err}")
+                # Non-critical — WO is still created
+
             self._log("created_work_order", "work_order", getattr(wo, "work_order_id", ""), {"job_code": job_code})
             self.set_header("Content-Type", "application/json")
             response = {
@@ -8306,6 +8452,9 @@ class WorkOrderCreateHandler(BaseHandler):
             }
             if material_warnings:
                 response["material_warnings"] = material_warnings
+            if allocation_ids:
+                response["allocations"] = allocation_ids
+                response["material_status"] = material_status
             self.write(json_encode(response))
         except Exception as e:
             self.set_status(500)
@@ -8695,7 +8844,12 @@ class WorkOrderEditHandler(BaseHandler):
             editable = [
                 "notes", "priority", "due_date", "delivery_date",
                 "ship_to", "project_name", "customer_name",
+                "machine_id", "operator",
             ]
+            # Validate priority if provided
+            if "priority" in body and body["priority"] not in ("urgent", "high", "normal", "low"):
+                self.write(json_encode({"ok": False, "error": "Invalid priority. Use urgent/high/normal/low."}))
+                return
             changes = {}
             for fld in editable:
                 if fld in body:
@@ -8710,6 +8864,262 @@ class WorkOrderEditHandler(BaseHandler):
                 return
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "changes": changes,
+                "work_order": wo.to_dict(),
+                "summary": wo.summary(),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderStatusHandler(BaseHandler):
+    """POST /api/work-orders/status — Change work order status with pipeline validation.
+
+    Status pipeline: queued -> in_progress -> qc_hold -> completed -> shipped
+    Can't skip steps. Logs timestamps and calculates actual_hours.
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            new_status = body.get("status", "").strip()
+            user = body.get("user", self.get_current_user() or "system")
+
+            if not job_code or not wo_id or not new_status:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, wo_id, or status"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            # Validate transition
+            current = wo.status
+            allowed = STATUS_FLOW.get(current, [])
+            if new_status not in allowed:
+                allowed_labels = [STATUS_LABELS.get(s, s) for s in allowed]
+                self.write(json_encode({
+                    "ok": False,
+                    "error": f"Cannot transition from '{STATUS_LABELS.get(current, current)}' to '{STATUS_LABELS.get(new_status, new_status)}'. Allowed: {', '.join(allowed_labels) or 'none'}"
+                }))
+                return
+
+            now = datetime.datetime.now().isoformat()
+            old_status = wo.status
+            wo.status = new_status
+
+            # Status-specific side effects
+            if new_status == STATUS_IN_PROGRESS:
+                wo.start_time = now
+            elif new_status == STATUS_COMPLETE:
+                wo.end_time = now
+                # Calculate actual hours
+                if wo.start_time:
+                    try:
+                        start = datetime.datetime.fromisoformat(wo.start_time.replace("Z", "+00:00"))
+                        end = datetime.datetime.fromisoformat(now.replace("Z", "+00:00"))
+                        wo.actual_hours = round((end - start).total_seconds() / 3600.0, 2)
+                    except Exception:
+                        pass
+                # Check if ALL WOs for this project are completed — auto-advance to shipping
+                try:
+                    all_project_wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+                    all_completed = all(
+                        (w.get("status") in (STATUS_COMPLETE, STATUS_SHIPPED_WO, "complete", "shipped")
+                         or w.get("work_order_id") == wo_id)
+                        for w in all_project_wos
+                    )
+                    if all_completed:
+                        _auto_advance_stage(job_code, "shipping")
+                except Exception:
+                    pass
+            elif new_status == STATUS_QC_HOLD:
+                wo.notes = f"[QC HOLD at {now}] " + wo.notes
+            elif new_status == STATUS_SHIPPED_WO:
+                # Check if all WOs for this project are shipped
+                try:
+                    all_project_wos = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+                    all_shipped = all(
+                        (w.get("status") in (STATUS_SHIPPED_WO, "shipped") or w.get("work_order_id") == wo_id)
+                        for w in all_project_wos
+                    )
+                    if all_shipped:
+                        _auto_advance_stage(job_code, "shipping")
+                except Exception:
+                    pass
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self._log("wo_status_change", "work_order", wo_id, {
+                "job_code": job_code,
+                "from": old_status,
+                "to": new_status,
+                "by": user,
+            })
+
+            # Broadcast via WebSocket
+            try:
+                LiveUpdateWebSocket.broadcast({
+                    "type": "wo_status",
+                    "action": "status_change",
+                    "data": {
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "from_status": old_status,
+                        "to_status": new_status,
+                        "timestamp": now,
+                    }
+                })
+            except Exception:
+                pass
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "work_order": wo.to_dict(),
+                "summary": wo.summary(),
+                "transition": {"from": old_status, "to": new_status},
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderTransitionHandler(BaseHandler):
+    """POST /api/work-orders/transition — Transition a work order ITEM to a new status.
+
+    Used by the global WO page for QC approve/reject and shipping status changes.
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            new_status = body.get("new_status", "").strip()
+            notes = body.get("notes", "")
+            user = body.get("user", self.get_current_user() or "system")
+
+            if not job_code or not item_id or not new_status:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or new_status"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+
+            old_status = item.status
+            transition_item_status(item, new_status)
+
+            # Set QC fields for QC transitions
+            if new_status == "qc_approved":
+                item.qc_status = "passed"
+                item.qc_inspector = user
+                item.qc_inspected_at = datetime.datetime.now().isoformat()
+                if notes:
+                    item.qc_notes = notes
+            elif new_status == "qc_rejected":
+                item.qc_status = "failed"
+                item.qc_inspector = user
+                item.qc_inspected_at = datetime.datetime.now().isoformat()
+                if notes:
+                    item.qc_notes = notes
+            elif new_status == "qc_pending":
+                item.qc_status = "pending"
+            elif new_status in ("shipped", "delivered"):
+                if new_status == "shipped":
+                    item.loading_status = "shipped"
+                elif new_status == "delivered":
+                    item.loading_status = "delivered"
+
+            if notes and new_status not in ("qc_approved", "qc_rejected"):
+                item.notes = (item.notes + "\n" + notes).strip()
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self._log("item_transition", "work_order_item", item_id, {
+                "job_code": job_code,
+                "from": old_status,
+                "to": new_status,
+                "by": user,
+            })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "item": item.to_dict(),
+                "transition": {"from": old_status, "to": new_status},
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderAssignHandler(BaseHandler):
+    """POST /api/work-orders/assign — Assign a machine and/or operator to a work order."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            machine_id = body.get("machine_id", "").strip()
+            operator = body.get("operator", "").strip()
+
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            changes = {}
+            if machine_id and machine_id != wo.machine_id:
+                changes["machine_id"] = {"old": wo.machine_id, "new": machine_id}
+                wo.machine_id = machine_id
+            if operator and operator != wo.operator:
+                changes["operator"] = {"old": wo.operator, "new": operator}
+                wo.operator = operator
+
+            if not changes:
+                self.write(json_encode({"ok": True, "message": "No changes"}))
+                return
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self._log("wo_assigned", "work_order", wo_id, {
+                "job_code": job_code,
+                "changes": changes,
+            })
+
+            # Broadcast assignment
+            try:
+                LiveUpdateWebSocket.broadcast({
+                    "type": "wo_assigned",
+                    "data": {
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "machine_id": wo.machine_id,
+                        "operator": wo.operator,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                })
+            except Exception:
+                pass
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -9734,6 +10144,37 @@ class ShopFloorDataHandler(BaseHandler):
             events.sort(key=lambda x: x.get("time", ""), reverse=True)
             events = events[:20]
 
+            # ── Dispatch: unassigned WOs and machine status ──
+            unassigned_wos = []
+            machine_status = {}
+            for wo in active_wos:
+                if not wo.get("machine_id"):
+                    unassigned_wos.append(wo)
+
+            for m_id in machines:
+                m = machines[m_id]
+                if m["in_progress"] > 0:
+                    machine_status[m_id] = "running"
+                elif m["queued"] > 0:
+                    machine_status[m_id] = "idle"
+                else:
+                    machine_status[m_id] = "idle"
+                machines[m_id]["status"] = machine_status.get(m_id, "idle")
+                machines[m_id]["operator"] = ""
+                # Try to get operator from active items
+                for ai in m.get("active_items", []):
+                    if ai.get("started_by"):
+                        machines[m_id]["operator"] = ai["started_by"]
+                        break
+                # Estimated time remaining
+                est_remaining = sum(
+                    (i.get("estimated_minutes", 0) - i.get("duration_minutes", 0))
+                    for i in all_items
+                    if i.get("machine") == m_id and i.get("status") != "complete"
+                )
+                machines[m_id]["est_remaining_minutes"] = round(max(0, est_remaining), 1)
+                machines[m_id]["queue_depth"] = m["queued"]
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
@@ -9749,9 +10190,11 @@ class ShopFloorDataHandler(BaseHandler):
                     "avg_fab_minutes": round(avg_fab_minutes, 1),
                     "today_completed": len(today_completed),
                     "today_started": len(today_started),
+                    "unassigned_count": len(unassigned_wos),
                 },
                 "machines": machines,
                 "active_wos": active_wos[:20],
+                "unassigned_wos": unassigned_wos[:20],
                 "events": events,
             }))
         except Exception as e:
@@ -11450,7 +11893,7 @@ class FinancialSummaryAPIHandler(BaseHandler):
             self.write({"revenue": 0, "expenses": 0, "profit": 0, "outstanding": 0, "transactions": []})
 
 class FinancialInvoicesAPIHandler(BaseHandler):
-    """GET/POST /api/financial/invoices — Generate invoices from projects with sell_price."""
+    """GET/POST/PUT /api/financial/invoices — Full invoice management with status workflow."""
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -11504,13 +11947,26 @@ class FinancialInvoicesAPIHandler(BaseHandler):
                         pass
                 if sell and isinstance(sell, (int, float)) and sell > 0:
                     inv_status = "paid" if stage in ("complete", "completed") else "sent" if stage in ("fabrication", "shipping", "install") else "draft"
+                    due_date = ""
+                    if created:
+                        try:
+                            dt = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
+                            due_date = (dt + datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+                        except Exception: pass
                     invoices.append({
                         "id": f"INV-{d}",
+                        "invoice_number": f"INV-{d}",
                         "job_code": d,
+                        "project_id": d,
                         "project_name": proj_name,
                         "customer": customer,
                         "amount": round(float(sell), 2),
+                        "subtotal": round(float(sell), 2),
                         "status": inv_status,
+                        "terms": "net_30",
+                        "invoice_date": created,
+                        "due_date": due_date,
+                        "created_at": created,
                         "date": created,
                         "auto_generated": True,
                     })
@@ -11527,8 +11983,20 @@ class FinancialInvoicesAPIHandler(BaseHandler):
             if os.path.isfile(inv_path):
                 with open(inv_path) as f:
                     invoices = json.load(f)
-            body["id"] = f"INV-{len(invoices)+1:04d}"
+            yr = datetime.datetime.now().strftime("%Y")
+            mx = 0
+            for inv in invoices:
+                ns = inv.get("invoice_number", "")
+                if ns.startswith(f"INV-{yr}-"):
+                    try: mx = max(mx, int(ns.split("-")[-1]))
+                    except Exception: pass
+            inv_num = f"INV-{yr}-{mx+1:04d}"
+            body["id"] = inv_num
+            body["invoice_number"] = inv_num
+            body["status"] = body.get("status", "draft")
             body["created_at"] = datetime.datetime.now().isoformat()
+            if not body.get("invoice_date"):
+                body["invoice_date"] = datetime.datetime.now().strftime("%Y-%m-%d")
             invoices.append(body)
             with open(inv_path, "w") as f:
                 json.dump(invoices, f, indent=2)
@@ -11537,8 +12005,34 @@ class FinancialInvoicesAPIHandler(BaseHandler):
             logger.error(f"FinancialInvoicesAPIHandler POST error: {e}", exc_info=True)
             self.write({"status": "ok", "message": "Invoice created"})
 
+    def put(self):
+        """Update invoice status, record payments."""
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            inv_id = body.get("id")
+            if not inv_id:
+                self.write({"status": "error", "message": "Missing id"}); return
+            inv_path = os.path.join(DATA_DIR, "invoices.json")
+            invoices = []
+            if os.path.isfile(inv_path):
+                with open(inv_path) as f: invoices = json.load(f)
+            for inv in invoices:
+                if inv.get("id") == inv_id:
+                    for k in ["status","sent_date","payment_date","payment_method","payment_amount",
+                              "payment_reference","notes","due_date","terms","customer","customer_email",
+                              "line_items","amount","subtotal","tax","tax_rate"]:
+                        if k in body: inv[k] = body[k]
+                    inv["updated_at"] = datetime.datetime.now().isoformat()
+                    with open(inv_path, "w") as f: json.dump(invoices, f, indent=2)
+                    self.write({"status": "ok"}); return
+            self.write({"status": "error", "message": "Not found"})
+        except Exception as e:
+            logger.error(f"FinancialInvoicesAPIHandler PUT error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
+
 class FinancialExpensesAPIHandler(BaseHandler):
-    """GET/POST /api/financial/expenses — Expense tracking with file persistence."""
+    """GET/POST/PUT /api/financial/expenses — Expense tracking with approval workflow."""
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -11569,6 +12063,32 @@ class FinancialExpensesAPIHandler(BaseHandler):
         except Exception as e:
             logger.error(f"FinancialExpensesAPIHandler POST error: {e}", exc_info=True)
             self.write({"status": "ok", "message": "Expense created"})
+
+    def put(self):
+        """Update expense status (approval workflow) or edit fields."""
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            exp_id = body.get("id")
+            if not exp_id:
+                self.write({"status": "error", "message": "Missing id"}); return
+            exp_path = os.path.join(DATA_DIR, "expenses.json")
+            expenses = []
+            if os.path.isfile(exp_path):
+                with open(exp_path) as f: expenses = json.load(f)
+            for exp in expenses:
+                if exp.get("id") == exp_id:
+                    for k in ["status","category","description","amount","vendor","job_code",
+                              "receipt_url","notes","approved_by","approved_date",
+                              "rejected_reason","paid_date","payment_method","budget"]:
+                        if k in body: exp[k] = body[k]
+                    exp["updated_at"] = datetime.datetime.now().isoformat()
+                    with open(exp_path, "w") as f: json.dump(expenses, f, indent=2)
+                    self.write({"status": "ok"}); return
+            self.write({"status": "error", "message": "Not found"})
+        except Exception as e:
+            logger.error(f"FinancialExpensesAPIHandler PUT error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
 
 class FinancialVendorBillsAPIHandler(BaseHandler):
     """GET/POST /api/financial/vendor-bills — Vendor bills with file persistence."""
@@ -11688,28 +12208,172 @@ class FinancialProjectsAPIHandler(BaseHandler):
             self.write({"projects": []})
 
 class SalesLeadsAPIHandler(BaseHandler):
-    """GET/POST /api/sales/leads — Sales leads API stub."""
+    """GET/POST/PUT /api/sales/leads — Full sales leads CRUD with persistent storage."""
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"leads": []})
+        try:
+            leads_path = os.path.join(DATA_DIR, "sales_leads.json")
+            leads = []
+            if os.path.isfile(leads_path):
+                with open(leads_path) as f:
+                    leads = json.load(f)
+            self.write(json_encode({"leads": leads}))
+        except Exception as e:
+            logger.error(f"SalesLeadsAPIHandler GET error: {e}", exc_info=True)
+            self.write({"leads": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok", "message": "Lead created (stub)"})
+        try:
+            body = json_decode(self.request.body)
+            leads_path = os.path.join(DATA_DIR, "sales_leads.json")
+            leads = []
+            if os.path.isfile(leads_path):
+                with open(leads_path) as f:
+                    leads = json.load(f)
+            yr = datetime.datetime.now().strftime("%Y")
+            mx = 0
+            for ld in leads:
+                lid = ld.get("id", "")
+                if lid.startswith(f"LEAD-{yr}-"):
+                    try: mx = max(mx, int(lid.split("-")[-1]))
+                    except Exception: pass
+            lead_id = f"LEAD-{yr}-{mx+1:04d}"
+            body["id"] = lead_id
+            body["status"] = body.get("status", "new")
+            body["created_at"] = datetime.datetime.now().isoformat()
+            body["updated_at"] = body["created_at"]
+            body["stage_changed_at"] = body["created_at"]
+            leads.append(body)
+            with open(leads_path, "w") as f:
+                json.dump(leads, f, indent=2)
+            self.write({"status": "ok", "id": lead_id})
+        except Exception as e:
+            logger.error(f"SalesLeadsAPIHandler POST error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
+
+    def put(self):
+        """Update lead status, fields, or convert to customer."""
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            lead_id = body.get("id")
+            if not lead_id:
+                self.write({"status": "error", "message": "Missing id"}); return
+            leads_path = os.path.join(DATA_DIR, "sales_leads.json")
+            leads = []
+            if os.path.isfile(leads_path):
+                with open(leads_path) as f: leads = json.load(f)
+            for ld in leads:
+                if ld.get("id") == lead_id:
+                    old_status = ld.get("status", "")
+                    for k in ["status","company","contact_name","phone","email","source",
+                              "estimated_value","follow_up_date","assigned_to","notes",
+                              "converted","converted_customer_id","lost_reason"]:
+                        if k in body: ld[k] = body[k]
+                    if body.get("status") and body["status"] != old_status:
+                        ld["stage_changed_at"] = datetime.datetime.now().isoformat()
+                    ld["updated_at"] = datetime.datetime.now().isoformat()
+                    with open(leads_path, "w") as f: json.dump(leads, f, indent=2)
+                    self.write({"status": "ok"}); return
+            self.write({"status": "error", "message": "Not found"})
+        except Exception as e:
+            logger.error(f"SalesLeadsAPIHandler PUT error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
 
 class SalesPipelineAPIHandler(BaseHandler):
-    """GET /api/sales/pipeline — Sales pipeline API stub."""
+    """GET /api/sales/pipeline — Returns leads grouped by pipeline stage."""
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"stages": []})
+        try:
+            leads_path = os.path.join(DATA_DIR, "sales_leads.json")
+            leads = []
+            if os.path.isfile(leads_path):
+                with open(leads_path) as f:
+                    leads = json.load(f)
+            stages = ["new","contacted","qualified","proposal","negotiation","won","lost"]
+            pipeline = {}
+            for s in stages:
+                pipeline[s] = [ld for ld in leads if ld.get("status") == s]
+            self.write(json_encode({"stages": stages, "pipeline": pipeline, "leads": leads}))
+        except Exception as e:
+            logger.error(f"SalesPipelineAPIHandler GET error: {e}", exc_info=True)
+            self.write({"stages": [], "pipeline": {}, "leads": []})
 
 class SalesQuotesAPIHandler(BaseHandler):
-    """GET/POST /api/sales/quotes — Sales quotes API stub."""
+    """GET/POST/PUT /api/sales/quotes — Full sales quotes CRUD with persistent storage."""
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"quotes": []})
+        try:
+            quotes_path = os.path.join(DATA_DIR, "sales_quotes.json")
+            quotes = []
+            if os.path.isfile(quotes_path):
+                with open(quotes_path) as f:
+                    quotes = json.load(f)
+            self.write(json_encode({"quotes": quotes}))
+        except Exception as e:
+            logger.error(f"SalesQuotesAPIHandler GET error: {e}", exc_info=True)
+            self.write({"quotes": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok", "message": "Quote created (stub)"})
+        try:
+            body = json_decode(self.request.body)
+            quotes_path = os.path.join(DATA_DIR, "sales_quotes.json")
+            quotes = []
+            if os.path.isfile(quotes_path):
+                with open(quotes_path) as f:
+                    quotes = json.load(f)
+            yr = datetime.datetime.now().strftime("%Y")
+            mx = 0
+            for qt in quotes:
+                qid = qt.get("id", "")
+                if qid.startswith(f"QT-{yr}-"):
+                    try: mx = max(mx, int(qid.split("-")[-1]))
+                    except Exception: pass
+            quote_id = f"QT-{yr}-{mx+1:04d}"
+            body["id"] = quote_id
+            body["quote_number"] = quote_id
+            body["status"] = body.get("status", "draft")
+            body["created_at"] = datetime.datetime.now().isoformat()
+            body["updated_at"] = body["created_at"]
+            body["revision"] = body.get("revision", 1)
+            body["revision_history"] = body.get("revision_history", [])
+            quotes.append(body)
+            with open(quotes_path, "w") as f:
+                json.dump(quotes, f, indent=2)
+            self.write({"status": "ok", "id": quote_id})
+        except Exception as e:
+            logger.error(f"SalesQuotesAPIHandler POST error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
+
+    def put(self):
+        """Update quote status, send, accept/reject, revise."""
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            quote_id = body.get("id")
+            if not quote_id:
+                self.write({"status": "error", "message": "Missing id"}); return
+            quotes_path = os.path.join(DATA_DIR, "sales_quotes.json")
+            quotes = []
+            if os.path.isfile(quotes_path):
+                with open(quotes_path) as f: quotes = json.load(f)
+            for qt in quotes:
+                if qt.get("id") == quote_id:
+                    for k in ["status","customer","customer_email","line_items","amount",
+                              "subtotal","tax","tax_rate","terms","notes","expiry_date",
+                              "sent_date","sent_method","accepted_date","rejected_date",
+                              "rejected_reason","follow_up_date","revision","revision_history",
+                              "revised_from","lead_id"]:
+                        if k in body: qt[k] = body[k]
+                    qt["updated_at"] = datetime.datetime.now().isoformat()
+                    with open(quotes_path, "w") as f: json.dump(quotes, f, indent=2)
+                    self.write({"status": "ok"}); return
+            self.write({"status": "error", "message": "Not found"})
+        except Exception as e:
+            logger.error(f"SalesQuotesAPIHandler PUT error: {e}", exc_info=True)
+            self.write({"status": "error", "message": str(e)})
 
 # ═══════════════════════════════════════════════════════════════════════
 #  FIELD & SAFETY PAGE HANDLERS
@@ -11846,12 +12510,83 @@ class FieldPunchAPIHandler(BaseHandler):
             self.write({"status": "error", "error": str(e)})
 
 class FieldDailyAPIHandler(BaseHandler):
+    """GET/POST /api/field/daily — Daily field reports with persistent JSON storage."""
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"reports": []})
+        try:
+            fpath = os.path.join(DATA_DIR, "field_daily_reports.json")
+            reports = []
+            if os.path.isfile(fpath):
+                with open(fpath) as f:
+                    reports = json.load(f)
+            # Filters
+            project = self.get_argument("project", "")
+            date = self.get_argument("date", "")
+            if project:
+                reports = [r for r in reports if r.get("project_id") == project]
+            if date:
+                reports = [r for r in reports if r.get("date") == date]
+            # Enrich with project names
+            try:
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for r in reports:
+                    if r.get("project_id") and not r.get("project_name"):
+                        meta_path = os.path.join(PROJECTS_DIR, r["project_id"], "metadata.json")
+                        if os.path.isfile(meta_path):
+                            with open(meta_path) as f:
+                                meta = json.load(f)
+                            r["project_name"] = meta.get("project_name", r["project_id"])
+            except Exception:
+                pass
+            reports.sort(key=lambda x: x.get("date", ""), reverse=True)
+            self.write(json_encode({"reports": reports}))
+        except Exception as e:
+            logger.error(f"FieldDailyAPIHandler GET error: {e}", exc_info=True)
+            self.write({"reports": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+        try:
+            body = json_decode(self.request.body)
+            fpath = os.path.join(DATA_DIR, "field_daily_reports.json")
+            reports = []
+            if os.path.isfile(fpath):
+                with open(fpath) as f:
+                    reports = json.load(f)
+
+            existing_id = body.get("id")
+            if existing_id:
+                # Update existing
+                for i, r in enumerate(reports):
+                    if r.get("id") == existing_id:
+                        body["updated_at"] = datetime.datetime.now().isoformat()
+                        body["updated_by"] = self.get_current_user() or "admin"
+                        reports[i] = {**r, **body}
+                        break
+            else:
+                # New report — auto-ID
+                year = datetime.datetime.now().year
+                existing_nums = []
+                for r in reports:
+                    try:
+                        parts = r.get("id", "").split("-")
+                        if len(parts) >= 3 and parts[1] == str(year):
+                            existing_nums.append(int(parts[2]))
+                    except (ValueError, IndexError):
+                        pass
+                next_num = max(existing_nums, default=0) + 1
+                body["id"] = f"DR-{year}-{next_num:04d}"
+                body["created_at"] = datetime.datetime.now().isoformat()
+                body["created_by"] = self.get_current_user() or "admin"
+                reports.append(body)
+
+            with open(fpath, "w") as f:
+                json.dump(reports, f, indent=2)
+            self.write({"status": "ok", "id": body.get("id", "")})
+        except Exception as e:
+            logger.error(f"FieldDailyAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
 
 class FieldDocsAPIHandler(BaseHandler):
     def get(self):
@@ -11862,20 +12597,200 @@ class FieldDocsAPIHandler(BaseHandler):
         self.write({"status": "ok"})
 
 class FieldEquipmentAPIHandler(BaseHandler):
+    """GET/POST /api/field/equipment — Equipment tracking with check-in/out and maintenance."""
+    def _load(self):
+        fpath = os.path.join(DATA_DIR, "field_equipment.json")
+        if os.path.isfile(fpath):
+            with open(fpath) as f:
+                return json.load(f)
+        return []
+
+    def _save(self, data):
+        fpath = os.path.join(DATA_DIR, "field_equipment.json")
+        with open(fpath, "w") as f:
+            json.dump(data, f, indent=2)
+
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"equipment": []})
+        try:
+            equipment = self._load()
+            self.write(json_encode({"equipment": equipment}))
+        except Exception as e:
+            logger.error(f"FieldEquipmentAPIHandler GET error: {e}", exc_info=True)
+            self.write({"equipment": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+        try:
+            body = json_decode(self.request.body)
+            equipment = self._load()
+            action = body.get("action", "")
+
+            if action == "checkout":
+                eq_id = body.get("equipment_id", "")
+                for eq in equipment:
+                    if eq.get("id") == eq_id or eq.get("equipment_id") == eq_id:
+                        eq["status"] = "checked_out"
+                        eq["checked_out_to"] = body.get("checked_out_to", "")
+                        eq["assigned_to"] = body.get("checked_out_to", "")
+                        eq["location"] = body.get("project_id", eq.get("location", ""))
+                        eq["checkout_date"] = datetime.datetime.now().isoformat()
+                        eq["expected_return"] = body.get("expected_return", "")
+                        eq["checkout_notes"] = body.get("notes", "")
+                        break
+                self._save(equipment)
+                self.write({"status": "ok"})
+                return
+
+            if action == "checkin":
+                eq_id = body.get("equipment_id", "")
+                for eq in equipment:
+                    if eq.get("id") == eq_id or eq.get("equipment_id") == eq_id:
+                        send_to_maint = body.get("send_to_maintenance", False)
+                        eq["status"] = "maintenance" if send_to_maint else "available"
+                        eq["checked_out_to"] = ""
+                        eq["assigned_to"] = ""
+                        eq["checkin_date"] = datetime.datetime.now().isoformat()
+                        eq["checkin_condition"] = body.get("condition", "good")
+                        eq["checkin_notes"] = body.get("condition_notes", "")
+                        eq["location"] = "Shop" if not send_to_maint else "Maintenance"
+                        # Update utilization
+                        eq["utilization"] = min(100, (eq.get("utilization", 0) or 0) + 5)
+                        break
+                self._save(equipment)
+                self.write({"status": "ok"})
+                return
+
+            if action == "complete_maintenance":
+                eq_id = body.get("equipment_id", "")
+                for eq in equipment:
+                    if eq.get("id") == eq_id or eq.get("equipment_id") == eq_id:
+                        eq["status"] = "available"
+                        eq["last_maintenance"] = datetime.datetime.now().strftime("%Y-%m-%d")
+                        interval = eq.get("maintenance_interval", 90) or 90
+                        next_date = datetime.datetime.now() + datetime.timedelta(days=interval)
+                        eq["next_maintenance"] = next_date.strftime("%Y-%m-%d")
+                        eq["location"] = "Shop"
+                        break
+                self._save(equipment)
+                self.write({"status": "ok"})
+                return
+
+            # Create or update equipment
+            existing_id = body.get("id")
+            if existing_id:
+                for i, eq in enumerate(equipment):
+                    if eq.get("id") == existing_id:
+                        body["updated_at"] = datetime.datetime.now().isoformat()
+                        equipment[i] = {**eq, **body}
+                        break
+            else:
+                eq_tag = body.get("equipment_id", "")
+                if not eq_tag:
+                    eq_tag = f"EQ-{len(equipment)+1:04d}"
+                    body["equipment_id"] = eq_tag
+                body["id"] = eq_tag
+                body["status"] = body.get("status", "available")
+                body["utilization"] = 0
+                body["created_at"] = datetime.datetime.now().isoformat()
+                equipment.append(body)
+
+            self._save(equipment)
+            self.write({"status": "ok", "id": body.get("id", "")})
+        except Exception as e:
+            logger.error(f"FieldEquipmentAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
 
 class FieldExpensesAPIHandler(BaseHandler):
+    """GET/POST /api/field/expenses — Expense tracking with approval workflow."""
+    def _load(self):
+        fpath = os.path.join(DATA_DIR, "field_expenses.json")
+        if os.path.isfile(fpath):
+            with open(fpath) as f:
+                return json.load(f)
+        return []
+
+    def _save(self, data):
+        fpath = os.path.join(DATA_DIR, "field_expenses.json")
+        with open(fpath, "w") as f:
+            json.dump(data, f, indent=2)
+
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"expenses": []})
+        try:
+            expenses = self._load()
+            # Enrich project names
+            try:
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for ex in expenses:
+                    if ex.get("project_id") and not ex.get("project_name"):
+                        meta_path = os.path.join(PROJECTS_DIR, ex["project_id"], "metadata.json")
+                        if os.path.isfile(meta_path):
+                            with open(meta_path) as f:
+                                meta = json.load(f)
+                            ex["project_name"] = meta.get("project_name", ex["project_id"])
+            except Exception:
+                pass
+            expenses.sort(key=lambda x: x.get("date", ""), reverse=True)
+            self.write(json_encode({"expenses": expenses}))
+        except Exception as e:
+            logger.error(f"FieldExpensesAPIHandler GET error: {e}", exc_info=True)
+            self.write({"expenses": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+        try:
+            body = json_decode(self.request.body)
+            expenses = self._load()
+            action = body.get("action", "")
+
+            if action == "update_status":
+                exp_id = body.get("id", "")
+                new_status = body.get("status", "")
+                for ex in expenses:
+                    if ex.get("id") == exp_id:
+                        ex["status"] = new_status
+                        if new_status == "approved":
+                            ex["approved_by"] = self.get_current_user() or "admin"
+                            ex["approved_at"] = datetime.datetime.now().isoformat()
+                        elif new_status == "reimbursed":
+                            ex["reimbursed_at"] = datetime.datetime.now().isoformat()
+                        break
+                self._save(expenses)
+                self.write({"status": "ok"})
+                return
+
+            existing_id = body.get("id")
+            if existing_id:
+                for i, ex in enumerate(expenses):
+                    if ex.get("id") == existing_id:
+                        body["updated_at"] = datetime.datetime.now().isoformat()
+                        expenses[i] = {**ex, **body}
+                        break
+            else:
+                year = datetime.datetime.now().year
+                existing_nums = []
+                for ex in expenses:
+                    try:
+                        parts = ex.get("id", "").split("-")
+                        if len(parts) >= 3 and parts[1] == str(year):
+                            existing_nums.append(int(parts[2]))
+                    except (ValueError, IndexError):
+                        pass
+                next_num = max(existing_nums, default=0) + 1
+                body["id"] = f"EXP-{year}-{next_num:04d}"
+                body["submitted_by"] = self.get_current_user() or "admin"
+                body["created_at"] = datetime.datetime.now().isoformat()
+                body.setdefault("status", "submitted")
+                expenses.append(body)
+
+            self._save(expenses)
+            self.write({"status": "ok", "id": body.get("id", "")})
+        except Exception as e:
+            logger.error(f"FieldExpensesAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
 
 class FieldJHAAPIHandler(BaseHandler):
     def get(self):
@@ -11886,12 +12801,88 @@ class FieldJHAAPIHandler(BaseHandler):
         self.write({"status": "ok"})
 
 class FieldPhotosAPIHandler(BaseHandler):
+    """GET/POST /api/field/photos — Photo metadata management."""
+    def _load(self):
+        fpath = os.path.join(DATA_DIR, "field_photos.json")
+        if os.path.isfile(fpath):
+            with open(fpath) as f:
+                return json.load(f)
+        return []
+
+    def _save(self, data):
+        fpath = os.path.join(DATA_DIR, "field_photos.json")
+        with open(fpath, "w") as f:
+            json.dump(data, f, indent=2)
+
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"photos": []})
+        try:
+            photos = self._load()
+            # Enrich project names
+            try:
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for p in photos:
+                    if p.get("project_id") and not p.get("project_name"):
+                        meta_path = os.path.join(PROJECTS_DIR, p["project_id"], "metadata.json")
+                        if os.path.isfile(meta_path):
+                            with open(meta_path) as f:
+                                meta = json.load(f)
+                            p["project_name"] = meta.get("project_name", p["project_id"])
+            except Exception:
+                pass
+            photos.sort(key=lambda x: x.get("date", ""), reverse=True)
+            self.write(json_encode({"photos": photos}))
+        except Exception as e:
+            logger.error(f"FieldPhotosAPIHandler GET error: {e}", exc_info=True)
+            self.write({"photos": []})
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+        try:
+            body = json_decode(self.request.body)
+            photos = self._load()
+            action = body.get("action", "")
+
+            if action == "delete":
+                photo_id = body.get("id", "")
+                photos = [p for p in photos if p.get("id") != photo_id]
+                self._save(photos)
+                self.write({"status": "ok"})
+                return
+
+            if action == "update":
+                photo_id = body.get("id", "")
+                for i, p in enumerate(photos):
+                    if p.get("id") == photo_id:
+                        body["updated_at"] = datetime.datetime.now().isoformat()
+                        photos[i] = {**p, **body}
+                        break
+                self._save(photos)
+                self.write({"status": "ok"})
+                return
+
+            # New photo metadata
+            year = datetime.datetime.now().year
+            existing_nums = []
+            for p in photos:
+                try:
+                    parts = p.get("id", "").split("-")
+                    if len(parts) >= 3 and parts[1] == str(year):
+                        existing_nums.append(int(parts[2]))
+                except (ValueError, IndexError):
+                    pass
+            next_num = max(existing_nums, default=0) + 1
+            body["id"] = f"PH-{year}-{next_num:04d}"
+            body["uploaded_by"] = self.get_current_user() or "admin"
+            body["created_at"] = datetime.datetime.now().isoformat()
+            body.setdefault("date", datetime.datetime.now().strftime("%Y-%m-%d"))
+            photos.append(body)
+            self._save(photos)
+            self.write({"status": "ok", "id": body["id"]})
+        except Exception as e:
+            logger.error(f"FieldPhotosAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
 
 class FieldProjectsAPIHandler(BaseHandler):
     def get(self):
@@ -12061,72 +13052,312 @@ class CertsAPIHandler(BaseHandler):
             self.write({"status": "ok"})
 
 class MaterialReqsAPIHandler(BaseHandler):
-    """GET/POST /api/material-reqs — Material requisitions with file persistence."""
+    """GET/POST/PUT /api/material-reqs — Material requisitions with full workflow."""
+    def _load_mrs(self):
+        mr_path = os.path.join(DATA_DIR, "material_reqs.json")
+        if os.path.isfile(mr_path):
+            with open(mr_path) as f:
+                return json.load(f)
+        return []
+
+    def _save_mrs(self, reqs):
+        mr_path = os.path.join(DATA_DIR, "material_reqs.json")
+        with open(mr_path, "w") as f:
+            json.dump(reqs, f, indent=2)
+
+    def _next_mr_number(self, reqs):
+        year = datetime.datetime.now().year
+        prefix = f"MR-{year}-"
+        max_seq = 0
+        for r in reqs:
+            mn = r.get("mr_number", "")
+            if mn.startswith(prefix):
+                try:
+                    seq = int(mn[len(prefix):])
+                    if seq > max_seq:
+                        max_seq = seq
+                except (ValueError, IndexError):
+                    pass
+        return f"{prefix}{max_seq + 1:04d}"
+
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
-            mr_path = os.path.join(DATA_DIR, "material_reqs.json")
-            reqs = []
-            if os.path.isfile(mr_path):
-                with open(mr_path) as f:
-                    reqs = json.load(f)
+            reqs = self._load_mrs()
+            # Enrich with item counts and estimated costs
+            for r in reqs:
+                items = r.get("items", [])
+                r["item_count"] = len(items)
+                r["est_cost"] = sum(
+                    float(it.get("qty", 0) or 0) * float(it.get("unit_price", 0) or 0)
+                    for it in items
+                )
             self.write(json_encode({"requisitions": reqs}))
         except Exception as e:
             logger.error(f"MaterialReqsAPIHandler error: {e}", exc_info=True)
-            self.write({"requisitions": []})
+            self.write(json_encode({"requisitions": []}))
+
     def post(self):
         self.set_header("Content-Type", "application/json")
         try:
             body = json_decode(self.request.body)
-            mr_path = os.path.join(DATA_DIR, "material_reqs.json")
-            reqs = []
-            if os.path.isfile(mr_path):
-                with open(mr_path) as f:
-                    reqs = json.load(f)
-            body["id"] = f"MR-{len(reqs)+1:04d}"
-            body["created_at"] = datetime.datetime.now().isoformat()
-            body.setdefault("status", "pending")
-            reqs.append(body)
-            with open(mr_path, "w") as f:
-                json.dump(reqs, f, indent=2)
-            self.write({"status": "ok", "id": body["id"]})
+            reqs = self._load_mrs()
+
+            # Handle status update action
+            action = body.get("action")
+            if action == "update_status":
+                mr_id = body.get("id", "")
+                new_status = body.get("status", "")
+                valid_transitions = {
+                    "draft": ["submitted"],
+                    "submitted": ["approved", "rejected"],
+                    "approved": ["ordered"],
+                    "ordered": ["received"],
+                    "rejected": ["draft"],
+                }
+                for r in reqs:
+                    if r.get("id") == mr_id or r.get("mr_number") == mr_id:
+                        current = r.get("status", "draft")
+                        allowed = valid_transitions.get(current, [])
+                        if new_status not in allowed:
+                            self.write(json_encode({"ok": False, "error": f"Cannot transition from {current} to {new_status}"}))
+                            return
+                        r["status"] = new_status
+                        r["updated_at"] = datetime.datetime.now().isoformat()
+                        r["updated_by"] = self.get_current_user() or "system"
+                        if new_status == "approved":
+                            r["approved_by"] = self.get_current_user() or "system"
+                            r["approved_at"] = datetime.datetime.now().isoformat()
+                        self._save_mrs(reqs)
+                        self._log("updated_mr_status", "material_req", mr_id, {"status": new_status})
+                        self.write(json_encode({"ok": True, "status": new_status}))
+                        return
+                self.write(json_encode({"ok": False, "error": "MR not found"}))
+                return
+
+            # Create new MR
+            items = body.get("items", [])
+            if not items and body.get("description"):
+                # Single-item shortcut
+                items = [{"description": body.get("description", ""), "qty": body.get("qty", 1), "unit": body.get("unit", "ea")}]
+
+            mr_number = self._next_mr_number(reqs)
+            now = datetime.datetime.now().isoformat()
+            new_mr = {
+                "id": mr_number,
+                "mr_number": mr_number,
+                "project_id": body.get("project_id", body.get("project", "")),
+                "project": body.get("project", body.get("project_id", "")),
+                "requested_by": body.get("requested_by", self.get_current_user() or ""),
+                "priority": body.get("priority", "normal"),
+                "justification": body.get("justification", body.get("notes", "")),
+                "required_date": body.get("required_date", ""),
+                "items": items,
+                "item_count": len(items),
+                "est_cost": sum(
+                    float(it.get("qty", 0) or 0) * float(it.get("unit_price", 0) or 0)
+                    for it in items
+                ),
+                "status": body.get("status", "draft"),
+                "linked_po": "",
+                "created_at": now,
+                "date": now[:10],
+                "created_by": self.get_current_user() or "system",
+            }
+            reqs.append(new_mr)
+            self._save_mrs(reqs)
+            self._log("created_mr", "material_req", mr_number, {"project": new_mr["project"]})
+            self.write(json_encode({"ok": True, "id": mr_number, "mr_number": mr_number}))
         except Exception as e:
             logger.error(f"MaterialReqsAPIHandler POST error: {e}", exc_info=True)
-            self.write({"status": "ok"})
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 class PurchaseOrdersAPIHandler(BaseHandler):
-    """GET/POST /api/pos — Purchase orders with file persistence."""
+    """GET/POST /api/pos — Purchase orders with full PO creation flow."""
+    def _load_pos(self):
+        po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+        if os.path.isfile(po_path):
+            with open(po_path) as f:
+                return json.load(f)
+        return []
+
+    def _save_pos(self, pos):
+        po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+        with open(po_path, "w") as f:
+            json.dump(pos, f, indent=2)
+
+    def _next_po_number(self, pos):
+        year = datetime.datetime.now().year
+        prefix = f"PO-{year}-"
+        max_seq = 0
+        for p in pos:
+            pn = p.get("po_number", "")
+            if pn.startswith(prefix):
+                try:
+                    seq = int(pn[len(prefix):])
+                    if seq > max_seq:
+                        max_seq = seq
+                except (ValueError, IndexError):
+                    pass
+        return f"{prefix}{max_seq + 1:04d}"
+
+    def _log_price_history(self, po):
+        """Log unit prices from PO line items to price history."""
+        try:
+            ph_path = os.path.join(DATA_DIR, "price_history.json")
+            history = []
+            if os.path.isfile(ph_path):
+                with open(ph_path) as f:
+                    history = json.load(f)
+            for item in po.get("line_items", []):
+                unit_price = float(item.get("unit_price", 0) or 0)
+                if unit_price > 0:
+                    history.append({
+                        "material": item.get("description", ""),
+                        "price": unit_price,
+                        "unit": item.get("unit", "ea"),
+                        "vendor": po.get("vendor", ""),
+                        "vendor_id": po.get("vendor_id", ""),
+                        "po_id": po.get("po_number", ""),
+                        "date": datetime.datetime.now().isoformat(),
+                    })
+            with open(ph_path, "w") as f:
+                json.dump(history, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to log price history: {e}")
+
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
-            po_path = os.path.join(DATA_DIR, "purchase_orders.json")
-            pos = []
-            if os.path.isfile(po_path):
-                with open(po_path) as f:
-                    pos = json.load(f)
+            pos = self._load_pos()
+            # Enrich with computed fields
+            for p in pos:
+                line_items = p.get("line_items", [])
+                p["item_count"] = len(line_items)
+                p["total"] = sum(
+                    float(it.get("qty", 0) or 0) * float(it.get("unit_price", 0) or 0)
+                    for it in line_items
+                )
+                p["created"] = (p.get("created_at", "") or "")[:10]
             self.write(json_encode({"purchase_orders": pos}))
         except Exception as e:
             logger.error(f"PurchaseOrdersAPIHandler error: {e}", exc_info=True)
-            self.write({"purchase_orders": []})
+            self.write(json_encode({"purchase_orders": []}))
+
     def post(self):
         self.set_header("Content-Type", "application/json")
         try:
             body = json_decode(self.request.body)
-            po_path = os.path.join(DATA_DIR, "purchase_orders.json")
-            pos = []
-            if os.path.isfile(po_path):
-                with open(po_path) as f:
-                    pos = json.load(f)
-            body["id"] = f"PO-{len(pos)+1:04d}"
-            body["created_at"] = datetime.datetime.now().isoformat()
-            body.setdefault("status", "draft")
-            pos.append(body)
-            with open(po_path, "w") as f:
-                json.dump(pos, f, indent=2)
-            self.write({"status": "ok", "id": body["id"]})
+            pos = self._load_pos()
+
+            # Handle status update action
+            action = body.get("action")
+            if action == "update_status":
+                po_id = body.get("id", body.get("po_number", ""))
+                new_status = body.get("status", "")
+                valid_statuses = ["draft", "sent", "acknowledged", "partial", "received", "closed", "cancelled"]
+                if new_status not in valid_statuses:
+                    self.write(json_encode({"ok": False, "error": f"Invalid status: {new_status}"}))
+                    return
+                for p in pos:
+                    if p.get("id") == po_id or p.get("po_number") == po_id:
+                        p["status"] = new_status
+                        p["updated_at"] = datetime.datetime.now().isoformat()
+                        p["updated_by"] = self.get_current_user() or "system"
+                        self._save_pos(pos)
+                        self._log("updated_po_status", "purchase_order", po_id, {"status": new_status})
+                        self.write(json_encode({"ok": True, "status": new_status}))
+                        return
+                self.write(json_encode({"ok": False, "error": "PO not found"}))
+                return
+
+            # Handle "create from MR" action
+            if action == "create_from_mr":
+                mr_id = body.get("mr_id", "")
+                mr_path = os.path.join(DATA_DIR, "material_reqs.json")
+                mrs = []
+                if os.path.isfile(mr_path):
+                    with open(mr_path) as f:
+                        mrs = json.load(f)
+                mr_data = None
+                for m in mrs:
+                    if m.get("id") == mr_id or m.get("mr_number") == mr_id:
+                        mr_data = m
+                        break
+                if not mr_data:
+                    self.write(json_encode({"ok": False, "error": "MR not found"}))
+                    return
+                # Pre-fill from MR
+                body["line_items"] = [
+                    {"description": it.get("description", ""), "qty": it.get("qty", 1),
+                     "unit": it.get("unit", "ea"), "unit_price": it.get("unit_price", 0)}
+                    for it in mr_data.get("items", [])
+                ]
+                body["mr_id"] = mr_id
+                body["project"] = mr_data.get("project", "")
+
+            # Create new PO
+            line_items = body.get("line_items", [])
+            # Compute line totals
+            for item in line_items:
+                item["line_total"] = round(
+                    float(item.get("qty", 0) or 0) * float(item.get("unit_price", 0) or 0), 2
+                )
+            grand_total = sum(it.get("line_total", 0) for it in line_items)
+
+            po_number = self._next_po_number(pos)
+            now = datetime.datetime.now().isoformat()
+            new_po = {
+                "id": po_number,
+                "po_number": po_number,
+                "vendor_id": body.get("vendor_id", ""),
+                "vendor": body.get("vendor", ""),
+                "project": body.get("project", ""),
+                "delivery_date": body.get("delivery_date", ""),
+                "terms": body.get("terms", "net30"),
+                "notes": body.get("notes", ""),
+                "mr_id": body.get("mr_id", body.get("from_mr", "")),
+                "from_mr": body.get("mr_id", body.get("from_mr", "")),
+                "line_items": line_items,
+                "item_count": len(line_items),
+                "total": grand_total,
+                "status": "draft",
+                "created_at": now,
+                "created": now[:10],
+                "created_by": self.get_current_user() or "system",
+            }
+            pos.append(new_po)
+            self._save_pos(pos)
+
+            # Log price history
+            self._log_price_history(new_po)
+
+            # If created from MR, update MR status to ordered and link
+            if body.get("mr_id"):
+                try:
+                    mr_path = os.path.join(DATA_DIR, "material_reqs.json")
+                    mrs = []
+                    if os.path.isfile(mr_path):
+                        with open(mr_path) as f:
+                            mrs = json.load(f)
+                    for m in mrs:
+                        if m.get("id") == body["mr_id"] or m.get("mr_number") == body["mr_id"]:
+                            m["linked_po"] = po_number
+                            m["status"] = "ordered"
+                            m["updated_at"] = now
+                            break
+                    with open(mr_path, "w") as f:
+                        json.dump(mrs, f, indent=2)
+                except Exception:
+                    pass
+
+            self._log("created_po", "purchase_order", po_number, {"vendor": new_po["vendor"], "total": grand_total})
+            self.write(json_encode({"ok": True, "id": po_number, "po_number": po_number, "total": grand_total}))
         except Exception as e:
             logger.error(f"PurchaseOrdersAPIHandler POST error: {e}", exc_info=True)
-            self.write({"status": "ok"})
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 class PricesAPIHandler(BaseHandler):
     """GET/POST /api/prices — Price list with file persistence."""
@@ -12195,7 +13426,7 @@ class ReceiptsAPIHandler(BaseHandler):
             self.write({"status": "ok"})
 
 class ReceivingAPIHandler(BaseHandler):
-    """GET/POST /api/receiving — Receiving log with file persistence."""
+    """GET/POST /api/receiving — Receiving workflow with PO matching and inventory updates."""
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -12204,10 +13435,35 @@ class ReceivingAPIHandler(BaseHandler):
             if os.path.isfile(rv_path):
                 with open(rv_path) as f:
                     deliveries = json.load(f)
-            self.write(json_encode({"deliveries": deliveries}))
+            # Also check receiving_records.json
+            rv2_path = os.path.join(DATA_DIR, "receiving_records.json")
+            if os.path.isfile(rv2_path):
+                with open(rv2_path) as f:
+                    deliveries.extend(json.load(f))
+
+            # Load open POs for expected deliveries
+            po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+            pos = []
+            if os.path.isfile(po_path):
+                with open(po_path) as f:
+                    pos = json.load(f)
+            open_pos = [p for p in pos if p.get("status") in ("sent", "acknowledged", "partial", "draft")]
+            expected = []
+            for p in open_pos:
+                expected.append({
+                    "po_number": p.get("po_number", p.get("id", "")),
+                    "vendor": p.get("vendor", ""),
+                    "delivery_date": p.get("delivery_date", ""),
+                    "line_items": p.get("line_items", []),
+                    "total": sum(float(li.get("qty", 0) or 0) * float(li.get("unit_price", 0) or 0)
+                                 for li in p.get("line_items", [])),
+                    "status": p.get("status", ""),
+                })
+
+            self.write(json_encode({"deliveries": deliveries, "expected_deliveries": expected}))
         except Exception as e:
             logger.error(f"ReceivingAPIHandler error: {e}", exc_info=True)
-            self.write({"deliveries": []})
+            self.write(json_encode({"deliveries": [], "expected_deliveries": []}))
     def post(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -12217,18 +13473,109 @@ class ReceivingAPIHandler(BaseHandler):
             if os.path.isfile(rv_path):
                 with open(rv_path) as f:
                     deliveries = json.load(f)
-            body["id"] = f"RCV-{len(deliveries)+1:04d}"
-            body["received_at"] = datetime.datetime.now().isoformat()
-            deliveries.append(body)
+
+            rcv_id = f"RCV-{len(deliveries)+1:04d}"
+            now = datetime.datetime.now().isoformat()
+
+            record = {
+                "id": rcv_id,
+                "received_at": now,
+                "received_by": body.get("received_by", self.get_current_user() or "system"),
+                "po_id": body.get("po_id", ""),
+                "vendor": body.get("vendor", ""),
+                "items": body.get("items", []),
+                "notes": body.get("notes", ""),
+                "status": "pending",  # pending -> confirmed -> discrepancy
+                "discrepancies": [],
+            }
+
+            # If confirm=true, auto-update coil inventory
+            if body.get("confirm", False):
+                record["status"] = "confirmed"
+                record["confirmed_at"] = now
+                try:
+                    coil_id = body.get("coil_id", "")
+                    qty = float(body.get("quantity_lbs", 0) or 0)
+                    if coil_id and qty > 0:
+                        inv = load_inventory()
+                        coils = inv.get("coils", {})
+                        if coil_id in coils:
+                            coils[coil_id]["stock_lbs"] = float(coils[coil_id].get("stock_lbs", 0)) + qty
+                            save_inventory(inv)
+                            record["inventory_updated"] = True
+                            record["coil_id"] = coil_id
+                            record["quantity_lbs"] = qty
+
+                            # Log the receiving transaction
+                            tx_path = os.path.join(DATA_DIR, "inventory_transactions.json")
+                            txns = []
+                            if os.path.isfile(tx_path):
+                                with open(tx_path) as f:
+                                    txns = json.load(f)
+                            txns.append({
+                                "transaction_id": f"TX-{len(txns)+1:05d}",
+                                "coil_id": coil_id,
+                                "type": "receive",
+                                "quantity_lbs": qty,
+                                "job_code": "",
+                                "reference": rcv_id,
+                                "notes": f"Received via {rcv_id}" + (f" (PO: {record['po_id']})" if record['po_id'] else ""),
+                                "date": now,
+                            })
+                            with open(tx_path, "w") as f:
+                                json.dump(txns, f, indent=2)
+                except Exception as inv_err:
+                    logger.warning(f"Receiving inventory update failed: {inv_err}")
+
+                # Track discrepancies (ordered qty vs received qty)
+                ordered_qty = float(body.get("ordered_qty", 0) or 0)
+                received_qty = float(body.get("quantity_lbs", 0) or 0)
+                if ordered_qty > 0 and abs(ordered_qty - received_qty) > 0.5:
+                    record["discrepancies"].append({
+                        "type": "quantity",
+                        "ordered": ordered_qty,
+                        "received": received_qty,
+                        "difference": round(received_qty - ordered_qty, 1),
+                        "notes": body.get("discrepancy_notes", ""),
+                    })
+                    record["status"] = "discrepancy"
+
+                # Link back to PO and update PO status
+                if record["po_id"]:
+                    try:
+                        po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+                        if os.path.isfile(po_path):
+                            with open(po_path) as f:
+                                pos = json.load(f)
+                            for po in pos:
+                                if po.get("id") == record["po_id"]:
+                                    po["receiving_id"] = rcv_id
+                                    po["received_at"] = now
+                                    if record["status"] == "discrepancy":
+                                        po["status"] = "partial_received"
+                                    else:
+                                        po["status"] = "received"
+                                    break
+                            with open(po_path, "w") as f:
+                                json.dump(pos, f, indent=2)
+                    except Exception:
+                        pass
+
+            deliveries.append(record)
             with open(rv_path, "w") as f:
                 json.dump(deliveries, f, indent=2)
-            self.write({"status": "ok", "id": body["id"]})
+
+            self.write(json_encode({
+                "status": "ok",
+                "id": rcv_id,
+                "record": record,
+            }))
         except Exception as e:
             logger.error(f"ReceivingAPIHandler POST error: {e}", exc_info=True)
-            self.write({"status": "ok"})
+            self.write(json_encode({"status": "error", "error": str(e)}))
 
 class VendorsAPIHandler(BaseHandler):
-    """GET/POST /api/vendors — Vendor directory with file persistence."""
+    """GET/POST /api/vendors — Vendor directory with performance tracking and PO history."""
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -12237,10 +13584,75 @@ class VendorsAPIHandler(BaseHandler):
             if os.path.isfile(v_path):
                 with open(v_path) as f:
                     vendors = json.load(f)
+
+            # Load POs to enrich vendor data
+            po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+            pos = []
+            if os.path.isfile(po_path):
+                with open(po_path) as f:
+                    pos = json.load(f)
+
+            # Load receiving records for on-time calculation
+            rv_path = os.path.join(DATA_DIR, "receiving.json")
+            recv_records = []
+            if os.path.isfile(rv_path):
+                with open(rv_path) as f:
+                    recv_records = json.load(f)
+
+            vendor_pos = {}
+            for p in pos:
+                vname = (p.get("vendor", "") or "").lower()
+                vid = p.get("vendor_id", "")
+                key = vid or vname
+                if key:
+                    vendor_pos.setdefault(key, []).append(p)
+
+            for v in vendors:
+                vid = v.get("id", "")
+                vname = (v.get("name", "") or "").lower()
+                key = vid or vname
+                v_pos = vendor_pos.get(key, []) or vendor_pos.get(vname, [])
+                v["po_history"] = v_pos[-20:]
+                v["active_pos"] = len([p for p in v_pos if p.get("status") in ("draft","sent","acknowledged","partial")])
+                v["total_pos"] = len(v_pos)
+                v["total_spend"] = sum(
+                    sum(float(li.get("qty", 0) or 0) * float(li.get("unit_price", 0) or 0)
+                        for li in p.get("line_items", []))
+                    for p in v_pos
+                )
+
+                # On-time delivery rate
+                delivered = [r for r in recv_records if (r.get("vendor", "") or "").lower() == vname]
+                on_time = 0
+                total_deliveries = len(delivered)
+                for d in delivered:
+                    exp_date = d.get("expected_date", "")
+                    arr_date = d.get("arrived_date", d.get("received_at", "")[:10] if d.get("received_at") else "")
+                    if exp_date and arr_date and arr_date <= exp_date:
+                        on_time += 1
+                v["on_time_pct"] = round((on_time / total_deliveries * 100) if total_deliveries > 0 else 0)
+
+                # Quality score
+                quality_issues = sum(len(d.get("discrepancies", [])) for d in delivered)
+                v["quality_score"] = round(max(0, 100 - (quality_issues / max(total_deliveries, 1) * 20)))
+
+                # Avg lead time
+                lead_times = []
+                for p in v_pos:
+                    if p.get("status") == "received" and p.get("created_at") and p.get("updated_at"):
+                        try:
+                            created = datetime.datetime.fromisoformat(p["created_at"][:19])
+                            received = datetime.datetime.fromisoformat(p["updated_at"][:19])
+                            lead_times.append((received - created).days)
+                        except Exception:
+                            pass
+                v["avg_lead_time"] = round(sum(lead_times) / len(lead_times)) if lead_times else 0
+
             self.write(json_encode({"vendors": vendors}))
         except Exception as e:
             logger.error(f"VendorsAPIHandler error: {e}", exc_info=True)
-            self.write({"vendors": []})
+            self.write(json_encode({"vendors": []}))
+
     def post(self):
         self.set_header("Content-Type", "application/json")
         try:
@@ -12250,15 +13662,39 @@ class VendorsAPIHandler(BaseHandler):
             if os.path.isfile(v_path):
                 with open(v_path) as f:
                     vendors = json.load(f)
+
+            # Handle edit
+            if body.get("action") == "edit":
+                vendor_id = body.get("id", "")
+                for v in vendors:
+                    if v.get("id") == vendor_id:
+                        for key in ["name","category","contact","email","phone","payment_terms",
+                                     "address","rating","status","tax_id","notes","certifications"]:
+                            if key in body:
+                                v[key] = body[key]
+                        v["updated_at"] = datetime.datetime.now().isoformat()
+                        with open(v_path, "w") as f:
+                            json.dump(vendors, f, indent=2)
+                        self.write(json_encode({"ok": True, "id": vendor_id}))
+                        return
+                self.write(json_encode({"ok": False, "error": "Vendor not found"}))
+                return
+
+            now = datetime.datetime.now().isoformat()
             body["id"] = f"VND-{len(vendors)+1:04d}"
-            body["created_at"] = datetime.datetime.now().isoformat()
+            body["created_at"] = now
+            body.setdefault("status", "active")
+            body.setdefault("rating", "3")
+            body.setdefault("certifications", [])
             vendors.append(body)
             with open(v_path, "w") as f:
                 json.dump(vendors, f, indent=2)
-            self.write({"status": "ok", "id": body["id"]})
+            self._log("added_vendor", "vendor", body["id"], {"name": body.get("name", "")})
+            self.write(json_encode({"ok": True, "id": body["id"]}))
         except Exception as e:
             logger.error(f"VendorsAPIHandler POST error: {e}", exc_info=True)
-            self.write({"status": "ok"})
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 class AdminSettingsPageHandler(BaseHandler):
     def get(self):
@@ -12435,12 +13871,75 @@ class WorkflowsAPIHandler(BaseHandler):
         self.write({"status": "ok"})
 
 class TraceabilityMainAPIHandler(BaseHandler):
+    """GET/POST /api/traceability — Full traceability data."""
     def get(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"data": []})
+        try:
+            idx = load_traceability_index()
+            materials = []
+            for hn, data in idx.get("heat_numbers", {}).items():
+                coils = data.get("coils", [])
+                members = data.get("members", [])
+                projects = list({m.get("job_code", "") for m in members if m.get("job_code")})
+                for coil in coils:
+                    materials.append({
+                        "heat_number": hn,
+                        "coil_id": coil.get("coil_tag", ""),
+                        "grade": data.get("material_spec", ""),
+                        "supplier": data.get("mill_name", ""),
+                        "project": ", ".join(projects[:3]) if projects else "",
+                        "status": "in_use" if members else ("verified" if data.get("mtr_path") else "pending"),
+                        "mill_cert": data.get("mtr_path", ""),
+                    })
+                if not coils:
+                    materials.append({
+                        "heat_number": hn, "coil_id": "",
+                        "grade": data.get("material_spec", ""),
+                        "supplier": data.get("mill_name", ""),
+                        "project": ", ".join(projects[:3]) if projects else "",
+                        "status": "in_use" if members else "pending",
+                        "mill_cert": data.get("mtr_path", ""),
+                    })
+            # Also pull from inventory coils with heat numbers
+            inv = load_inventory()
+            existing = {m["heat_number"] for m in materials}
+            for cid, c in inv.get("coils", {}).items():
+                hn = c.get("heat_number", "")
+                if hn and hn not in existing:
+                    materials.append({
+                        "heat_number": hn, "coil_id": cid,
+                        "grade": c.get("material_spec", c.get("gauge", "")),
+                        "supplier": c.get("supplier", c.get("mill_name", "")),
+                        "project": "",
+                        "status": "in_use" if float(c.get("committed_lbs", 0) or 0) > 0 else "pending",
+                        "mill_cert": c.get("cert_path", ""),
+                    })
+            self.write(json_encode({"materials": materials}))
+        except Exception as e:
+            logger.error(f"TraceabilityMainAPIHandler error: {e}", exc_info=True)
+            self.write(json_encode({"materials": []}))
+
     def post(self):
         self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+        try:
+            body = json_decode(self.request.body)
+            heat_number = body.get("heat_number", "").strip()
+            coil_id = body.get("coil_id", "").strip()
+            if not heat_number:
+                self.write(json_encode({"ok": False, "error": "heat_number required"}))
+                return
+            result = register_heat_number(
+                heat_number, coil_id or heat_number,
+                material_spec=body.get("grade", body.get("material_spec", "")),
+                mill_name=body.get("supplier", body.get("mill_name", "")),
+                mtr_path=body.get("mill_cert", ""),
+            )
+            self._log("registered_material", "traceability", heat_number, {"coil": coil_id})
+            self.write(json_encode({"ok": True, "heat": result}))
+        except Exception as e:
+            logger.error(f"TraceabilityMainAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 class AuditAPIHandler(BaseHandler):
     """GET /api/audit — Generate audit trail from project modifications and activity log."""
@@ -12615,87 +14114,488 @@ class WorkStationLogAPIHandler(BaseHandler):
         self.write({"status": "ok"})
 
 class WorkStationQueueAPIHandler(BaseHandler):
-    """GET /api/work-station/queue — Pull pending/in-progress work orders."""
+    """GET /api/work-station/queue — Machine queue grouped by machine_id.
+    Returns: { machines: [ { machine_id, machine_name, queue: [wo1, ...], total_hours } ] }
+    POST: Reorder queue items for a machine (body: { machine_id, order: [wo_id1, wo_id2, ...] })
+    """
     def get(self):
         self.set_header("Content-Type", "application/json")
         try:
-            queue_items = []
+            from shop_drawings.work_orders import list_all_work_orders
+            from shop_drawings.config import MACHINES
+
+            all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+
+            # Active WOs (not complete/shipped)
+            active_wos = [wo for wo in all_wos if wo.get("status") not in ("complete", "shipped")]
+
+            # Group by machine_id
+            machine_queues = {}
+            unassigned = []
+            for wo in active_wos:
+                m_id = wo.get("machine_id", "")
+                if m_id:
+                    if m_id not in machine_queues:
+                        m_info = MACHINES.get(m_id, {})
+                        machine_queues[m_id] = {
+                            "machine_id": m_id,
+                            "machine_name": m_info.get("name", m_id),
+                            "location": m_info.get("location", ""),
+                            "queue": [],
+                            "total_hours": 0.0,
+                        }
+                    machine_queues[m_id]["queue"].append(wo)
+                    machine_queues[m_id]["total_hours"] += wo.get("estimated_hours", 0)
+                else:
+                    unassigned.append(wo)
+
+            # Sort each queue by priority then due_date
+            priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+            for m_id in machine_queues:
+                machine_queues[m_id]["queue"].sort(key=lambda w: (
+                    priority_order.get(w.get("priority", "normal"), 2),
+                    w.get("due_date", "9999"),
+                ))
+                machine_queues[m_id]["total_hours"] = round(machine_queues[m_id]["total_hours"], 1)
+
+            machines_list = sorted(machine_queues.values(), key=lambda m: len(m["queue"]), reverse=True)
+
+            self.write(json_encode({
+                "data": active_wos[:50],  # backward compat
+                "machines": machines_list,
+                "unassigned": unassigned,
+                "total_active": len(active_wos),
+            }))
+        except Exception as e:
+            logger.error(f"WorkStationQueueAPIHandler error: {e}", exc_info=True)
+            self.write(json_encode({"data": [], "machines": [], "unassigned": []}))
+
+    def post(self):
+        """Reorder queue or assign a WO to a machine."""
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            action = body.get("action", "reorder")
+
+            if action == "assign":
+                # Quick-assign a WO to a machine
+                job_code = body.get("job_code", "").strip()
+                wo_id = body.get("wo_id", "").strip()
+                machine_id = body.get("machine_id", "").strip()
+                operator = body.get("operator", "")
+                if not job_code or not wo_id or not machine_id:
+                    self.write(json_encode({"ok": False, "error": "Missing job_code, wo_id, or machine_id"}))
+                    return
+                wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+                if wo is None:
+                    self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                    return
+                wo.machine_id = machine_id
+                if operator:
+                    wo.operator = operator
+                save_work_order(SHOP_DRAWINGS_DIR, wo)
+                self.write(json_encode({"ok": True, "work_order": wo.summary()}))
+            else:
+                # Reorder is stored client-side for now
+                self.write(json_encode({"ok": True, "message": "Queue order updated"}))
+        except Exception as e:
+            logger.error(f"WorkStationQueueAPIHandler POST error: {e}", exc_info=True)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+class ShippingActiveAPIHandler(BaseHandler):
+    """GET/POST /api/shipping/active — Active shipment tracking with status management."""
+    def _load(self):
+        fpath = os.path.join(DATA_DIR, "shipping_active.json")
+        if os.path.isfile(fpath):
+            with open(fpath) as f:
+                return json.load(f)
+        return []
+
+    def _save(self, data):
+        fpath = os.path.join(DATA_DIR, "shipping_active.json")
+        with open(fpath, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            shipments = self._load()
+            # Also pull from load_builder finalized loads not yet tracked
+            try:
+                lb_data = _load_builder_data()
+                for load in lb_data.get("loads", []):
+                    if load.get("status") == "ready":
+                        already = any(s.get("load_id") == load["load_id"] for s in shipments)
+                        if not already:
+                            shipments.append({
+                                "id": load["load_id"],
+                                "load_id": load["load_id"],
+                                "project": load.get("job_code", ""),
+                                "origin": "Titan Carports HQ",
+                                "destination": "",
+                                "carrier": "",
+                                "driver": load.get("driver", ""),
+                                "truck": load.get("truck_number", ""),
+                                "status": "loading",
+                                "created_at": load.get("created_at", ""),
+                            })
+            except Exception:
+                pass
+            self.write(json_encode({"shipments": shipments}))
+        except Exception as e:
+            logger.error(f"ShippingActiveAPIHandler error: {e}", exc_info=True)
+            self.write({"shipments": []})
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            shipments = self._load()
+            action = body.get("action", "create")
+
+            if action in ("update_status", "deliver"):
+                ship_id = body.get("id", "")
+                for s in shipments:
+                    if s.get("id") == ship_id or s.get("load_id") == ship_id:
+                        s["status"] = body.get("status", s.get("status"))
+                        if body.get("delivered_date"):
+                            s["delivered_date"] = body["delivered_date"]
+                        if body.get("received_by"):
+                            s["received_by"] = body["received_by"]
+                        if body.get("delivery_notes"):
+                            s["delivery_notes"] = body["delivery_notes"]
+                        s["updated_at"] = datetime.datetime.now().isoformat()
+                        break
+                self._save(shipments)
+                self.write({"status": "ok"})
+                return
+
+            # Create new shipment
+            ship_id = body.get("load_id") or f"SHIP-{datetime.datetime.now().strftime('%Y')}-{len(shipments)+1:04d}"
+            new_ship = {
+                "id": ship_id,
+                "load_id": body.get("load_id", ship_id),
+                "project": body.get("project", ""),
+                "origin": body.get("origin", "Titan Carports HQ"),
+                "destination": body.get("destination", ""),
+                "carrier": body.get("carrier", ""),
+                "driver": body.get("driver", ""),
+                "truck": body.get("truck", ""),
+                "trailer": body.get("trailer", ""),
+                "departure": body.get("departure", ""),
+                "eta": body.get("eta", ""),
+                "status": body.get("status", "loading"),
+                "created_at": datetime.datetime.now().isoformat(),
+            }
+            shipments.append(new_ship)
+            self._save(shipments)
+            self.write({"status": "ok", "id": ship_id})
+        except Exception as e:
+            logger.error(f"ShippingActiveAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
+
+class ShippingBOLAPIHandler(BaseHandler):
+    """GET/POST /api/shipping/bol-data — BOL data management with persistent storage."""
+    def _load(self):
+        fpath = os.path.join(DATA_DIR, "shipping_bols.json")
+        if os.path.isfile(fpath):
+            with open(fpath) as f:
+                return json.load(f)
+        return []
+
+    def _save(self, data):
+        fpath = os.path.join(DATA_DIR, "shipping_bols.json")
+        with open(fpath, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            bols = self._load()
+            self.write(json_encode({"bols": bols}))
+        except Exception as e:
+            logger.error(f"ShippingBOLAPIHandler GET error: {e}", exc_info=True)
+            self.write({"bols": []})
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            bols = self._load()
+            action = body.get("action", "")
+
+            if action == "void":
+                bol_id = body.get("id", "")
+                for b in bols:
+                    if b.get("id") == bol_id:
+                        b["status"] = "void"
+                        b["voided_at"] = datetime.datetime.now().isoformat()
+                        break
+                self._save(bols)
+                self.write({"status": "ok"})
+                return
+
+            existing_id = body.get("id")
+            if existing_id:
+                for i, b in enumerate(bols):
+                    if b.get("id") == existing_id:
+                        body["updated_at"] = datetime.datetime.now().isoformat()
+                        bols[i] = {**b, **body}
+                        break
+            else:
+                year = datetime.datetime.now().year
+                existing_nums = []
+                for b in bols:
+                    try:
+                        parts = b.get("id", "").split("-")
+                        if len(parts) >= 3:
+                            existing_nums.append(int(parts[-1]))
+                    except (ValueError, IndexError):
+                        pass
+                next_num = max(existing_nums, default=0) + 1
+                body["id"] = f"BOL-{year}-{next_num:04d}"
+                if not body.get("bol_number"):
+                    body["bol_number"] = body["id"]
+                body["created_at"] = datetime.datetime.now().isoformat()
+                body["created_by"] = self.get_current_user() or "admin"
+                bols.append(body)
+
+            self._save(bols)
+            self.write({"status": "ok", "id": body.get("id", "")})
+        except Exception as e:
+            logger.error(f"ShippingBOLAPIHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write({"status": "error", "error": str(e)})
+
+class ShippingBOLPDFHandler(BaseHandler):
+    """GET /api/shipping/bol/pdf/<bol_id> — Generate BOL PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self, bol_id):
+        try:
+            # Load BOL data
+            fpath = os.path.join(DATA_DIR, "shipping_bols.json")
+            bols = []
+            if os.path.isfile(fpath):
+                with open(fpath) as f:
+                    bols = json.load(f)
+            bol = None
+            for b in bols:
+                if b.get("id") == bol_id or b.get("bol_number") == bol_id:
+                    bol = b
+                    break
+
+            if not bol:
+                self.set_status(404)
+                self.write("BOL not found")
+                return
+
+            # Generate simple text-based PDF content
+            from io import BytesIO
+            try:
+                from reportlab.lib.pagesizes import letter
+                from reportlab.lib.units import inch
+                from reportlab.pdfgen import canvas as pdf_canvas
+
+                buf = BytesIO()
+                c = pdf_canvas.Canvas(buf, pagesize=letter)
+                w, h = letter
+
+                # Header
+                c.setFont("Helvetica-Bold", 20)
+                c.drawString(1*inch, h - 1*inch, "BILL OF LADING")
+                c.setFont("Helvetica", 10)
+                c.drawString(1*inch, h - 1.3*inch, "Titan Carports")
+                c.drawRightString(w - 1*inch, h - 1*inch, f"BOL #: {bol.get('bol_number', '')}")
+                c.drawRightString(w - 1*inch, h - 1.2*inch, f"Date: {bol.get('date', '')}")
+
+                y = h - 1.8*inch
+                c.setFont("Helvetica-Bold", 11)
+                c.drawString(1*inch, y, "SHIPPER")
+                c.drawString(4*inch, y, "CONSIGNEE")
+                y -= 15
+                c.setFont("Helvetica", 10)
+                c.drawString(1*inch, y, bol.get("shipper", "Titan Carports"))
+                c.drawString(4*inch, y, bol.get("consignee", ""))
+                y -= 12
+                c.drawString(1*inch, y, bol.get("shipper_address", ""))
+                c.drawString(4*inch, y, bol.get("consignee_address", ""))
+
+                y -= 30
+                c.setFont("Helvetica-Bold", 11)
+                c.drawString(1*inch, y, "CARRIER INFORMATION")
+                y -= 15
+                c.setFont("Helvetica", 10)
+                c.drawString(1*inch, y, f"Carrier: {bol.get('carrier', '')}")
+                c.drawString(4*inch, y, f"Driver: {bol.get('driver', '')}")
+                y -= 12
+                c.drawString(1*inch, y, f"Truck #: {bol.get('truck', '')}")
+                c.drawString(4*inch, y, f"Trailer #: {bol.get('trailer', '')}")
+
+                # Items table
+                y -= 30
+                c.setFont("Helvetica-Bold", 11)
+                c.drawString(1*inch, y, "ITEMS")
+                y -= 5
+                c.line(1*inch, y, w - 1*inch, y)
+                y -= 15
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(1*inch, y, "Description")
+                c.drawString(5*inch, y, "Qty")
+                c.drawString(6*inch, y, "Weight (lbs)")
+                y -= 3
+                c.line(1*inch, y, w - 1*inch, y)
+                y -= 12
+
+                c.setFont("Helvetica", 9)
+                for item in bol.get("items", []):
+                    if y < 2*inch:
+                        c.showPage()
+                        y = h - 1*inch
+                    c.drawString(1*inch, y, str(item.get("description", "")))
+                    c.drawString(5*inch, y, str(item.get("quantity", "")))
+                    c.drawString(6*inch, y, str(item.get("weight", "")))
+                    y -= 14
+
+                y -= 10
+                c.line(1*inch, y, w - 1*inch, y)
+                y -= 15
+                c.setFont("Helvetica-Bold", 10)
+                c.drawString(1*inch, y, f"Total Pieces: {bol.get('total_pieces', 0)}")
+                c.drawString(4*inch, y, f"Total Weight: {bol.get('total_weight', 0)} lbs")
+
+                if bol.get("notes"):
+                    y -= 30
+                    c.setFont("Helvetica-Bold", 10)
+                    c.drawString(1*inch, y, "Special Instructions:")
+                    y -= 14
+                    c.setFont("Helvetica", 9)
+                    c.drawString(1*inch, y, bol.get("notes", ""))
+
+                if bol.get("hazmat"):
+                    y -= 20
+                    c.setFont("Helvetica-Bold", 10)
+                    c.setFillColorRGB(0.8, 0, 0)
+                    c.drawString(1*inch, y, "*** CONTAINS HAZARDOUS MATERIALS ***")
+                    c.setFillColorRGB(0, 0, 0)
+
+                # Signature line
+                y -= 40
+                c.line(1*inch, y, 3.5*inch, y)
+                c.line(4*inch, y, 6.5*inch, y)
+                y -= 12
+                c.setFont("Helvetica", 8)
+                c.drawString(1*inch, y, "Shipper Signature / Date")
+                c.drawString(4*inch, y, "Driver Signature / Date")
+
+                c.save()
+                pdf_bytes = buf.getvalue()
+
+                self.set_header("Content-Type", "application/pdf")
+                self.set_header("Content-Disposition", f'inline; filename="BOL-{bol.get("bol_number", "")}.pdf"')
+                self.write(pdf_bytes)
+
+            except ImportError:
+                # Fallback: plain text if reportlab not available
+                self.set_header("Content-Type", "text/plain")
+                lines = [
+                    f"BILL OF LADING - {bol.get('bol_number', '')}",
+                    f"Date: {bol.get('date', '')}",
+                    f"Shipper: {bol.get('shipper', '')}",
+                    f"Consignee: {bol.get('consignee', '')}",
+                    f"Carrier: {bol.get('carrier', '')} | Driver: {bol.get('driver', '')}",
+                    f"Truck: {bol.get('truck', '')} | Trailer: {bol.get('trailer', '')}",
+                    "",
+                    "ITEMS:",
+                ]
+                for item in bol.get("items", []):
+                    lines.append(f"  {item.get('description', '')} | Qty: {item.get('quantity', '')} | Wt: {item.get('weight', '')} lbs")
+                lines.append(f"\nTotal: {bol.get('total_pieces', 0)} pcs, {bol.get('total_weight', 0)} lbs")
+                if bol.get("notes"):
+                    lines.append(f"\nNotes: {bol.get('notes', '')}")
+                self.write("\n".join(lines))
+
+        except Exception as e:
+            logger.error(f"ShippingBOLPDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"Error generating PDF: {e}")
+
+class ShippingAvailableItemsHandler(BaseHandler):
+    """GET /api/shipping/available — Get completed WO items available for shipping."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            items = []
+            project_filter = self.get_argument("project", "")
+
+            # Pull completed items from work orders
             try:
                 from shop_drawings.work_orders import list_all_work_orders
                 all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
                 for wo in all_wos:
-                    status = wo.get("status", "")
-                    if status in ("pending", "in_progress", "in-progress", "active", ""):
-                        queue_items.append(wo)
-            except Exception:
-                pass
-            self.write(json_encode({"data": queue_items[:50]}))
-        except Exception as e:
-            logger.error(f"WorkStationQueueAPIHandler error: {e}", exc_info=True)
-            self.write({"data": []})
-    def post(self):
-        self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
-
-class ShippingActiveAPIHandler(BaseHandler):
-    """GET /api/shipping/active — Pull active shipping data from projects."""
-    def get(self):
-        self.set_header("Content-Type", "application/json")
-        try:
-            shipments = []
-            # Check for shipping docs across projects
-            try:
-                from shop_drawings.shipping_docs import load_shipping_docs
-                if os.path.isdir(SHOP_DRAWINGS_DIR):
-                    for project_dir in os.listdir(SHOP_DRAWINGS_DIR):
+                    if wo.get("status") in ("complete", "completed", "ready_to_ship"):
+                        job_code = wo.get("job_code", "")
+                        if project_filter and job_code != project_filter:
+                            continue
+                        # Get project name
+                        proj_name = job_code
                         try:
-                            docs = load_shipping_docs(SHOP_DRAWINGS_DIR, project_dir, None)
-                            for doc in docs:
-                                doc["job_code"] = project_dir
-                                shipments.append(doc)
+                            meta_path = os.path.join(PROJECTS_DIR, job_code, "metadata.json")
+                            if os.path.isfile(meta_path):
+                                with open(meta_path) as f:
+                                    meta = json.load(f)
+                                proj_name = meta.get("project_name", job_code)
                         except Exception:
                             pass
+
+                        for item in wo.get("items", []):
+                            items.append({
+                                "id": f"{job_code}-{wo.get('wo_id', '')}-{item.get('item_id', '')}",
+                                "job_code": job_code,
+                                "project_name": proj_name,
+                                "wo_id": wo.get("wo_id", ""),
+                                "mark": item.get("mark", item.get("item_id", "")),
+                                "description": item.get("description", item.get("component", "")),
+                                "quantity": item.get("quantity", 1),
+                                "weight": item.get("weight", 0),
+                                "length": item.get("length", 0),
+                                "dimensions": item.get("dimensions", ""),
+                            })
             except Exception:
                 pass
-            # Also check for projects in shipping/install stage
-            try:
-                os.makedirs(PROJECTS_DIR, exist_ok=True)
-                for d in os.listdir(PROJECTS_DIR):
-                    dpath = os.path.join(PROJECTS_DIR, d)
-                    meta_path = os.path.join(dpath, "metadata.json")
-                    if os.path.isdir(dpath) and os.path.isfile(meta_path):
-                        try:
+
+            # If no WO items, provide sample data for demo
+            if not items:
+                try:
+                    os.makedirs(PROJECTS_DIR, exist_ok=True)
+                    for d in os.listdir(PROJECTS_DIR):
+                        if project_filter and d != project_filter:
+                            continue
+                        meta_path = os.path.join(PROJECTS_DIR, d, "metadata.json")
+                        if os.path.isfile(meta_path):
                             with open(meta_path) as f:
                                 meta = json.load(f)
-                            if meta.get("stage") in ("shipping", "install"):
-                                already = any(s.get("job_code") == d for s in shipments)
-                                if not already:
-                                    shipments.append({
-                                        "job_code": d,
-                                        "project_name": meta.get("project_name", d),
-                                        "stage": meta.get("stage"),
-                                        "type": "project_shipping",
-                                        "status": "active",
-                                    })
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            self.write(json_encode({"data": shipments[:50]}))
-        except Exception as e:
-            logger.error(f"ShippingActiveAPIHandler error: {e}", exc_info=True)
-            self.write({"data": []})
-    def post(self):
-        self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+                            proj_name = meta.get("project_name", d)
+                            # Generate placeholder items from project
+                            for idx, comp in enumerate(["Rafters", "Columns", "Purlins", "Girts", "Trim Pack"]):
+                                items.append({
+                                    "id": f"{d}-{comp.lower()}-{idx}",
+                                    "job_code": d,
+                                    "project_name": proj_name,
+                                    "mark": f"{comp[0]}{idx+1}",
+                                    "description": comp,
+                                    "quantity": 2 + idx,
+                                    "weight": 500 + idx * 200,
+                                    "length": 6 + idx * 2,
+                                })
+                except Exception:
+                    pass
 
-class ShippingBOLAPIHandler(BaseHandler):
-    def get(self):
-        self.set_header("Content-Type", "application/json")
-        self.write({"data": []})
-    def post(self):
-        self.set_header("Content-Type", "application/json")
-        self.write({"status": "ok"})
+            self.write(json_encode({"items": items}))
+        except Exception as e:
+            logger.error(f"ShippingAvailableItemsHandler error: {e}", exc_info=True)
+            self.write(json_encode({"items": []}))
 
 class ShippingBuildAPIHandler(BaseHandler):
     def get(self):
@@ -13601,6 +15501,45 @@ class NotificationsAPIHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
 
+    def delete(self):
+        """DELETE /api/notifications — Clear all notifications for this user."""
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            # Mark everything as read (effectively "cleared")
+            read_ids = set()
+            if USE_SQLITE:
+                import db as _db
+                entries = _db.get_activity_log(limit=500, offset=0)
+                for entry in entries:
+                    eid = str(entry.get("id", entry.get("timestamp", "")))
+                    read_ids.add(eid)
+            self._save_read_status(username, read_ids)
+            self.write(json_encode({"ok": True, "message": "All notifications cleared"}))
+        except Exception as e:
+            logger.error(f"NotificationsAPIHandler.delete() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def put(self):
+        """PUT /api/notifications — Mark all notifications as read."""
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            read_ids = self._load_read_status(username)
+            if USE_SQLITE:
+                import db as _db
+                entries = _db.get_activity_log(limit=500, offset=0)
+                for entry in entries:
+                    eid = str(entry.get("id", entry.get("timestamp", "")))
+                    read_ids.add(eid)
+            self._save_read_status(username, read_ids)
+            self.write(json_encode({"ok": True, "message": "All marked as read"}))
+        except Exception as e:
+            logger.error(f"NotificationsAPIHandler.put() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
     def _format_message(self, entry):
         """Format an activity log entry into a human-readable notification message."""
         user = entry.get("user", "Someone")
@@ -13617,6 +15556,156 @@ class NotificationsAPIHandler(BaseHandler):
         if len(msg) > 120:
             msg = msg[:117] + "..."
         return msg
+
+
+# ─────────────────────────────────────────────
+# ONBOARDING PROGRESS HANDLER
+# ─────────────────────────────────────────────
+
+class OnboardingProgressHandler(BaseHandler):
+    """GET/POST /api/onboarding/progress — Track user onboarding step completion."""
+
+    def _progress_path(self):
+        return os.path.join(DATA_DIR, "onboarding_progress.json")
+
+    def _load_all(self):
+        path = self._progress_path()
+        if os.path.isfile(path):
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def get(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            all_data = self._load_all()
+            user_data = all_data.get(username, {})
+            self.write(json_encode({"ok": True, "steps": user_data}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            username = self.get_current_user() or "local"
+            body = json_decode(self.request.body)
+            steps = body.get("steps", {})
+            all_data = self._load_all()
+            all_data[username] = steps
+            path = self._progress_path()
+            with open(path, "w") as f:
+                json.dump(all_data, f)
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# ADMIN DATA CLEANUP HANDLER
+# ─────────────────────────────────────────────
+
+class AdminDataCleanupHandler(BaseHandler):
+    """POST /api/admin/cleanup — Admin data management actions."""
+    required_roles = ["admin"]
+
+    def post(self):
+        try:
+            self.set_header("Content-Type", "application/json")
+            body = json_decode(self.request.body)
+            action = body.get("action", "")
+
+            if action == "clear_notifications":
+                username = self.get_current_user() or "local"
+                notif_dir = os.path.join(DATA_DIR, "notifications")
+                os.makedirs(notif_dir, exist_ok=True)
+                path = os.path.join(notif_dir, f"{username}.json")
+                with open(path, "w") as f:
+                    json.dump({"read_ids": []}, f)
+                self.write(json_encode({"ok": True, "message": "Notifications cleared"}))
+
+            elif action == "reset_notification_count":
+                username = self.get_current_user() or "local"
+                notif_dir = os.path.join(DATA_DIR, "notifications")
+                os.makedirs(notif_dir, exist_ok=True)
+                # Mark all as read
+                path = os.path.join(notif_dir, f"{username}.json")
+                read_ids = set()
+                if USE_SQLITE:
+                    import db as _db
+                    entries = _db.get_activity_log(limit=500, offset=0)
+                    for entry in entries:
+                        eid = str(entry.get("id", entry.get("timestamp", "")))
+                        read_ids.add(eid)
+                with open(path, "w") as f:
+                    json.dump({"read_ids": list(read_ids)}, f)
+                self.write(json_encode({"ok": True, "message": "Notification count reset"}))
+
+            elif action == "clean_demo_projects":
+                if USE_SQLITE:
+                    import db as _db
+                    projects = _db.list_projects()
+                    removed = []
+                    for p in projects:
+                        name = (p.get("name") or p.get("project_name") or "").lower()
+                        job = (p.get("job_code") or "").lower()
+                        if "test" in name or "demo" in name or "test" in job or "demo" in job:
+                            try:
+                                _db.delete_project(p.get("job_code") or p.get("id"))
+                                removed.append(p.get("job_code") or p.get("name"))
+                            except Exception:
+                                pass
+                    self.write(json_encode({"ok": True, "removed": removed, "count": len(removed)}))
+                else:
+                    self.write(json_encode({"ok": True, "removed": [], "count": 0, "message": "No SQLite"}))
+
+            elif action == "system_info":
+                info = {"total_projects": 0, "total_customers": 0, "total_work_orders": 0}
+                if USE_SQLITE:
+                    import db as _db
+                    try:
+                        info["total_projects"] = len(_db.list_projects())
+                    except Exception:
+                        pass
+                    try:
+                        info["total_customers"] = len(_db.list_customers())
+                    except Exception:
+                        pass
+                    try:
+                        info["total_work_orders"] = len(_db.list_work_orders())
+                    except Exception:
+                        pass
+                # Disk usage
+                try:
+                    import shutil
+                    total, used, free = shutil.disk_usage(DATA_DIR)
+                    info["disk_used_mb"] = round(used / (1024 * 1024), 1)
+                    info["disk_free_mb"] = round(free / (1024 * 1024), 1)
+                except Exception:
+                    pass
+                # Data dir size
+                try:
+                    dir_size = sum(
+                        os.path.getsize(os.path.join(dp, f))
+                        for dp, dn, fn in os.walk(DATA_DIR) for f in fn
+                    )
+                    info["data_dir_mb"] = round(dir_size / (1024 * 1024), 1)
+                except Exception:
+                    pass
+                self.write(json_encode({"ok": True, "info": info}))
+
+            else:
+                self.write(json_encode({"ok": False, "error": f"Unknown action: {action}"}))
+
+        except Exception as e:
+            logger.error(f"AdminDataCleanupHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 # ─────────────────────────────────────────────
@@ -14768,6 +16857,433 @@ class CustomerReportPDFHandler(BaseHandler):
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
+class TraceabilityLookupAPIHandler(BaseHandler):
+    """GET /api/traceability/lookup?heat_number=XXXX — Full chain lookup."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            heat_number = self.get_query_argument("heat_number", "").strip()
+            if not heat_number:
+                self.write(json_encode({"ok": False, "error": "heat_number parameter required"}))
+                return
+
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            matched_coil = None
+            matched_coil_id = None
+            for cid, c in coils.items():
+                if c.get("heat_number", "") == heat_number:
+                    matched_coil = c
+                    matched_coil_id = cid
+                    break
+
+            idx = load_traceability_index()
+            heat_data = idx.get("heat_numbers", {}).get(heat_number, {})
+
+            if not matched_coil and heat_data.get("coils"):
+                coil_tag = heat_data["coils"][0].get("coil_tag", "")
+                for cid, c in coils.items():
+                    if cid == coil_tag or c.get("name", "") == coil_tag:
+                        matched_coil = c
+                        matched_coil_id = cid
+                        break
+
+            coil_info = None
+            if matched_coil:
+                coil_info = {
+                    "coil_id": matched_coil_id,
+                    "name": matched_coil.get("name", matched_coil_id),
+                    "gauge": matched_coil.get("gauge", ""),
+                    "type": matched_coil.get("type", ""),
+                    "stock_lbs": matched_coil.get("stock_lbs", 0),
+                    "committed_lbs": matched_coil.get("committed_lbs", 0),
+                    "supplier": matched_coil.get("supplier", ""),
+                    "material_spec": heat_data.get("material_spec", matched_coil.get("material_spec", "")),
+                    "mill_name": heat_data.get("mill_name", matched_coil.get("mill_name", "")),
+                }
+
+            alloc_path = os.path.join(DATA_DIR, "inventory_allocations.json")
+            allocs = []
+            if os.path.isfile(alloc_path):
+                with open(alloc_path) as f:
+                    allocs = json.load(f)
+
+            work_orders = []
+            job_codes = set()
+            if matched_coil_id:
+                for a in allocs:
+                    if a.get("coil_id") == matched_coil_id:
+                        jc = a.get("job_code", "")
+                        if jc:
+                            job_codes.add(jc)
+                        work_orders.append({
+                            "allocation_id": a.get("allocation_id", ""),
+                            "job_code": jc,
+                            "work_order_ref": a.get("work_order_ref", ""),
+                            "quantity_lbs": a.get("quantity_lbs", 0),
+                            "status": a.get("status", ""),
+                            "date": a.get("date", ""),
+                        })
+
+            for member in heat_data.get("members", []):
+                jc = member.get("job_code", "")
+                if jc:
+                    job_codes.add(jc)
+
+            projects = []
+            for jc in job_codes:
+                meta_path = os.path.join(PROJECTS_DIR, jc, "metadata.json")
+                if os.path.isfile(meta_path):
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                    projects.append({
+                        "job_code": jc,
+                        "project_name": meta.get("project_name", jc),
+                        "customer": meta.get("customer", ""),
+                        "stage": meta.get("stage", ""),
+                    })
+                else:
+                    projects.append({"job_code": jc, "project_name": jc, "customer": "", "stage": ""})
+
+            shipments = []
+            try:
+                for ship_file in ["shipping_manifests.json", "load_builder.json"]:
+                    sp = os.path.join(DATA_DIR, ship_file)
+                    if os.path.isfile(sp):
+                        with open(sp) as f:
+                            for m in json.load(f):
+                                if m.get("job_code") in job_codes or m.get("project") in job_codes:
+                                    shipments.append({
+                                        "manifest_id": m.get("id", m.get("load_id", "")),
+                                        "job_code": m.get("job_code", m.get("project", "")),
+                                        "status": m.get("status", ""),
+                                        "ship_date": m.get("ship_date", ""),
+                                        "carrier": m.get("carrier", ""),
+                                    })
+            except Exception:
+                pass
+
+            self.write(json_encode({
+                "ok": True,
+                "heat_number": heat_number,
+                "coil": coil_info,
+                "work_orders": work_orders,
+                "projects": projects,
+                "shipments": shipments,
+                "members": heat_data.get("members", []),
+            }))
+        except Exception as e:
+            logger.error(f"TraceabilityLookupAPIHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class AutoMRFromAlertHandler(BaseHandler):
+    """POST /api/inventory/alerts/auto-mr — Auto-generate MR from low stock alert."""
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            coil_id = body.get("coil_id", "")
+            if not coil_id:
+                self.write(json_encode({"ok": False, "error": "coil_id required"}))
+                return
+
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            if coil_id not in coils:
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            coil = coils[coil_id]
+            min_stock = float(coil.get("min_stock_lbs", coil.get("min_order_lbs", 2000)) or 2000)
+            current = float(coil.get("stock_lbs", 0) or 0) - float(coil.get("committed_lbs", 0) or 0)
+            recommended_qty = max(min_stock * 2, min_stock - current + 1000)
+
+            mr_path = os.path.join(DATA_DIR, "material_reqs.json")
+            reqs = []
+            if os.path.isfile(mr_path):
+                with open(mr_path) as f:
+                    reqs = json.load(f)
+
+            year = datetime.datetime.now().year
+            prefix = f"MR-{year}-"
+            max_seq = 0
+            for r in reqs:
+                mn = r.get("mr_number", "")
+                if mn.startswith(prefix):
+                    try:
+                        seq = int(mn[len(prefix):])
+                        if seq > max_seq:
+                            max_seq = seq
+                    except (ValueError, IndexError):
+                        pass
+            mr_number = f"{prefix}{max_seq + 1:04d}"
+            now = datetime.datetime.now().isoformat()
+
+            new_mr = {
+                "id": mr_number,
+                "mr_number": mr_number,
+                "project_id": "",
+                "project": "Stock Replenishment",
+                "requested_by": self.get_current_user() or "system",
+                "priority": "high",
+                "justification": f"Auto-generated from low stock alert. {coil.get('name', coil_id)} at {current:,.0f} lbs (min: {min_stock:,.0f} lbs).",
+                "required_date": "",
+                "items": [{
+                    "description": coil.get("name", coil_id),
+                    "qty": recommended_qty,
+                    "unit": "lbs",
+                    "gauge": coil.get("gauge", ""),
+                    "type": coil.get("type", ""),
+                    "coil_id": coil_id,
+                }],
+                "item_count": 1,
+                "est_cost": 0,
+                "status": "submitted",
+                "linked_po": "",
+                "created_at": now,
+                "date": now[:10],
+                "created_by": "auto-alert",
+                "auto_generated": True,
+            }
+            reqs.append(new_mr)
+            with open(mr_path, "w") as f:
+                json.dump(reqs, f, indent=2)
+
+            self._log("auto_mr_from_alert", "material_req", mr_number, {"coil_id": coil_id})
+            self.write(json_encode({
+                "ok": True,
+                "mr_number": mr_number,
+                "recommended_qty": recommended_qty,
+                "coil_name": coil.get("name", coil_id),
+            }))
+        except Exception as e:
+            logger.error(f"AutoMRFromAlertHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# SA → TC TRANSFER HANDLER
+# ─────────────────────────────────────────────
+
+class SAToTCTransferHandler(BaseHandler):
+    """POST /api/sa/send-to-tc — Transfer SA BOM data to TC estimator.
+
+    Loads the SA BOM data for a project, extracts key fields, and saves
+    a tc_import.json file in the project folder for TC to auto-load.
+    Also auto-advances project stage to engineering if at quote.
+    """
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+
+            # Extract data from request body (sent from SA front-end)
+            sa_data = {
+                "job_code": job_code,
+                "project_name": body.get("project_name", ""),
+                "total_sell_price": body.get("total_sell_price", 0),
+                "total_material_cost": body.get("total_material_cost", 0),
+                "n_columns": body.get("n_columns", 0),
+                "footing_depth_ft": body.get("footing_depth_ft", 10),
+                "width_ft": body.get("width_ft", 0),
+                "length_ft": body.get("length_ft", 0),
+                "sa_quote_num": body.get("sa_quote_num", ""),
+                "buildings": body.get("buildings", []),
+                "transferred_at": datetime.datetime.now().isoformat(),
+                "transferred_by": self.get_current_user() or "unknown",
+            }
+
+            # Save tc_import.json in project folder
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+            os.makedirs(proj_dir, exist_ok=True)
+            import_path = os.path.join(proj_dir, "tc_import.json")
+            with open(import_path, "w") as f:
+                json.dump(sa_data, f, indent=2)
+
+            # Auto-advance stage to engineering if currently at quote
+            _auto_advance_stage(job_code, "engineering")
+
+            # Log activity
+            try:
+                self._log("sa_to_tc_transfer", "project", job_code, {
+                    "sell_price": sa_data["total_sell_price"],
+                    "n_columns": sa_data["n_columns"],
+                })
+            except Exception:
+                pass
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "data": sa_data,
+                "message": "BOM data sent to TC Estimator",
+            }))
+        except Exception as e:
+            logger.error(f"SAToTCTransferHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class SAToTCImportHandler(BaseHandler):
+    """GET /api/sa/tc-import?job_code=XXX — Load tc_import.json for a project.
+
+    Used by TC estimator to auto-load SA data on page load.
+    """
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "").strip()
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "job_code required"}))
+                return
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            import_path = os.path.join(PROJECTS_DIR, safe_name, "tc_import.json")
+            if not os.path.isfile(import_path):
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "No SA import data"}))
+                return
+            with open(import_path) as f:
+                data = json.load(f)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "data": data}))
+        except Exception as e:
+            logger.error(f"SAToTCImportHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+# ─────────────────────────────────────────────
+# SA TEMPLATES HANDLER
+# ─────────────────────────────────────────────
+
+# Built-in SA templates
+SA_BUILTIN_TEMPLATES = [
+    {
+        "id": "40x80_standard",
+        "name": "40x80 Standard Carport",
+        "builtin": True,
+        "width_ft": 40,
+        "length_ft": 80,
+        "clear_height_ft": 14,
+        "type": "2post",
+        "pitch_key": "1/4:12",
+        "max_bay_ft": 36,
+        "include_labor": True,
+    },
+    {
+        "id": "40x120_extended",
+        "name": "40x120 Extended Carport",
+        "builtin": True,
+        "width_ft": 40,
+        "length_ft": 120,
+        "clear_height_ft": 14,
+        "type": "2post",
+        "pitch_key": "1/4:12",
+        "max_bay_ft": 36,
+        "include_labor": True,
+    },
+    {
+        "id": "60x100_commercial",
+        "name": "60x100 Commercial",
+        "builtin": True,
+        "width_ft": 60,
+        "length_ft": 100,
+        "clear_height_ft": 16,
+        "type": "3post",
+        "pitch_key": "1/4:12",
+        "max_bay_ft": 36,
+        "include_labor": True,
+    },
+    {
+        "id": "60x200_industrial",
+        "name": "60x200 Industrial",
+        "builtin": True,
+        "width_ft": 60,
+        "length_ft": 200,
+        "clear_height_ft": 16,
+        "type": "3post",
+        "pitch_key": "1/4:12",
+        "max_bay_ft": 36,
+        "include_labor": True,
+    },
+]
+
+
+class SATemplatesHandler(BaseHandler):
+    """GET/POST /api/sa/templates — Manage SA calculator templates.
+
+    GET: returns built-in templates + custom templates
+    POST: save a new custom template
+    """
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        try:
+            templates_path = os.path.join(DATA_DIR, "sa_templates.json")
+            custom = []
+            if os.path.isfile(templates_path):
+                with open(templates_path) as f:
+                    custom = json.load(f)
+            all_templates = SA_BUILTIN_TEMPLATES + custom
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "templates": all_templates}))
+        except Exception as e:
+            logger.error(f"SATemplatesHandler GET error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            name = body.get("name", "").strip()
+            if not name:
+                self.write(json_encode({"ok": False, "error": "Template name required"}))
+                return
+
+            template = {
+                "id": "custom_" + re.sub(r"[^a-zA-Z0-9]", "_", name.lower()),
+                "name": name,
+                "builtin": False,
+                "width_ft": body.get("width_ft", 40),
+                "length_ft": body.get("length_ft", 200),
+                "clear_height_ft": body.get("clear_height_ft", 14),
+                "type": body.get("type", "2post"),
+                "pitch_key": body.get("pitch_key", "1/4:12"),
+                "max_bay_ft": body.get("max_bay_ft", 36),
+                "include_labor": body.get("include_labor", True),
+                "space_width_ft": body.get("space_width_ft", 12),
+                "embedment_ft": body.get("embedment_ft", 4.333),
+                "created_at": datetime.datetime.now().isoformat(),
+                "created_by": self.get_current_user() or "unknown",
+            }
+
+            templates_path = os.path.join(DATA_DIR, "sa_templates.json")
+            custom = []
+            if os.path.isfile(templates_path):
+                with open(templates_path) as f:
+                    custom = json.load(f)
+            custom.append(template)
+            with open(templates_path, "w") as f:
+                json.dump(custom, f, indent=2)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "template": template}))
+        except Exception as e:
+            logger.error(f"SATemplatesHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 def get_routes():
     """Return list of (pattern, handler) tuples for tornado.web.Application."""
     static_path = os.path.join(BASE_DIR, "static")
@@ -14826,6 +17342,7 @@ def get_routes():
         (r"/api/inventory/receiving",    InventoryReceivingHandler),
         (r"/api/inventory/receive",      InventoryReceiveHandler),
         (r"/api/inventory/alerts/acknowledge", InventoryAlertAcknowledgeHandler),
+        (r"/api/inventory/alerts/auto-mr",   AutoMRFromAlertHandler),
         (r"/api/inventory/alerts",       InventoryAlertsHandler),
         (r"/coil/([^/]+)",               CoilDetailHandler),
 
@@ -14893,6 +17410,9 @@ def get_routes():
         (r"/api/work-orders/list",               WorkOrderListHandler),
         (r"/api/work-orders/detail",             WorkOrderDetailHandler),
         (r"/api/work-orders/edit",               WorkOrderEditHandler),
+        (r"/api/work-orders/status",             WorkOrderStatusHandler),
+        (r"/api/work-orders/transition",         WorkOrderTransitionHandler),
+        (r"/api/work-orders/assign",             WorkOrderAssignHandler),
         (r"/api/work-orders/delete",             WorkOrderDeleteHandler),
         (r"/api/work-orders/approve",            WorkOrderApproveHandler),
         (r"/api/work-orders/stickers-printed",   WorkOrderStickersPrintedHandler),
@@ -14938,6 +17458,8 @@ def get_routes():
 
         # ── Notifications ────────────────────────────────────
         (r"/api/notifications",                  NotificationsAPIHandler),
+        (r"/api/onboarding/progress",            OnboardingProgressHandler),
+        (r"/api/admin/cleanup",                  AdminDataCleanupHandler),
         (r"/api/notifications/settings",         EmailNotificationSettingsHandler),
         (r"/api/notifications/test",             EmailNotificationTestHandler),
 
@@ -14998,6 +17520,11 @@ def get_routes():
         (r"/api/tc/save",                    TCSaveHandler),
         (r"/api/tc/load",                    TCLoadHandler),
 
+        # ── SA → TC Integration & Templates ──────────────────
+        (r"/api/sa/send-to-tc",              SAToTCTransferHandler),
+        (r"/api/sa/tc-import",               SAToTCImportHandler),
+        (r"/api/sa/templates",               SATemplatesHandler),
+
         # ── AISC QC Module ─────────────────────────────────────
         (r"/qc/ncr",                         QCNCRPageHandler),
         (r"/qc",                             QCMainPageHandler),
@@ -15012,6 +17539,7 @@ def get_routes():
         (r"/api/qc/ncr/update",              NCRUpdateHandler),
 
         # ── Material Traceability ──────────────────────────────
+        (r"/api/traceability/lookup",        TraceabilityLookupAPIHandler),
         (r"/api/traceability",               TraceabilityIndexHandler),
         (r"/api/traceability/register",      TraceabilityRegisterHandler),
         (r"/api/traceability/assign",        TraceabilityAssignHandler),
@@ -15057,6 +17585,8 @@ def get_routes():
         (r"/shipping/([^/]+)",                   ShippingPageHandler),
         (r"/api/shipping/active",                ShippingActiveAPIHandler),
         (r"/api/shipping/bol-data",              ShippingBOLAPIHandler),
+        (r"/api/shipping/bol/pdf/([^/]+)",       ShippingBOLPDFHandler),
+        (r"/api/shipping/available",             ShippingAvailableItemsHandler),
         (r"/api/shipping/build",                 ShippingBuildAPIHandler),
         (r"/api/shipping/packing-list",          ShippingPackingListHandler),
         (r"/api/shipping/bol",                   ShippingBOLHandler),

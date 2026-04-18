@@ -434,6 +434,109 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     margin: 12px 0 8px;
 }
 
+/* ── Dispatch Section ─── */
+.dispatch-section {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+.dispatch-section h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #92400E;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.dispatch-card {
+    background: white;
+    border: 1px solid var(--tf-border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.dispatch-card-info {
+    flex: 1;
+}
+.dispatch-card-id {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--tf-navy);
+}
+.dispatch-card-detail {
+    font-size: 0.75rem;
+    color: var(--tf-slate);
+    margin-top: 2px;
+}
+.dispatch-assign {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.dispatch-assign select {
+    padding: 6px 10px;
+    border: 1px solid var(--tf-border);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    background: white;
+}
+.dispatch-assign button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--tf-blue);
+    color: white;
+}
+.dispatch-assign button:hover { background: var(--tf-blue-mid); }
+
+/* ── Machine Status Indicator ─── */
+.machine-status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    cursor: pointer;
+    position: relative;
+}
+.machine-status-dot.running { background: #22C55E; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.machine-status-dot.idle { background: #FBBF24; }
+.machine-status-dot.down { background: #EF4444; }
+
+.machine-extra {
+    font-size: 0.72rem;
+    color: var(--tf-slate);
+    margin-top: 4px;
+}
+
+/* ── Toast ─── */
+.sf-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 14px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    z-index: 9999;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+    max-width: 400px;
+}
+.sf-toast.show { transform: translateY(0); opacity: 1; }
+.sf-toast.success { background: #065F46; color: white; }
+.sf-toast.error { background: #991B1B; color: white; }
+
 @media (max-width: 768px) {
     .sf-container { padding: 12px; }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -476,6 +579,12 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     <!-- Status distribution -->
     <div class="status-bar" id="statusBar"></div>
 
+    <!-- Dispatch Section (unassigned WOs) -->
+    <div class="dispatch-section" id="dispatchSection" style="display:none;">
+        <h2>Dispatch &mdash; Unassigned Work Orders</h2>
+        <div id="dispatchList"></div>
+    </div>
+
     <!-- Main grid -->
     <div class="sf-grid">
         <div>
@@ -503,6 +612,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
         </div>
     </div>
 </div>
+<div class="sf-toast" id="sfToast"></div>
 
 <script>
 let refreshTimer = null;
@@ -527,11 +637,14 @@ async function loadData() {
     }
 }
 
+let machineKeys = [];
+
 function renderDashboard(data) {
     const s = data.summary;
     const machines = data.machines;
     const activeWOs = data.active_wos;
     const events = data.events;
+    const unassignedWOs = data.unassigned_wos || [];
 
     // ── KPIs ──
     document.getElementById('kpiActiveWOs').textContent = s.active_work_orders;
@@ -541,6 +654,38 @@ function renderDashboard(data) {
     document.getElementById('kpiTotalItems').textContent = s.total_items;
     document.getElementById('kpiAvgFab').textContent = s.avg_fab_minutes > 0 ? s.avg_fab_minutes.toFixed(1) : '-';
     document.getElementById('kpiTotalFab').textContent = s.total_fab_minutes > 0 ? (s.total_fab_minutes / 60).toFixed(1) : '-';
+
+    // ── Dispatch Section ──
+    const dispatchSection = document.getElementById('dispatchSection');
+    if (unassignedWOs.length > 0) {
+        dispatchSection.style.display = 'block';
+        machineKeys = Object.keys(machines);
+        let dHtml = '';
+        for (const wo of unassignedWOs) {
+            const machineOpts = machineKeys.map(m =>
+                '<option value="' + m + '">' + (machines[m].name || m) + '</option>'
+            ).join('');
+            dHtml += '<div class="dispatch-card">' +
+                '<div class="dispatch-card-info">' +
+                    '<div class="dispatch-card-id">' + wo.work_order_id + '</div>' +
+                    '<div class="dispatch-card-detail">' + wo.job_code + ' &bull; ' +
+                        (wo.project_name || '') + ' &bull; ' + wo.total_items + ' items' +
+                        (wo.priority && wo.priority !== 'normal' ? ' &bull; <strong style="color:#DC2626;">' + wo.priority.toUpperCase() + '</strong>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div class="dispatch-assign">' +
+                    '<select id="assign_' + wo.work_order_id + '">' +
+                        '<option value="">-- Machine --</option>' +
+                        machineOpts +
+                    '</select>' +
+                    '<button onclick="quickAssign(\'' + wo.job_code + '\', \'' + wo.work_order_id + '\')">Assign</button>' +
+                '</div>' +
+            '</div>';
+        }
+        document.getElementById('dispatchList').innerHTML = dHtml;
+    } else {
+        dispatchSection.style.display = 'none';
+    }
 
     // ── Status bar ──
     const total = s.total_items || 1;
@@ -585,10 +730,19 @@ function renderDashboard(data) {
 
         const avgTime = m.completed > 0 ? (m.total_fab_minutes / m.completed).toFixed(1) : '-';
 
+        const statusDot = isBusy ? 'running' : (hasQueue ? 'idle' : 'idle');
+        const estRemaining = m.est_remaining_minutes || 0;
+        const estStr = estRemaining > 0 ? (estRemaining < 60 ? Math.round(estRemaining) + 'm' : (estRemaining / 60).toFixed(1) + 'h') : '-';
+        const operatorName = m.operator || '';
+
         mHtml += `
         <div class="machine-card ${cls}" onclick="window.location.href='/work-station/${encodeURIComponent(mId)}'">
-            <div class="machine-name">${mId}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div class="machine-name">${mId}</div>
+                <span class="machine-status-dot ${statusDot}" title="${statusDot}" onclick="event.stopPropagation(); toggleMachineStatus('${mId}')"></span>
+            </div>
             <div class="machine-location">${m.name}</div>
+            ${operatorName ? '<div class="machine-extra">Operator: <strong>' + operatorName + '</strong></div>' : ''}
             <div class="machine-stats">
                 <div class="machine-stat">
                     <div class="machine-stat-val active">${m.in_progress}</div>
@@ -596,13 +750,14 @@ function renderDashboard(data) {
                 </div>
                 <div class="machine-stat">
                     <div class="machine-stat-val queued">${m.queued}</div>
-                    <div class="machine-stat-label">Queued</div>
+                    <div class="machine-stat-label">Queue</div>
                 </div>
                 <div class="machine-stat">
                     <div class="machine-stat-val done">${m.completed}</div>
                     <div class="machine-stat-label">Done</div>
                 </div>
             </div>
+            <div class="machine-extra">Est remaining: <strong>${estStr}</strong></div>
             ${activeItemsHtml}
         </div>`;
     }
@@ -617,15 +772,23 @@ function renderDashboard(data) {
         for (const wo of activeWOs) {
             const statusCls = wo.status.replace(/ /g, '_');
             const label = wo.status_label || wo.status;
+            const priorityBadge = wo.priority && wo.priority !== 'normal'
+                ? '<span style="background:#FEE2E2;color:#991B1B;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:600;margin-left:6px;">' + wo.priority.toUpperCase() + '</span>'
+                : '';
             woHtml += `
             <div class="wo-mini-card" onclick="window.location.href='/work-orders/${wo.job_code}'">
                 <div class="wo-mini-header">
-                    <span class="wo-mini-id">${wo.work_order_id}</span>
+                    <span class="wo-mini-id">${wo.work_order_id}${priorityBadge}</span>
                     <span class="wo-mini-status ${statusCls}">${label}</span>
                 </div>
                 <div class="wo-mini-meta">
                     <span>${wo.job_code} &bull; Rev ${wo.revision}</span>
                     <span>${wo.completed_items}/${wo.total_items} items</span>
+                </div>
+                <div class="wo-mini-meta" style="margin-top:2px;">
+                    ${wo.machine_id ? '<span>Machine: <strong>' + wo.machine_id + '</strong></span>' : '<span style="color:#F59E0B;">Unassigned</span>'}
+                    ${wo.operator ? '<span>Op: ' + wo.operator + '</span>' : ''}
+                    ${wo.estimated_hours ? '<span>Est: ' + wo.estimated_hours + 'h</span>' : ''}
                 </div>
                 <div class="wo-mini-progress">
                     <div class="wo-mini-progress-fill" style="width:${wo.progress_pct}%"></div>
@@ -673,6 +836,51 @@ function getElapsed(isoStr) {
     } catch (e) {
         return '';
     }
+}
+
+async function quickAssign(jobCode, woId) {
+    const sel = document.getElementById('assign_' + woId);
+    if (!sel || !sel.value) {
+        showSFToast('Select a machine first', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/work-orders/assign', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ job_code: jobCode, wo_id: woId, machine_id: sel.value })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            showSFToast('Assigned ' + woId + ' to ' + sel.value, 'success');
+            loadData();
+        } else {
+            showSFToast(data.error || 'Failed', 'error');
+        }
+    } catch (e) {
+        showSFToast('Network error: ' + e.message, 'error');
+    }
+}
+
+function toggleMachineStatus(machineId) {
+    // Cycle through: running -> idle -> down -> running
+    const dot = event.target;
+    const states = ['running', 'idle', 'down'];
+    let current = 'idle';
+    for (const s of states) {
+        if (dot.classList.contains(s)) { current = s; break; }
+    }
+    const nextIdx = (states.indexOf(current) + 1) % states.length;
+    const next = states[nextIdx];
+    dot.className = 'machine-status-dot ' + next;
+    dot.title = next;
+}
+
+function showSFToast(msg, type) {
+    const toast = document.getElementById('sfToast');
+    toast.textContent = msg;
+    toast.className = 'sf-toast ' + (type || 'success') + ' show';
+    setTimeout(() => { toast.className = 'sf-toast'; }, 4000);
 }
 </script>
 </body>

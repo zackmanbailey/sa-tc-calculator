@@ -135,6 +135,15 @@ def generate_packing_list(
             "trailer_number": truck_info.get("trailer_number", ""),
             "driver_name": truck_info.get("driver_name", ""),
         },
+        "branding": {
+            "company": "Titan Carports",
+            "address": "710 Honea Egypt Rd, Conroe, TX 77385",
+            "phone": "(303) 909-5698",
+            "email": "info@titancarports.com",
+            "website": "www.titancarports.com",
+            "tagline": "Quality Steel Structures",
+            "footer_message": "Thank you for your business! — www.titancarports.com",
+        },
     }
 
     return packing_list
@@ -165,14 +174,14 @@ def generate_bill_of_lading(
     carrier_info = carrier_info or {}
     consignee = consignee or {}
 
-    # Shipper: Structures America
+    # Shipper: Titan Carports
     shipper = {
-        "company": "Structures America",
+        "company": "Titan Carports",
         "address": "710 Honea Egypt Rd",
         "city": "Conroe",
         "state": "TX",
         "zip": "77385",
-        "phone": "",
+        "phone": "(303) 909-5698",
         "contact": "Shop",
     }
 
@@ -253,6 +262,15 @@ def generate_bill_of_lading(
             "consignee_name": "",
             "consignee_date": "",
         },
+        "branding": {
+            "company": "Titan Carports",
+            "address": "710 Honea Egypt Rd, Conroe, TX 77385",
+            "phone": "(303) 909-5698",
+            "email": "info@titancarports.com",
+            "website": "www.titancarports.com",
+            "tagline": "Quality Steel Structures",
+            "footer_message": "Thank you for your business! — www.titancarports.com",
+        },
     }
 
     return bol
@@ -329,6 +347,15 @@ def generate_shipping_manifest(
             "prepared_date": "",
             "verified_by": "",
             "verified_date": "",
+        },
+        "branding": {
+            "company": "Titan Carports",
+            "address": "710 Honea Egypt Rd, Conroe, TX 77385",
+            "phone": "(303) 909-5698",
+            "email": "info@titancarports.com",
+            "website": "www.titancarports.com",
+            "tagline": "Quality Steel Structures",
+            "footer_message": "Thank you for your business! — www.titancarports.com",
         },
     }
 

@@ -1,3 +1,6 @@
+from templates.help_tooltips import get_tooltip_bundle as _get_tooltip_bundle
+_SA_TOOLTIP_BUNDLE = _get_tooltip_bundle()
+
 SA_CALC_HTML = r"""<html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -231,6 +234,22 @@ input[type=checkbox]{width:auto;margin-right:6px}
         <div class="form-group">
           <label>Quote Date</label>
           <input type="text" id="proj_date" placeholder="MM/DD/YYYY"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Start Templates -->
+    <div class="card">
+      <div class="card-hdr" style="background:var(--tf-green);color:#fff"><span class="icon">&#9889;</span>Quick Start</div>
+      <div class="card-body" style="padding:10px 14px">
+        <div class="form-group" style="margin-bottom:6px">
+          <label>Template</label>
+          <select id="sa_template_select" style="font-size:12px;padding:5px 8px" onchange="applyTemplate(this.value)">
+            <option value="">-- Custom (blank) --</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" style="flex:1;font-size:10px" onclick="saveAsTemplate()">💾 Save Current as Template</button>
         </div>
       </div>
     </div>
@@ -704,14 +723,14 @@ function buildingFormHTML(b) {
       <!-- Row 1: Type, Pitch, Width, Clear Height -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
-          <label>Frame Type (Auto)</label>
+          <label>Frame Type (Auto) <span class="tf-help" data-term="sa_frame_type"></span></label>
           <div id="${b.id}_frame_type" style="padding:7px 10px;background:#F0F7FF;border:1px solid var(--tf-border);border-radius:4px;font-size:13px;font-weight:600;color:var(--tf-blue)">
             ${b.width_ft <= 45 ? 'Tee (1 col/rafter)' : 'Double Column (2+ cols/rafter)'}
           </div>
           <div style="font-size:10px;color:#888;margin-top:2px">Auto: ≤45' = Tee, >45' = multi-column</div>
         </div>
         <div class="form-group">
-          <label>Roof Pitch</label>
+          <label>Roof Pitch <span class="tf-help" data-term="sa_slope"></span></label>
           <select onchange="updateBldg('${b.id}','pitch_key',this.value)">
             <option value="1/4:12" ${(b.pitch_key||'1/4:12')==='1/4:12'?'selected':''}>1/4":12 (1.2 deg)</option>
             <option value="5deg" ${b.pitch_key==='5deg'?'selected':''}>5 degrees</option>
@@ -720,12 +739,12 @@ function buildingFormHTML(b) {
           </select>
         </div>
         <div class="form-group">
-          <label>Clear Height (ft)</label>
+          <label>Clear Height (ft) <span class="tf-help" data-term="sa_clear_height"></span></label>
           <input type="number" value="${b.clear_height_ft}" min="8" max="30" step="0.5"
             onchange="updateBldg('${b.id}','clear_height_ft',parseFloat(this.value))"/>
         </div>
         <div class="form-group">
-          <label>Max Bay Size (ft)</label>
+          <label>Max Bay Size (ft) <span class="tf-help" data-term="sa_bay_size"></span></label>
           <input type="number" value="${b.max_bay_ft}" min="10" max="60" step="0.5"
             onchange="updateBldg('${b.id}','max_bay_ft',parseFloat(this.value))"/>
         </div>
@@ -734,7 +753,7 @@ function buildingFormHTML(b) {
       <!-- Row 2: Width + Length + Column Layout -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
-          <label>Building Width (ft)</label>
+          <label>Building Width (ft) <span class="tf-help" data-term="sa_width"></span></label>
           <input type="number" value="${b.width_ft}" min="10" max="200" step="0.5"
             onchange="updateBldg('${b.id}','width_ft',parseFloat(this.value));refreshPurlinDisplay('${b.id}')"/>
         </div>
@@ -811,7 +830,7 @@ function buildingFormHTML(b) {
       <!-- Row 3: Purlin spacing (direct input) -->
       <div style="background:#F0F4FA;border:1px solid var(--tf-border);border-radius:6px;padding:10px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0">
-          <label>Purlin Spacing (ft)</label>
+          <label>Purlin Spacing (ft) <span class="tf-help" data-term="sa_purlin_spacing"></span></label>
           <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
             onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
           <div style="font-size:10px;color:#888;margin-top:2px">OC (on-center) spacing</div>
@@ -1308,6 +1327,9 @@ function renderBOM(data) {
   </div>
   `;
 
+  // Actionable warnings
+  html += renderBOMWarnings(data);
+
   // Per building
   for (let bi = 0; bi < data.buildings.length; bi++) {
     const bldg = data.buildings[bi];
@@ -1421,7 +1443,7 @@ function renderBOM(data) {
 // ─────────────────────────────────────────────
 // SEND TO TC QUOTE
 // ─────────────────────────────────────────────
-function sendToTCQuote() {
+async function sendToTCQuote() {
   if (!currentBOM) { showToast('Please calculate BOM first.', 'info'); return; }
   // Use adjusted totals if price overrides / manual items exist
   const totals = getAdjustedTotals();
@@ -1434,6 +1456,45 @@ function sendToTCQuote() {
   const width = (currentBOM.buildings || [])[0]?.width_ft || 40;
   const length = (currentBOM.buildings || [])[0]?.length_ft || 180;
   const saQuoteNum = projCode ? 'SA-' + projCode : '';
+
+  // POST to API first to create tc_import.json
+  if (projCode) {
+    try {
+      const bldgSummaries = (currentBOM.buildings || []).map(b => ({
+        name: b.building_name || '',
+        width_ft: b.width_ft,
+        length_ft: b.length_ft,
+        n_columns: b.geometry?.n_struct_cols || 0,
+        n_frames: b.geometry?.n_frames || 0,
+        total_weight_lbs: b.total_weight_lbs || 0,
+        total_material_cost: b.total_material_cost || 0,
+      }));
+      const resp = await fetch('/api/sa/send-to-tc', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          job_code: projCode,
+          project_name: projName,
+          total_sell_price: sellPrice,
+          total_material_cost: currentBOM.total_material_cost || 0,
+          n_columns: nCols,
+          footing_depth_ft: footingDepth,
+          width_ft: width,
+          length_ft: length,
+          sa_quote_num: saQuoteNum,
+          buildings: bldgSummaries,
+        }),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        showToast('BOM data sent to TC Estimator \u2713', 'success', 4000);
+      }
+    } catch(e) {
+      console.warn('SA->TC API transfer failed:', e);
+    }
+  }
+
+  // Also open TC page with URL params as fallback
   const params = new URLSearchParams({
     sa_cost: sellPrice.toFixed(2),
     n_cols: nCols,
@@ -2695,6 +2756,194 @@ async function addMillCert() {
 }
 
 // Global click handler removed — native onclick attributes handle all button actions
+
+// ─────────────────────────────────────────────
+// QUICK START TEMPLATES
+// ─────────────────────────────────────────────
+async function loadTemplates() {
+  try {
+    const resp = await fetch('/api/sa/templates');
+    const data = await resp.json();
+    if (!data.ok) return;
+    const sel = document.getElementById('sa_template_select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Custom (blank) --</option>';
+    for (const t of (data.templates || [])) {
+      const label = t.name + (t.builtin ? '' : ' [custom]');
+      sel.innerHTML += '<option value=\'' + JSON.stringify(t).replace(/'/g, '&#39;') + '\'>' + label + '</option>';
+    }
+  } catch(e) { console.warn('Failed to load templates:', e); }
+}
+
+function applyTemplate(jsonStr) {
+  if (!jsonStr) return; // "Custom" selected
+  try {
+    const t = JSON.parse(jsonStr);
+    // Apply to first building (or create one if none exist)
+    if (buildings.length === 0) addBuilding();
+    const b = buildings[0];
+    if (t.width_ft) b.width_ft = t.width_ft;
+    if (t.length_ft) b.length_ft = t.length_ft;
+    if (t.clear_height_ft) b.clear_height_ft = t.clear_height_ft;
+    if (t.type) b.type = t.type;
+    if (t.pitch_key) b.pitch_key = t.pitch_key;
+    if (t.max_bay_ft) b.max_bay_ft = t.max_bay_ft;
+    if (t.include_labor !== undefined) b.include_labor = t.include_labor;
+    if (t.space_width_ft) b.space_width_ft = t.space_width_ft;
+    if (t.embedment_ft) b.embedment_ft = t.embedment_ft;
+
+    renderBuildingList();
+    renderBuildingForms();
+    showToast('Template applied: ' + t.name, 'success');
+  } catch(e) {
+    showToast('Error applying template: ' + e.message, 'error');
+  }
+}
+
+async function saveAsTemplate() {
+  if (buildings.length === 0) { showToast('Add a building first.', 'info'); return; }
+  const b = buildings[0];
+  const name = prompt('Enter template name:', b.width_ft + 'x' + b.length_ft + ' Custom');
+  if (!name) return;
+  try {
+    const resp = await fetch('/api/sa/templates', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: name,
+        width_ft: b.width_ft,
+        length_ft: b.length_ft,
+        clear_height_ft: b.clear_height_ft,
+        type: b.type,
+        pitch_key: b.pitch_key,
+        max_bay_ft: b.max_bay_ft,
+        include_labor: b.include_labor,
+        space_width_ft: b.space_width_ft,
+        embedment_ft: b.embedment_ft,
+      }),
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      showToast('Template saved: ' + name, 'success');
+      loadTemplates(); // Refresh dropdown
+    } else {
+      showToast('Failed: ' + (result.error || 'unknown'), 'error');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// Load templates on startup
+setTimeout(loadTemplates, 500);
+
+// ─────────────────────────────────────────────
+// ACTIONABLE WARNINGS (displayed in BOM output)
+// ─────────────────────────────────────────────
+let dismissedWarnings = {};
+
+function generateBOMWarnings(data) {
+  const warnings = [];
+  for (let bi = 0; bi < (data.buildings || []).length; bi++) {
+    const bldg = data.buildings[bi];
+    const bName = bldg.building_name || ('Building ' + (bi + 1));
+
+    // Length > 204' warning
+    if (bldg.length_ft > 204) {
+      warnings.push({
+        id: 'length_' + bi,
+        severity: 'warn',
+        message: bName + ': Building length ' + bldg.length_ft + '\' exceeds 204\' recommended max. Consider splitting into multiple buildings.',
+        action: 'split_building',
+        actionLabel: 'Split into 2 Buildings',
+        bldgIndex: bi,
+      });
+    }
+
+    // Frame spacing > 25'
+    const geo = bldg.geometry || {};
+    if (geo.bay_size_ft && geo.bay_size_ft > 25) {
+      warnings.push({
+        id: 'bay_' + bi,
+        severity: 'warn',
+        message: bName + ': Bay spacing ' + geo.bay_size_ft + '\' exceeds 25\' recommended max.',
+        action: 'add_frames',
+        actionLabel: 'Add Intermediate Frames',
+        bldgIndex: bi,
+      });
+    }
+
+    // Purlin spacing check
+    const purlinSp = geo.purlin_spacing_ft || 0;
+    if (purlinSp > 5) {
+      warnings.push({
+        id: 'purlin_' + bi,
+        severity: 'info',
+        message: bName + ': Purlin spacing ' + purlinSp + '\' OC is wider than 5\'. Standard is 3.5\'-5\' for most widths.',
+        action: 'fix_purlin',
+        actionLabel: 'Set to Standard',
+        bldgIndex: bi,
+      });
+    }
+  }
+  return warnings;
+}
+
+function renderBOMWarnings(data) {
+  const warnings = generateBOMWarnings(data);
+  if (warnings.length === 0) return '';
+  let html = '<div style="margin-bottom:16px">';
+  for (const w of warnings) {
+    if (dismissedWarnings[w.id]) continue;
+    const alertCls = w.severity === 'warn' ? 'alert-warn' : 'alert-info';
+    html += '<div class="alert ' + alertCls + '" style="display:flex;align-items:center;gap:8px;padding:8px 12px">';
+    html += '<span style="flex:1;font-size:12px">' + w.message + '</span>';
+    html += '<button class="btn btn-gold btn-sm" onclick="applyWarningFix(\'' + w.action + '\',' + w.bldgIndex + ')">' + w.actionLabel + '</button>';
+    html += '<button class="btn btn-outline btn-sm" style="font-size:10px" onclick="dismissWarning(\'' + w.id + '\',this)">Dismiss</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function dismissWarning(id, btn) {
+  dismissedWarnings[id] = true;
+  if (btn) btn.closest('.alert').style.display = 'none';
+}
+
+function applyWarningFix(action, bldgIndex) {
+  if (!buildings[bldgIndex]) return;
+  const b = buildings[bldgIndex];
+
+  if (action === 'split_building') {
+    // Split building into 2 equal-length buildings
+    const halfLen = Math.round(b.length_ft / 2);
+    b.length_ft = halfLen;
+    // Clone building
+    bldgCounter++;
+    const clone = Object.assign({}, JSON.parse(JSON.stringify(b)));
+    clone.id = 'B' + bldgCounter;
+    clone.building_id = 'B' + bldgCounter;
+    clone.building_name = (b.building_name || 'Building') + ' (Part 2)';
+    b.building_name = (b.building_name || 'Building') + ' (Part 1)';
+    buildings.push(clone);
+    renderBuildingList();
+    renderBuildingForms();
+    showToast('Building split into 2 x ' + halfLen + '\' buildings. Recalculate BOM to update.', 'success');
+  }
+  else if (action === 'add_frames') {
+    // Reduce max bay to 25'
+    b.max_bay_ft = 25;
+    renderBuildingForms();
+    showToast('Max bay spacing reduced to 25\'. Recalculate BOM to update.', 'success');
+  }
+  else if (action === 'fix_purlin') {
+    // Set purlin spacing to auto
+    b.purlin_spacing_override = null;
+    renderBuildingForms();
+    showToast('Purlin spacing set to auto. Recalculate BOM to update.', 'success');
+  }
+}
 </script>
 
 <!-- Global Search Overlay -->
@@ -2713,6 +2962,7 @@ function _doGS(q){clearTimeout(_gst);if(!q||q.length<2){document.getElementById(
 _gst=setTimeout(function(){fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){var c=document.getElementById('globalSearchResults');if(!d.results||!d.results.length){c.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">No results</div>';return;}
 var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'#DBEAFE\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#DBEAFE;">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:13px;color:#0f172a;">'+r.title+'</div><div style="font-size:11px;color:#94a3b8;">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
 </script>
+""" + _SA_TOOLTIP_BUNDLE + r"""
 </body>
 </html>
 """

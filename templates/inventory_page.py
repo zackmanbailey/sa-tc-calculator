@@ -724,8 +724,8 @@ INVENTORY_PAGE_HTML = r'''
                     <table>
                         <thead>
                             <tr>
-                                <th>Alert ID</th>
                                 <th>Level</th>
+                                <th>Type</th>
                                 <th>Coil ID</th>
                                 <th>Message</th>
                                 <th>Date</th>
@@ -1323,7 +1323,10 @@ INVENTORY_PAGE_HTML = r'''
                         <td>${a.coil_id}</td>
                         <td>${a.message}</td>
                         <td>${(a.date || '').slice(0,10)}</td>
-                        <td><button class="btn btn-small btn-secondary" onclick="acknowledgeAlert('${a.alert_id}')">Acknowledge</button></td>
+                        <td>
+                            <button class="btn btn-small btn-secondary" onclick="acknowledgeAlert('${a.alert_id}')" style="margin-right:4px;">Acknowledge</button>
+                            <button class="btn btn-small" style="background:#d4a843;color:#0f172a;font-weight:600;padding:4px 10px;border:none;border-radius:6px;font-size:0.75rem;cursor:pointer;" onclick="createMRFromAlert('${a.coil_id}')">Create MR</button>
+                        </td>
                     </tr>`;
                 }).join('');
             } catch (err) {
@@ -1516,6 +1519,26 @@ INVENTORY_PAGE_HTML = r'''
 
         function showCoilHistory(coilId) {
             alert(`History for coil ${coilId} would open here`);
+        }
+
+        async function createMRFromAlert(coilId) {
+            try {
+                const response = await fetch('/api/inventory/alerts/auto-mr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ coil_id: coilId })
+                });
+                const data = await response.json();
+                if (response.ok && !data.error) {
+                    alert('Material Requisition created: ' + (data.mr_number || 'MR created'));
+                    loadAlerts();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to create MR'));
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                alert('Error creating material requisition');
+            }
         }
 
         // ── Edit Coil ──────────────────────────────────────────

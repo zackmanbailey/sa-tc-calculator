@@ -193,7 +193,12 @@ input[type=checkbox]{width:auto;margin-right:6px}
     <div class="card">
       <div class="card-hdr blue"><span>🔗</span>Materials (from SA)</div>
       <div class="card-body">
-        <div class="alert alert-info" style="font-size:11px">
+        <div id="sa-import-banner" style="display:none;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:4px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#2E7D32;display:none">
+          <span style="font-weight:700">SA Estimate imported</span> — Material cost: <span id="sa-import-cost-lbl">$0</span>
+          <span id="sa-import-date-lbl" style="margin-left:8px;font-size:10px;color:#888"></span>
+          <button class="btn btn-outline btn-sm" style="float:right;font-size:10px;padding:2px 8px" onclick="refreshSAImport()">&#8635; Refresh from SA</button>
+        </div>
+        <div class="alert alert-info" style="font-size:11px" id="sa-import-hint">
           Enter SA fabrication quote total. Use the "Send to TC Quote" button on the SA BOM page to auto-fill.
         </div>
         <div class="form-group">
@@ -1224,6 +1229,124 @@ async function tcLoadFromProject(jobCode) {
 }
 
 // ─────────────────────────────────────────────
+// SA IMPORT AUTO-LOAD
+// ─────────────────────────────────────────────
+async function checkSAImport() {
+  // Get job code from URL or form field
+  const p = new URLSearchParams(window.location.search);
+  let jobCode = p.get('project') || p.get('proj_code') || '';
+  if (!jobCode) {
+    const codeEl = document.getElementById('proj_code');
+    jobCode = (codeEl ? codeEl.value : '').replace(/^TC-/i, '').trim();
+  }
+  if (!jobCode) return;
+
+  try {
+    const resp = await fetch('/api/sa/tc-import?job_code=' + encodeURIComponent(jobCode));
+    const result = await resp.json();
+    if (result.ok && result.data) {
+      applySAImport(result.data);
+    }
+  } catch(e) { /* silent */ }
+}
+
+function applySAImport(data) {
+  // Only auto-fill if SA materials cost is currently 0 (don't overwrite user edits)
+  const currentCost = numVal('sa_materials_cost');
+  if (currentCost > 0 && data.total_sell_price > 0 && currentCost !== data.total_sell_price) {
+    // Already has a value, just show the banner
+  }
+
+  if (data.total_sell_price && (currentCost === 0 || currentCost === data.total_sell_price)) {
+    document.getElementById('sa_materials_cost').value = data.total_sell_price;
+  }
+  if (data.n_columns && numVal('sa_n_cols') === 0) {
+    document.getElementById('sa_n_cols').value = data.n_columns;
+    document.getElementById('conc_n_piers').value = data.n_columns;
+    document.getElementById('drill_n_holes').value = data.n_columns;
+  }
+  if (data.footing_depth_ft) {
+    document.getElementById('sa_footing_depth').value = data.footing_depth_ft;
+    document.getElementById('conc_depth_ft').value = data.footing_depth_ft;
+  }
+  if (data.width_ft) document.getElementById('sa_width').value = data.width_ft;
+  if (data.length_ft) document.getElementById('sa_length').value = data.length_ft;
+  if (data.sa_quote_num) document.getElementById('sa_quote_num').value = data.sa_quote_num;
+  if (data.project_name && !strVal('proj_name')) document.getElementById('proj_name').value = data.project_name;
+
+  // Show banner
+  const banner = document.getElementById('sa-import-banner');
+  if (banner && data.total_sell_price > 0) {
+    banner.style.display = 'block';
+    document.getElementById('sa-import-cost-lbl').textContent = fmt(data.total_sell_price);
+    const dateLbl = document.getElementById('sa-import-date-lbl');
+    if (dateLbl && data.transferred_at) {
+      dateLbl.textContent = '(imported ' + data.transferred_at.substring(0, 10) + ')';
+    }
+    // Hide the hint
+    const hint = document.getElementById('sa-import-hint');
+    if (hint) hint.style.display = 'none';
+  }
+
+  // Recalculate
+  syncConcreteFromSA();
+  calcConcrete(); calcDrilling();
+  renderSummary();
+}
+
+async function refreshSAImport() {
+  const p = new URLSearchParams(window.location.search);
+  let jobCode = p.get('project') || p.get('proj_code') || '';
+  if (!jobCode) {
+    const codeEl = document.getElementById('proj_code');
+    jobCode = (codeEl ? codeEl.value : '').replace(/^TC-/i, '').trim();
+  }
+  if (!jobCode) { alert('No project code to refresh from.'); return; }
+
+  try {
+    const resp = await fetch('/api/sa/tc-import?job_code=' + encodeURIComponent(jobCode));
+    const result = await resp.json();
+    if (result.ok && result.data) {
+      // Force update even if values exist
+      const data = result.data;
+      if (data.total_sell_price) document.getElementById('sa_materials_cost').value = data.total_sell_price;
+      if (data.n_columns) {
+        document.getElementById('sa_n_cols').value = data.n_columns;
+        document.getElementById('conc_n_piers').value = data.n_columns;
+        document.getElementById('drill_n_holes').value = data.n_columns;
+      }
+      if (data.footing_depth_ft) {
+        document.getElementById('sa_footing_depth').value = data.footing_depth_ft;
+        document.getElementById('conc_depth_ft').value = data.footing_depth_ft;
+      }
+      if (data.width_ft) document.getElementById('sa_width').value = data.width_ft;
+      if (data.length_ft) document.getElementById('sa_length').value = data.length_ft;
+      if (data.sa_quote_num) document.getElementById('sa_quote_num').value = data.sa_quote_num;
+
+      // Update banner
+      const banner = document.getElementById('sa-import-banner');
+      if (banner) {
+        banner.style.display = 'block';
+        document.getElementById('sa-import-cost-lbl').textContent = fmt(data.total_sell_price || 0);
+        const dateLbl = document.getElementById('sa-import-date-lbl');
+        if (dateLbl && data.transferred_at) {
+          dateLbl.textContent = '(refreshed ' + data.transferred_at.substring(0, 10) + ')';
+        }
+      }
+
+      syncConcreteFromSA();
+      calcConcrete(); calcDrilling();
+      renderSummary();
+      alert('SA data refreshed successfully!');
+    } else {
+      alert('No SA import data found for project: ' + jobCode);
+    }
+  } catch(e) {
+    alert('Error refreshing: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -1239,6 +1362,9 @@ window.addEventListener('DOMContentLoaded', () => {
   calcConcrete(); calcLabor(); calcDrilling();
   calcShipping(); calcFuel(); calcHotels();
   calcPerDiem(); calcTransport(); renderSummary();
+
+  // Check for SA import after URL prefill completes
+  setTimeout(checkSAImport, 800);
 
   // Sync crew/days
   document.getElementById('lab_crew').addEventListener('change', function() {

@@ -32,18 +32,23 @@ STATUS_STICKERS_PRINTED = "stickers_printed"
 STATUS_IN_PROGRESS = "in_progress"
 STATUS_COMPLETE = "complete"
 STATUS_ON_HOLD = "on_hold"
+STATUS_QC_HOLD = "qc_hold"
+STATUS_SHIPPED_WO = "shipped"
 
 VALID_STATUSES = [
     STATUS_QUEUED, STATUS_APPROVED, STATUS_STICKERS_PRINTED,
-    STATUS_IN_PROGRESS, STATUS_COMPLETE, STATUS_ON_HOLD,
+    STATUS_IN_PROGRESS, STATUS_QC_HOLD, STATUS_COMPLETE,
+    STATUS_SHIPPED_WO, STATUS_ON_HOLD,
 ]
 
 STATUS_FLOW = {
     STATUS_QUEUED: [STATUS_APPROVED, STATUS_ON_HOLD],
     STATUS_APPROVED: [STATUS_STICKERS_PRINTED, STATUS_ON_HOLD],
     STATUS_STICKERS_PRINTED: [STATUS_IN_PROGRESS],
-    STATUS_IN_PROGRESS: [STATUS_COMPLETE, STATUS_ON_HOLD],
-    STATUS_COMPLETE: [],
+    STATUS_IN_PROGRESS: [STATUS_COMPLETE, STATUS_QC_HOLD, STATUS_ON_HOLD],
+    STATUS_QC_HOLD: [STATUS_IN_PROGRESS, STATUS_ON_HOLD],
+    STATUS_COMPLETE: [STATUS_SHIPPED_WO],
+    STATUS_SHIPPED_WO: [],
     STATUS_ON_HOLD: [STATUS_QUEUED, STATUS_APPROVED],
 }
 
@@ -52,7 +57,9 @@ STATUS_LABELS = {
     STATUS_APPROVED: "Approved",
     STATUS_STICKERS_PRINTED: "Stickers Printed",
     STATUS_IN_PROGRESS: "In Progress",
+    STATUS_QC_HOLD: "QC Hold",
     STATUS_COMPLETE: "Complete",
+    STATUS_SHIPPED_WO: "Shipped",
     STATUS_ON_HOLD: "On Hold",
 }
 
@@ -61,9 +68,51 @@ STATUS_COLORS = {
     STATUS_APPROVED: "#3B82F6",
     STATUS_STICKERS_PRINTED: "#8B5CF6",
     STATUS_IN_PROGRESS: "#F59E0B",
+    STATUS_QC_HOLD: "#F97316",
     STATUS_COMPLETE: "#10B981",
+    STATUS_SHIPPED_WO: "#6366F1",
     STATUS_ON_HOLD: "#DC2626",
 }
+
+VALID_PRIORITIES = ["urgent", "high", "normal", "low"]
+PRIORITY_ORDER = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+
+
+def estimate_fabrication_hours(items: list) -> float:
+    """Auto-calculate estimated fabrication hours based on item count and component types.
+    Uses average times per component type from historical data."""
+    AVG_MINUTES = {
+        "column": 90,
+        "rafter": 120,
+        "purlin": 30,
+        "sag_rod": 10,
+        "strap": 8,
+        "clip": 8,
+        "p2plate": 10,
+        "splice": 12,
+        "endcap": 25,
+        "roofing": 60,
+    }
+    total_min = 0.0
+    for item in items:
+        if isinstance(item, WorkOrderItem):
+            ctype = item.component_type.lower()
+            qty = item.quantity or 1
+            cat = getattr(item, "item_category", "fabricated")
+        elif isinstance(item, dict):
+            ctype = (item.get("component_type") or "").lower()
+            qty = item.get("quantity", 1) or 1
+            cat = item.get("item_category", "fabricated")
+        else:
+            continue
+        if cat != "fabricated":
+            continue
+        est = item.estimated_minutes if isinstance(item, WorkOrderItem) and item.estimated_minutes > 0 else 0
+        if est > 0:
+            total_min += est * qty
+        else:
+            total_min += AVG_MINUTES.get(ctype, 20) * qty
+    return round(total_min / 60.0, 1)
 
 # Extended statuses used by reporting / QC / shipping / field ops
 STATUS_FABRICATED = "fabricated"
@@ -198,13 +247,23 @@ class WorkOrder:
     # ── Project Info ──
     project_name: str = ""         # e.g., "Dallas Office Park"
     customer_name: str = ""        # e.g., "Lone Star Properties"
-    priority: str = "normal"       # "normal", "rush", "hot"
+    priority: str = "normal"       # "urgent", "high", "normal", "low"
     due_date: str = ""             # Target completion date
     delivery_date: str = ""        # Scheduled delivery
     ship_to: str = ""              # Delivery address
     total_weight_lbs: float = 0.0  # Total weight from BOM
     total_sell: float = 0.0        # Total sell from TC
     building_specs: str = ""       # e.g., "50'x150'x16' DBL-COL"
+    # ── Machine / Operator / Scheduling ──
+    machine_id: str = ""           # Assigned machine (e.g., "WELDING", "Z1")
+    operator: str = ""             # Assigned operator username/name
+    estimated_hours: float = 0.0   # Auto-calculated from item count + types
+    actual_hours: float = 0.0      # Calculated on completion
+    start_time: str = ""           # ISO timestamp when in_progress started
+    end_time: str = ""             # ISO timestamp when completed
+    # ── Allocation tracking ──
+    allocation_ids: list = field(default_factory=list)  # Inventory allocation IDs
+    material_status: str = ""      # "allocated", "partial", "awaiting_material", ""
 
     def to_dict(self) -> dict:
         d = {
@@ -227,6 +286,14 @@ class WorkOrder:
             "total_weight_lbs": self.total_weight_lbs,
             "total_sell": self.total_sell,
             "building_specs": self.building_specs,
+            "machine_id": self.machine_id,
+            "operator": self.operator,
+            "estimated_hours": self.estimated_hours,
+            "actual_hours": self.actual_hours,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "allocation_ids": self.allocation_ids,
+            "material_status": self.material_status,
             "items": [item.to_dict() for item in self.items],
         }
         return d
@@ -295,6 +362,13 @@ class WorkOrder:
             "qc_hold_items": sum(1 for i in self.items if i.status == STATUS_COMPLETE
                                  and i.qc_status == "pending"
                                  and (i.component_type or "").lower() in QC_HOLD_COMPONENT_TYPES),
+            "machine_id": self.machine_id,
+            "operator": self.operator,
+            "estimated_hours": self.estimated_hours,
+            "actual_hours": self.actual_hours,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "material_status": self.material_status,
             "loading_ready": sum(1 for i in self.items if i.loading_status == "staged"),
             "loading_loaded": sum(1 for i in self.items if i.loading_status == "loaded"),
             # Purchased item stats
@@ -497,7 +571,8 @@ def create_work_order(job_code: str, revision: str, created_by: str,
                       priority: str = "normal", due_date: str = "",
                       delivery_date: str = "", ship_to: str = "",
                       total_weight_lbs: float = 0.0, total_sell: float = 0.0,
-                      building_specs: str = "") -> WorkOrder:
+                      building_specs: str = "",
+                      machine_id: str = "", operator: str = "") -> WorkOrder:
     """Create a work order from shop drawing generation results.
 
     Args:
@@ -529,6 +604,8 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         total_weight_lbs=total_weight_lbs,
         total_sell=total_sell,
         building_specs=building_specs,
+        machine_id=machine_id,
+        operator=operator,
     )
 
     n_frames = config_dict.get("n_frames", 1)
@@ -813,6 +890,9 @@ def create_work_order(job_code: str, revision: str, created_by: str,
                 item.estimated_minutes = 0.0
     except Exception:
         pass  # fab_steps not available — leave estimates at 0
+
+    # Auto-calculate estimated_hours from items
+    wo.estimated_hours = estimate_fabrication_hours(wo.items)
 
     return wo
 

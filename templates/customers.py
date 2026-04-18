@@ -305,6 +305,7 @@ CUSTOMERS_HTML = r"""
         <div class="drawer-header">
             <h2 id="drawerTitle" style="font-size:var(--tf-text-xl);font-weight:700;color:var(--tf-gray-900);"></h2>
             <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-primary" onclick="newProjectFromCustomer()" style="font-size:var(--tf-text-xs);padding:4px 12px;">+ New Project</button>
                 <button class="btn btn-outline" onclick="editCustomer()" id="editBtn" style="font-size:var(--tf-text-xs);padding:4px 12px;">&#9998; Edit</button>
                 <button class="btn btn-outline" onclick="deleteCustomerFromDrawer()" id="deleteBtn" style="font-size:var(--tf-text-xs);padding:4px 12px;color:#DC2626;border-color:#DC2626;">&#128465; Delete</button>
                 <button class="drawer-close" onclick="closeDrawer()">&times;</button>
@@ -499,6 +500,8 @@ function renderCustomers() {
             <div class="cc-meta">
                 <span>&#128197; ${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</span>
                 <span>&#128179; ${c.payment_terms || 'Net 30'}</span>
+                ${c.total_revenue ? '<span style="color:var(--tf-success);font-weight:700;">&#128176; $'+Number(c.total_revenue).toLocaleString()+'</span>' : ''}
+                ${c.total_outstanding > 0 ? '<span style="color:#DC2626;font-weight:700;">Outstanding: $'+Number(c.total_outstanding).toLocaleString()+'</span>' : ''}
             </div>
             <div class="cc-tags">${tags}</div>
         </div>`;
@@ -797,6 +800,21 @@ function renderDrawer(c) {
         <div id="customerDocs"></div>
     </div>`;
 
+    // Financial Summary
+    html += `<div class="detail-section"><h3>Financial Summary</h3>
+        <div id="custFinancials" style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:8px 0;">Loading...</div>
+    </div>`;
+
+    // Invoices
+    html += `<div class="detail-section"><h3>Invoices</h3>
+        <div id="custInvoices" style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:8px 0;">Loading...</div>
+    </div>`;
+
+    // Activity Timeline
+    html += `<div class="detail-section"><h3>Activity Timeline</h3>
+        <div id="custTimeline" style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:8px 0;">Loading...</div>
+    </div>`;
+
     // Notes
     html += `<div class="detail-section"><h3>Notes</h3>
         <textarea class="notes-area" id="drawerNotes" onblur="saveNote('${c.id}')">${c.notes||''}</textarea>
@@ -804,6 +822,7 @@ function renderDrawer(c) {
 
     document.getElementById('drawerBody').innerHTML = html;
     loadCustomerDocs(c.id);
+    loadCustomerFinancials(c);
 }
 
 async function loadCustomerDocs(cid) {
@@ -999,6 +1018,124 @@ async function deleteContact(cid, idx) {
             alert(d.error || 'Failed to delete contact');
         }
     } catch(e) { alert('Error deleting contact'); }
+}
+
+function newProjectFromCustomer() {
+    if (!currentDetail) return;
+    const company = encodeURIComponent(currentDetail.company || '');
+    const contact = encodeURIComponent(currentDetail.primary_contact?.name || '');
+    const email = encodeURIComponent(currentDetail.primary_contact?.email || '');
+    const phone = encodeURIComponent(currentDetail.primary_contact?.phone || '');
+    window.location.href = `/sa?customer=${company}&contact=${contact}&email=${email}&phone=${phone}`;
+}
+
+async function loadCustomerFinancials(c) {
+    const cname = (c.company || '').toLowerCase();
+    if (!cname) return;
+
+    try {
+        const [invRes, expRes] = await Promise.all([
+            fetch('/api/financial/invoices').then(r => r.json()).catch(() => ({invoices:[]})),
+            fetch('/api/financial/expenses').then(r => r.json()).catch(() => ({expenses:[]}))
+        ]);
+
+        // Match invoices by customer name
+        const invoices = (invRes.invoices || []).filter(inv =>
+            (inv.customer || '').toLowerCase().includes(cname) ||
+            (inv.project_name || '').toLowerCase().includes(cname)
+        );
+
+        // Match expenses by project link
+        const projectCodes = (c.projects || []).map(p => p.job_code);
+        const expenses = (expRes.expenses || []).filter(exp =>
+            projectCodes.includes(exp.job_code)
+        );
+
+        // Calculate financials
+        let totalRevenue = 0, totalPaid = 0, totalOutstanding = 0, totalOverdue = 0;
+        const today = new Date().toISOString().split('T')[0];
+        invoices.forEach(inv => {
+            const amt = parseFloat(inv.amount) || 0;
+            totalRevenue += amt;
+            if (inv.status === 'paid') totalPaid += amt;
+            else if (inv.status !== 'draft') {
+                totalOutstanding += amt;
+                if (inv.due_date && inv.due_date < today) totalOverdue += amt;
+            }
+        });
+
+        let totalExpenses = 0;
+        expenses.forEach(exp => { totalExpenses += parseFloat(exp.amount) || 0; });
+
+        const fmt = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+        // Render financial summary
+        const finEl = document.getElementById('custFinancials');
+        finEl.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div class="detail-row"><span class="label">Total Revenue</span><span class="value" style="color:var(--tf-success);">${fmt(totalRevenue)}</span></div>
+                <div class="detail-row"><span class="label">Paid</span><span class="value">${fmt(totalPaid)}</span></div>
+                <div class="detail-row"><span class="label">Outstanding</span><span class="value" style="color:${totalOutstanding > 0 ? 'var(--tf-amber)' : 'inherit'};">${fmt(totalOutstanding)}</span></div>
+                <div class="detail-row"><span class="label">Overdue</span><span class="value" style="color:${totalOverdue > 0 ? '#DC2626' : 'inherit'};">${fmt(totalOverdue)}</span></div>
+                <div class="detail-row"><span class="label">Expenses</span><span class="value">${fmt(totalExpenses)}</span></div>
+                <div class="detail-row"><span class="label">Net Profit</span><span class="value" style="color:${totalPaid - totalExpenses >= 0 ? 'var(--tf-success)' : '#DC2626'};">${fmt(totalPaid - totalExpenses)}</span></div>
+            </div>`;
+
+        // Render invoices list
+        const invEl = document.getElementById('custInvoices');
+        if (invoices.length) {
+            invEl.innerHTML = invoices.map(inv => {
+                const statusColors = {draft:'#94A3B8',sent:'#3B82F6',viewed:'#8B5CF6',paid:'#22C55E',overdue:'#EF4444'};
+                const st = inv.status || 'draft';
+                const isOverdue = st !== 'paid' && st !== 'draft' && inv.due_date && inv.due_date < today;
+                const displayStatus = isOverdue ? 'overdue' : st;
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:1px solid var(--tf-border);border-radius:var(--tf-radius);margin-bottom:6px;font-size:var(--tf-text-sm);cursor:pointer;transition:all var(--tf-duration) var(--tf-ease);" onmouseover="this.style.background='var(--tf-blue-light)'" onmouseout="this.style.background=''" onclick="window.location.href='/financial/invoices'">
+                    <div>
+                        <div style="font-weight:600;">${inv.invoice_number || inv.id}</div>
+                        <div style="font-size:11px;color:var(--tf-gray-500);">${inv.invoice_date || ''} ${inv.due_date ? '&middot; Due: '+inv.due_date : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-weight:700;">${fmt(parseFloat(inv.amount)||0)}</span>
+                        <span style="background:${statusColors[displayStatus]||'#94A3B8'};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;">${displayStatus}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            invEl.innerHTML = '<div style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:8px 0;">No invoices found for this customer</div>';
+        }
+
+        // Build activity timeline from all data
+        const timeline = [];
+        (c.projects || []).forEach(p => {
+            if (p.created_at) timeline.push({date: p.created_at, icon: '&#128204;', text: `Project "${p.project_name || p.job_code}" created`, type: 'project'});
+        });
+        invoices.forEach(inv => {
+            if (inv.created_at) timeline.push({date: inv.created_at, icon: '&#128196;', text: `Invoice ${inv.invoice_number||inv.id} created (${fmt(parseFloat(inv.amount)||0)})`, type: 'invoice'});
+            if (inv.sent_date) timeline.push({date: inv.sent_date, icon: '&#128232;', text: `Invoice ${inv.invoice_number||inv.id} sent`, type: 'invoice'});
+            if (inv.payment_date) timeline.push({date: inv.payment_date, icon: '&#9989;', text: `Invoice ${inv.invoice_number||inv.id} paid`, type: 'payment'});
+        });
+        if (c.created_at) timeline.push({date: c.created_at, icon: '&#128100;', text: 'Customer record created', type: 'customer'});
+
+        timeline.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+        const tlEl = document.getElementById('custTimeline');
+        if (timeline.length) {
+            tlEl.innerHTML = timeline.slice(0, 15).map(t => {
+                const typeColors = {project:'var(--tf-blue)',invoice:'var(--tf-amber)',payment:'var(--tf-success)',customer:'var(--tf-gray-500)'};
+                return `<div style="display:flex;gap:12px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--tf-border);">
+                    <div style="width:28px;height:28px;border-radius:50%;background:${typeColors[t.type]||'var(--tf-gray-100)'};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;color:#fff;">${t.icon}</div>
+                    <div style="flex:1;">
+                        <div style="font-size:var(--tf-text-sm);color:var(--tf-gray-800);">${t.text}</div>
+                        <div style="font-size:11px;color:var(--tf-gray-400);">${t.date ? new Date(t.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            tlEl.innerHTML = '<div style="color:var(--tf-gray-400);font-size:var(--tf-text-sm);padding:8px 0;">No activity recorded yet</div>';
+        }
+    } catch(e) {
+        console.error('Error loading customer financials:', e);
+    }
 }
 
 function doGlobalSearch(q) {
