@@ -464,7 +464,8 @@ SHOP_DRAWINGS_LANDING_HTML = r"""
         return allProjects.filter(p => {
             const name = (p.project_name || p.name || '').toLowerCase();
             const code = (p.job_code || '').toLowerCase();
-            const customer = (p.customer_name || p.customer || '').toLowerCase();
+            const custRaw = p.customer_name || p.customer || '';
+            const customer = (typeof custRaw === 'object' ? (custRaw.name || '') : String(custRaw)).toLowerCase();
 
             // Search filter
             if (query && !name.includes(query) && !code.includes(query) && !customer.includes(query)) {
@@ -528,7 +529,8 @@ SHOP_DRAWINGS_LANDING_HTML = r"""
         grid.innerHTML = filtered.map(p => {
             const jobCode = p.job_code || 'UNKNOWN';
             const name = p.project_name || p.name || 'Untitled Project';
-            const customer = p.customer_name || p.customer || '';
+            const custRaw2 = p.customer_name || p.customer || '';
+            const customer = typeof custRaw2 === 'object' ? (custRaw2.name || '') : String(custRaw2);
             const stage = p.stage || p.status || '';
             const count = getDrawingCount(p);
             const status = getDrawingStatus(p);
