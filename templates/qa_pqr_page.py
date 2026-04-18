@@ -319,7 +319,7 @@ PQR_PAGE_HTML = """<!DOCTYPE html>
       h += '<td>' + renderWpsTags(p.wps_refs) + '</td>';
       h += '<td class="pqr-actions">';
       h += '<button class="pqr-edit-btn" data-rec="' + btoa(JSON.stringify(p)) + '" onclick="pqrEdit(this)">Edit</button>';
-      h += '<button class="pqr-del-btn" onclick="pqrDelete(\'' + (p.pqr_id || '') + '\')">Del</button>';
+      h += '<button class="pqr-del-btn" onclick="pqrDelete(\\x27' + (p.pqr_id || '') + '\\x27)">Del</button>';
       h += '</td>';
       h += '</tr>';
     }

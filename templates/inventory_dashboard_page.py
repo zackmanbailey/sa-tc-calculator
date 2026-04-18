@@ -440,9 +440,9 @@ INVENTORY_DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
       '<td class="text-right" style="color:var(--green)">' + fmtNum(c.available_lbs) + '</td>' +
       '<td><span class="badge badge-' + c.status + '">' + c.status.replace('_', ' ').toUpperCase() + '</span></td>' +
       '<td>' +
-        '<button class="btn-sm secondary" onclick="showCoilHistory(\'' + c.coil_id + '\')">History</button> ' +
-        '<button class="btn-sm primary" onclick="showReceiveModal(\'' + c.coil_id + '\')">Receive</button> ' +
-        '<button class="btn-sm primary" onclick="showAllocateModal(\'' + c.coil_id + '\')">Allocate</button>' +
+        '<button class="btn-sm secondary" onclick="showCoilHistory(\\x27' + c.coil_id + '\\x27)">History</button> ' +
+        '<button class="btn-sm primary" onclick="showReceiveModal(\\x27' + c.coil_id + '\\x27)">Receive</button> ' +
+        '<button class="btn-sm primary" onclick="showAllocateModal(\\x27' + c.coil_id + '\\x27)">Allocate</button>' +
       '</td>' +
     '</tr>').join('');
   }
@@ -524,7 +524,7 @@ INVENTORY_DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
         '<td class="text-right">' + fmtNum(a.consumed_lbs) + '</td>' +
         '<td class="text-right" style="color:' + (remaining > 0 ? 'var(--green)' : 'var(--red)') + '">' + fmtNum(remaining) + '</td>' +
         '<td><span class="badge badge-' + a.status + '">' + a.status.toUpperCase() + '</span></td>' +
-        '<td><button class="btn-sm danger" onclick="releaseAllocation(\'' + a.allocation_id + '\')">Release</button></td>' +
+        '<td><button class="btn-sm danger" onclick="releaseAllocation(\\x27' + a.allocation_id + '\\x27)">Release</button></td>' +
       '</tr>';
     }).join('');
   }
@@ -650,7 +650,7 @@ INVENTORY_DASHBOARD_PAGE_HTML = """<!DOCTYPE html>
       '<td>' + escapeHtml(a.coil_id) + '</td>' +
       '<td>' + escapeHtml(a.message) + '</td>' +
       '<td class="text-muted">' + (a.date ? a.date.substring(0, 10) : '-') + '</td>' +
-      '<td><button class="btn-sm secondary" onclick="acknowledgeAlert(\'' + a.alert_id + '\')">Acknowledge</button></td>' +
+      '<td><button class="btn-sm secondary" onclick="acknowledgeAlert(\\x27' + a.alert_id + '\\x27)">Acknowledge</button></td>' +
     '</tr>').join('');
   }
 
