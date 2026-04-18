@@ -287,6 +287,7 @@ CUSTOMERS_HTML = r"""
             <div class="search-wrap">
                 <input type="text" class="search-box" id="custSearch" placeholder="Search customers..." oninput="filterCustomers()">
             </div>
+            <button onclick="window.open('/api/customers/report/pdf')" style="background:var(--tf-blue,#1E40AF);color:#FFF;border:none;padding:6px 16px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;margin-right:8px">Export Report</button>
             <button class="tag-filter" data-tag="all" onclick="setTagFilter('all', this)">All</button>
             <button class="tag-filter" data-tag="solar" onclick="setTagFilter('solar', this)">Solar</button>
             <button class="tag-filter" data-tag="commercial" onclick="setTagFilter('commercial', this)">Commercial</button>

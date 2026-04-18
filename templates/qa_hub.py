@@ -113,12 +113,17 @@ QA_HUB_HTML = """<!DOCTYPE html>
 
   <!-- Hero -->
   <div class="qa-hero">
-    <h1>QA / QC <span>Hub</span></h1>
-    <p class="sub">
-      Central hub for all quality documentation required by AISC, AWS D1.1, and company quality manual.
-      Everything an auditor needs &mdash; WPS library, welder certifications, inspection records, NCRs,
-      traceability, calibration logs, and procedures &mdash; all in one place.
-    </p>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <h1>QA / QC <span>Hub</span></h1>
+        <p class="sub">
+          Central hub for all quality documentation required by AISC, AWS D1.1, and company quality manual.
+          Everything an auditor needs &mdash; WPS library, welder certifications, inspection records, NCRs,
+          traceability, calibration logs, and procedures &mdash; all in one place.
+        </p>
+      </div>
+      <button onclick="window.open('/api/reports/qa/pdf')" style="background:#C89A2E;color:#FFF;border:none;padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;margin-top:4px">Export Report</button>
+    </div>
     <div class="audit-bar" id="auditBar">
       <div class="audit-stat">
         <div class="as-val green" id="abWPS">4</div>

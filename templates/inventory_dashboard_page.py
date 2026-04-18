@@ -128,6 +128,7 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
   <div class="topbar">
     <h1>Inventory Management</h1>
     <div class="nav-links">
+      <button onclick="window.open('/api/inventory/summary/pdf')" style="background:var(--accent);color:#FFF;border:none;padding:6px 16px;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer">Export PDF</button>
       <a href="/dashboard">Dashboard</a>
       <a href="/schedule">Schedule</a>
       <a href="/documents">Documents</a>

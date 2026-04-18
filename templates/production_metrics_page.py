@@ -146,6 +146,7 @@ PRODUCTION_METRICS_PAGE_HTML = r"""
                     <option value="90">Last 90 Days</option>
                 </select>
                 <div style="position:relative;display:inline-block">
+                    <button class="btn btn-secondary" onclick="window.open('/api/reports/production/pdf?days_back='+document.getElementById('periodSelect').value)" style="margin-right:6px">Export PDF</button>
                     <button class="btn btn-secondary" onclick="document.getElementById('exportMenu').style.display=document.getElementById('exportMenu').style.display==='block'?'none':'block'">Export CSV &#9662;</button>
                     <div id="exportMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--tf-surface);border:1px solid var(--tf-border);border-radius:var(--tf-radius-md);box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:50;min-width:200px">
                         <a href="/api/reports/export?type=projects" style="display:block;padding:10px 16px;color:var(--tf-gray-700);text-decoration:none;font-size:13px;border-bottom:1px solid var(--tf-border)">All Projects</a>

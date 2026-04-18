@@ -11891,6 +11891,804 @@ class LiveUpdateWebSocket(tornado.websocket.WebSocketHandler):
 
 
 # ─────────────────────────────────────────────
+# PDF EXPORT HANDLERS (Production, QA, Inventory, Customers)
+# ─────────────────────────────────────────────
+
+def _pdf_report_boilerplate():
+    """Return common ReportLab imports and styles for report PDFs."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib.colors import HexColor, black, white
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable, KeepTogether
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    styles = getSampleStyleSheet()
+    navy = HexColor("#0F172A")
+    blue = HexColor("#1E40AF")
+    amber = HexColor("#F59E0B")
+    gray = HexColor("#64748B")
+    light_bg = HexColor("#F8FAFC")
+    border_color = HexColor("#E2E8F0")
+    green = HexColor("#10B981")
+    red = HexColor("#DC2626")
+
+    title_style = ParagraphStyle('RptTitle', parent=styles['Title'],
+        fontSize=22, textColor=navy, spaceAfter=4, fontName='Helvetica-Bold')
+    h1_style = ParagraphStyle('RptH1', parent=styles['Heading1'],
+        fontSize=14, textColor=navy, spaceBefore=16, spaceAfter=8,
+        fontName='Helvetica-Bold')
+    h2_style = ParagraphStyle('RptH2', parent=styles['Heading2'],
+        fontSize=12, textColor=blue, spaceBefore=12, spaceAfter=6,
+        fontName='Helvetica-Bold')
+    body_style = ParagraphStyle('RptBody', parent=styles['Normal'],
+        fontSize=10, leading=14, textColor=HexColor("#334155"), fontName='Helvetica')
+    bold_body = ParagraphStyle('RptBoldBody', parent=body_style, fontName='Helvetica-Bold')
+    small_style = ParagraphStyle('RptSmall', parent=styles['Normal'],
+        fontSize=8.5, leading=11, textColor=gray, fontName='Helvetica')
+
+    return dict(
+        letter=letter, inch=inch, HexColor=HexColor, black=black, white=white,
+        SimpleDocTemplate=SimpleDocTemplate, Paragraph=Paragraph, Spacer=Spacer,
+        Table=Table, TableStyle=TableStyle, HRFlowable=HRFlowable,
+        KeepTogether=KeepTogether, TA_LEFT=TA_LEFT, TA_CENTER=TA_CENTER,
+        TA_RIGHT=TA_RIGHT, styles=styles, navy=navy, blue=blue, amber=amber,
+        gray=gray, light_bg=light_bg, border_color=border_color, green=green, red=red,
+        title_style=title_style, h1_style=h1_style, h2_style=h2_style,
+        body_style=body_style, bold_body=bold_body, small_style=small_style,
+        ParagraphStyle=ParagraphStyle,
+    )
+
+
+def _pdf_header_block(rl, title, subtitle=""):
+    """Return a standard Titan Carports report header table."""
+    hdr_data = [
+        [rl['Paragraph']('<b>TITAN CARPORTS LLC</b>',
+            rl['ParagraphStyle']('HC', parent=rl['title_style'], fontSize=18, textColor=rl['white'])),
+         rl['Paragraph'](f'<b>{title}</b><br/><font size="9">{subtitle}</font>',
+            rl['ParagraphStyle']('HR', parent=rl['body_style'],
+                alignment=rl['TA_RIGHT'], textColor=rl['white']))],
+    ]
+    ht = rl['Table'](hdr_data, colWidths=[4*rl['inch'], 3*rl['inch']])
+    ht.setStyle(rl['TableStyle']([
+        ('BACKGROUND', (0,0), (-1,-1), rl['navy']),
+        ('TEXTCOLOR', (0,0), (-1,-1), rl['white']),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 12),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
+        ('LEFTPADDING', (0,0), (0,-1), 16),
+        ('RIGHTPADDING', (-1,0), (-1,-1), 16),
+    ]))
+    return ht
+
+
+class ProductionReportPDFHandler(BaseHandler):
+    """GET /api/reports/production/pdf — Export production metrics as PDF."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        try:
+            rl = _pdf_report_boilerplate()
+            try:
+                days_back = int(self.get_query_argument("days_back", "30"))
+            except (ValueError, TypeError):
+                days_back = 30
+
+            # ── Gather production data (same logic as ReportsAPIHandler) ──
+            try:
+                from shop_drawings.work_orders import list_all_work_orders, load_work_order
+            except ImportError:
+                self.set_status(500)
+                self.write("Work orders module not available")
+                return
+
+            total_items = 0; completed_items = 0
+            by_component = {}; by_machine = {}
+            bottlenecks = []
+
+            try:
+                all_wos = list_all_work_orders(SHOP_DRAWINGS_DIR)
+            except Exception:
+                all_wos = []
+            for wo_ref in all_wos:
+                try:
+                    wo = load_work_order(SHOP_DRAWINGS_DIR, wo_ref.get("job_code", ""), wo_ref.get("work_order_id", ""))
+                    if not wo:
+                        continue
+                    for item in getattr(wo, "items", []):
+                        total_items += 1
+                        comp = getattr(item, "component_type", "other") if hasattr(item, "component_type") else item.get("component_type", "other") if isinstance(item, dict) else "other"
+                        machine = getattr(item, "machine", "unknown") if hasattr(item, "machine") else item.get("machine", "unknown") if isinstance(item, dict) else "unknown"
+                        status = getattr(item, "status", "queued") if hasattr(item, "status") else item.get("status", "queued") if isinstance(item, dict) else "queued"
+                        by_component.setdefault(comp, {"total": 0, "complete": 0})
+                        by_component[comp]["total"] += 1
+                        by_machine.setdefault(machine, {"total": 0, "complete": 0})
+                        by_machine[machine]["total"] += 1
+                        if status == "complete":
+                            completed_items += 1
+                            by_component[comp]["complete"] += 1
+                            by_machine[machine]["complete"] += 1
+                except Exception:
+                    continue
+
+            for m, info in by_machine.items():
+                if info["total"] > 0 and info["complete"] == 0:
+                    bottlenecks.append({"machine": m, "queued": info["total"],
+                        "message": f"{m} has {info['total']} items queued with 0 completed"})
+
+            efficiency = round((completed_items / total_items * 100), 1) if total_items else 0
+            avg_cycle = 0
+            for m, info in by_machine.items():
+                if info["complete"] > 0:
+                    avg_cycle += round(0.1 * info["complete"], 2)
+            avg_cycle = round(avg_cycle / max(len(by_machine), 1), 1)
+
+            # ── Build PDF ──
+            buf = io.BytesIO()
+            doc = rl['SimpleDocTemplate'](buf, pagesize=rl['letter'],
+                topMargin=0.75*rl['inch'], bottomMargin=0.75*rl['inch'],
+                leftMargin=0.75*rl['inch'], rightMargin=0.75*rl['inch'])
+            story = []
+
+            now = datetime.datetime.now()
+            story.append(_pdf_header_block(rl, "PRODUCTION REPORT",
+                f"Period: Last {days_back} days | Generated: {now.strftime('%Y-%m-%d %H:%M')}"))
+            story.append(rl['Spacer'](1, 16))
+
+            # Summary stats
+            story.append(rl['Paragraph']("Summary Statistics", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            summary_data = [
+                [rl['Paragraph']('<b>Metric</b>', rl['bold_body']),
+                 rl['Paragraph']('<b>Value</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Total Items', rl['body_style']),
+                 rl['Paragraph'](str(total_items), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Completed Items', rl['body_style']),
+                 rl['Paragraph'](str(completed_items), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Efficiency', rl['body_style']),
+                 rl['Paragraph'](f"{efficiency}%", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Avg Cycle Time', rl['body_style']),
+                 rl['Paragraph'](f"{avg_cycle} min", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+            ]
+            st = rl['Table'](summary_data, colWidths=[4*rl['inch'], 3*rl['inch']])
+            st.setStyle(rl['TableStyle']([
+                ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('LEFTPADDING', (0,0), (-1,-1), 8),
+                ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ]))
+            story.append(st)
+            story.append(rl['Spacer'](1, 16))
+
+            # Machine utilization table
+            story.append(rl['Paragraph']("Machine Utilization", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            mach_rows = [
+                [rl['Paragraph']('<b>Machine</b>', rl['bold_body']),
+                 rl['Paragraph']('<b>Total</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                 rl['Paragraph']('<b>Complete</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                 rl['Paragraph']('<b>Queued</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                 rl['Paragraph']('<b>Rate</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER']))],
+            ]
+            for m, info in sorted(by_machine.items()):
+                rate = round(info["complete"] / info["total"] * 100, 1) if info["total"] else 0
+                mach_rows.append([
+                    rl['Paragraph'](m, rl['body_style']),
+                    rl['Paragraph'](str(info["total"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](str(info["complete"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](str(info["total"] - info["complete"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](f"{rate}%", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                ])
+            if len(mach_rows) > 1:
+                mt = rl['Table'](mach_rows, colWidths=[2.5*rl['inch'], 1.1*rl['inch'], 1.1*rl['inch'], 1.1*rl['inch'], 1.2*rl['inch']])
+                mt.setStyle(rl['TableStyle']([
+                    ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                    ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                    ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ]))
+                story.append(mt)
+            else:
+                story.append(rl['Paragraph']("No machine data available.", rl['body_style']))
+            story.append(rl['Spacer'](1, 16))
+
+            # Bottleneck alerts
+            if bottlenecks:
+                story.append(rl['Paragraph']("Bottleneck Alerts", rl['h1_style']))
+                story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['red'], spaceAfter=8))
+                for b in bottlenecks:
+                    story.append(rl['Paragraph'](
+                        f"&#9888; {b['message']}", rl['ParagraphStyle']('Alert', parent=rl['body_style'],
+                            textColor=rl['red'], spaceBefore=4, spaceAfter=4)))
+                story.append(rl['Spacer'](1, 12))
+
+            # Component breakdown
+            story.append(rl['Paragraph']("Component Breakdown", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            comp_rows = [
+                [rl['Paragraph']('<b>Component</b>', rl['bold_body']),
+                 rl['Paragraph']('<b>Total</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                 rl['Paragraph']('<b>Complete</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER']))],
+            ]
+            for comp, info in sorted(by_component.items()):
+                comp_rows.append([
+                    rl['Paragraph'](comp, rl['body_style']),
+                    rl['Paragraph'](str(info["total"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](str(info["complete"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                ])
+            if len(comp_rows) > 1:
+                ct = rl['Table'](comp_rows, colWidths=[3*rl['inch'], 2*rl['inch'], 2*rl['inch']])
+                ct.setStyle(rl['TableStyle']([
+                    ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                    ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                    ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ]))
+                story.append(ct)
+            else:
+                story.append(rl['Paragraph']("No component data available.", rl['body_style']))
+
+            # Footer
+            story.append(rl['Spacer'](1, 24))
+            story.append(rl['Paragraph'](
+                f"Report generated by TitanForge on {now.strftime('%B %d, %Y at %I:%M %p')}",
+                rl['small_style']))
+
+            doc.build(story)
+            pdf_bytes = buf.getvalue()
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                f'attachment; filename="Production_Report_{now.strftime("%Y%m%d")}.pdf"')
+            self.write(pdf_bytes)
+
+        except Exception as e:
+            logger.error(f"ProductionReportPDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write("PDF generation error. Check server logs.")
+
+
+class QAReportPDFHandler(BaseHandler):
+    """GET /api/reports/qa/pdf — Export QA summary as PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            rl = _pdf_report_boilerplate()
+
+            # ── Gather QA data (same as QAStatsHandler) ──
+            try:
+                from shop_drawings.qa_system import get_qa_stats
+                stats = get_qa_stats(SHOP_DRAWINGS_DIR)
+            except Exception:
+                stats = {}
+
+            # Also load NCRs and calibration data
+            ncrs = []
+            try:
+                ncr_path = os.path.join(DATA_DIR, "ncr_log.json")
+                if os.path.isfile(ncr_path):
+                    with open(ncr_path) as f:
+                        ncrs = json.load(f)
+            except Exception:
+                pass
+
+            calibration = []
+            try:
+                cal_path = os.path.join(DATA_DIR, "calibration.json")
+                if os.path.isfile(cal_path):
+                    with open(cal_path) as f:
+                        calibration = json.load(f)
+            except Exception:
+                pass
+
+            # ── Build PDF ──
+            buf = io.BytesIO()
+            doc = rl['SimpleDocTemplate'](buf, pagesize=rl['letter'],
+                topMargin=0.75*rl['inch'], bottomMargin=0.75*rl['inch'],
+                leftMargin=0.75*rl['inch'], rightMargin=0.75*rl['inch'])
+            story = []
+
+            now = datetime.datetime.now()
+            story.append(_pdf_header_block(rl, "QA / QC REPORT",
+                f"Generated: {now.strftime('%Y-%m-%d %H:%M')}"))
+            story.append(rl['Spacer'](1, 16))
+
+            # Inspection stats
+            story.append(rl['Paragraph']("Inspection Statistics", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+
+            total_inspections = stats.get("total_inspections", 0)
+            passed = stats.get("passed", stats.get("pass_count", 0))
+            failed = stats.get("failed", stats.get("fail_count", 0))
+            pass_rate = round(passed / total_inspections * 100, 1) if total_inspections else 0
+            active_wps = stats.get("active_wps", stats.get("wps_count", 0))
+            certified_welders = stats.get("certified_welders", stats.get("welder_count", 0))
+
+            insp_data = [
+                [rl['Paragraph']('<b>Metric</b>', rl['bold_body']),
+                 rl['Paragraph']('<b>Value</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Total Inspections', rl['body_style']),
+                 rl['Paragraph'](str(total_inspections), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Passed', rl['body_style']),
+                 rl['Paragraph'](str(passed), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Failed', rl['body_style']),
+                 rl['Paragraph'](str(failed), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Pass Rate', rl['body_style']),
+                 rl['Paragraph'](f"{pass_rate}%", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Active WPS', rl['body_style']),
+                 rl['Paragraph'](str(active_wps), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Certified Welders', rl['body_style']),
+                 rl['Paragraph'](str(certified_welders), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+            ]
+            it = rl['Table'](insp_data, colWidths=[4*rl['inch'], 3*rl['inch']])
+            it.setStyle(rl['TableStyle']([
+                ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('LEFTPADDING', (0,0), (-1,-1), 8),
+                ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ]))
+            story.append(it)
+            story.append(rl['Spacer'](1, 16))
+
+            # Open NCRs
+            open_ncrs = [n for n in ncrs if n.get("status", "").lower() in ("open", "in_progress", "")]
+            story.append(rl['Paragraph'](f"Open NCRs ({len(open_ncrs)})", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            if open_ncrs:
+                ncr_rows = [
+                    [rl['Paragraph']('<b>NCR #</b>', rl['bold_body']),
+                     rl['Paragraph']('<b>Description</b>', rl['bold_body']),
+                     rl['Paragraph']('<b>Severity</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                     rl['Paragraph']('<b>Status</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER']))],
+                ]
+                for n in open_ncrs[:20]:  # limit to 20
+                    ncr_rows.append([
+                        rl['Paragraph'](n.get("ncr_id", n.get("id", "—")), rl['body_style']),
+                        rl['Paragraph'](n.get("description", "—")[:80], rl['body_style']),
+                        rl['Paragraph'](n.get("severity", "—"), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                        rl['Paragraph'](n.get("status", "open"), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    ])
+                nt = rl['Table'](ncr_rows, colWidths=[1.2*rl['inch'], 3.3*rl['inch'], 1.2*rl['inch'], 1.3*rl['inch']])
+                nt.setStyle(rl['TableStyle']([
+                    ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                    ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                    ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ]))
+                story.append(nt)
+            else:
+                story.append(rl['Paragraph']("No open NCRs.", rl['body_style']))
+            story.append(rl['Spacer'](1, 16))
+
+            # Calibration status
+            story.append(rl['Paragraph'](f"Calibration Status ({len(calibration)} tools)", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            if calibration:
+                cal_rows = [
+                    [rl['Paragraph']('<b>Tool</b>', rl['bold_body']),
+                     rl['Paragraph']('<b>Serial #</b>', rl['bold_body']),
+                     rl['Paragraph']('<b>Last Calibrated</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                     rl['Paragraph']('<b>Next Due</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER']))],
+                ]
+                for c in calibration[:25]:
+                    cal_rows.append([
+                        rl['Paragraph'](c.get("tool_name", c.get("name", "—")), rl['body_style']),
+                        rl['Paragraph'](c.get("serial_number", c.get("serial", "—")), rl['body_style']),
+                        rl['Paragraph'](c.get("last_calibrated", c.get("cal_date", "—")), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                        rl['Paragraph'](c.get("next_due", c.get("due_date", "—")), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    ])
+                calt = rl['Table'](cal_rows, colWidths=[2.5*rl['inch'], 1.5*rl['inch'], 1.5*rl['inch'], 1.5*rl['inch']])
+                calt.setStyle(rl['TableStyle']([
+                    ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                    ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                    ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('LEFTPADDING', (0,0), (-1,-1), 6),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                ]))
+                story.append(calt)
+            else:
+                story.append(rl['Paragraph']("No calibration records found.", rl['body_style']))
+
+            # Footer
+            story.append(rl['Spacer'](1, 24))
+            story.append(rl['Paragraph'](
+                f"Report generated by TitanForge on {now.strftime('%B %d, %Y at %I:%M %p')}",
+                rl['small_style']))
+
+            doc.build(story)
+            pdf_bytes = buf.getvalue()
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                f'attachment; filename="QA_Report_{now.strftime("%Y%m%d")}.pdf"')
+            self.write(pdf_bytes)
+
+        except Exception as e:
+            logger.error(f"QAReportPDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write("PDF generation error. Check server logs.")
+
+
+class InventorySummaryPDFHandler(BaseHandler):
+    """GET /api/inventory/summary/pdf — Export inventory summary as PDF."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            rl = _pdf_report_boilerplate()
+
+            # ── Gather inventory data (same as InventorySummaryHandler + coils list) ──
+            inv = load_inventory()
+            coils = inv.get("coils", {})
+            total_stock = 0; total_committed = 0; total_value = 0
+            low_stock_count = 0; depleted_count = 0; active_count = 0
+
+            coil_rows_data = []
+            for cid, c in coils.items():
+                stock = float(c.get("stock_lbs", 0) or 0)
+                committed = float(c.get("committed_lbs", 0) or 0)
+                avail = stock - committed
+                price = float(c.get("price_per_lb", 0) or 0)
+                min_stock = float(c.get("min_stock_lbs", c.get("min_order_lbs", 2000)) or 2000)
+                gauge = c.get("gauge", "?")
+                grade = c.get("grade", "?")
+
+                total_stock += stock; total_committed += committed
+                total_value += stock * price
+
+                if avail <= 0:
+                    status = "DEPLETED"; depleted_count += 1
+                elif avail < min_stock:
+                    status = "LOW STOCK"; low_stock_count += 1
+                else:
+                    status = "Active"; active_count += 1
+
+                coil_rows_data.append({
+                    "id": cid, "gauge": gauge, "grade": grade,
+                    "stock": round(stock, 1), "committed": round(committed, 1),
+                    "available": round(avail, 1), "status": status,
+                })
+
+            # ── Build PDF ──
+            buf = io.BytesIO()
+            doc = rl['SimpleDocTemplate'](buf, pagesize=rl['letter'],
+                topMargin=0.75*rl['inch'], bottomMargin=0.75*rl['inch'],
+                leftMargin=0.75*rl['inch'], rightMargin=0.75*rl['inch'])
+            story = []
+
+            now = datetime.datetime.now()
+            story.append(_pdf_header_block(rl, "INVENTORY SUMMARY",
+                f"Generated: {now.strftime('%Y-%m-%d %H:%M')} | {len(coils)} Coils"))
+            story.append(rl['Spacer'](1, 16))
+
+            # Summary stats
+            story.append(rl['Paragraph']("Overview", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+            sum_data = [
+                [rl['Paragraph']('<b>Metric</b>', rl['bold_body']),
+                 rl['Paragraph']('<b>Value</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Total Coils', rl['body_style']),
+                 rl['Paragraph'](str(len(coils)), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Total Stock (lbs)', rl['body_style']),
+                 rl['Paragraph'](f"{total_stock:,.1f}", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Committed (lbs)', rl['body_style']),
+                 rl['Paragraph'](f"{total_committed:,.1f}", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Available (lbs)', rl['body_style']),
+                 rl['Paragraph'](f"{total_stock - total_committed:,.1f}", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Total Value', rl['body_style']),
+                 rl['Paragraph'](f"${total_value:,.2f}", rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+                [rl['Paragraph']('Active / Low / Depleted', rl['body_style']),
+                 rl['Paragraph'](f"{active_count} / {low_stock_count} / {depleted_count}",
+                     rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT']))],
+            ]
+            svt = rl['Table'](sum_data, colWidths=[4*rl['inch'], 3*rl['inch']])
+            svt.setStyle(rl['TableStyle']([
+                ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('LEFTPADDING', (0,0), (-1,-1), 8),
+                ('RIGHTPADDING', (0,0), (-1,-1), 8),
+            ]))
+            story.append(svt)
+            story.append(rl['Spacer'](1, 16))
+
+            # Coil detail table
+            story.append(rl['Paragraph']("Coil Inventory Detail", rl['h1_style']))
+            story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+
+            coil_hdr = [
+                rl['Paragraph']('<b>Coil ID</b>', rl['bold_body']),
+                rl['Paragraph']('<b>Ga</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                rl['Paragraph']('<b>Grade</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                rl['Paragraph']('<b>Stock</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT'])),
+                rl['Paragraph']('<b>Committed</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT'])),
+                rl['Paragraph']('<b>Available</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_RIGHT'])),
+                rl['Paragraph']('<b>Status</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+            ]
+            coil_table_rows = [coil_hdr]
+            for cr in sorted(coil_rows_data, key=lambda x: x["status"]):
+                status_color = rl['red'] if cr["status"] == "DEPLETED" else rl['amber'] if cr["status"] == "LOW STOCK" else rl['green']
+                coil_table_rows.append([
+                    rl['Paragraph'](cr["id"], rl['body_style']),
+                    rl['Paragraph'](str(cr["gauge"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](str(cr["grade"]), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                    rl['Paragraph'](f'{cr["stock"]:,.1f}', rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT'])),
+                    rl['Paragraph'](f'{cr["committed"]:,.1f}', rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT'])),
+                    rl['Paragraph'](f'{cr["available"]:,.1f}', rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_RIGHT'])),
+                    rl['Paragraph'](f'<font color="{status_color}">{cr["status"]}</font>', rl['body_style']),
+                ])
+            if len(coil_table_rows) > 1:
+                cvt = rl['Table'](coil_table_rows, colWidths=[1.4*rl['inch'], 0.5*rl['inch'], 0.7*rl['inch'], 1.1*rl['inch'], 1.1*rl['inch'], 1.1*rl['inch'], 1.1*rl['inch']])
+                cvt.setStyle(rl['TableStyle']([
+                    ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                    ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                    ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                    ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                    ('TOPPADDING', (0,0), (-1,-1), 4),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                    ('LEFTPADDING', (0,0), (-1,-1), 4),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                    ('FONTSIZE', (0,1), (-1,-1), 8),
+                ]))
+                story.append(cvt)
+            else:
+                story.append(rl['Paragraph']("No coils in inventory.", rl['body_style']))
+
+            # Alerts section
+            alerts = []
+            for cr in coil_rows_data:
+                if cr["status"] in ("DEPLETED", "LOW STOCK"):
+                    alerts.append(cr)
+            if alerts:
+                story.append(rl['Spacer'](1, 16))
+                story.append(rl['Paragraph'](f"Inventory Alerts ({len(alerts)})", rl['h1_style']))
+                story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['red'], spaceAfter=8))
+                for a in alerts:
+                    color = "#DC2626" if a["status"] == "DEPLETED" else "#F59E0B"
+                    story.append(rl['Paragraph'](
+                        f'&#9888; <font color="{color}">{a["status"]}</font> — {a["id"]} '
+                        f'({a["gauge"]} ga, {a["grade"]}) — {a["available"]:,.1f} lbs available',
+                        rl['ParagraphStyle']('Alert', parent=rl['body_style'], spaceBefore=3, spaceAfter=3)))
+
+            # Footer
+            story.append(rl['Spacer'](1, 24))
+            story.append(rl['Paragraph'](
+                f"Report generated by TitanForge on {now.strftime('%B %d, %Y at %I:%M %p')}",
+                rl['small_style']))
+
+            doc.build(story)
+            pdf_bytes = buf.getvalue()
+
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition",
+                f'attachment; filename="Inventory_Summary_{now.strftime("%Y%m%d")}.pdf"')
+            self.write(pdf_bytes)
+
+        except Exception as e:
+            logger.error(f"InventorySummaryPDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write("PDF generation error. Check server logs.")
+
+
+class CustomerReportPDFHandler(BaseHandler):
+    """GET /api/customers/report/pdf — Export customer report as PDF."""
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        try:
+            rl = _pdf_report_boilerplate()
+            cid = self.get_query_argument("id", "")
+            customers = load_customers()
+
+            if cid:
+                customers = [c for c in customers if c.get("id") == cid]
+                if not customers:
+                    self.set_status(404)
+                    self.write("Customer not found")
+                    return
+
+            # ── Build PDF ──
+            buf = io.BytesIO()
+            doc = rl['SimpleDocTemplate'](buf, pagesize=rl['letter'],
+                topMargin=0.75*rl['inch'], bottomMargin=0.75*rl['inch'],
+                leftMargin=0.75*rl['inch'], rightMargin=0.75*rl['inch'])
+            story = []
+
+            now = datetime.datetime.now()
+            title = "CUSTOMER REPORT"
+            subtitle = f"Generated: {now.strftime('%Y-%m-%d %H:%M')}"
+            if cid and customers:
+                subtitle += f" | {customers[0].get('company', '')}"
+            else:
+                subtitle += f" | {len(customers)} Customers"
+            story.append(_pdf_header_block(rl, title, subtitle))
+            story.append(rl['Spacer'](1, 16))
+
+            for idx, cust in enumerate(customers):
+                if idx > 0:
+                    story.append(rl['Spacer'](1, 20))
+                    story.append(rl['HRFlowable'](width="100%", thickness=2, color=rl['navy'], spaceAfter=12))
+
+                company = cust.get("company", "Unknown")
+                story.append(rl['Paragraph'](company, rl['h1_style']))
+                story.append(rl['HRFlowable'](width="100%", thickness=1, color=rl['border_color'], spaceAfter=8))
+
+                # Customer details
+                pc = cust.get("primary_contact", {})
+                addr = cust.get("address", {})
+                detail_data = [
+                    [rl['Paragraph']('<b>Primary Contact:</b>', rl['bold_body']),
+                     rl['Paragraph'](pc.get("name", "—"), rl['body_style']),
+                     rl['Paragraph']('<b>Email:</b>', rl['bold_body']),
+                     rl['Paragraph'](pc.get("email", "—"), rl['body_style'])],
+                    [rl['Paragraph']('<b>Phone:</b>', rl['bold_body']),
+                     rl['Paragraph'](pc.get("phone", "—"), rl['body_style']),
+                     rl['Paragraph']('<b>Payment Terms:</b>', rl['bold_body']),
+                     rl['Paragraph'](cust.get("payment_terms", "Net 30"), rl['body_style'])],
+                    [rl['Paragraph']('<b>Address:</b>', rl['bold_body']),
+                     rl['Paragraph'](f'{addr.get("street", "")} {addr.get("city", "")} {addr.get("state", "")} {addr.get("zip", "")}'.strip() or "—", rl['body_style']),
+                     rl['Paragraph']('<b>Credit Limit:</b>', rl['bold_body']),
+                     rl['Paragraph'](str(cust.get("credit_limit", "—")), rl['body_style'])],
+                    [rl['Paragraph']('<b>Tags:</b>', rl['bold_body']),
+                     rl['Paragraph'](", ".join(cust.get("tags", [])) or "—", rl['body_style']),
+                     rl['Paragraph']('<b>Created:</b>', rl['bold_body']),
+                     rl['Paragraph'](cust.get("created_at", "—")[:10], rl['body_style'])],
+                ]
+                dt = rl['Table'](detail_data, colWidths=[1.3*rl['inch'], 2.2*rl['inch'], 1.2*rl['inch'], 2.3*rl['inch']])
+                dt.setStyle(rl['TableStyle']([
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('TOPPADDING', (0,0), (-1,-1), 3),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                    ('LEFTPADDING', (0,0), (-1,-1), 4),
+                    ('BACKGROUND', (0,0), (-1,-1), rl['light_bg']),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                ]))
+                story.append(dt)
+                story.append(rl['Spacer'](1, 10))
+
+                # Additional contacts
+                contacts = cust.get("contacts", [])
+                if contacts:
+                    story.append(rl['Paragraph'](f"Additional Contacts ({len(contacts)})", rl['h2_style']))
+                    for ct in contacts:
+                        story.append(rl['Paragraph'](
+                            f'{ct.get("name", "—")} — {ct.get("role", "")} | '
+                            f'{ct.get("email", "")} | {ct.get("phone", "")}',
+                            rl['body_style']))
+                    story.append(rl['Spacer'](1, 8))
+
+                # Project history
+                projects = []
+                cname = company.lower()
+                os.makedirs(PROJECTS_DIR, exist_ok=True)
+                for d in sorted(os.listdir(PROJECTS_DIR), reverse=True):
+                    mpath = os.path.join(PROJECTS_DIR, d, "metadata.json")
+                    if os.path.isfile(mpath):
+                        try:
+                            with open(mpath) as f:
+                                meta = json.load(f)
+                            pname = meta.get("customer", {}).get("name", "").lower()
+                            if cname and cname in pname:
+                                projects.append(meta)
+                        except Exception:
+                            pass
+
+                story.append(rl['Paragraph'](f"Project History ({len(projects)})", rl['h2_style']))
+                if projects:
+                    proj_rows = [
+                        [rl['Paragraph']('<b>Job Code</b>', rl['bold_body']),
+                         rl['Paragraph']('<b>Project Name</b>', rl['bold_body']),
+                         rl['Paragraph']('<b>Stage</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER'])),
+                         rl['Paragraph']('<b>Created</b>', rl['ParagraphStyle']('R', parent=rl['bold_body'], alignment=rl['TA_CENTER']))],
+                    ]
+                    for p in projects:
+                        proj_rows.append([
+                            rl['Paragraph'](p.get("job_code", "—"), rl['body_style']),
+                            rl['Paragraph'](p.get("project_name", "—"), rl['body_style']),
+                            rl['Paragraph'](p.get("stage", "—"), rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                            rl['Paragraph'](p.get("created_at", "—")[:10], rl['ParagraphStyle']('R', parent=rl['body_style'], alignment=rl['TA_CENTER'])),
+                        ])
+                    pt = rl['Table'](proj_rows, colWidths=[1.5*rl['inch'], 2.5*rl['inch'], 1.5*rl['inch'], 1.5*rl['inch']])
+                    pt.setStyle(rl['TableStyle']([
+                        ('BACKGROUND', (0,0), (-1,0), rl['navy']),
+                        ('TEXTCOLOR', (0,0), (-1,0), rl['white']),
+                        ('ROWBACKGROUNDS', (0,1), (-1,-1), [rl['light_bg'], rl['HexColor']("#FFFFFF")]),
+                        ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                        ('LINEBELOW', (0,0), (-1,0), 1, rl['navy']),
+                        ('TOPPADDING', (0,0), (-1,-1), 5),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                        ('LEFTPADDING', (0,0), (-1,-1), 6),
+                        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                    ]))
+                    story.append(pt)
+                else:
+                    story.append(rl['Paragraph']("No projects found for this customer.", rl['body_style']))
+
+                # Financial summary
+                story.append(rl['Spacer'](1, 8))
+                story.append(rl['Paragraph']("Financial Summary", rl['h2_style']))
+                fin_data = [
+                    [rl['Paragraph']('<b>Payment Terms:</b>', rl['bold_body']),
+                     rl['Paragraph'](cust.get("payment_terms", "Net 30"), rl['body_style'])],
+                    [rl['Paragraph']('<b>Credit Limit:</b>', rl['bold_body']),
+                     rl['Paragraph'](str(cust.get("credit_limit", "—")), rl['body_style'])],
+                    [rl['Paragraph']('<b>Credit Terms:</b>', rl['bold_body']),
+                     rl['Paragraph'](str(cust.get("credit_terms", "—")), rl['body_style'])],
+                    [rl['Paragraph']('<b>Tax ID:</b>', rl['bold_body']),
+                     rl['Paragraph'](cust.get("tax_id", "—"), rl['body_style'])],
+                    [rl['Paragraph']('<b>Total Projects:</b>', rl['bold_body']),
+                     rl['Paragraph'](str(len(projects)), rl['body_style'])],
+                ]
+                ft = rl['Table'](fin_data, colWidths=[2*rl['inch'], 5*rl['inch']])
+                ft.setStyle(rl['TableStyle']([
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('TOPPADDING', (0,0), (-1,-1), 3),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                    ('LEFTPADDING', (0,0), (-1,-1), 4),
+                    ('BACKGROUND', (0,0), (-1,-1), rl['light_bg']),
+                    ('BOX', (0,0), (-1,-1), 0.5, rl['border_color']),
+                ]))
+                story.append(ft)
+
+            # Footer
+            story.append(rl['Spacer'](1, 24))
+            story.append(rl['Paragraph'](
+                f"Report generated by TitanForge on {now.strftime('%B %d, %Y at %I:%M %p')}",
+                rl['small_style']))
+
+            doc.build(story)
+            pdf_bytes = buf.getvalue()
+
+            fname = f"Customer_Report_{cid or 'All'}_{now.strftime('%Y%m%d')}.pdf"
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.write(pdf_bytes)
+
+        except Exception as e:
+            logger.error(f"CustomerReportPDFHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write("PDF generation error. Check server logs.")
+
+
+# ─────────────────────────────────────────────
 # ROUTE TABLE (returned by get_routes())
 # ─────────────────────────────────────────────
 
@@ -11936,6 +12734,7 @@ def get_routes():
         (r"/api/inventory/sticker",      CoilStickerHandler),
         (r"/api/inventory/inv-config",   InventoryConfigHandler),
         (r"/api/inventory/summary",      InventorySummaryHandler),
+        (r"/api/inventory/summary/pdf",  InventorySummaryPDFHandler),
         (r"/api/inventory/coils",        InventoryCoilsHandler),
         (r"/api/inventory/coil/create",  InventoryCoilCreateHandler),
         (r"/api/inventory/coil/edit",    CoilEditHandler),
@@ -12095,6 +12894,7 @@ def get_routes():
         (r"/api/customers/detail",           CustomerDetailHandler),
         (r"/api/customers/docs/upload",      CustomerDocUploadHandler),
         (r"/api/customers/docs",             CustomerDocListHandler),
+        (r"/api/customers/report/pdf",       CustomerReportPDFHandler),
         (r"/customer-files/([^/]+)/([^/]+)/([^/]+)", CustomerDocServeHandler),
 
         # ── Global Search ─────────────────────────────────────
@@ -12211,6 +13011,8 @@ def get_routes():
         (r"/api/documents/?(.*)",                DocumentsAPIHandler),
         (r"/api/costing/?(.*)",                  JobCostingAPIHandler),
         (r"/api/reports/production",             ReportsAPIHandler),
+        (r"/api/reports/production/pdf",         ProductionReportPDFHandler),
+        (r"/api/reports/qa/pdf",                 QAReportPDFHandler),
         (r"/api/reports/export",                 ReportsExportCSVHandler),
 
         # ── PWA Support ───────────────────────────────────────
