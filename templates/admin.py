@@ -490,8 +490,7 @@ ADMIN_HTML = r"""
                         </div>
                         <div class="form-group">
                             <label for="newRole">Role</label>
-                            <select id="newRole" required>
-                                <option value="">Select a role</option>
+                            <select id="newRole" multiple required size="6" style="min-height:140px;">
                                 <optgroup label="Management">
                                     <option value="god_mode">God Mode (Full Access)</option>
                                     <option value="admin">Admin</option>
@@ -575,7 +574,7 @@ ADMIN_HTML = r"""
             </div>
             <div style="margin-bottom:12px;">
                 <label style="display:block;font-size:12px;color:#94A3B8;margin-bottom:4px;">Role</label>
-                <select id="editRole" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;">
+                <select id="editRole" multiple size="6" style="width:100%;padding:8px 12px;background:#0F172A;border:1px solid #334155;border-radius:6px;color:#FFF;font-size:14px;min-height:140px;">
                     <optgroup label="Management">
                         <option value="god_mode">God Mode (Full Access)</option>
                         <option value="admin">Admin</option>
@@ -646,6 +645,7 @@ ADMIN_HTML = r"""
                             username,
                             display_name: info.display_name || '',
                             role: info.role || 'viewer',
+                            roles: info.roles || (info.role ? [info.role] : ['viewer']),
                             created_at: info.created || ''
                         }));
                     renderUsersTable(users);
@@ -679,32 +679,37 @@ ADMIN_HTML = r"""
                 return;
             }
 
-            tbody.innerHTML = users.map(user => `
+            tbody.innerHTML = users.map(user => {
+                const roleList = user.roles || (user.role ? [user.role] : []);
+                const roleStr = roleList.join(',');
+                const roleBadges = roleList.map(r => `<span class="role-badge role-${r}">${escapeHtml(r)}</span>`).join(' ');
+                return `
                 <tr>
                     <td><strong>${escapeHtml(user.username)}</strong></td>
                     <td>${escapeHtml(user.display_name || '-')}</td>
-                    <td><span class="role-badge role-${user.role}">${escapeHtml(user.role)}</span></td>
+                    <td>${roleBadges}</td>
                     <td>${formatDate(user.created_at)}</td>
                     <td>
-                        <button class="btn btn-primary" style="margin-right:6px;padding:6px 14px;font-size:13px;" onclick="openEditUser('${escapeHtml(user.username)}','${escapeHtml(user.display_name)}','${escapeHtml(user.role)}')">Edit</button>
+                        <button class="btn btn-primary" style="margin-right:6px;padding:6px 14px;font-size:13px;" onclick="openEditUser('${escapeHtml(user.username)}','${escapeHtml(user.display_name)}','${escapeHtml(roleStr)}')">Edit</button>
                         <button class="btn btn-danger" style="padding:6px 14px;font-size:13px;" onclick="deleteUser('${escapeHtml(user.username)}')">Delete</button>
                     </td>
                 </tr>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function addUser() {
             const username = document.getElementById('newUsername').value.trim();
             const displayName = document.getElementById('newDisplayName').value.trim();
             const password = document.getElementById('newPassword').value;
-            const role = document.getElementById('newRole').value;
+            const roles = Array.from(document.getElementById('newRole').selectedOptions).map(o => o.value);
 
             const errorDiv = document.getElementById('addUserError');
             const successDiv = document.getElementById('addUserSuccess');
             errorDiv.classList.remove('show');
             successDiv.classList.remove('show');
 
-            if (!username || !displayName || !password || !role) {
+            if (!username || !displayName || !password || roles.length === 0) {
                 errorDiv.textContent = 'Please fill in all fields';
                 errorDiv.classList.add('show');
                 return;
@@ -723,7 +728,7 @@ ADMIN_HTML = r"""
                     username: username,
                     display_name: displayName,
                     password: password,
-                    role: role
+                    roles: roles
                 })
             })
             .then(response => {
@@ -805,7 +810,12 @@ ADMIN_HTML = r"""
             document.getElementById('editUsername').value = username;
             document.getElementById('editUsernameDisplay').textContent = username;
             document.getElementById('editDisplayName').value = displayName;
-            document.getElementById('editRole').value = role;
+            // Support multi-role: role may be comma-separated or a single value
+            const editSelect = document.getElementById('editRole');
+            const userRoles = (role || '').split(',').map(r => r.trim());
+            Array.from(editSelect.options).forEach(opt => {
+                opt.selected = userRoles.includes(opt.value);
+            });
             document.getElementById('editPassword').value = '';
             document.getElementById('editUserError').style.display = 'none';
             document.getElementById('editUserSuccess').style.display = 'none';
@@ -820,7 +830,7 @@ ADMIN_HTML = r"""
         function saveEditUser() {
             const username = document.getElementById('editUsername').value;
             const displayName = document.getElementById('editDisplayName').value.trim();
-            const role = document.getElementById('editRole').value;
+            const roles = Array.from(document.getElementById('editRole').selectedOptions).map(o => o.value);
             const password = document.getElementById('editPassword').value;
             const errDiv = document.getElementById('editUserError');
             const okDiv = document.getElementById('editUserSuccess');
@@ -832,8 +842,13 @@ ADMIN_HTML = r"""
                 errDiv.style.display = 'block';
                 return;
             }
+            if (roles.length === 0) {
+                errDiv.textContent = 'At least one role is required';
+                errDiv.style.display = 'block';
+                return;
+            }
 
-            const payload = { username, display_name: displayName, role };
+            const payload = { username, display_name: displayName, roles };
             if (password) payload.password = password;
 
             const btn = document.getElementById('saveEditBtn');

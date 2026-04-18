@@ -985,9 +985,11 @@ class UsersListHandler(BaseHandler):
             users = load_users()
             safe = {}
             for uname, udata in users.items():
+                roles = udata.get("roles") or ([udata["role"]] if udata.get("role") else ["viewer"])
                 safe[uname] = {
                     "display_name": udata.get("display_name", ""),
-                    "role": udata.get("role", "viewer"),
+                    "role": udata.get("role", roles[0] if roles else "viewer"),
+                    "roles": roles,
                     "created": udata.get("created", ""),
                 }
             self.set_header("Content-Type", "application/json")
@@ -1019,12 +1021,18 @@ class UserAddHandler(BaseHandler):
             if len(password) < 4:
                 self.write(json_encode({"ok": False, "error": "Password must be at least 4 characters"}))
                 return
-            role = body.get("role", "viewer")
-            if role not in ROLE_PERMISSIONS:
-                # Check if it's a valid RBAC role
-                valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
-                self.write(json_encode({"ok": False, "error": f"Invalid role: {role}. Valid roles: {', '.join(valid_roles)}"}))
-                return
+            # Support both new multi-role list and legacy single-role string
+            roles = body.get("roles") or []
+            if not roles:
+                legacy_role = body.get("role", "viewer")
+                roles = [legacy_role] if legacy_role else ["viewer"]
+            if isinstance(roles, str):
+                roles = [roles]
+            valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
+            for r in roles:
+                if r not in ROLE_PERMISSIONS:
+                    self.write(json_encode({"ok": False, "error": f"Invalid role: {r}. Valid roles: {', '.join(valid_roles)}"}))
+                    return
 
             users = load_users()
             if username in users:
@@ -1034,11 +1042,12 @@ class UserAddHandler(BaseHandler):
             users[username] = {
                 "password": hash_password(password),
                 "display_name": _sanitize_string(body.get("display_name", username), 100),
-                "role": role,
+                "roles": roles,
+                "role": roles[0],  # legacy compat
                 "created": datetime.datetime.now().isoformat(),
             }
             save_users(users)
-            self._log("created_user", "user", username, {"role": body.get("role", "viewer")})
+            self._log("created_user", "user", username, {"roles": roles})
             self.write(json_encode({"ok": True}))
 
 
@@ -1065,14 +1074,18 @@ class UserEditHandler(BaseHandler):
 
             if "display_name" in body and body["display_name"].strip():
                 users[username]["display_name"] = body["display_name"].strip()
-            if "role" in body:
-                new_role = body["role"]
-                if new_role in ROLE_PERMISSIONS:
-                    users[username]["role"] = new_role
-                else:
-                    valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
-                    self.write(json_encode({"ok": False, "error": f"Invalid role: {new_role}. Valid roles: {', '.join(valid_roles)}"}))
-                    return
+            # Support both new multi-role list and legacy single-role string
+            new_roles = body.get("roles") or (body.get("role") and [body["role"]]) or None
+            if new_roles is not None:
+                if isinstance(new_roles, str):
+                    new_roles = [new_roles]
+                valid_roles = list(ROLE_PERMISSIONS.keys()) if ROLE_PERMISSIONS else ["admin", "viewer"]
+                for r in new_roles:
+                    if r not in ROLE_PERMISSIONS:
+                        self.write(json_encode({"ok": False, "error": f"Invalid role: {r}. Valid roles: {', '.join(valid_roles)}"}))
+                        return
+                users[username]["roles"] = new_roles
+                users[username]["role"] = new_roles[0]  # legacy compat
             if "password" in body and body["password"]:
                 users[username]["password"] = hash_password(body["password"])
 

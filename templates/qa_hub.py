@@ -125,19 +125,19 @@ QA_HUB_HTML = """<!DOCTYPE html>
         <div class="as-lbl">Active WPS</div>
       </div>
       <div class="audit-stat">
-        <div class="as-val green" id="abWelders">—</div>
+        <div class="as-val green" id="abWelders">&mdash;</div>
         <div class="as-lbl">Certified Welders</div>
       </div>
       <div class="audit-stat">
-        <div class="as-val" id="abInspections">—</div>
+        <div class="as-val" id="abInspections">&mdash;</div>
         <div class="as-lbl">Inspections (30d)</div>
       </div>
       <div class="audit-stat">
-        <div class="as-val amber" id="abNCR">—</div>
+        <div class="as-val amber" id="abNCR">&mdash;</div>
         <div class="as-lbl">Open NCRs</div>
       </div>
       <div class="audit-stat">
-        <div class="as-val" id="abCalib">—</div>
+        <div class="as-val" id="abCalib">&mdash;</div>
         <div class="as-lbl">Calibrated Tools</div>
       </div>
     </div>
@@ -179,7 +179,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
     <a href="/qa/ncr-log" class="qa-card">
       <div class="qc-icon red">&#9888;</div>
       <h3>NCR Log</h3>
-      <p>Non-Conformance Reports — log of all quality deviations. Tracks root cause, corrective action, disposition (rework / accept / reject), and closure. Required for AISC audit trail.</p>
+      <p>Non-Conformance Reports &mdash; log of all quality deviations. Tracks root cause, corrective action, disposition (rework / accept / reject), and closure. Required for AISC audit trail.</p>
       <div class="qc-status">
         <div class="qc-dot amber"></div>
         <span class="qc-status-text amber" id="ncrStatus">Loading...</span>
@@ -189,7 +189,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
     <a href="/qa/pqr" class="qa-card">
       <div class="qc-icon green">&#128221;</div>
       <h3>Procedure Qualification Records</h3>
-      <p>PQR test records backing each WPS — tensile, bend, macro etch, and impact results per AWS D1.1 &sect;4.8. Links PQR documents to their qualifying WPS and tracks test lab results and approval status.</p>
+      <p>PQR test records backing each WPS &mdash; tensile, bend, macro etch, and impact results per AWS D1.1 &sect;4.8. Links PQR documents to their qualifying WPS and tracks test lab results and approval status.</p>
       <div class="qc-status">
         <div class="qc-dot green"></div>
         <span class="qc-status-text green">PQR Library active</span>
@@ -254,7 +254,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         <div class="aisc-check done">&#10003;</div>
         <div class="aisc-item-text">
           <strong>Procedure Qualification Records (PQR)</strong>
-          <span>Test records backing each WPS — tensile, bend, macro etch results</span>
+          <span>Test records backing each WPS &mdash; tensile, bend, macro etch results</span>
         </div>
         <div class="aisc-ref">AWS D1.1 §4.8</div>
       </li>

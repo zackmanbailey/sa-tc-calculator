@@ -5,7 +5,14 @@ Lists all PQR records with add/edit/delete functionality.
 PQRs back WPS documents with tensile, bend, macro etch, and impact test results.
 """
 
-PQR_PAGE_HTML = """
+PQR_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TitanForge — PQR Management</title>
+</head>
+<body>
 <style>
   .pqr-page { padding: 24px; max-width: 1200px; }
   .pqr-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
@@ -120,7 +127,7 @@ PQR_PAGE_HTML = """
   <div class="pqr-header">
     <div>
       <h1>Procedure Qualification Records (PQR)</h1>
-      <p>Test records backing each WPS — tensile, bend, macro etch, and impact results per AWS D1.1 &sect;4.8.</p>
+      <p>Test records backing each WPS &mdash; tensile, bend, macro etch, and impact results per AWS D1.1 &sect;4.8.</p>
     </div>
     <button class="pqr-add-btn" onclick="pqrShowAdd()">+ Add PQR</button>
   </div>
@@ -437,4 +444,6 @@ PQR_PAGE_HTML = """
   pqrLoadAll();
 })();
 </script>
+</body>
+</html>
 """
