@@ -762,7 +762,7 @@ class BaseHandler(tornado.web.RequestHandler):
         return None
 
     def get_user_role(self):
-        """Get current user's role."""
+        """Get current user's primary role."""
         if not AUTH_ENABLED:
             return "admin"
         current = self.get_current_user()
@@ -771,21 +771,41 @@ class BaseHandler(tornado.web.RequestHandler):
         users = load_users()
         return users.get(current, {}).get("role", "viewer")
 
+    def get_user_roles(self):
+        """Get all roles for the current user as a list.
+
+        Supports the multi-role RBAC system. Falls back to wrapping
+        the single legacy role in a list.
+        """
+        if not AUTH_ENABLED:
+            return ["admin"]
+        current = self.get_current_user()
+        if not current:
+            return ["viewer"]
+        users = load_users()
+        udata = users.get(current, {})
+        roles = udata.get("roles")
+        if roles and isinstance(roles, list):
+            return roles
+        # Fallback: wrap single role
+        single = udata.get("role", "viewer")
+        return [single] if single else ["viewer"]
+
     def check_permission(self, permission: str) -> bool:
         """Check if current user has a specific permission."""
-        role = self.get_user_role()
-        if not role:
+        roles = self.get_user_roles()
+        if not roles:
             return False
         if HAS_RBAC:
-            perm_set = merge_permissions([role])
+            perm_set = merge_permissions(roles)
             return perm_set.can(permission)
-        return permission in get_user_permissions(role)
+        return permission in get_user_permissions(roles[0])
 
     def get_permission_set(self) -> 'PermissionSet':
         """Get the full PermissionSet for the current user."""
-        role = self.get_user_role()
-        if HAS_RBAC and role:
-            return merge_permissions([role])
+        roles = self.get_user_roles()
+        if HAS_RBAC and roles:
+            return merge_permissions(roles)
         # Fallback: create a minimal PermissionSet
         ps = PermissionSet() if HAS_RBAC else None
         return ps
@@ -891,11 +911,12 @@ class BaseHandler(tornado.web.RequestHandler):
 
         user = self.get_current_user() or "local"
         role = self.get_user_role() or "admin"
+        roles = self.get_user_roles()
         users = load_users()
         display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
 
         result = inject_nav(html, active_page=active_page, job_code=job_code,
-                            user_name=display, user_role=role)
+                            user_name=display, user_role=role, user_roles=roles)
         self.set_header("Content-Type", "text/html; charset=utf-8")
         self.write(result)
 
