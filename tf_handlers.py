@@ -10698,6 +10698,86 @@ class FieldOpsPageHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+# ─── Missing Page Handlers (fix 404s for sidebar links) ────────────────
+
+class QuotesPageHandler(BaseHandler):
+    """GET /quotes — Quote management listing."""
+    def get(self):
+        try:
+            from templates.quotes_page import QUOTES_PAGE_HTML
+            self.render_with_nav(QUOTES_PAGE_HTML, active_page="quotes")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class MachinesPageHandler(BaseHandler):
+    """GET /machines — Machine dashboard."""
+    def get(self):
+        try:
+            from templates.machines_page import MACHINES_PAGE_HTML
+            self.render_with_nav(MACHINES_PAGE_HTML, active_page="machines")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FieldPunchPageHandler(BaseHandler):
+    """GET /field/punch — Punch list tracking."""
+    def get(self):
+        try:
+            from templates.field_punch_page import FIELD_PUNCH_PAGE_HTML
+            self.render_with_nav(FIELD_PUNCH_PAGE_HTML, active_page="field_punch")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FieldCompletionPageHandler(BaseHandler):
+    """GET /field/completion — Project completion tracker."""
+    def get(self):
+        try:
+            from templates.field_completion_page import FIELD_COMPLETION_PAGE_HTML
+            self.render_with_nav(FIELD_COMPLETION_PAGE_HTML, active_page="field_completion")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class FieldInstallTrackerPageHandler(BaseHandler):
+    """GET /field/install-tracker — Install crew tracker."""
+    def get(self):
+        try:
+            from templates.field_install_tracker_page import FIELD_INSTALL_TRACKER_PAGE_HTML
+            self.render_with_nav(FIELD_INSTALL_TRACKER_PAGE_HTML, active_page="field_install")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class ExecutiveReportPageHandler(BaseHandler):
+    """GET /reports/executive — Executive summary report."""
+    def get(self):
+        try:
+            from templates.executive_report_page import EXECUTIVE_REPORT_PAGE_HTML
+            self.render_with_nav(EXECUTIVE_REPORT_PAGE_HTML, active_page="reports_executive")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+class QCQueuePageHandler(BaseHandler):
+    """GET /qc-queue — QC inspection queue."""
+    def get(self):
+        try:
+            from templates.qc_queue_page import QC_QUEUE_PAGE_HTML
+            self.render_with_nav(QC_QUEUE_PAGE_HTML, active_page="qc_queue")
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
 class DocumentManagementPageHandler(BaseHandler):
     """GET /documents — Document management dashboard."""
     required_roles = ["admin", "estimator"]
@@ -12998,6 +13078,7 @@ def get_routes():
         (r"/field-ops",                          FieldOpsPageHandler),
         (r"/documents",                          DocumentManagementPageHandler),
         (r"/job-costing",                        JobCostingPageHandler),
+        (r"/reports/executive",                  ExecutiveReportPageHandler),
         (r"/reports/production",                 ReportsPageHandler),
         (r"/reports",                            ReportsPageHandler),
         (r"/activity",                           ActivityFeedPageHandler),
@@ -13015,6 +13096,17 @@ def get_routes():
         (r"/api/reports/production/pdf",         ProductionReportPDFHandler),
         (r"/api/reports/qa/pdf",                 QAReportPDFHandler),
         (r"/api/reports/export",                 ReportsExportCSVHandler),
+
+        # ── Missing Pages (fix sidebar 404s) ──────────────────
+        (r"/dashboard",                          DashboardHandler),
+        (r"/quotes",                             QuotesPageHandler),
+        (r"/machines",                           MachinesPageHandler),
+        (r"/field/punch",                        FieldPunchPageHandler),
+        (r"/field/completion",                   FieldCompletionPageHandler),
+        (r"/field/install-tracker",              FieldInstallTrackerPageHandler),
+        (r"/qc-queue",                           QCQueuePageHandler),
+        (r"/admin/users",                        AdminPageHandler),
+        (r"/work-orders/all",                    WorkOrdersGlobalPageHandler),
 
         # ── PWA Support ───────────────────────────────────────
         (r"/static/manifest.json",               PWAManifestHandler),
