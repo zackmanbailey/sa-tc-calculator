@@ -191,6 +191,12 @@ LOGIN_HTML = r"""
                 <button type="submit" class="sign-in-btn" id="signInBtn">Sign In</button>
             </form>
 
+            <div style="text-align:center;margin-top:16px;">
+                <a href="/auth/register" style="color:#818cf8;text-decoration:none;font-size:0.9rem;transition:color 0.2s;" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#818cf8'">
+                    Need access? Request permission &rarr;
+                </a>
+            </div>
+
             <div class="footer">
                 <span>Internal use only</span>
                 <span>·</span>

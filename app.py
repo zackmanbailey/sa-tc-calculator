@@ -66,10 +66,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Enable auth if --auth flag or AUTH_ENABLED env var
-    tf_handlers.AUTH_ENABLED = (
-        args.auth or
-        os.environ.get("AUTH_ENABLED", "").lower() in ("1", "true", "yes")
-    )
+    # Override: set DISABLE_AUTH=1 to temporarily bypass login (for testing)
+    if os.environ.get("DISABLE_AUTH", "").lower() in ("1", "true", "yes"):
+        tf_handlers.AUTH_ENABLED = False
+    else:
+        tf_handlers.AUTH_ENABLED = (
+            args.auth or
+            os.environ.get("AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+        )
 
     # Data directories are now created in tf_handlers.py using DATA_DIR
 

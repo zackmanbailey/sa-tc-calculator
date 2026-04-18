@@ -305,6 +305,21 @@ if not USE_SQLITE:
         with open(USERS_PATH, "w") as f:
             json.dump(data, f, indent=2)
 
+    PENDING_USERS_PATH = os.path.join(DATA_DIR, "pending_users.json")
+
+    def _load_pending_users():
+        """Load pending access requests."""
+        if not os.path.isfile(PENDING_USERS_PATH):
+            return []
+        with open(PENDING_USERS_PATH) as f:
+            return json.load(f)
+
+    def _save_pending_users(data):
+        """Save pending access requests."""
+        os.makedirs(os.path.dirname(PENDING_USERS_PATH), exist_ok=True)
+        with open(PENDING_USERS_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+
     def load_customers():
         """Load customers from JSON."""
         if not os.path.isfile(CUSTOMERS_PATH):
@@ -1058,6 +1073,153 @@ class LoginHandler(BaseHandler):
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e)}))
 
+class RegisterPageHandler(BaseHandler):
+    """GET /auth/register — Show access request form."""
+    def prepare(self):
+        pass  # No auth required
+
+    def get(self):
+        from templates.register import REGISTER_HTML
+        self.set_header("Content-Type", "text/html")
+        self.write(REGISTER_HTML)
+
+
+class RegisterSubmitHandler(BaseHandler):
+    """POST /auth/register/submit — Process access request."""
+    def prepare(self):
+        pass  # No auth required
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            username = body.get("username", "").strip().lower()
+            display_name = body.get("display_name", "").strip()
+            email = body.get("email", "").strip()
+            phone = body.get("phone", "").strip()
+            address = body.get("address", "").strip()
+            company_role = body.get("company_role", "").strip()
+            password = body.get("password", "")
+
+            if not username or not password or not display_name:
+                self.write(json_encode({"ok": False, "error": "Username, display name, and password are required."}))
+                return
+
+            if len(password) < 8:
+                self.write(json_encode({"ok": False, "error": "Password must be at least 8 characters."}))
+                return
+
+            users = load_users()
+            if username in users:
+                self.write(json_encode({"ok": False, "error": "Username already taken."}))
+                return
+
+            # Check pending requests too
+            pending = _load_pending_users()
+            for p in pending:
+                if p.get("username") == username:
+                    self.write(json_encode({"ok": False, "error": "A request for this username is already pending."}))
+                    return
+
+            pending.append({
+                "username": username,
+                "display_name": display_name,
+                "email": email,
+                "phone": phone,
+                "address": address,
+                "company_role": company_role,
+                "password": hash_password(password),
+                "requested_at": datetime.now().isoformat(),
+            })
+            _save_pending_users(pending)
+            self.write(json_encode({"ok": True, "message": "Access request submitted! An admin will review your request."}))
+        except Exception as e:
+            logger.error(f"RegisterSubmit error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PendingUsersHandler(BaseHandler):
+    """GET /auth/pending-users — List pending access requests (admin only)."""
+    required_roles = ["admin", "god_mode", "owner", "general_manager"]
+
+    def get(self):
+        pending = _load_pending_users()
+        # Strip passwords before sending
+        safe = [{k: v for k, v in p.items() if k != "password"} for p in pending]
+        self.set_header("Content-Type", "application/json")
+        self.write(json_encode({"ok": True, "pending": safe}))
+
+
+class ApproveUserHandler(BaseHandler):
+    """POST /auth/approve-user — Approve a pending access request."""
+    required_roles = ["admin", "god_mode", "owner", "general_manager"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            username = body.get("username", "").strip().lower()
+            role = body.get("role", "viewer")
+
+            pending = _load_pending_users()
+            found = None
+            kept = []
+            for p in pending:
+                if p.get("username") == username:
+                    found = p
+                else:
+                    kept.append(p)
+
+            if not found:
+                self.write(json_encode({"ok": False, "error": "Pending request not found."}))
+                return
+
+            users = load_users()
+            users[username] = {
+                "password": found["password"],
+                "role": role,
+                "display_name": found.get("display_name", username),
+                "email": found.get("email", ""),
+                "phone": found.get("phone", ""),
+                "address": found.get("address", ""),
+                "company_role": found.get("company_role", ""),
+                "approved_at": datetime.now().isoformat(),
+                "approved_by": self.get_current_user() or "admin",
+            }
+            save_users(users)
+            _save_pending_users(kept)
+            self._log("approved_user", "user", username)
+            self.write(json_encode({"ok": True, "approved": username}))
+        except Exception as e:
+            logger.error(f"ApproveUser error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class RejectUserHandler(BaseHandler):
+    """POST /auth/reject-user — Reject a pending access request."""
+    required_roles = ["admin", "god_mode", "owner", "general_manager"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            username = body.get("username", "").strip().lower()
+
+            pending = _load_pending_users()
+            kept = [p for p in pending if p.get("username") != username]
+
+            if len(kept) == len(pending):
+                self.write(json_encode({"ok": False, "error": "Pending request not found."}))
+                return
+
+            _save_pending_users(kept)
+            self._log("rejected_user", "user", username)
+            self.write(json_encode({"ok": True, "rejected": username}))
+        except Exception as e:
+            logger.error(f"RejectUser error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class LogoutHandler(BaseHandler):
     """GET /auth/logout — Clear session and redirect to login."""
     def get(self):
@@ -1805,7 +1967,7 @@ class CoilDeleteHandler(BaseHandler):
             old_certs = data.get("mill_certs", [])
             kept_certs = []
             for cert in old_certs:
-                if (cert.get("coil_id") or cert.get("material", "")) == coil_id:
+                if cert.get("coil_id") == coil_id or cert.get("material", "") == coil_id:
                     fname = cert.get("filename")
                     if fname:
                         fpath = os.path.join(CERTS_DIR, fname)
@@ -4292,10 +4454,24 @@ class ProjectListEnhancedHandler(BaseHandler):
                                 doc_count += len([f for f in os.listdir(cat_path)
                                                   if os.path.isfile(os.path.join(cat_path, f))
                                                   and not f.startswith(".")])
-                    # Count versions
-                    n_versions = len(glob.glob(os.path.join(dpath, "v*.json")))
+                    # Count versions and get latest pricing
+                    ver_files = sorted(glob.glob(os.path.join(dpath, "versions", "v*.json")), reverse=True)
+                    if not ver_files:
+                        ver_files = sorted(glob.glob(os.path.join(dpath, "v*.json")), reverse=True)
+                    n_versions = len(ver_files)
                     meta["doc_count"] = doc_count
                     meta["n_versions"] = n_versions
+                    # Extract pricing from latest version BOM
+                    if ver_files:
+                        try:
+                            with open(ver_files[0]) as vf:
+                                vdata = json.load(vf)
+                            bom = vdata.get("bom_result", vdata.get("bom", {}))
+                            if isinstance(bom, dict):
+                                meta["material_cost"] = bom.get("material_cost", bom.get("total_material_cost", None))
+                                meta["sell_price"] = bom.get("sell_price", bom.get("total_price", bom.get("grand_total", None)))
+                        except Exception:
+                            pass
                     result.append(meta)
                 except Exception:
                     pass
@@ -12846,10 +13022,15 @@ def get_routes():
     static_path = os.path.join(BASE_DIR, "static")
     return [
         # ── Auth routes ────────────────────────────────────────
-        (r"/auth/login",         LoginHandler),
-        (r"/auth/logout",        LogoutHandler),
-        (r"/admin/?",             AdminPageHandler),
-        (r"/auth/users",         UsersListHandler),
+        (r"/auth/login",             LoginHandler),
+        (r"/auth/logout",            LogoutHandler),
+        (r"/auth/register",          RegisterPageHandler),
+        (r"/auth/register/submit",   RegisterSubmitHandler),
+        (r"/auth/pending-users",     PendingUsersHandler),
+        (r"/auth/approve-user",      ApproveUserHandler),
+        (r"/auth/reject-user",       RejectUserHandler),
+        (r"/admin/?",                AdminPageHandler),
+        (r"/auth/users",             UsersListHandler),
         (r"/auth/users/add",     UserAddHandler),
         (r"/auth/users/edit",    UserEditHandler),
         (r"/auth/users/delete",  UserDeleteHandler),

@@ -531,6 +531,26 @@ ADMIN_HTML = r"""
             </div>
         </div>
 
+        <div class="section" id="pendingSection" style="display:none;">
+            <h2 class="section-title" style="color:#f59e0b;">Pending Access Requests</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role Requested</th>
+                            <th>Requested</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pendingTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="section">
             <h2 class="section-title">Current Users</h2>
             <div class="table-container">
@@ -620,8 +640,82 @@ ADMIN_HTML = r"""
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             loadUsers();
+            loadPendingUsers();
             setupFormHandlers();
         });
+
+        function loadPendingUsers() {
+            fetch('/auth/pending-users')
+                .then(r => r.json())
+                .then(data => {
+                    const section = document.getElementById('pendingSection');
+                    const tbody = document.getElementById('pendingTableBody');
+                    if (!data.ok || !data.pending || data.pending.length === 0) {
+                        section.style.display = 'none';
+                        return;
+                    }
+                    section.style.display = '';
+                    tbody.innerHTML = data.pending.map(p => {
+                        const dt = p.requested_at ? new Date(p.requested_at).toLocaleDateString() : '—';
+                        return '<tr>' +
+                            '<td>' + (p.username || '') + '</td>' +
+                            '<td>' + (p.display_name || '') + '</td>' +
+                            '<td>' + (p.email || '') + '</td>' +
+                            '<td>' + (p.company_role || '—') + '</td>' +
+                            '<td>' + dt + '</td>' +
+                            '<td>' +
+                                '<select id="role_' + p.username + '" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:2px 6px;margin-right:6px;">' +
+                                    '<option value="viewer">Viewer</option>' +
+                                    '<option value="operator">Operator</option>' +
+                                    '<option value="welder">Welder</option>' +
+                                    '<option value="qc_inspector">QC Inspector</option>' +
+                                    '<option value="foreman">Foreman</option>' +
+                                    '<option value="estimator">Estimator</option>' +
+                                    '<option value="project_manager">Project Manager</option>' +
+                                    '<option value="admin">Admin</option>' +
+                                '</select>' +
+                                '<button onclick="approveUser(\'' + p.username + '\')" style="background:#10b981;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;margin-right:4px;">Approve</button>' +
+                                '<button onclick="rejectUser(\'' + p.username + '\')" style="background:#ef4444;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;">Reject</button>' +
+                            '</td></tr>';
+                    }).join('');
+                })
+                .catch(() => {});
+        }
+
+        function approveUser(username) {
+            const role = document.getElementById('role_' + username)?.value || 'viewer';
+            fetch('/auth/approve-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, role })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    loadPendingUsers();
+                    loadUsers();
+                } else {
+                    alert(data.error || 'Failed to approve');
+                }
+            });
+        }
+
+        function rejectUser(username) {
+            if (!confirm('Reject access request from "' + username + '"?')) return;
+            fetch('/auth/reject-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    loadPendingUsers();
+                } else {
+                    alert(data.error || 'Failed to reject');
+                }
+            });
+        }
 
         function setupFormHandlers() {
             const addUserForm = document.getElementById('addUserForm');
