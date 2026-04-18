@@ -204,9 +204,26 @@ class AuthMixin:
         return self.perm.can(permission)
 
     def render_with_nav(self, html: str, active_page: str = "",
-                        job_code: str = ""):
+                        job_code: str = "", breadcrumbs=None):
         """Render HTML with the unified sidebar navigation injected."""
         from templates.shared_nav import inject_nav
+
+        # Build breadcrumb HTML if provided
+        bc_html = ""
+        if breadcrumbs:
+            parts = []
+            for i, (label, url) in enumerate(breadcrumbs):
+                if i == len(breadcrumbs) - 1:
+                    parts.append(f'<span style="color:#e2e8f0;">{label}</span>')
+                else:
+                    parts.append(f'<a href="{url}" style="color:#3b82f6;text-decoration:none;">{label}</a>')
+            bc_html = ('<div style="padding:12px 32px 0;font-size:13px;color:#94a3b8;'
+                       "font-family:'Inter','Segoe UI',sans-serif;\">")
+            bc_html += '<span style="margin:0 8px;color:#475569;">\u203a</span>'.join(parts)
+            bc_html += '</div>'
+
+        if bc_html:
+            html = bc_html + html
 
         display = self.get_display_name()
         role = self.get_user_role()

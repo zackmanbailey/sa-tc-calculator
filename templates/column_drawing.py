@@ -201,6 +201,8 @@ COLUMN_DRAWING_HTML = r"""
     body { background: #fff; }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -251,6 +253,8 @@ COLUMN_DRAWING_HTML = r"""
     </div>
     <button class="btn-gold" onclick="document.getElementById('bomPanel').classList.toggle('open')">BOM</button>
     <button class="btn-gold" style="background:#475569;color:#F1F5F9;" onclick="window.print()">Print</button>
+    <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
+    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;margin-left:4px;"></span>
     <button class="btn-gold" style="background:#334155;color:#F6AE2D;border:1px solid #F6AE2D;" onclick="resetZoom()">Reset Zoom</button>
     <button class="btn-gold" style="background:#334155;color:#94A3B8;border:1px solid #475569;font-size:0.9rem;" onclick="undo()" title="Undo (Cmd+Z)">↩</button>
     <button class="btn-gold" style="background:#334155;color:#94A3B8;border:1px solid #475569;font-size:0.9rem;" onclick="redo()" title="Redo (Cmd+Shift+Z)">↪</button>
@@ -2633,6 +2637,85 @@ function applyConfigToDrawing(config) {
 
   // Trigger full redraw after all fields are set
   if (typeof draw === 'function') draw();
+}
+
+// ═══════════════════════════════════════════════
+// SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
+// ═══════════════════════════════════════════════
+function savePdfToProject() {
+  var btn = document.getElementById('btnSavePdf');
+  var status = document.getElementById('savePdfStatus');
+  var jobCode = (window.COLUMN_CONFIG && window.COLUMN_CONFIG.job_code) || '{{JOB_CODE}}';
+  if (!jobCode || jobCode === 'null') {
+    alert('No project job code \u2014 open this drawing from a project to save.');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  status.textContent = '';
+
+  try {
+    var svgEl = document.getElementById('svg');
+    var vb = svgEl.viewBox.baseVal;
+    var svgW = vb.width || 1100;
+    var svgH = vb.height || 850;
+
+    var pdf = new jspdf.jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: [svgW, svgH]
+    });
+
+    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
+      var pdfData = pdf.output('arraybuffer');
+      var blob = new Blob([pdfData], { type: 'application/pdf' });
+
+      var formData = new FormData();
+      formData.append('job_code', jobCode);
+      formData.append('drawing_type', 'column');
+      formData.append('source', 'interactive');
+      formData.append('pdf_file', blob, jobCode + '_COLUMN_INTERACTIVE.pdf');
+
+      fetch('/api/shop-drawings/save-interactive-pdf', {
+        method: 'POST',
+        body: formData
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          btn.textContent = 'Saved!';
+          btn.style.background = '#059669';
+          status.textContent = 'PDF saved to project';
+          status.style.color = '#10B981';
+          setTimeout(function() {
+            btn.textContent = 'Save PDF to Project';
+            btn.disabled = false;
+          }, 3000);
+        } else {
+          btn.textContent = 'Save PDF to Project';
+          btn.disabled = false;
+          status.textContent = 'Error: ' + (data.error || 'unknown');
+          status.style.color = '#EF4444';
+        }
+      })
+      .catch(function(err) {
+        btn.textContent = 'Save PDF to Project';
+        btn.disabled = false;
+        status.textContent = 'Network error';
+        status.style.color = '#EF4444';
+      });
+    }).catch(function(err) {
+      btn.textContent = 'Save PDF to Project';
+      btn.disabled = false;
+      status.textContent = 'PDF render error: ' + err.message;
+      status.style.color = '#EF4444';
+    });
+  } catch(err) {
+    btn.textContent = 'Save PDF to Project';
+    btn.disabled = false;
+    status.textContent = 'Error: ' + err.message;
+    status.style.color = '#EF4444';
+  }
 }
 </script>
 </body>

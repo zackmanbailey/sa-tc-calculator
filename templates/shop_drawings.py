@@ -576,6 +576,14 @@ SHOP_DRAWINGS_HTML = r"""
             </div>
         </div>
 
+        <!-- ── Building Selector ─────────────────────────── -->
+        <div id="buildingSelector" style="display:none;margin-bottom:var(--tf-sp-4);">
+            <div style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">
+                Select Building
+            </div>
+            <div id="buildingTabs" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+
         <!-- ── Tab Bar ─────────────────────────────────────── -->
         <div class="tf-tabs">
             <button class="tf-tab active" onclick="showTab('drawings')">Drawings</button>
@@ -622,7 +630,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             Interactive column shop drawing with front, side, and top views. Configurable dimensions, base plates, bolt patterns, and cap plates.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/column"
+                        <a href="/shop-drawings/{{JOB_CODE}}/column" data-drawing-type="column"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Column Builder
                         </a>
@@ -635,7 +643,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             Interactive rafter shop drawing with pitch angles, purlin locations, splice points, and connection details.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/rafter"
+                        <a href="/shop-drawings/{{JOB_CODE}}/rafter" data-drawing-type="rafter"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Rafter Builder
                         </a>
@@ -648,7 +656,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             Z-purlin with elevation view, cross-section, P1 clip connection detail, sag rod connection, and lap splice detail.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/purlin"
+                        <a href="/shop-drawings/{{JOB_CODE}}/purlin" data-drawing-type="purlin"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Purlin Builder
                         </a>
@@ -661,7 +669,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             2&quot;x2&quot; angle sag rod with elevation, L-section, purlin connection detail, and angle cut detail.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/sagrod"
+                        <a href="/shop-drawings/{{JOB_CODE}}/sagrod" data-drawing-type="sagrod"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Sag Rod Builder
                         </a>
@@ -674,7 +682,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             1.5&quot;x10GA flat strap with elevation, cross-section, connection details, and hole pattern.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/strap"
+                        <a href="/shop-drawings/{{JOB_CODE}}/strap" data-drawing-type="strap"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Strap Builder
                         </a>
@@ -687,7 +695,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             U-channel endcap with elevation, U-section, top/bottom connections, and panel termination detail.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/endcap"
+                        <a href="/shop-drawings/{{JOB_CODE}}/endcap" data-drawing-type="endcap"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Endcap Builder
                         </a>
@@ -700,7 +708,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             L-shaped bent clip with front view, side view, hole pattern, and installed assembly view.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/p1clip"
+                        <a href="/shop-drawings/{{JOB_CODE}}/p1clip" data-drawing-type="p1clip"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open P1 Clip Builder
                         </a>
@@ -713,7 +721,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             9&quot;x24&quot; eave plate with front view, side L-bend view, hole pattern, and installed assembly view.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/p2plate"
+                        <a href="/shop-drawings/{{JOB_CODE}}/p2plate" data-drawing-type="p2plate"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open P2 Plate Builder
                         </a>
@@ -726,7 +734,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
                             Beam splice plate with bolt pattern, side assembly view, cross-section, and torque specifications.
                         </p>
-                        <a href="/shop-drawings/{{JOB_CODE}}/splice"
+                        <a href="/shop-drawings/{{JOB_CODE}}/splice" data-drawing-type="splice"
                            class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
                             Open Splice Builder
                         </a>
@@ -1137,6 +1145,8 @@ SHOP_DRAWINGS_HTML = r"""
         let drawings = [];         // Last generation result files
         let revisions = [];        // Revision history
         let generationLog = null;
+        let buildings = [];        // Buildings array from BOM
+        let selectedBuilding = 'B1';  // Currently selected building ID
 
         const DRAWING_TYPES = {
             column:   { label: 'Column',   icon: '&#128295;', plural: 'Columns' },
@@ -1164,6 +1174,44 @@ SHOP_DRAWINGS_HTML = r"""
         };
 
         // ══════════════════════════════════════════════════════
+        //  BUILDING SELECTOR
+        // ══════════════════════════════════════════════════════
+
+        function renderBuildingSelector() {
+            var container = document.getElementById('buildingSelector');
+            var tabsEl = document.getElementById('buildingTabs');
+            if (!buildings || buildings.length <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            tabsEl.innerHTML = '';
+            buildings.forEach(function(b) {
+                var btn = document.createElement('button');
+                btn.className = 'tf-btn tf-btn-sm ' + (b.building_id === selectedBuilding ? 'tf-btn-primary' : 'tf-btn-outline');
+                btn.style.cssText = 'min-width:160px;text-align:center;';
+                var w = Math.round(b.width_ft || 0);
+                var l = Math.round(b.length_ft || 0);
+                btn.innerHTML = '<strong>' + b.building_id.replace('B', 'Building ') + '</strong> (' + w + "'" + ' x ' + l + "'" + ')';
+                btn.onclick = function() {
+                    selectedBuilding = b.building_id;
+                    renderBuildingSelector();
+                    updateDrawingLinks();
+                };
+                tabsEl.appendChild(btn);
+            });
+            updateDrawingLinks();
+        }
+
+        function updateDrawingLinks() {
+            var suffix = buildings.length > 1 ? '?building=' + selectedBuilding : '';
+            document.querySelectorAll('a[data-drawing-type]').forEach(function(a) {
+                var dtype = a.dataset.drawingType;
+                a.href = '/shop-drawings/' + JOB_CODE + '/' + dtype + suffix;
+            });
+        }
+
+        // ══════════════════════════════════════════════════════
         //  LOAD / SAVE STATE
         // ══════════════════════════════════════════════════════
 
@@ -1175,9 +1223,11 @@ SHOP_DRAWINGS_HTML = r"""
                     if (data.ok) {
                         config = data.config || {};
                         bomConfig = data.bom_config || {};
+                        buildings = data.buildings || [];
                         drawings = data.drawings || [];
                         revisions = data.revisions || [];
                         generationLog = data.generation_log || null;
+                        renderBuildingSelector();
                         renderAll();
                     } else {
                         console.warn('Config load:', data.error);

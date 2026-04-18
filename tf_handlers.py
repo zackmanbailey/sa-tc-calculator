@@ -983,21 +983,41 @@ class BaseHandler(tornado.web.RequestHandler):
             logger.debug("Activity log write failed", exc_info=True)
 
     def render_with_nav(self, html: str, active_page: str = "",
-                        job_code: str = ""):
+                        job_code: str = "", breadcrumbs=None):
         """Render HTML with the unified sidebar navigation injected.
 
         Args:
             html: Raw HTML string from template
             active_page: Which sidebar item to highlight
             job_code: If set, shows project sub-nav in sidebar
+            breadcrumbs: Optional list of (label, url) tuples for breadcrumb bar.
+                         The last item is rendered as plain text (current page).
         """
         from templates.shared_nav import inject_nav
+
+        # Build breadcrumb HTML if provided
+        bc_html = ""
+        if breadcrumbs:
+            parts = []
+            for i, (label, url) in enumerate(breadcrumbs):
+                if i == len(breadcrumbs) - 1:
+                    parts.append(f'<span style="color:#e2e8f0;">{label}</span>')
+                else:
+                    parts.append(f'<a href="{url}" style="color:#3b82f6;text-decoration:none;">{label}</a>')
+            bc_html = ('<div style="padding:12px 32px 0;font-size:13px;color:#94a3b8;'
+                       "font-family:'Inter','Segoe UI',sans-serif;\">")
+            bc_html += '<span style="margin:0 8px;color:#475569;">\u203a</span>'.join(parts)
+            bc_html += '</div>'
 
         user = self.get_current_user() or "local"
         role = self.get_user_role() or "admin"
         roles = self.get_user_roles()
         users = load_users()
         display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
+
+        # Prepend breadcrumb above page content before nav injection
+        if bc_html:
+            html = bc_html + html
 
         result = inject_nav(html, active_page=active_page, job_code=job_code,
                             user_name=display, user_role=role, user_roles=roles)
@@ -1247,7 +1267,8 @@ class AdminPageHandler(BaseHandler):
 
     def get(self):
         try:
-            self.render_with_nav(ADMIN_HTML, active_page="admin")
+            self.render_with_nav(ADMIN_HTML, active_page="admin",
+                                    breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("User Management", "")])
 
 
         except Exception as e:
@@ -1624,7 +1645,8 @@ class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
         try:
-            self.render_with_nav(MAIN_HTML, active_page="sa")
+            self.render_with_nav(MAIN_HTML, active_page="sa",
+                                    breadcrumbs=[("Dashboard", "/"), ("SA Estimator", "")])
 
 
         except Exception as e:
@@ -1635,7 +1657,8 @@ class TCQuoteHandler(BaseHandler):
     """GET /tc — Titan Carports Estimator."""
     def get(self):
         try:
-            self.render_with_nav(TC_HTML, active_page="tc")
+            self.render_with_nav(TC_HTML, active_page="tc",
+                                    breadcrumbs=[("Dashboard", "/"), ("TC Estimator", "")])
 
 
         except Exception as e:
@@ -2794,7 +2817,8 @@ class InventoryPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.inventory_page import INVENTORY_PAGE_HTML
-            self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory")
+            self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory",
+                                    breadcrumbs=[("Dashboard", "/"), ("Inventory", "")])
 
 
         except Exception as e:
@@ -4044,7 +4068,9 @@ class ProjectPageHandler(BaseHandler):
             html = html.replace("{{NEXT_STEPS_JSON}}", json.dumps(STAGE_NEXT_STEPS))
             html = html.replace("{{DOC_CATEGORIES_JSON}}", json.dumps(DEFAULT_DOC_CATEGORIES))
 
-            self.render_with_nav(html, active_page="project", job_code=job_code)
+            proj_name = metadata.get("project_name", job_code)
+            self.render_with_nav(html, active_page="project", job_code=job_code,
+                                    breadcrumbs=[("Dashboard", "/"), ("Projects", "/projects"), (proj_name, "")])
 
 
         except Exception as e:
@@ -5168,7 +5194,8 @@ class QuoteEditorPageHandler(BaseHandler):
             html = QUOTE_EDITOR_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
             html = html.replace("{{USER_NAME}}", _html_escape(self.get_current_user() or ""))
-            self.render_with_nav(html, active_page="quote", job_code=job_code)
+            self.render_with_nav(html, active_page="quote", job_code=job_code,
+                                    breadcrumbs=[("Dashboard", "/"), ("Quote Editor", "")])
 
 
         except Exception as e:
@@ -6735,7 +6762,8 @@ class QCPageHandler(BaseHandler):
         html = QC_PAGE_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
         html = html.replace("{{USER_ROLE}}", self.get_user_role() or "viewer")
         html = html.replace("{{USER_NAME}}", _html_escape(self.get_current_user() or ""))
-        self.render_with_nav(html, active_page="qc", job_code=job_code)
+        self.render_with_nav(html, active_page="qc", job_code=job_code,
+                                breadcrumbs=[("Dashboard", "/"), ("QC", "/qc-dashboard"), (job_code, "")])
 
 
 # ─────────────────────────────────────────────
@@ -6787,14 +6815,126 @@ def _shop_drawing_project_dir(job_code):
     return d
 
 
-def _load_shop_config(job_code):
-    """Load saved ShopDrawingConfig for a project, or return None."""
+def _load_shop_config(job_code, building_id=None):
+    """Load saved ShopDrawingConfig for a project, or return None.
+
+    If building_id is specified (e.g. "B1", "B2"), the config is enriched
+    with that building's dimensions from the BOM buildings array.
+    """
     d = _shop_drawing_project_dir(job_code)
     cfg_path = os.path.join(d, "config.json")
+    config = None
     if os.path.isfile(cfg_path):
         with open(cfg_path) as f:
-            return json.load(f)
-    return None
+            config = json.load(f)
+
+    if config is None:
+        config = _derive_bom_config(job_code)
+        if not config:
+            return None
+
+    if building_id:
+        config = _enrich_config_for_building(job_code, config, building_id)
+
+    return config
+
+
+def _load_buildings_list(job_code):
+    """Load the buildings array from BOM data for a project.
+
+    Returns a list of dicts with building_id, width_ft, length_ft,
+    clear_height_ft, slope_deg, n_frames, purlin_spacing_ft, etc.
+    """
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+    proj_dir = os.path.join(PROJECTS_DIR, safe)
+    if not os.path.isdir(proj_dir):
+        return []
+
+    # Find version files
+    version_files = sorted(
+        [f for f in os.listdir(proj_dir) if f.startswith("v") and f.endswith(".json")],
+        reverse=True
+    )
+    if not version_files:
+        sub_versions_dir = os.path.join(proj_dir, "versions")
+        if os.path.isdir(sub_versions_dir):
+            version_files = sorted(
+                [f for f in os.listdir(sub_versions_dir) if f.endswith(".json")],
+                reverse=True
+            )
+            proj_dir = sub_versions_dir
+    if not version_files and os.path.isfile(os.path.join(PROJECTS_DIR, safe, "current.json")):
+        version_files = ["current.json"]
+        proj_dir = os.path.join(PROJECTS_DIR, safe)
+
+    for vf in version_files:
+        try:
+            with open(os.path.join(proj_dir, vf)) as f:
+                data = json.load(f)
+            bom_result = data.get("bom_result") or data.get("bom_data") or data.get("results", {})
+            bom_buildings = []
+            if bom_result:
+                bom_buildings = bom_result.get("buildings", [])
+            if not bom_buildings:
+                bom_buildings = data.get("buildings", [])
+            if bom_buildings:
+                result = []
+                for i, b in enumerate(bom_buildings):
+                    result.append({
+                        "building_id": f"B{i + 1}",
+                        "index": i,
+                        "width_ft": b.get("width_ft", 40.0),
+                        "length_ft": b.get("length_ft", 120.0),
+                        "clear_height_ft": b.get("clear_height_ft", 14.0),
+                        "slope_deg": b.get("slope_deg", 1.19),
+                        "n_frames": b.get("n_frames", 5),
+                        "purlin_spacing_ft": b.get("purlin_spacing_ft") or b.get("purlin_spacing_override") or 5.0,
+                        "frame_type": "tee" if b.get("width_ft", 40) <= 45 else "dbl_col",
+                        "overhang_ft": b.get("overhang_ft", 0.0),
+                        "embedment_ft": b.get("embedment_ft", 4.333),
+                        "col_positions": b.get("col_positions", []),
+                        "bay_sizes": b.get("bay_sizes", []),
+                    })
+                return result
+        except Exception:
+            continue
+    return []
+
+
+def _enrich_config_for_building(job_code, config, building_id):
+    """Overlay building-specific dimensions onto the config dict.
+
+    building_id is like "B1", "B2", etc.
+    """
+    buildings = _load_buildings_list(job_code)
+    if not buildings:
+        return config
+
+    # Find matching building
+    target = None
+    for b in buildings:
+        if b["building_id"] == building_id:
+            target = b
+            break
+    if not target:
+        return config
+
+    enriched = dict(config)
+    enriched["building_id"] = building_id
+    enriched["building_width_ft"] = target["width_ft"]
+    enriched["building_length_ft"] = target["length_ft"]
+    enriched["clear_height_ft"] = target["clear_height_ft"]
+    enriched["roof_pitch_deg"] = target["slope_deg"]
+    enriched["n_frames"] = target["n_frames"]
+    enriched["purlin_spacing_ft"] = target["purlin_spacing_ft"]
+    enriched["frame_type"] = target["frame_type"]
+    enriched["overhang_ft"] = target["overhang_ft"]
+    enriched["embedment_ft"] = target["embedment_ft"]
+    if target.get("col_positions"):
+        enriched["col_positions"] = target["col_positions"]
+    if target.get("bay_sizes"):
+        enriched["bay_sizes"] = target["bay_sizes"]
+    return enriched
 
 
 def _save_shop_config(job_code, cfg_dict):
@@ -6966,17 +7106,111 @@ def _derive_bom_config(job_code):
     return {}
 
 
+
+def _build_purlin_groups_for_building(job_code, building_id, config_dict):
+    """Build purlin group data for the purlin drawing from BOM data."""
+    _PS = {
+        8:  {'depth': 8,  'topFlange': 2.75, 'botFlange': 2.75, 'lip': 0.625, 'coilWidth': 14.75},
+        10: {'depth': 10, 'topFlange': 3.25, 'botFlange': 3.25, 'lip': 0.625, 'coilWidth': 17.875},
+        12: {'depth': 12, 'topFlange': 3.5,  'botFlange': 3.5,  'lip': 0.75,  'coilWidth': 20.125},
+    }
+    _GT = {'12GA': 0.105, '14GA': 0.075}
+    _GL = {
+        '12GA': {8: 5.20, 10: 6.30, 12: 7.43},
+        '14GA': {8: 3.70, 10: 4.50, 12: 5.30},
+    }
+
+    width_ft = config_dict.get('building_width_ft', 40.0)
+    length_ft = config_dict.get('building_length_ft', 120.0)
+    n_frames = config_dict.get('n_frames', 5)
+    spacing_ft = config_dict.get('purlin_spacing_ft', 5.0)
+    depth = 12
+    gauge = config_dict.get('purlin_gauge', '12GA')
+    frame_type = config_dict.get('frame_type', 'tee')
+    span_ft = width_ft if frame_type == 'tee' else width_ft / 2.0
+
+    bay_sizes = config_dict.get('bay_sizes', [])
+    if not bay_sizes and n_frames > 1:
+        bay_size = length_ft / (n_frames - 1)
+        bay_sizes = [bay_size] * (n_frames - 1)
+
+    purlin_groups_raw = []
+    if HAS_SHOP_DRAWINGS:
+        try:
+            from shop_drawings.config import calc_purlin_groups
+            overhang_ft = config_dict.get('overhang_ft', 0.0)
+            purlin_groups_raw = calc_purlin_groups(
+                building_length_ft=length_ft,
+                bay_sizes=bay_sizes,
+                overhang_ft=overhang_ft,
+            )
+        except Exception:
+            pass
+
+    groups = []
+    spec = _PS.get(depth, _PS[12])
+    thick = _GT.get(gauge, 0.105)
+    lbs_ft = _GL.get(gauge, {}).get(depth, 7.43)
+    spacing_in = spacing_ft * 12
+    qty_per_bay = max(1, int(span_ft * 12 / spacing_in) + 1)
+
+    if purlin_groups_raw:
+        for pg in purlin_groups_raw:
+            g_len_ft = pg.get('length_ft', span_ft)
+            g_type = pg.get('type', 'middle')
+            mark = 'Z%d-%s-G%d' % (depth, gauge.replace('GA', ''), pg.get('group', 1))
+            label = '%d" Z-Purlin @ %d\'' % (depth, int(g_len_ft))
+            groups.append({
+                'group': pg.get('group', 1), 'label': label, 'type': g_type,
+                'depth': depth, 'gauge': gauge, 'thickness': thick,
+                'span_ft': round(g_len_ft, 2), 'spacing_ft': spacing_ft,
+                'qty': qty_per_bay,
+                'topFlange': spec['topFlange'], 'botFlange': spec['botFlange'],
+                'lip': spec['lip'], 'coilWidth': spec['coilWidth'],
+                'lbs_per_ft': lbs_ft, 'mark': mark,
+            })
+    else:
+        mark = 'Z%d-%s' % (depth, gauge.replace('GA', ''))
+        groups.append({
+            'group': 1,
+            'label': '%d" Z-Purlin @ %d\'' % (depth, int(span_ft)),
+            'type': 'standard', 'depth': depth, 'gauge': gauge,
+            'thickness': thick, 'span_ft': round(span_ft, 2),
+            'spacing_ft': spacing_ft, 'qty': qty_per_bay,
+            'topFlange': spec['topFlange'], 'botFlange': spec['botFlange'],
+            'lip': spec['lip'], 'coilWidth': spec['coilWidth'],
+            'lbs_per_ft': lbs_ft, 'mark': mark,
+        })
+
+    # Eave strut group
+    eave_spec = _PS[10]
+    eave_lbs = _GL.get(gauge, {}).get(10, 6.30)
+    groups.append({
+        'group': len(groups) + 1,
+        'label': 'Eave Strut 10"', 'type': 'eave_strut',
+        'depth': 10, 'gauge': gauge, 'thickness': thick,
+        'span_ft': round(span_ft, 2), 'spacing_ft': 0, 'qty': 2,
+        'topFlange': eave_spec['topFlange'], 'botFlange': eave_spec['botFlange'],
+        'lip': eave_spec['lip'], 'coilWidth': eave_spec['coilWidth'],
+        'lbs_per_ft': eave_lbs, 'mark': 'ES10-%s' % gauge.replace('GA', ''),
+    })
+
+    return groups
+
+
 class ColumnInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/column — Interactive Column Drawing."""
     def get(self, job_code):
         try:
             from templates.column_interactive import COLUMN_DRAWING_HTML
 
-            # Load project config from saved BOM
-            config_dict = _load_shop_config(job_code)
+            # Load project config from saved BOM (with optional building context)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
 
             # Load project metadata
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
@@ -7006,11 +7240,13 @@ class RafterInteractiveHandler(BaseHandler):
         try:
             from templates.rafter_drawing import RAFTER_DRAWING_HTML
 
-            # Load project config from saved BOM
-            config_dict = _load_shop_config(job_code)
+            # Load project config from saved BOM (with optional building context)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
 
             # Load project metadata
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
@@ -7044,14 +7280,17 @@ class RafterInteractiveHandler(BaseHandler):
 
 
 class PurlinInteractiveHandler(BaseHandler):
-    """GET /shop-drawings/{job_code}/purlin — Interactive Purlin Drawing."""
+    """GET /shop-drawings/{job_code}/purlin — Interactive Purlin Drawing (v2 with per-group tabs)."""
     def get(self, job_code):
         try:
-            from templates.purlin_drawing import PURLIN_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            from templates.purlin_drawing_v2 import PURLIN_DRAWING_V2_HTML
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
+
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7059,7 +7298,12 @@ class PurlinInteractiveHandler(BaseHandler):
                     meta = json.load(f)
                 config_dict.setdefault("project_name", meta.get("project_name", ""))
                 config_dict.setdefault("customer_name", meta.get("customer_name", ""))
-            html = PURLIN_DRAWING_HTML
+
+            # Build purlin groups from BOM data for the selected building
+            purlin_groups = _build_purlin_groups_for_building(job_code, building_id, config_dict)
+            config_dict["purlin_groups"] = purlin_groups
+
+            html = PURLIN_DRAWING_V2_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{PURLIN_CONFIG_JSON}}", _safe_json_embed(config_dict))
             self.set_header("Content-Type", "text/html")
@@ -7075,10 +7319,12 @@ class SagrodInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.sagrod_drawing import SAGROD_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7102,10 +7348,12 @@ class StrapInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.strap_drawing import STRAP_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7129,10 +7377,12 @@ class EndcapInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.endcap_drawing import ENDCAP_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7156,10 +7406,12 @@ class P1ClipInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.p1clip_drawing import P1CLIP_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7183,10 +7435,12 @@ class P2PlateInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.p2plate_drawing import P2PLATE_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7210,10 +7464,12 @@ class SpliceInteractiveHandler(BaseHandler):
     def get(self, job_code):
         try:
             from templates.splice_drawing import SPLICE_DRAWING_HTML
-            config_dict = _load_shop_config(job_code)
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
             if not config_dict:
                 config_dict = {"job_code": job_code}
             config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
             proj_dir = os.path.join(PROJECTS_DIR, job_code)
             meta_path = os.path.join(proj_dir, "metadata.json")
             if os.path.isfile(meta_path):
@@ -7360,7 +7616,8 @@ class ShopDrawingsPageHandler(BaseHandler):
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{USER_ROLE}}", role)
             html = html.replace("{{USER_NAME}}", _html_escape(display))
-            self.render_with_nav(html, active_page="shopdrw", job_code=job_code)
+            self.render_with_nav(html, active_page="shopdrw", job_code=job_code,
+                                    breadcrumbs=[("Dashboard", "/"), ("Shop Drawings", "/shop-drawings"), (job_code, "")])
 
 
         except Exception as e:
@@ -7452,11 +7709,28 @@ class ShopDrawingsConfigHandler(BaseHandler):
 
             revisions = _load_revisions(job_code)
 
+            # Include buildings list for building selector UI
+            buildings = _load_buildings_list(job_code)
+            if not buildings:
+                # Fallback: create single building from config
+                buildings = [{
+                    "building_id": "B1",
+                    "index": 0,
+                    "width_ft": saved_config.get("building_width_ft", 40.0),
+                    "length_ft": saved_config.get("building_length_ft", 120.0),
+                    "clear_height_ft": saved_config.get("clear_height_ft", 14.0),
+                    "slope_deg": saved_config.get("roof_pitch_deg", 1.19),
+                    "n_frames": saved_config.get("n_frames", 5),
+                    "purlin_spacing_ft": saved_config.get("purlin_spacing_ft", 5.0),
+                    "frame_type": saved_config.get("frame_type", "tee"),
+                }]
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
                 "config": saved_config,
                 "bom_config": bom_config,
+                "buildings": buildings,
                 "drawings": drawings,
                 "revisions": revisions,
                 "generation_log": gen_log,
@@ -7883,7 +8157,8 @@ class WorkOrderPageHandler(BaseHandler):
         try:
             from templates.work_orders import WORK_ORDERS_HTML
             html = WORK_ORDERS_HTML.replace("{{JOB_CODE}}", _html_escape(job_code))
-            self.render_with_nav(html, active_page="workorders", job_code=job_code)
+            self.render_with_nav(html, active_page="workorders", job_code=job_code,
+                                    breadcrumbs=[("Dashboard", "/"), ("Projects", "/projects"), (job_code, f"/project/{job_code}"), ("Work Orders", "")])
 
 
         except Exception as e:
@@ -10844,7 +11119,8 @@ class QCDashboardPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.qc_dashboard_page import QC_DASHBOARD_PAGE_HTML
-            self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc")
+            self.render_with_nav(QC_DASHBOARD_PAGE_HTML, active_page="qc",
+                                    breadcrumbs=[("Dashboard", "/"), ("QC", "")])
 
 
         except Exception as e:
@@ -10875,7 +11151,8 @@ class FieldOpsPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.field_ops_page import FIELD_OPS_PAGE_HTML
-            self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field_ops")
+            self.render_with_nav(FIELD_OPS_PAGE_HTML, active_page="field_ops",
+                                    breadcrumbs=[("Dashboard", "/"), ("Field Ops", "")])
 
 
         except Exception as e:
@@ -10912,7 +11189,8 @@ class FieldPunchPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.field_punch_page import FIELD_PUNCH_PAGE_HTML
-            self.render_with_nav(FIELD_PUNCH_PAGE_HTML, active_page="field_punch")
+            self.render_with_nav(FIELD_PUNCH_PAGE_HTML, active_page="field_punch",
+                                    breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Punch List", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10923,7 +11201,8 @@ class FieldCompletionPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.field_completion_page import FIELD_COMPLETION_PAGE_HTML
-            self.render_with_nav(FIELD_COMPLETION_PAGE_HTML, active_page="field_completion")
+            self.render_with_nav(FIELD_COMPLETION_PAGE_HTML, active_page="field_completion",
+                                    breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Completion", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10934,7 +11213,8 @@ class FieldInstallTrackerPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.field_install_tracker_page import FIELD_INSTALL_TRACKER_PAGE_HTML
-            self.render_with_nav(FIELD_INSTALL_TRACKER_PAGE_HTML, active_page="field_install")
+            self.render_with_nav(FIELD_INSTALL_TRACKER_PAGE_HTML, active_page="field_install",
+                                    breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Install Tracker", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10945,7 +11225,8 @@ class ExecutiveReportPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.executive_report_page import EXECUTIVE_REPORT_PAGE_HTML
-            self.render_with_nav(EXECUTIVE_REPORT_PAGE_HTML, active_page="reports_executive")
+            self.render_with_nav(EXECUTIVE_REPORT_PAGE_HTML, active_page="reports_executive",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Executive Report", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10956,7 +11237,8 @@ class QCQueuePageHandler(BaseHandler):
     def get(self):
         try:
             from templates.qc_queue_page import QC_QUEUE_PAGE_HTML
-            self.render_with_nav(QC_QUEUE_PAGE_HTML, active_page="qc_queue")
+            self.render_with_nav(QC_QUEUE_PAGE_HTML, active_page="qc_queue",
+                                    breadcrumbs=[("Dashboard", "/"), ("QC", "/qc-dashboard"), ("Queue", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10968,7 +11250,8 @@ class SalesLeadsPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.sales_leads_page import SALES_LEADS_PAGE_HTML
-            self.render_with_nav(SALES_LEADS_PAGE_HTML, active_page="sales")
+            self.render_with_nav(SALES_LEADS_PAGE_HTML, active_page="sales",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Sales Leads", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10979,7 +11262,8 @@ class SalesPipelinePageHandler(BaseHandler):
     def get(self):
         try:
             from templates.sales_pipeline_page import SALES_PIPELINE_PAGE_HTML
-            self.render_with_nav(SALES_PIPELINE_PAGE_HTML, active_page="sales")
+            self.render_with_nav(SALES_PIPELINE_PAGE_HTML, active_page="sales",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Sales Pipeline", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -10990,7 +11274,8 @@ class SalesQuotesPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.sales_quotes_page import SALES_QUOTES_PAGE_HTML
-            self.render_with_nav(SALES_QUOTES_PAGE_HTML, active_page="sales")
+            self.render_with_nav(SALES_QUOTES_PAGE_HTML, active_page="sales",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Sales Quotes", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11002,7 +11287,8 @@ class FinancialDashboardPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_dashboard_page import FINANCIAL_DASHBOARD_PAGE_HTML
-            self.render_with_nav(FINANCIAL_DASHBOARD_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_DASHBOARD_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11013,7 +11299,8 @@ class FinancialInvoicesPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_invoices_page import FINANCIAL_INVOICES_PAGE_HTML
-            self.render_with_nav(FINANCIAL_INVOICES_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_INVOICES_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Invoices", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11024,7 +11311,8 @@ class FinancialExpensesPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_expenses_page import FINANCIAL_EXPENSES_PAGE_HTML
-            self.render_with_nav(FINANCIAL_EXPENSES_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_EXPENSES_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Expenses", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11035,7 +11323,8 @@ class FinancialVendorBillsPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_vendor_bills_page import FINANCIAL_VENDOR_BILLS_PAGE_HTML
-            self.render_with_nav(FINANCIAL_VENDOR_BILLS_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_VENDOR_BILLS_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Vendor Bills", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11046,7 +11335,8 @@ class FinancialEquipmentPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_equipment_page import FINANCIAL_EQUIPMENT_PAGE_HTML
-            self.render_with_nav(FINANCIAL_EQUIPMENT_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_EQUIPMENT_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Equipment", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11057,7 +11347,8 @@ class FinancialProjectsPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_projects_page import FINANCIAL_PROJECTS_PAGE_HTML
-            self.render_with_nav(FINANCIAL_PROJECTS_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_PROJECTS_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Projects", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11068,7 +11359,8 @@ class FinancialReportsPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.financial_reports_page import FINANCIAL_REPORTS_PAGE_HTML
-            self.render_with_nav(FINANCIAL_REPORTS_PAGE_HTML, active_page="financial")
+            self.render_with_nav(FINANCIAL_REPORTS_PAGE_HTML, active_page="financial",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Reports", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11079,7 +11371,8 @@ class BudgetPageHandler(BaseHandler):
     def get(self):
         try:
             from templates.budget_page import BUDGET_PAGE_HTML
-            self.render_with_nav(BUDGET_PAGE_HTML, active_page="budget")
+            self.render_with_nav(BUDGET_PAGE_HTML, active_page="budget",
+                                    breadcrumbs=[("Dashboard", "/"), ("Financial", "/financial"), ("Budget", "")])
         except Exception as e:
             logger.error(f"{self.__class__.__name__} error: {e}", exc_info=True)
             self.set_status(500)
@@ -11425,62 +11718,74 @@ class SalesQuotesAPIHandler(BaseHandler):
 class FieldDailyPageHandler(BaseHandler):
     def get(self):
         from templates.field_daily_page import FIELD_DAILY_PAGE_HTML
-        self.render_with_nav(FIELD_DAILY_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_DAILY_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Daily Reports", "")])
 
 class FieldDocsPageHandler(BaseHandler):
     def get(self):
         from templates.field_docs_page import FIELD_DOCS_PAGE_HTML
-        self.render_with_nav(FIELD_DOCS_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_DOCS_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Documents", "")])
 
 class FieldEquipmentPageHandler(BaseHandler):
     def get(self):
         from templates.field_equipment_page import FIELD_EQUIPMENT_PAGE_HTML
-        self.render_with_nav(FIELD_EQUIPMENT_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_EQUIPMENT_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Equipment", "")])
 
 class FieldExpensesPageHandler(BaseHandler):
     def get(self):
         from templates.field_expenses_page import FIELD_EXPENSES_PAGE_HTML
-        self.render_with_nav(FIELD_EXPENSES_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_EXPENSES_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Expenses", "")])
 
 class FieldJHAPageHandler(BaseHandler):
     def get(self):
         from templates.field_jha_page import FIELD_JHA_PAGE_HTML
-        self.render_with_nav(FIELD_JHA_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_JHA_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("JHA", "")])
 
 class FieldPhotosPageHandler(BaseHandler):
     def get(self):
         from templates.field_photos_page import FIELD_PHOTOS_PAGE_HTML
-        self.render_with_nav(FIELD_PHOTOS_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_PHOTOS_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Photos", "")])
 
 class FieldProjectsPageHandler(BaseHandler):
     def get(self):
         from templates.field_projects_page import FIELD_PROJECTS_PAGE_HTML
-        self.render_with_nav(FIELD_PROJECTS_PAGE_HTML, active_page="field")
+        self.render_with_nav(FIELD_PROJECTS_PAGE_HTML, active_page="field",
+                                breadcrumbs=[("Dashboard", "/"), ("Field Ops", "/field-ops"), ("Projects", "")])
 
 class SafetyEquipmentPageHandler(BaseHandler):
     def get(self):
         from templates.safety_equipment_page import SAFETY_EQUIPMENT_PAGE_HTML
-        self.render_with_nav(SAFETY_EQUIPMENT_PAGE_HTML, active_page="safety")
+        self.render_with_nav(SAFETY_EQUIPMENT_PAGE_HTML, active_page="safety",
+                                breadcrumbs=[("Dashboard", "/"), ("Safety", "/safety/metrics"), ("Equipment", "")])
 
 class SafetyIncidentsPageHandler(BaseHandler):
     def get(self):
         from templates.safety_incidents_page import SAFETY_INCIDENTS_PAGE_HTML
-        self.render_with_nav(SAFETY_INCIDENTS_PAGE_HTML, active_page="safety")
+        self.render_with_nav(SAFETY_INCIDENTS_PAGE_HTML, active_page="safety",
+                                breadcrumbs=[("Dashboard", "/"), ("Safety", "/safety/metrics"), ("Incidents", "")])
 
 class SafetyJHAPageHandler(BaseHandler):
     def get(self):
         from templates.safety_jha_page import SAFETY_JHA_PAGE_HTML
-        self.render_with_nav(SAFETY_JHA_PAGE_HTML, active_page="safety")
+        self.render_with_nav(SAFETY_JHA_PAGE_HTML, active_page="safety",
+                                breadcrumbs=[("Dashboard", "/"), ("Safety", "/safety/metrics"), ("JHA", "")])
 
 class SafetyMetricsPageHandler(BaseHandler):
     def get(self):
         from templates.safety_metrics_page import SAFETY_METRICS_PAGE_HTML
-        self.render_with_nav(SAFETY_METRICS_PAGE_HTML, active_page="safety")
+        self.render_with_nav(SAFETY_METRICS_PAGE_HTML, active_page="safety",
+                                breadcrumbs=[("Dashboard", "/"), ("Safety", "/safety/metrics"), ("Metrics", "")])
 
 class SafetyTrainingPageHandler(BaseHandler):
     def get(self):
         from templates.safety_training_page import SAFETY_TRAINING_PAGE_HTML
-        self.render_with_nav(SAFETY_TRAINING_PAGE_HTML, active_page="safety")
+        self.render_with_nav(SAFETY_TRAINING_PAGE_HTML, active_page="safety",
+                                breadcrumbs=[("Dashboard", "/"), ("Safety", "/safety/metrics"), ("Training", "")])
 
 class CrewPageHandler(BaseHandler):
     def get(self):
@@ -11651,42 +11956,50 @@ class CrewAPIHandler(BaseHandler):
 class AllocationsPageHandler(BaseHandler):
     def get(self):
         from templates.allocations_page import ALLOCATIONS_PAGE_HTML
-        self.render_with_nav(ALLOCATIONS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(ALLOCATIONS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Allocations", "")])
 
 class CertsPageHandler(BaseHandler):
     def get(self):
         from templates.certs_page import CERTS_PAGE_HTML
-        self.render_with_nav(CERTS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(CERTS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Certifications", "")])
 
 class MaterialReqsPageHandler(BaseHandler):
     def get(self):
         from templates.material_reqs_page import MATERIAL_REQS_PAGE_HTML
-        self.render_with_nav(MATERIAL_REQS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(MATERIAL_REQS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Material Reqs", "")])
 
 class PurchaseOrdersPageHandler(BaseHandler):
     def get(self):
         from templates.purchase_orders_page import PURCHASE_ORDERS_PAGE_HTML
-        self.render_with_nav(PURCHASE_ORDERS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(PURCHASE_ORDERS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Purchase Orders", "")])
 
 class PricesPageHandler(BaseHandler):
     def get(self):
         from templates.prices_page import PRICES_PAGE_HTML
-        self.render_with_nav(PRICES_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(PRICES_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Prices", "")])
 
 class ReceiptsPageHandler(BaseHandler):
     def get(self):
         from templates.receipts_page import RECEIPTS_PAGE_HTML
-        self.render_with_nav(RECEIPTS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(RECEIPTS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Receipts", "")])
 
 class ReceivingPageHandler(BaseHandler):
     def get(self):
         from templates.receiving_page import RECEIVING_PAGE_HTML
-        self.render_with_nav(RECEIVING_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(RECEIVING_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Receiving", "")])
 
 class VendorsPageHandler(BaseHandler):
     def get(self):
         from templates.vendors_page import VENDORS_PAGE_HTML
-        self.render_with_nav(VENDORS_PAGE_HTML, active_page="inventory")
+        self.render_with_nav(VENDORS_PAGE_HTML, active_page="inventory",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Vendors", "")])
 
 # ── Inventory & Procurement API Stubs ──
 
@@ -11950,47 +12263,56 @@ class VendorsAPIHandler(BaseHandler):
 class AdminSettingsPageHandler(BaseHandler):
     def get(self):
         from templates.admin_settings_page import ADMIN_SETTINGS_PAGE_HTML
-        self.render_with_nav(ADMIN_SETTINGS_PAGE_HTML, active_page="admin")
+        self.render_with_nav(ADMIN_SETTINGS_PAGE_HTML, active_page="admin",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Settings", "")])
 
 class TasksPageHandler(BaseHandler):
     def get(self):
         from templates.tasks_page import TASKS_PAGE_HTML
-        self.render_with_nav(TASKS_PAGE_HTML, active_page="tasks")
+        self.render_with_nav(TASKS_PAGE_HTML, active_page="tasks",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Tasks", "")])
 
 class TimelinePageHandler(BaseHandler):
     def get(self):
         from templates.timeline_page import TIMELINE_PAGE_HTML
-        self.render_with_nav(TIMELINE_PAGE_HTML, active_page="timeline")
+        self.render_with_nav(TIMELINE_PAGE_HTML, active_page="timeline",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Timeline", "")])
 
 class WorkflowsPageHandler(BaseHandler):
     def get(self):
         from templates.workflows_page import WORKFLOWS_PAGE_HTML
-        self.render_with_nav(WORKFLOWS_PAGE_HTML, active_page="workflows")
+        self.render_with_nav(WORKFLOWS_PAGE_HTML, active_page="workflows",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Workflows", "")])
 
 class TraceabilityPageHandler(BaseHandler):
     def get(self):
         from templates.traceability_page import TRACEABILITY_PAGE_HTML
-        self.render_with_nav(TRACEABILITY_PAGE_HTML, active_page="traceability")
+        self.render_with_nav(TRACEABILITY_PAGE_HTML, active_page="traceability",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Traceability", "")])
 
 class AuditPageHandler(BaseHandler):
     def get(self):
         from templates.audit_page import AUDIT_PAGE_HTML
-        self.render_with_nav(AUDIT_PAGE_HTML, active_page="audit")
+        self.render_with_nav(AUDIT_PAGE_HTML, active_page="audit",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("Audit", "")])
 
 class AISCPageHandler(BaseHandler):
     def get(self):
         from templates.aisc_page import AISC_PAGE_HTML
-        self.render_with_nav(AISC_PAGE_HTML, active_page="aisc")
+        self.render_with_nav(AISC_PAGE_HTML, active_page="aisc",
+                                breadcrumbs=[("Dashboard", "/"), ("Admin", "/admin"), ("AISC", "")])
 
 class QCMainPageHandler(BaseHandler):
     def get(self):
         from templates.qc_main_page import QC_MAIN_PAGE_HTML
-        self.render_with_nav(QC_MAIN_PAGE_HTML, active_page="qc")
+        self.render_with_nav(QC_MAIN_PAGE_HTML, active_page="qc",
+                                breadcrumbs=[("Dashboard", "/"), ("QC", "/qc-dashboard"), ("Inspections", "")])
 
 class QCNCRPageHandler(BaseHandler):
     def get(self):
         from templates.qc_ncr_page import QC_NCR_PAGE_HTML
-        self.render_with_nav(QC_NCR_PAGE_HTML, active_page="qc")
+        self.render_with_nav(QC_NCR_PAGE_HTML, active_page="qc",
+                                breadcrumbs=[("Dashboard", "/"), ("QC", "/qc-dashboard"), ("NCR Log", "")])
 
 class ScanPageHandler(BaseHandler):
     def get(self):
