@@ -123,7 +123,7 @@ NAV_CSS = r"""
 }
 
 .tf-sidebar-section {
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .tf-sidebar-section-label {
@@ -137,7 +137,44 @@ NAV_CSS = r"""
     overflow: hidden;
 }
 
+/* Collapsible group header */
+.tf-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    margin: 1px 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.55);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+}
+.tf-group-header:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
+.tf-group-header .gh-icon { font-size: 0.9rem; width: 20px; text-align: center; flex-shrink: 0; }
+.tf-group-header .gh-label { flex: 1; white-space: nowrap; overflow: hidden; }
+.tf-group-header .gh-chevron {
+    font-size: 0.55rem; color: rgba(255,255,255,0.25); transition: transform 0.2s;
+}
+.tf-group-header.expanded .gh-chevron { transform: rotate(90deg); }
+.tf-group-header.has-active { color: rgba(255,255,255,0.85); }
+.tf-group-header.has-active .gh-icon { color: #F59E0B; }
+
+/* Collapsible children container */
+.tf-group-children {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+}
+.tf-group-children.open { max-height: 600px; }
+
 .tf-sidebar.collapsed .tf-sidebar-section-label { opacity: 0; height: 0; padding: 0; margin: 0; }
+.tf-sidebar.collapsed .tf-group-header .gh-label,
+.tf-sidebar.collapsed .tf-group-header .gh-chevron { display: none; }
+.tf-sidebar.collapsed .tf-group-header { justify-content: center; padding: 7px 0; }
+.tf-sidebar.collapsed .tf-group-children.open { max-height: 600px; }
 
 .tf-nav-item {
     display: flex;
@@ -1017,6 +1054,42 @@ function toggleSidebar() {
     }
 })();
 
+// ── Collapsible Nav Groups ──
+function toggleNavGroup(header) {
+    var group = header.getAttribute('data-group');
+    var children = document.querySelector('[data-group-children="' + group + '"]');
+    if (!children) return;
+    var isOpen = children.classList.contains('open');
+    children.classList.toggle('open');
+    header.classList.toggle('expanded');
+    // Save state
+    var state = JSON.parse(localStorage.getItem('tf-nav-groups') || '{}');
+    state[group] = !isOpen;
+    localStorage.setItem('tf-nav-groups', JSON.stringify(state));
+}
+
+// Restore nav group state from localStorage
+(function() {
+    var state = JSON.parse(localStorage.getItem('tf-nav-groups') || '{}');
+    document.querySelectorAll('.tf-group-header').forEach(function(h) {
+        var group = h.getAttribute('data-group');
+        // If localStorage has a saved state, use it; otherwise keep server-rendered state (active sections open)
+        if (group in state) {
+            var children = document.querySelector('[data-group-children="' + group + '"]');
+            if (children) {
+                if (state[group]) {
+                    children.classList.add('open');
+                    h.classList.add('expanded');
+                } else if (!h.classList.contains('has-active')) {
+                    // Don't collapse if it has the active page
+                    children.classList.remove('open');
+                    h.classList.remove('expanded');
+                }
+            }
+        }
+    });
+})();
+
 // ── Mobile Sidebar ──
 function toggleMobileSidebar() {
     const sb = document.querySelector('.tf-sidebar');
@@ -1519,18 +1592,31 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
         nav_items_html += '        <div class="tf-sidebar-section">\n'
 
         if children:
-            # Section with child links
-            nav_items_html += f'            <div class="tf-sidebar-section-label">{label}</div>\n'
+            # Check if any child is active (to auto-expand)
+            has_active = any(_is_nav_active(c.get("url", ""), active_page) for c in children)
+            expanded_cls = " expanded" if has_active else ""
+            active_hdr = " has-active" if has_active else ""
+            open_cls = " open" if has_active else ""
+
+            # Collapsible group header
+            nav_items_html += f'            <div class="tf-group-header{expanded_cls}{active_hdr}" data-group="{sid}" onclick="toggleNavGroup(this)">\n'
+            nav_items_html += f'                <span class="gh-icon">{icon_html}</span>\n'
+            nav_items_html += f'                <span class="gh-label">{label}</span>\n'
+            nav_items_html += f'                <span class="gh-chevron">&#9654;</span>\n'
+            nav_items_html += f'            </div>\n'
+
+            # Children container
+            nav_items_html += f'            <div class="tf-group-children{open_cls}" data-group-children="{sid}">\n'
             for child in children:
                 child_url = child.get("url", "#")
                 child_label = child.get("label", "")
-                # Determine active state by matching URL
                 is_active = _is_nav_active(child_url, active_page)
                 active_cls = " active" if is_active else ""
-                nav_items_html += f'            <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
-                nav_items_html += f'                <span class="tf-nav-icon">{icon_html}</span>\n'
-                nav_items_html += f'                <span class="tf-nav-label">{child_label}</span>\n'
-                nav_items_html += f'            </a>\n'
+                nav_items_html += f'              <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
+                nav_items_html += f'                  <span class="tf-nav-icon">{icon_html}</span>\n'
+                nav_items_html += f'                  <span class="tf-nav-label">{child_label}</span>\n'
+                nav_items_html += f'              </a>\n'
+            nav_items_html += f'            </div>\n'
         elif url:
             # Single-link section (e.g., Dashboard)
             is_active = _is_nav_active(url, active_page)

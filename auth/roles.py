@@ -300,19 +300,16 @@ SIDEBAR_SECTIONS = [
         {"id": "traceability",  "label": "Traceability",      "url": "/traceability"},
         {"id": "qc_audit",      "label": "Audit Log",         "url": "/audit?filter=qc"},
     ]},
-    {"id": "inventory",      "label": "Inventory",       "icon": "package",   "children": [
+    {"id": "inventory",      "label": "Inventory & Purchasing", "icon": "package", "children": [
         {"id": "coil_inv",       "label": "Coil Inventory",   "url": "/inventory?type=coils"},
-        {"id": "purchased",      "label": "Purchased Items",  "url": "/inventory?type=purchased"},
-        {"id": "rebar_stock",    "label": "Rebar Stock",      "url": "/inventory?type=rebar"},
+        {"id": "purchased",      "label": "Fabricated Parts",  "url": "/inventory?type=fabricated"},
         {"id": "fasteners",      "label": "Fasteners",        "url": "/inventory?type=fasteners"},
+        {"id": "rebar_stock",    "label": "Rebar Stock",      "url": "/inventory?type=rebar"},
         {"id": "receiving",      "label": "Receiving",         "url": "/receiving"},
         {"id": "allocations",    "label": "Allocations",      "url": "/allocations"},
         {"id": "mill_certs",     "label": "Mill Certs",       "url": "/certs"},
-    ]},
-    {"id": "purchasing",     "label": "Purchasing",      "icon": "shopping-cart", "children": [
         {"id": "pos",           "label": "Purchase Orders",   "url": "/pos"},
         {"id": "vendors",       "label": "Vendors",           "url": "/vendors"},
-        {"id": "price_history", "label": "Price History",     "url": "/prices"},
         {"id": "mat_reqs",      "label": "Material Reqs",     "url": "/material-reqs"},
     ]},
     {"id": "shipping",       "label": "Shipping",        "icon": "truck",     "children": [
@@ -321,56 +318,35 @@ SIDEBAR_SECTIONS = [
         {"id": "active_ships",  "label": "Active Shipments",  "url": "/shipping/active"},
         {"id": "bol_history",   "label": "BOL History",       "url": "/shipping/bol"},
     ]},
-    {"id": "field",          "label": "Field",           "icon": "hard-hat",  "children": [
-        {"id": "field_projects", "label": "My Projects",      "url": "/field/projects"},
-        {"id": "field_docs",     "label": "Documents",        "url": "/field/docs"},
+    {"id": "field",          "label": "Field & Safety",  "icon": "hard-hat",  "children": [
+        {"id": "field_projects", "label": "Field Projects",   "url": "/field/projects"},
         {"id": "daily_reports",  "label": "Daily Reports",    "url": "/field/daily"},
-        {"id": "jha",           "label": "Hazard Analysis",   "url": "/field/jha"},
-        {"id": "field_photos",  "label": "Photos",            "url": "/field/photos"},
-        {"id": "equipment",     "label": "Equipment",         "url": "/field/equipment"},
-        {"id": "expenses",      "label": "Expenses",          "url": "/field/expenses"},
         {"id": "punch_list",    "label": "Punch List",        "url": "/field/punch"},
-    ]},
-    {"id": "safety",         "label": "Safety",          "icon": "alert-triangle", "children": [
-        {"id": "jha_review",    "label": "JHA Review",        "url": "/safety/jha"},
+        {"id": "field_photos",  "label": "Photos",            "url": "/field/photos"},
+        {"id": "field_docs",     "label": "Documents",        "url": "/field/docs"},
+        {"id": "jha",           "label": "Hazard Analysis",   "url": "/field/jha"},
         {"id": "incidents",     "label": "Incidents",         "url": "/safety/incidents"},
         {"id": "safety_stats",  "label": "Safety Metrics",    "url": "/safety/metrics"},
-        {"id": "training",      "label": "Training Records",  "url": "/safety/training"},
-        {"id": "equip_inspect", "label": "Equipment Inspections", "url": "/safety/equipment"},
+        {"id": "training",      "label": "Training",          "url": "/safety/training"},
     ]},
-    {"id": "financial",      "label": "Financial",       "icon": "dollar-sign", "children": [
-        {"id": "fin_dash",      "label": "Dashboard",         "url": "/financial"},
-        {"id": "project_costs", "label": "Project Costs",     "url": "/financial/projects"},
-        {"id": "expense_rpts",  "label": "Expense Reports",   "url": "/financial/expenses"},
-        {"id": "equip_costs",   "label": "Equipment Costs",   "url": "/financial/equipment"},
-        {"id": "vendor_bills_nav", "label": "Vendor Bills",   "url": "/financial/vendor-bills"},
-        {"id": "invoices",      "label": "Invoices",          "url": "/financial/invoices"},
-        {"id": "reports",       "label": "Reports",           "url": "/financial/reports"},
-    ]},
-    {"id": "sales",          "label": "Sales",           "icon": "trending-up", "children": [
-        {"id": "pipeline_nav",  "label": "Pipeline",          "url": "/sales/pipeline"},
+    {"id": "financial",      "label": "Sales & Financial", "icon": "dollar-sign", "children": [
+        {"id": "pipeline_nav",  "label": "Sales Pipeline",    "url": "/sales/pipeline"},
         {"id": "leads",         "label": "Leads",             "url": "/sales/leads"},
         {"id": "customers_nav", "label": "Customers",         "url": "/customers"},
         {"id": "quote_status",  "label": "Quote Status",      "url": "/sales/quotes"},
+        {"id": "fin_dash",      "label": "Financial Dashboard","url": "/financial"},
+        {"id": "invoices",      "label": "Invoices",          "url": "/financial/invoices"},
+        {"id": "project_costs", "label": "Project Costs",     "url": "/financial/projects"},
+        {"id": "expense_rpts",  "label": "Expense Reports",   "url": "/financial/expenses"},
     ]},
-    {"id": "admin",          "label": "Administration",  "icon": "settings",  "children": [
+    {"id": "admin",          "label": "Admin & Reports", "icon": "settings",  "children": [
         {"id": "user_mgmt",     "label": "Users",             "url": "/admin/users"},
         {"id": "settings",      "label": "Settings",          "url": "/admin/settings"},
         {"id": "audit_log_nav", "label": "Audit Log",         "url": "/audit"},
-    ]},
-    # ── Standalone sections for role-specific access ───
-    {"id": "schedule",       "label": "Planning",        "icon": "calendar",  "children": [
-        {"id": "sched_board",    "label": "Schedule",        "url": "/schedule"},
-    ]},
-    {"id": "reports",        "label": "Reports",         "icon": "bar-chart", "children": [
-        {"id": "prod_reports",   "label": "Production Reports", "url": "/reports/production"},
-        {"id": "exec_reports",   "label": "Executive Summary",  "url": "/reports/executive"},
-    ]},
-    {"id": "documents",      "label": "Documents",       "icon": "file-text", "children": [
-        {"id": "doc_mgmt",      "label": "Doc Management",     "url": "/documents"},
-    ]},
-    {"id": "customers",      "label": "Customers",       "icon": "users",     "children": [
-        {"id": "cust_list",      "label": "All Customers",      "url": "/customers"},
+        {"id": "sched_board",   "label": "Schedule",          "url": "/schedule"},
+        {"id": "prod_reports",  "label": "Production Reports","url": "/reports/production"},
+        {"id": "exec_reports",  "label": "Executive Summary", "url": "/reports/executive"},
+        {"id": "doc_mgmt",     "label": "Documents",          "url": "/documents"},
     ]},
     # ── Minimal sidebars for restricted roles ───
     {"id": "my_station",     "label": "My Station",      "icon": "cpu",       "children": [
@@ -449,7 +425,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "user_management", "system_health", "audit_log"],
-        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales", "admin"],
+        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "shipping", "field", "financial", "admin"],
     ),
 
     RoleDef(
@@ -476,7 +452,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "recent_activity"],
-        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "safety", "financial", "sales", "admin"],
+        sidebar_sections=["dashboard", "estimating", "projects", "shop_floor", "quality", "inventory", "shipping", "field", "financial", "admin"],
     ),
 
     RoleDef(
@@ -500,7 +476,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["active_projects", "milestones", "shop_progress", "field_status", "customer_comms"],
-        sidebar_sections=["dashboard", "projects", "customers", "schedule", "reports", "documents", "estimating", "shop_floor", "quality", "inventory", "purchasing", "shipping", "field", "financial", "sales"],
+        sidebar_sections=["dashboard", "projects", "financial", "admin", "estimating", "shop_floor", "quality", "inventory", "shipping", "field"],
     ),
 
     RoleDef(
@@ -515,7 +491,7 @@ _ROLE_DEFS = [
             P.VIEW_INVENTORY, P.VIEW_CUSTOMER_INFO, P.VIEW_SHOP_DRAWINGS,
         ],
         dashboard_cards=["active_quotes", "quick_calc", "inventory_summary"],
-        sidebar_sections=["dashboard", "estimating", "projects", "customers", "documents"],
+        sidebar_sections=["dashboard", "estimating", "projects", "financial", "admin"],
     ),
 
     RoleDef(
@@ -529,7 +505,7 @@ _ROLE_DEFS = [
             P.MANAGE_LEADS, P.VIEW_PIPELINE, P.VIEW_CUSTOMER_INFO,
         ],
         dashboard_cards=["sales_pipeline", "active_leads", "quote_activity", "win_loss"],
-        sidebar_sections=["dashboard", "sales"],
+        sidebar_sections=["dashboard", "financial"],
     ),
 
     RoleDef(
@@ -545,7 +521,7 @@ _ROLE_DEFS = [
             P.CREATE_PO, P.VIEW_PO, P.VIEW_PO_PRICING, P.MANAGE_VENDORS,
         ],
         dashboard_cards=["open_pos", "pending_deliveries", "price_alerts", "vendor_summary"],
-        sidebar_sections=["dashboard", "inventory", "shipping", "purchasing"],
+        sidebar_sections=["dashboard", "inventory", "shipping"],
     ),
 
     RoleDef(
@@ -621,7 +597,7 @@ _ROLE_DEFS = [
             P.VIEW_AISC_LIBRARY,
         ],
         dashboard_cards=["drawings_pending", "recent_uploads", "project_drawing_sets"],
-        sidebar_sections=["dashboard", "shop_floor", "projects", "documents"],
+        sidebar_sections=["dashboard", "shop_floor", "projects", "admin"],
     ),
 
     RoleDef(
@@ -707,7 +683,7 @@ _ROLE_DEFS = [
             P.REVIEW_JHA, P.FILE_INCIDENT, P.VIEW_SAFETY_METRICS, P.STOP_WORK,
         ],
         dashboard_cards=["open_jhas", "incident_log", "safety_metrics", "stop_work_alerts"],
-        sidebar_sections=["dashboard", "safety"],
+        sidebar_sections=["dashboard", "field"],
     ),
 
     RoleDef(
@@ -740,7 +716,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["shop_overview", "active_projects_nf", "today_priorities", "crew_status", "receipt_log"],
-        sidebar_sections=["dashboard", "shop_floor", "quality", "schedule", "reports", "inventory"],
+        sidebar_sections=["dashboard", "shop_floor", "quality", "admin", "inventory"],
     ),
 
     RoleDef(
@@ -770,7 +746,7 @@ _ROLE_DEFS = [
             P.MANAGE_MILL_CERTS,
         ],
         dashboard_cards=["inspection_queue", "open_ncrs", "recent_signoffs", "aisc_shortcut"],
-        sidebar_sections=["dashboard", "quality", "reports"],
+        sidebar_sections=["dashboard", "quality", "admin"],
     ),
 
     RoleDef(
@@ -822,7 +798,7 @@ _ROLE_DEFS = [
             P.MANAGE_SCHEDULE, P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["shop_overview", "today_priorities", "crew_status", "my_queue"],
-        sidebar_sections=["dashboard", "shop_floor", "schedule", "my_work"],
+        sidebar_sections=["dashboard", "shop_floor", "admin", "my_work"],
     ),
 
     RoleDef(
@@ -840,7 +816,7 @@ _ROLE_DEFS = [
             P.VIEW_CUSTOMER_INFO,
         ],
         dashboard_cards=["revenue_summary", "pending_expenses", "project_pnl", "vendor_bills"],
-        sidebar_sections=["dashboard", "financial", "customers", "reports"],
+        sidebar_sections=["dashboard", "financial", "admin"],
     ),
 
     RoleDef(
@@ -892,7 +868,7 @@ _ROLE_DEFS = [
             P.VIEW_SCHEDULE,
         ],
         dashboard_cards=["business_summary", "all_projects_fin", "recent_activity"],
-        sidebar_sections=["dashboard", "reports"],
+        sidebar_sections=["dashboard", "admin"],
     ),
 ]
 

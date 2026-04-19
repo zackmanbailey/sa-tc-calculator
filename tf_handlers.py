@@ -18197,7 +18197,7 @@ def get_routes():
         (r"/api/labels/csv",        LabelsCsvHandler),
 
         # ── API - Inventory ────────────────────────────────────
-        (r"/api/inventory",              InventoryHandler),
+        (r"/api/inventory$",             InventoryHandler),
         (r"/api/inventory/update",       InventoryUpdateHandler),
         (r"/api/inventory/save",         InventorySaveHandler),
         (r"/api/inventory/cert",         InventoryCertHandler),
