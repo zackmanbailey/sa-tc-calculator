@@ -1440,6 +1440,28 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
     Works with any existing template — no template changes needed.
     """
     import re
+
+    # If the HTML is a fragment (no <body> tag), wrap it in a full document
+    # skeleton so the sidebar injection points (<body>, </body>) exist.
+    if not re.search(r'<body[\s>]', html, re.IGNORECASE):
+        # Extract any <style> blocks from the fragment to put in <head>
+        style_blocks = []
+        def _collect_style(m):
+            style_blocks.append(m.group(0))
+            return ''
+        fragment = re.sub(r'<style[^>]*>.*?</style>', _collect_style, html, flags=re.DOTALL)
+        styles = '\n'.join(style_blocks)
+        html = (
+            '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+            '<meta charset="UTF-8">\n'
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+            '<title>TitanForge</title>\n'
+            f'{styles}\n'
+            '</head>\n<body>\n'
+            f'{fragment}\n'
+            '</body>\n</html>'
+        )
+
     nav = build_nav(active_page, job_code, user_name, user_role, user_roles=user_roles)
 
     # Prepend CSS to hide old nav elements across all templates
