@@ -1043,15 +1043,16 @@ class BaseHandler(tornado.web.RequestHandler):
         users = load_users()
         display = users.get(user, {}).get("display_name", user) if user != "local" else "Admin"
 
-        # Prepend breadcrumb above page content before nav injection
-        if bc_html:
-            html = bc_html + html
-
         # Pass the actual request path so the sidebar can do exact URL matching
         request_path = getattr(self.request, 'uri', '') or getattr(self.request, 'path', '') or ''
         result = inject_nav(html, active_page=active_page, job_code=job_code,
                             user_name=display, user_role=role, user_roles=roles,
                             request_path=request_path)
+
+        # Inject breadcrumb inside .tf-main, right after the contextbar
+        if bc_html:
+            marker = 'tf-contextbar-actions"></div></div>'
+            result = result.replace(marker, marker + '\n' + bc_html, 1)
         self.set_header("Content-Type", "text/html; charset=utf-8")
         self.write(result)
 

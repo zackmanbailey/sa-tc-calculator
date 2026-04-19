@@ -332,6 +332,9 @@ NAV_CSS = r"""
     border-color: var(--tf-blue);
 }
 
+/* ── Override body background so no white gaps show through ─── */
+body { background: #0F172A !important; }
+
 /* ── Main Content Area (pushed by sidebar) ─── */
 .tf-main {
     margin-left: 240px;
