@@ -26,7 +26,7 @@ FOREMAN_PANEL_HTML = """<!DOCTYPE html>
     --tf-red: #ef4444;
     --tf-yellow: #eab308;
     --tf-gray-100: #f3f4f6;
-    --tf-gray-200: #e5e7eb;
+    --tf-gray-200: #334155;
     --tf-gray-300: #d1d5db;
     --tf-gray-400: #9ca3af;
     --tf-gray-600: #4b5563;
@@ -35,7 +35,7 @@ FOREMAN_PANEL_HTML = """<!DOCTYPE html>
     --shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif;
        background: var(--tf-gray-100); color: var(--tf-gray-800); }
 
 .fp-header {
@@ -52,7 +52,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 @media (max-width: 900px) { .fp-grid { grid-template-columns: 1fr; } }
 
 .fp-card {
-    background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+    background: #1E293B; border-radius: var(--radius); box-shadow: var(--shadow);
     overflow: hidden;
 }
 .fp-card-header {
@@ -75,7 +75,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .fp-machine .name { font-weight: 600; font-size: 0.8rem; margin-bottom: 4px; }
 .fp-machine .count { font-size: 1.4rem; font-weight: 700; }
 .fp-machine .label { font-size: 0.7rem; color: var(--tf-gray-400); }
-.fp-machine.active { border-color: var(--tf-orange); background: #fff7ed; }
+.fp-machine.active { border-color: var(--tf-orange); background: #3B2A1A; }
 
 /* Unassigned items table */
 .fp-table {

@@ -55,7 +55,7 @@ CUSTOMERS_HTML = r"""
             transition: all var(--tf-duration) var(--tf-ease);
         }
         .customer-card .cc-actions .cc-edit-btn:hover { background: var(--tf-blue-light); color: var(--tf-blue); border-color: var(--tf-blue); }
-        .customer-card .cc-actions .cc-delete-btn:hover { background: #FEE2E2; color: #DC2626; border-color: #DC2626; }
+        .customer-card .cc-actions .cc-delete-btn:hover { background: #3B1A1A; color: #DC2626; border-color: #DC2626; }
         .customer-card .cc-company { font-size: var(--tf-text-lg); font-weight: 700; color: var(--tf-gray-900); }
         .customer-card .cc-contact { font-size: var(--tf-text-sm); color: var(--tf-gray-600); margin-bottom: var(--tf-sp-2); }
         .customer-card .cc-meta { display: flex; gap: var(--tf-sp-3); font-size: var(--tf-text-xs); color: var(--tf-gray-500); flex-wrap: wrap; }
@@ -64,7 +64,7 @@ CUSTOMERS_HTML = r"""
             padding: 2px 10px; border-radius: 12px; font-size: 11px;
             font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
         }
-        .cc-tag.solar { background: #FEF3C7; color: #92400E; }
+        .cc-tag.solar { background: #3B2A1A; color: #92400E; }
         .cc-tag.commercial { background: var(--tf-blue-light); color: var(--tf-blue); }
         .cc-tag.residential { background: var(--tf-success-bg); color: var(--tf-success); }
         .cc-tag.government { background: #EDE9FE; color: #6D28D9; }

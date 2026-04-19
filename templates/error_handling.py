@@ -138,10 +138,10 @@ ERROR_CSS = """
 .tfeb-btn.dismiss { background: #334155; color: #94A3B8; }
 .tfeb-btn.dismiss:hover { background: #475569; color: #FFF; }
 .tfeb-btn.details { background: transparent; color: #64748B; border: 1px solid #334155; }
-.tfeb-btn.details:hover { color: #94A3B8; border-color: #475569; }
+.tfeb-btn.details:hover { color: #94A3B8; border-color: #94A3B8; }
 .tfeb-close {
   position: absolute; top: 10px; right: 12px;
-  background: none; border: none; color: #475569; font-size: 18px;
+  background: none; border: none; color: #94A3B8; font-size: 18px;
   cursor: pointer; padding: 0 4px;
 }
 .tfeb-close:hover { color: #94A3B8; }

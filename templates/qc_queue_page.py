@@ -54,7 +54,7 @@ QC_QUEUE_PAGE_HTML = r"""
         }
         .queue-table td { padding: 12px 14px; border-bottom: 1px solid var(--tf-border); vertical-align: middle; }
         .queue-table tr:hover td { background: var(--tf-blue-light); }
-        .queue-table tr.urgent td { background: #FFF7ED; }
+        .queue-table tr.urgent td { background: #3B2A1A; }
 
         /* Status badges */
         .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
@@ -235,7 +235,7 @@ QC_QUEUE_PAGE_HTML = r"""
                 </div>
 
                 <!-- NCR section (shown on reject) -->
-                <div id="ncrSection" style="display:none;padding:var(--tf-sp-4);background:#FEF2F2;border:1px solid #FECACA;border-radius:var(--tf-radius);margin-bottom:var(--tf-sp-4);">
+                <div id="ncrSection" style="display:none;padding:var(--tf-sp-4);background:#3B1A1A;border:1px solid #7F1D1D;border-radius:var(--tf-radius);margin-bottom:var(--tf-sp-4);">
                     <label style="display:flex;align-items:center;gap:8px;font-size:var(--tf-text-sm);font-weight:600;margin-bottom:var(--tf-sp-3);">
                         <input type="checkbox" id="ncrAutoCreate" checked> Auto-create NCR on rejection
                     </label>

@@ -19,7 +19,7 @@ FINANCIAL_DASHBOARD_PAGE_HTML = r"""
     }
     .fin-container {
         max-width: 1400px; margin: 0 auto; padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif; color: var(--tf-text);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--tf-text);
     }
     .page-header { margin-bottom: 28px; }
     .page-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px 0; }

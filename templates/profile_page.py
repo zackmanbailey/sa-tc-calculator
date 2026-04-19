@@ -16,7 +16,7 @@ PROFILE_PAGE_HTML = r"""
     --pf-red: #EF4444;
     --pf-amber: #F59E0B;
 }
-body { background: var(--pf-bg); color: var(--pf-text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+body { background: var(--pf-bg); color: var(--pf-text); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
 
 .profile-container {
     max-width: 720px;
@@ -170,7 +170,7 @@ body { background: var(--pf-bg); color: var(--pf-text); font-family: 'Segoe UI',
     position: absolute;
     width: 18px; height: 18px;
     left: 3px; top: 3px;
-    background: #fff;
+    background: #1E293B;
     border-radius: 50%;
     transition: transform 0.2s;
 }

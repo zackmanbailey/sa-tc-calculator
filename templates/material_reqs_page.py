@@ -10,7 +10,7 @@ MATERIAL_REQS_PAGE_HTML = r"""
         --tf-bg: #0f172a; --tf-card: #1e293b; --tf-text: #e2e8f0; --tf-muted: #94a3b8;
         --tf-gold: #d4a843; --tf-blue: #3b82f6; --tf-green: #10b981; --tf-red: #ef4444; --tf-orange: #f59e0b;
     }
-    .mr-container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; font-family: 'Inter', 'Segoe UI', sans-serif; color: var(--tf-text); }
+    .mr-container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--tf-text); }
     .page-header { margin-bottom: 28px; }
     .page-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px 0; }
     .page-header p { font-size: 14px; color: var(--tf-muted); margin: 0; }

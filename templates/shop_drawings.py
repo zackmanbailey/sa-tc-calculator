@@ -121,8 +121,8 @@ SHOP_DRAWINGS_HTML = r"""
             letter-spacing: 0.04em;
         }
 
-        .dc-type-badge.column   { background: #DBEAFE; color: #1E40AF; }
-        .dc-type-badge.rafter   { background: #FEF3C7; color: #92400E; }
+        .dc-type-badge.column   { background: #1E3A5F; color: #1E40AF; }
+        .dc-type-badge.rafter   { background: #3B2A1A; color: #92400E; }
         .dc-type-badge.purlin   { background: #D1FAE5; color: #065F46; }
         .dc-type-badge.cutlist  { background: #E0E7FF; color: #3730A3; }
         .dc-type-badge.stickers { background: #FCE7F3; color: #9D174D; }
@@ -207,7 +207,7 @@ SHOP_DRAWINGS_HTML = r"""
             border-radius: var(--tf-radius-sm);
             outline: none;
             font-family: var(--tf-font-mono);
-            background: #fff;
+            background: #1E293B;
             transition: border-color var(--tf-duration) var(--tf-ease);
         }
 

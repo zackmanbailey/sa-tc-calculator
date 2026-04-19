@@ -271,7 +271,7 @@ PROJECT_PAGE_HTML = r"""
             color: var(--tf-success, #059669);
         }
         .tool-status-badge.partial {
-            background: var(--tf-amber-light, #FEF3C7);
+            background: var(--tf-amber-light, #3B2A1A);
             color: #D97706;
         }
         .tool-status-badge.pending {
@@ -281,7 +281,7 @@ PROJECT_PAGE_HTML = r"""
         .tool-mini-bar {
             width: 100%;
             height: 3px;
-            background: var(--tf-gray-100, #E5E7EB);
+            background: var(--tf-gray-100, #1E293B);
             border-radius: 2px;
             overflow: hidden;
         }
@@ -597,7 +597,7 @@ PROJECT_PAGE_HTML = r"""
             justify-content: center;
             transition: all var(--tf-duration) var(--tf-ease);
             margin-top: 1px;
-            background: #fff;
+            background: #1E293B;
         }
 
         .step-checkbox:hover { border-color: var(--tf-blue); }
@@ -834,7 +834,7 @@ PROJECT_PAGE_HTML = r"""
         }
 
         .bom-bldg-card {
-            background: #fff;
+            background: #1E293B;
             border: 1px solid var(--tf-border);
             border-radius: var(--tf-radius);
             margin-bottom: var(--tf-sp-4);
@@ -851,7 +851,7 @@ PROJECT_PAGE_HTML = r"""
             cursor: pointer;
         }
 
-        .bom-bldg-header:hover { background: #DBEAFE; }
+        .bom-bldg-header:hover { background: #1E3A5F; }
 
         .bom-bldg-title {
             font-size: var(--tf-text-sm);
@@ -1514,7 +1514,7 @@ PROJECT_PAGE_HTML = r"""
 
                     html += '<tr>';
                     html += '<td><span style="margin-right:8px;">' + icon + '</span><a href="' + esc(f.url || '#') + '" class="file-link" target="_blank">' + esc(f.filename) + '</a></td>';
-                    html += '<td><span class="rev-badge" id="revBadge-' + esc(docId) + '" style="display:inline-block;background:var(--tf-blue-light,#DBEAFE);color:var(--tf-blue,#2563EB);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="toggleRevHistory(\'' + esc(docId) + '\',\'' + catKey + '\')">--</span></td>';
+                    html += '<td><span class="rev-badge" id="revBadge-' + esc(docId) + '" style="display:inline-block;background:var(--tf-blue-light,#1E3A5F);color:var(--tf-blue,#2563EB);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="toggleRevHistory(\'' + esc(docId) + '\',\'' + catKey + '\')">--</span></td>';
                     html += '<td>' + size + '</td>';
                     html += '<td>' + date + '</td>';
                     if (canEdit) {
@@ -1524,7 +1524,7 @@ PROJECT_PAGE_HTML = r"""
                     }
                     html += '</tr>';
                     html += '<tr id="revRow-' + esc(docId) + '" style="display:none;"><td colspan="' + (canEdit ? 5 : 4) + '" style="padding:0;">';
-                    html += '<div id="revHistory-' + esc(docId) + '" style="background:var(--tf-gray-50,#F8FAFC);border:1px solid var(--tf-border);border-radius:6px;padding:12px;margin:4px 0 8px;"></div>';
+                    html += '<div id="revHistory-' + esc(docId) + '" style="background:var(--tf-gray-50,#0F172A);border:1px solid var(--tf-border);border-radius:6px;padding:12px;margin:4px 0 8px;"></div>';
                     html += '</td></tr>';
                 });
 
@@ -1962,7 +1962,7 @@ PROJECT_PAGE_HTML = r"""
                     var latest = revs[0];
                     var color = latest.status === 'approved' ? 'background:var(--tf-success-bg,#D1FAE5);color:var(--tf-success,#059669);' :
                                 latest.status === 'superseded' ? 'background:#EDE9FE;color:#7C3AED;' :
-                                'background:var(--tf-amber-light,#FEF3C7);color:var(--tf-warning,#D97706);';
+                                'background:var(--tf-amber-light,#3B2A1A);color:var(--tf-warning,#D97706);';
                     badge.style.cssText = 'display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;' + color;
                     badge.textContent = 'Rev ' + latest.rev;
                 } else {

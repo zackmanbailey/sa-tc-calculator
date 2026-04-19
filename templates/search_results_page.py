@@ -112,7 +112,7 @@ SEARCH_RESULTS_HTML = r"""
             align-items: center;
             gap: 6px;
         }
-        .cat-tab:hover { border-color: #475569; color: #E2E8F0; }
+        .cat-tab:hover { border-color: #94A3B8; color: #E2E8F0; }
         .cat-tab.active { background: #1E40AF; border-color: #1E40AF; color: #fff; }
         .cat-tab .count {
             background: rgba(255,255,255,0.15);
@@ -170,7 +170,7 @@ SEARCH_RESULTS_HTML = r"""
             cursor: pointer;
         }
         .result-card:hover {
-            border-color: #475569;
+            border-color: #94A3B8;
             background: #253449;
             transform: translateX(2px);
         }
@@ -209,7 +209,7 @@ SEARCH_RESULTS_HTML = r"""
             flex-shrink: 0;
         }
         .result-card .rc-arrow {
-            color: #475569;
+            color: #94A3B8;
             font-size: 1rem;
             flex-shrink: 0;
             transition: color 0.15s;

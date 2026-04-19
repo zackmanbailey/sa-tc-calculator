@@ -26,7 +26,7 @@ MY_STATION_HTML = """<!DOCTYPE html>
     --tf-red: #ef4444;
     --tf-yellow: #eab308;
     --tf-gray-100: #f3f4f6;
-    --tf-gray-200: #e5e7eb;
+    --tf-gray-200: #334155;
     --tf-gray-300: #d1d5db;
     --tf-gray-400: #9ca3af;
     --tf-gray-600: #4b5563;
@@ -35,7 +35,7 @@ MY_STATION_HTML = """<!DOCTYPE html>
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--tf-gray-100); color: var(--tf-gray-800);
     -webkit-tap-highlight-color: transparent;
 }
@@ -51,7 +51,7 @@ body {
 
 /* ── Stats bar ──────────────────── */
 .ms-stats {
-    display: flex; gap: 0; background: #fff;
+    display: flex; gap: 0; background: #1E293B;
     border-bottom: 1px solid var(--tf-gray-200);
 }
 .ms-stat {
@@ -68,7 +68,7 @@ body {
 
 /* ── Active Item (hero card) ────── */
 .ms-active-card {
-    margin: 12px; background: #fff; border-radius: var(--radius);
+    margin: 12px; background: #1E293B; border-radius: var(--radius);
     border: 2px solid var(--tf-orange); overflow: hidden;
 }
 .ms-active-card .tag {
@@ -110,7 +110,7 @@ body {
 }
 
 .ms-item {
-    margin: 0 12px 8px; background: #fff; border-radius: var(--radius);
+    margin: 0 12px 8px; background: #1E293B; border-radius: var(--radius);
     padding: 12px 14px; display: flex; align-items: center; gap: 12px;
     border: 1px solid var(--tf-gray-200); transition: all 0.15s;
 }
@@ -138,7 +138,7 @@ body {
 
 /* ── Completed items ────────────── */
 .ms-done-item {
-    margin: 0 12px 6px; background: #fff; border-radius: 8px;
+    margin: 0 12px 6px; background: #1E293B; border-radius: 8px;
     padding: 10px 14px; display: flex; align-items: center;
     justify-content: space-between; border: 1px solid var(--tf-gray-200);
     opacity: 0.7;
@@ -155,7 +155,7 @@ body {
 }
 .ms-modal-overlay.open { display: flex; }
 .ms-modal {
-    background: #fff; width: 100%; max-width: 500px; border-radius: 16px 16px 0 0;
+    background: #1E293B; width: 100%; max-width: 500px; border-radius: 16px 16px 0 0;
     padding: 20px; max-height: 60vh;
 }
 .ms-modal h3 { margin-bottom: 10px; }

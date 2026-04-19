@@ -23,7 +23,7 @@ PARTS_INVENTORY_PAGE_HTML = r"""
 
     .pi-container {
         max-width: 1500px; margin: 0 auto; padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif; color: var(--tf-text);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif; color: var(--tf-text);
     }
 
     /* Page Header */

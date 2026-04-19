@@ -94,7 +94,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 }
 
 .kpi-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 10px;
     padding: 16px;
@@ -156,7 +156,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 }
 
 .machine-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 10px;
     padding: 14px;
@@ -275,7 +275,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 }
 
 .wo-mini-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 8px;
     padding: 12px;
@@ -311,11 +311,11 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-weight: 600;
 }
 
-.wo-mini-status.approved { background: #DBEAFE; color: #1E40AF; }
+.wo-mini-status.approved { background: #1E3A5F; color: #1E40AF; }
 .wo-mini-status.stickers_printed { background: #E0E7FF; color: #4338CA; }
-.wo-mini-status.in_progress { background: #FEF3C7; color: #92400E; }
-.wo-mini-status.queued { background: #F1F5F9; color: #64748B; }
-.wo-mini-status.on_hold { background: #FEE2E2; color: #991B1B; }
+.wo-mini-status.in_progress { background: #3B2A1A; color: #92400E; }
+.wo-mini-status.queued { background: #0F172A; color: #64748B; }
+.wo-mini-status.on_hold { background: #3B1A1A; color: #991B1B; }
 
 .wo-mini-progress {
     background: #E2E8F0;
@@ -452,7 +452,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     gap: 8px;
 }
 .dispatch-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 8px;
     padding: 12px;
@@ -485,7 +485,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     border: 1px solid var(--tf-border);
     border-radius: 6px;
     font-size: 0.78rem;
-    background: white;
+    background: #1E293B;
 }
 .dispatch-assign button {
     padding: 6px 14px;
@@ -773,7 +773,7 @@ function renderDashboard(data) {
             const statusCls = wo.status.replace(/ /g, '_');
             const label = wo.status_label || wo.status;
             const priorityBadge = wo.priority && wo.priority !== 'normal'
-                ? '<span style="background:#FEE2E2;color:#991B1B;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:600;margin-left:6px;">' + wo.priority.toUpperCase() + '</span>'
+                ? '<span style="background:#3B1A1A;color:#991B1B;padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:600;margin-left:6px;">' + wo.priority.toUpperCase() + '</span>'
                 : '';
             woHtml += `
             <div class="wo-mini-card" onclick="window.location.href='/work-orders/${wo.job_code}'">

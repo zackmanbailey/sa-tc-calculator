@@ -18,7 +18,7 @@ FIELD_PUNCH_PAGE_HTML = r"""
         max-width: 1200px;
         margin: 0 auto;
         padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
         color: var(--tf-text);
     }
     .page-header { margin-bottom: 32px; }
@@ -206,7 +206,7 @@ function addItem() {
     const overlay = document.createElement('div');
     overlay.id = 'punchModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
-    overlay.innerHTML = '<div style="background:#1e293b;border-radius:16px;border:1px solid rgba(255,255,255,0.08);padding:32px;width:540px;max-height:90vh;overflow-y:auto;color:#e2e8f0;font-family:Inter,Segoe UI,sans-serif;">'
+    overlay.innerHTML = '<div style="background:#1e293b;border-radius:16px;border:1px solid rgba(255,255,255,0.08);padding:32px;width:540px;max-height:90vh;overflow-y:auto;color:#e2e8f0;font-family:Inter,system-ui,sans-serif;">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">'
       + '<h2 style="margin:0;font-size:20px;font-weight:800;color:#fff;">New Punch List Item</h2>'
       + '<button onclick="closePunchModal()" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;">&times;</button></div>'

@@ -86,7 +86,7 @@ QC_DASHBOARD_PAGE_HTML = r"""
 
         .severity-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .severity-badge.minor { background: var(--tf-amber-light); color: #92400E; }
-        .severity-badge.major { background: #FEE2E2; color: #991B1B; }
+        .severity-badge.major { background: #3B1A1A; color: #991B1B; }
         .severity-badge.critical { background: #7F1D1D; color: #FEE2E2; }
 
         /* Pass rate gauge */

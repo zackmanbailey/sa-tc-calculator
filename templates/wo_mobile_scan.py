@@ -43,7 +43,7 @@ WO_MOBILE_SCAN_HTML = r"""<!DOCTYPE html>
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--gray-100);
   color: var(--gray-900);
   min-height: 100vh;
@@ -68,7 +68,7 @@ body {
 
 /* ── Piece Identity Card ── */
 .piece-card {
-  background: #fff; margin: 12px; border-radius: var(--radius);
+  background: #1E293B; margin: 12px; border-radius: var(--radius);
   box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;
 }
 .piece-header {
@@ -111,7 +111,7 @@ body {
 
 /* ── Tab Navigation ── */
 .tabs {
-  display: flex; background: #fff; margin: 0 12px;
+  display: flex; background: #1E293B; margin: 0 12px;
   border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
@@ -150,7 +150,7 @@ body {
 
 /* ── Cards ── */
 .card {
-  background: #fff; border-radius: var(--radius);
+  background: #1E293B; border-radius: var(--radius);
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   margin-bottom: 12px; overflow: hidden;
 }

@@ -8,7 +8,7 @@ PROFILE_HTML = r"""
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: #0F172A; color: #e5e7eb;
         }
         .profile-container { max-width: 800px; margin: 0 auto; padding: 40px 24px; }

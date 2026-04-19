@@ -14,20 +14,20 @@ TC_QUOTE_HTML = r"""<!DOCTYPE html>
   --tf-white:#ffffff; --tf-border:#E2E8F0;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--tf-light);color:var(--tf-gray);font-size:13px}
+body{font-family:'Inter',system-ui,sans-serif;background:#0F172A;color:#E2E8F0;font-size:13px}
 #topbar{background:var(--tf-dark);color:#fff;padding:0 20px;display:flex;align-items:center;height:52px;box-shadow:0 2px 8px #0005}
 #topbar .logo{font-size:17px;font-weight:700;letter-spacing:1px;color:#fff}
 #topbar .logo span{color:var(--tf-red)}
 #topbar .spacer{flex:1}
 #topbar .version{font-size:10px;color:#666}
-#tabs{background:var(--tf-blue);display:flex;overflow-x:auto}
+#tabs{background:#1E293B;display:flex;overflow-x:auto;border-bottom:1px solid #334155}
 .tab{padding:10px 20px;color:#aac;cursor:pointer;font-size:12px;font-weight:600;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s}
 .tab:hover{color:#fff;background:rgba(255,255,255,.07)}
 .tab.active{color:#fff;border-bottom-color:var(--tf-amber)}
 #main{display:flex;gap:0;height:calc(100vh - 94px)}
-#sidebar{width:320px;min-width:270px;background:#fff;border-right:1px solid var(--tf-border);overflow-y:auto;padding:16px;flex-shrink:0}
-#content{flex:1;overflow-y:auto;padding:20px}
-.card{background:#fff;border:1px solid var(--tf-border);border-radius:8px;margin-bottom:14px;overflow:hidden}
+#sidebar{width:320px;min-width:270px;background:#1E293B;border-right:1px solid #334155;overflow-y:auto;padding:16px;flex-shrink:0}
+#content{flex:1;overflow-y:auto;padding:20px;background:#0F172A}
+.card{background:#1E293B;border:1px solid #334155;border-radius:8px;margin-bottom:14px;overflow:hidden}
 .card-hdr{padding:9px 14px;font-weight:700;font-size:12px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.4px}
 .card-hdr.red{background:var(--tf-red);color:#fff}
 .card-hdr.blue{background:var(--tf-blue-m);color:#fff}
@@ -37,9 +37,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--tf-light);color:va
 .card-hdr.dark{background:var(--tf-dark);color:#fff}
 .card-body{padding:14px}
 .form-group{margin-bottom:10px}
-label{display:block;font-size:11px;font-weight:600;color:var(--tf-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
-input[type=text],input[type=number],select,textarea{width:100%;padding:6px 10px;border:1px solid var(--tf-border);border-radius:4px;font-size:13px;color:var(--tf-gray);background:#fff;transition:border .2s}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-m);box-shadow:0 0 0 3px #2E75B615}
+label{display:block;font-size:11px;font-weight:600;color:#93C5FD;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+input[type=text],input[type=number],select,textarea{width:100%;padding:6px 10px;border:1px solid #334155;border-radius:4px;font-size:13px;color:#E2E8F0;background:#0F172A;transition:border .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-m);box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
 input[type=checkbox]{width:auto;margin-right:6px}
 .check-label{display:flex;align-items:center;font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer}
 .btn{padding:7px 14px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:5px}
@@ -47,30 +47,30 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .btn-blue{background:var(--tf-blue-m);color:#fff}.btn-blue:hover{opacity:.85}
 .btn-gold{background:var(--tf-amber);color:var(--tf-dark)}.btn-gold:hover{opacity:.9}
 .btn-green{background:var(--tf-green);color:#fff}.btn-green:hover{opacity:.9}
-.btn-outline{background:transparent;border:1px solid var(--tf-border);color:var(--tf-gray)}.btn-outline:hover{background:var(--tf-blue-l)}
+.btn-outline{background:transparent;border:1px solid #334155;color:#E2E8F0}.btn-outline:hover{background:#334155}
 .btn-sm{padding:4px 10px;font-size:11px}
 .btn-danger{background:#f44;color:#fff}.btn-danger:hover{opacity:.85}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap}
 .li-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
 .li-table th{background:var(--tf-blue);color:#fff;padding:6px 8px;text-align:left;font-size:11px;font-weight:600}
-.li-table td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:middle}
-.li-table tr:hover td{background:#f9f9f9}
-.li-table .total-row td{background:#FFF8E1;font-weight:700;border-top:2px solid var(--tf-amber)}
-.li-table input{padding:4px 6px;font-size:12px;border:1px solid #ddd;border-radius:3px}
+.li-table td{padding:5px 8px;border-bottom:1px solid #334155;vertical-align:middle}
+.li-table tr:hover td{background:#334155}
+.li-table .total-row td{background:#1a2332;font-weight:700;border-top:2px solid var(--tf-amber)}
+.li-table input{padding:4px 6px;font-size:12px;border:1px solid #334155;border-radius:3px;background:#0F172A;color:#E2E8F0}
 .summary-table{width:100%;border-collapse:collapse;font-size:13px}
-.summary-table td{padding:8px 12px;border-bottom:1px solid #eee}
-.summary-table .section-lbl td{background:var(--tf-blue-l);font-weight:700;color:var(--tf-blue);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.summary-table td{padding:8px 12px;border-bottom:1px solid #334155;color:#E2E8F0}
+.summary-table .section-lbl td{background:#1a2332;font-weight:700;color:#93C5FD;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .summary-table .total-row td{background:var(--tf-red);color:#fff;font-weight:700;font-size:15px}
-.summary-table .markup-row td{background:#FFF8E1;font-weight:600}
-.summary-table .subtotal-row td{background:#f0f4f0;font-weight:700}
+.summary-table .markup-row td{background:#1a2332;font-weight:600;color:#F59E0B}
+.summary-table .subtotal-row td{background:#0F172A;font-weight:700}
 .stat-cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.stat{background:#fff;border:1px solid var(--tf-border);border-radius:8px;padding:12px 16px;min-width:140px;flex:1}
-.stat .val{font-size:20px;font-weight:700;color:var(--tf-blue)}
-.stat .lbl{font-size:10px;color:#888;text-transform:uppercase;margin-top:2px}
+.stat{background:#1E293B;border:1px solid #334155;border-radius:8px;padding:12px 16px;min-width:140px;flex:1}
+.stat .val{font-size:20px;font-weight:700;color:#93C5FD}
+.stat .lbl{font-size:10px;color:#94A3B8;text-transform:uppercase;margin-top:2px}
 .alert{border-radius:4px;padding:8px 12px;font-size:12px;margin-bottom:10px}
-.alert-info{background:#E3F2FD;border-left:4px solid #2196F3;color:#1565C0}
-.alert-warn{background:#FFF8E1;border-left:4px solid var(--tf-amber);color:#795548}
-.alert-success{background:#E8F5E9;border-left:4px solid #4CAF50;color:#2E7D32}
+.alert-info{background:rgba(33,150,243,0.1);border-left:4px solid #2196F3;color:#93C5FD}
+.alert-warn{background:rgba(245,158,11,0.1);border-left:4px solid var(--tf-amber);color:#FCD34D}
+.alert-success{background:rgba(76,175,80,0.1);border-left:4px solid #4CAF50;color:#6EE7B7}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
@@ -193,7 +193,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
     <div class="card">
       <div class="card-hdr blue"><span>🔗</span>Materials (from SA)</div>
       <div class="card-body">
-        <div id="sa-import-banner" style="display:none;background:#E8F5E9;border:1px solid #A5D6A7;border-radius:4px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#2E7D32;display:none">
+        <div id="sa-import-banner" style="display:none;background:rgba(76,175,80,0.1);border:1px solid #334155;border-radius:4px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#6EE7B7;display:none">
           <span style="font-weight:700">SA Estimate imported</span> — Material cost: <span id="sa-import-cost-lbl">$0</span>
           <span id="sa-import-date-lbl" style="margin-left:8px;font-size:10px;color:#888"></span>
           <button class="btn btn-outline btn-sm" style="float:right;font-size:10px;padding:2px 8px" onclick="refreshSAImport()">&#8635; Refresh from SA</button>
@@ -283,10 +283,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcConcrete();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#F0F4FA;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
-            <div><span style="font-size:11px;color:#888">Cubic Yards (w/10% waste):</span>
+          <div style="background:#0F172A;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
+            <div><span style="font-size:11px;color:#94A3B8">Cubic Yards (w/10% waste):</span>
               <span id="conc_qty_display" style="font-weight:700;color:var(--tf-blue);margin-left:6px">—</span></div>
-            <div><span style="font-size:11px;color:#888">Material Cost:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Material Cost:</span>
               <span id="conc_cost_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span></div>
           </div>
         </div>
@@ -318,10 +318,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcLabor();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#FFF0F0;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
-            <div><span style="font-size:11px;color:#888">Daily Cost:</span>
+          <div style="background:#1a1a2e;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
+            <div><span style="font-size:11px;color:#94A3B8">Daily Cost:</span>
               <span id="lab_daily_display" style="font-weight:700;color:var(--tf-blue);margin-left:6px">—</span></div>
-            <div><span style="font-size:11px;color:#888">Total Labor Cost:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Total Labor Cost:</span>
               <span id="lab_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span></div>
           </div>
           <div class="form-group" style="margin-top:10px">
@@ -386,8 +386,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
               </div>
             </div>
           </div>
-          <div style="background:#F0F4FA;border-radius:6px;padding:10px">
-            <span style="font-size:11px;color:#888">Drilling Total:</span>
+          <div style="background:#0F172A;border-radius:6px;padding:10px">
+            <span style="font-size:11px;color:#94A3B8">Drilling Total:</span>
             <span id="drill_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span>
           </div>
         </div>
@@ -424,12 +424,12 @@ input[type=checkbox]{width:auto;margin-right:6px}
             </div>
           </div>
           <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
-            <div><span style="font-size:11px;color:#888">Loads:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Loads:</span>
               <input type="number" id="ship_loads" value="1" min="1" max="20"
-                style="width:55px;margin-left:6px;padding:3px 6px;font-size:12px;border:1px solid #ddd;border-radius:3px"
+                style="width:55px;margin-left:6px;padding:3px 6px;font-size:12px;border:1px solid #334155;border-radius:3px;background:#0F172A;color:#E2E8F0"
                 onchange="calcShipping();renderSummary()"/>
             </div>
-            <div><span style="font-size:11px;color:#888">Shipping Total:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Shipping Total:</span>
               <span id="ship_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span></div>
           </div>
           <div class="form-group">
@@ -465,10 +465,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcFuel();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#FFF8E1;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
-            <div><span style="font-size:11px;color:#888">Total Gallons:</span>
+          <div style="background:#1a2332;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
+            <div><span style="font-size:11px;color:#94A3B8">Total Gallons:</span>
               <span id="fuel_gal_display" style="font-weight:700;margin-left:6px">—</span></div>
-            <div><span style="font-size:11px;color:#888">Fuel Total:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Fuel Total:</span>
               <span id="fuel_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span></div>
           </div>
         </div>
@@ -495,10 +495,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcHotels();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#F0F4FA;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
-            <div><span style="font-size:11px;color:#888">Room-Nights:</span>
+          <div style="background:#0F172A;border-radius:6px;padding:10px;display:flex;gap:24px;flex-wrap:wrap">
+            <div><span style="font-size:11px;color:#94A3B8">Room-Nights:</span>
               <span id="hotel_rooms_display" style="font-weight:700;margin-left:6px">—</span></div>
-            <div><span style="font-size:11px;color:#888">Hotel Total:</span>
+            <div><span style="font-size:11px;color:#94A3B8">Hotel Total:</span>
               <span id="hotel_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span></div>
           </div>
         </div>
@@ -525,8 +525,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcPerDiem();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#F0F4FA;border-radius:6px;padding:10px">
-            <span style="font-size:11px;color:#888">Per Diem Total:</span>
+          <div style="background:#0F172A;border-radius:6px;padding:10px">
+            <span style="font-size:11px;color:#94A3B8">Per Diem Total:</span>
             <span id="pd_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span>
           </div>
         </div>
@@ -558,8 +558,8 @@ input[type=checkbox]{width:auto;margin-right:6px}
                 onchange="calcTransport();renderSummary()"/>
             </div>
           </div>
-          <div style="background:#F0F4FA;border-radius:6px;padding:10px">
-            <span style="font-size:11px;color:#888">Transportation Total:</span>
+          <div style="background:#0F172A;border-radius:6px;padding:10px">
+            <span style="font-size:11px;color:#94A3B8">Transportation Total:</span>
             <span id="trans_total_display" style="font-weight:700;color:var(--tf-red);margin-left:6px">—</span>
           </div>
           <div class="form-group" style="margin-top:10px">
@@ -952,35 +952,35 @@ function renderIntelligence(q) {
 
   let html = '<table style="width:100%;font-size:13px;border-collapse:collapse;">';
 
-  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;">Sell Price</td>';
+  html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;">Sell Price</td>';
   html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;color:#059669;">' + fmt(q.total) + '</td></tr>';
 
   if (pricePerSqft > 0) {
-    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Price / Sq Ft</td>';
+    html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Price / Sq Ft</td>';
     html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">$' + pricePerSqft.toFixed(2) + '</td></tr>';
   }
 
   if (sqft > 0) {
-    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Square Footage</td>';
+    html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Square Footage</td>';
     html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + sqft.toLocaleString() + ' sq ft</td></tr>';
   }
 
   if (estWeight > 0) {
-    html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Est. Steel Weight</td>';
+    html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Est. Steel Weight</td>';
     html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + estWeight.toLocaleString() + ' lbs</td></tr>';
   }
 
-  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Cost Categories Used</td>';
+  html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Cost Categories Used</td>';
   html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + activeSections.length + '</td></tr>';
 
-  html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Markup</td>';
+  html += '<tr style="border-bottom:1px solid #334155;"><td style="padding:8px 0;color:#64748B;font-weight:600;font-size:11px;text-transform:uppercase;">Markup</td>';
   html += '<td style="padding:8px 0;text-align:right;font-weight:700;font-size:16px;">' + q.markupPct + '%</td></tr>';
 
   html += '</table>';
 
   // Suggestions
-  html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #E2E8F0;">';
-  html += '<div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Suggested Next Steps</div>';
+  html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #334155;">';
+  html += '<div style="font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Suggested Next Steps</div>';
 
   const suggestions = [];
   if (saMat <= 0) suggestions.push('Add SA materials cost from the Structures America Estimator for a complete quote');
@@ -993,7 +993,7 @@ function renderIntelligence(q) {
   if (suggestions.length === 0) suggestions.push('Quote looks complete — generate PDF and send to customer');
 
   suggestions.forEach(s => {
-    html += '<div style="display:flex;gap:8px;padding:4px 0;font-size:13px;color:#475569;"><span style="color:#F59E0B;font-weight:700;flex-shrink:0;">&#9658;</span><span>' + s + '</span></div>';
+    html += '<div style="display:flex;gap:8px;padding:4px 0;font-size:13px;color:#94A3B8;"><span style="color:#F59E0B;font-weight:700;flex-shrink:0;">&#9658;</span><span>' + s + '</span></div>';
   });
 
   html += '</div>';
@@ -1386,8 +1386,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
 <!-- Global Search Overlay -->
 <div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:100px;">
-<div style="width:600px;max-width:90vw;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden;">
-<input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:16px;outline:none;border-bottom:1px solid #e2e8f0;" oninput="_doGS(this.value)">
+<div style="width:600px;max-width:90vw;background:#1E293B;border:1px solid #334155;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.5);overflow:hidden;">
+<input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:16px;outline:none;border-bottom:1px solid #334155;background:#1E293B;color:#E2E8F0;" oninput="_doGS(this.value)">
 <div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px;"><div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Type to search...</div></div>
 </div></div>
 <script>
@@ -1398,7 +1398,7 @@ document.getElementById('globalSearchOverlay').addEventListener('click',function
 document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();openGlobalSearch();}if(e.key==='Escape')_closeGS();});
 function _doGS(q){clearTimeout(_gst);if(!q||q.length<2){document.getElementById('globalSearchResults').innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">Type to search...</div>';return;}
 _gst=setTimeout(function(){fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){var c=document.getElementById('globalSearchResults');if(!d.results||!d.results.length){c.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">No results</div>';return;}
-var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'#DBEAFE\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#DBEAFE;">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:13px;color:#0f172a;">'+r.title+'</div><div style="font-size:11px;color:#94a3b8;">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
+var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#334155;">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:13px;color:#E2E8F0;">'+r.title+'</div><div style="font-size:11px;color:#94a3b8;">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
 </script>
 </body>
 </html>"""

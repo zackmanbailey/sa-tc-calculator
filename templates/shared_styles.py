@@ -17,40 +17,40 @@ DESIGN_SYSTEM_CSS = """
     --tf-navy-light: #1E293B;
     --tf-blue:       #1E40AF;
     --tf-blue-mid:   #2563EB;
-    --tf-blue-light: #DBEAFE;
+    --tf-blue-light: #1E3A5F;
     --tf-amber:      #F59E0B;
-    --tf-amber-light:#FEF3C7;
+    --tf-amber-light:#3B2A1A;
 
     /* Semantic Colors */
     --tf-success:    #059669;
-    --tf-success-bg: #ECFDF5;
+    --tf-success-bg: #0D2818;
     --tf-warning:    #D97706;
-    --tf-warning-bg: #FFFBEB;
+    --tf-warning-bg: #3B2A1A;
     --tf-danger:     #DC2626;
-    --tf-danger-bg:  #FEF2F2;
+    --tf-danger-bg:  #3B1A1A;
     --tf-info:       #0284C7;
-    --tf-info-bg:    #F0F9FF;
+    --tf-info-bg:    #0C2A3B;
 
-    /* Neutrals */
-    --tf-gray-50:    #F8FAFC;
-    --tf-gray-100:   #F1F5F9;
-    --tf-gray-200:   #E2E8F0;
-    --tf-gray-300:   #CBD5E1;
+    /* Neutrals (dark-theme mapped) */
+    --tf-gray-50:    #0F172A;
+    --tf-gray-100:   #1E293B;
+    --tf-gray-200:   #334155;
+    --tf-gray-300:   #475569;
     --tf-gray-400:   #94A3B8;
-    --tf-gray-500:   #64748B;
-    --tf-gray-600:   #475569;
-    --tf-gray-700:   #334155;
-    --tf-gray-800:   #1E293B;
-    --tf-gray-900:   #0F172A;
+    --tf-gray-500:   #94A3B8;
+    --tf-gray-600:   #CBD5E1;
+    --tf-gray-700:   #E2E8F0;
+    --tf-gray-800:   #F1F5F9;
+    --tf-gray-900:   #F8FAFC;
 
     /* Surfaces */
-    --tf-bg:         #F1F5F9;
-    --tf-surface:    #FFFFFF;
-    --tf-border:     #E2E8F0;
-    --tf-border-dark:#CBD5E1;
+    --tf-bg:         #0F172A;
+    --tf-surface:    #1E293B;
+    --tf-border:     #334155;
+    --tf-border-dark:#475569;
 
     /* Typography */
-    --tf-font:       'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --tf-font: 'Inter', system-ui, -apple-system, sans-serif;
     --tf-font-mono:  'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
     /* Type Scale (Major Third — 1.25) */
@@ -107,7 +107,7 @@ body {
     font-family: var(--tf-font);
     font-size: var(--tf-text-base);
     line-height: 1.6;
-    color: var(--tf-gray-700);
+    color: var(--tf-gray-400);
     background: var(--tf-bg);
 }
 
@@ -300,7 +300,7 @@ body {
     font-family: var(--tf-font);
     font-size: var(--tf-text-base);
     color: var(--tf-gray-800);
-    background: #fff;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: var(--tf-radius);
     transition: all var(--tf-duration) var(--tf-ease);

@@ -394,7 +394,7 @@ body.sidebar-collapsed .tf-main {
 .tf-search-overlay.show { display: flex; }
 
 .tf-search-box {
-    background: #fff;
+    background: #1E293B;
     border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     width: 560px;
@@ -712,6 +712,266 @@ body.sidebar-collapsed .tf-main {
     position: relative;
     display: inline-flex;
 }
+
+/* ── Global Polish Layer ─────────────────────────── */
+.tf-main, .tf-main * {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+.tf-main code, .tf-main pre, .tf-main kbd {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* ── Standardized Tables ─────────────────────────── */
+.tf-main table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1E293B;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 13px;
+}
+.tf-main table thead th {
+    background: #0F172A;
+    color: #94A3B8;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid #334155;
+    white-space: nowrap;
+}
+.tf-main table tbody td {
+    padding: 10px 14px;
+    color: #E2E8F0;
+    border-bottom: 1px solid rgba(51,65,85,0.5);
+    vertical-align: middle;
+}
+.tf-main table tbody tr:hover {
+    background: rgba(59,130,246,0.06);
+}
+.tf-main table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Standardized Buttons ────────────────────────── */
+.tf-main .btn, .tf-main button[class*="btn"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    text-decoration: none;
+    line-height: 1.4;
+}
+.tf-main .btn-primary {
+    background: #1E40AF;
+    color: #DBEAFE;
+    border-color: #2563EB;
+}
+.tf-main .btn-primary:hover {
+    background: #2563EB;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+}
+.tf-main .btn-secondary {
+    background: rgba(51,65,85,0.5);
+    color: #E2E8F0;
+    border-color: #94A3B8;
+}
+.tf-main .btn-secondary:hover {
+    background: rgba(71,85,105,0.7);
+}
+.tf-main .btn-danger {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+    border-color: rgba(239,68,68,0.3);
+}
+.tf-main .btn-danger:hover {
+    background: rgba(239,68,68,0.25);
+}
+.tf-main .btn-success {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+    border-color: rgba(16,185,129,0.3);
+}
+.tf-main .btn-success:hover {
+    background: rgba(16,185,129,0.25);
+}
+.tf-main .btn-small {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
+/* ── Standardized Cards ──────────────────────────── */
+.tf-main .card, .tf-main [class*="-card"] {
+    background: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 20px;
+    color: #E2E8F0;
+}
+.tf-main .card h3, .tf-main [class*="-card"] h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #F1F5F9;
+    margin: 0 0 12px;
+}
+
+/* ── Standardized Form Inputs ────────────────────── */
+.tf-main input[type="text"],
+.tf-main input[type="number"],
+.tf-main input[type="email"],
+.tf-main input[type="password"],
+.tf-main input[type="search"],
+.tf-main input[type="date"],
+.tf-main select,
+.tf-main textarea {
+    background: #0F172A;
+    border: 1px solid #334155;
+    color: #E2E8F0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+    outline: none;
+}
+.tf-main input:focus,
+.tf-main select:focus,
+.tf-main textarea:focus {
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+}
+.tf-main select {
+    cursor: pointer;
+}
+.tf-main label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Standardized Badges/Tags ────────────────────── */
+.tf-main .badge, .tf-main [class*="badge-"], .tf-main .status-badge, .tf-main .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.tf-main .badge-success, .tf-main .badge-active, .tf-main .badge-available {
+    background: rgba(16,185,129,0.15);
+    color: #6EE7B7;
+}
+.tf-main .badge-warning, .tf-main .badge-pending {
+    background: rgba(245,158,11,0.15);
+    color: #FCD34D;
+}
+.tf-main .badge-danger, .tf-main .badge-critical {
+    background: rgba(239,68,68,0.15);
+    color: #FCA5A5;
+}
+.tf-main .badge-info, .tf-main .badge-default {
+    background: rgba(59,130,246,0.15);
+    color: #93C5FD;
+}
+
+/* ── Standardized Empty States ───────────────────── */
+.tf-main .empty-state, .tf-main [class*="empty"] {
+    text-align: center;
+    padding: 48px 24px;
+    color: #64748B;
+}
+.tf-main .empty-state p {
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* ── Standardized Modals ─────────────────────────── */
+.tf-main .modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+}
+.tf-main .modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tf-main .modal-content, .tf-main .modal-box {
+    background: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 560px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    color: #E2E8F0;
+}
+.tf-main .modal h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #F1F5F9;
+    margin: 0 0 16px;
+}
+
+/* ── Scrollbar Styling ───────────────────────────── */
+.tf-main ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.tf-main ::-webkit-scrollbar-track {
+    background: transparent;
+}
+.tf-main ::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+.tf-main ::-webkit-scrollbar-thumb:hover {
+    background: #64748B;
+}
+
+/* ── Link Styling ────────────────────────────────── */
+.tf-main a {
+    color: #60A5FA;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.tf-main a:hover {
+    color: #93C5FD;
+}
+
+/* ── Heading Standardization ─────────────────────── */
+.tf-main h1 { font-size: 24px; font-weight: 700; color: #F1F5F9; margin: 0 0 8px; }
+.tf-main h2 { font-size: 18px; font-weight: 700; color: #F1F5F9; margin: 0 0 8px; }
+.tf-main h3 { font-size: 14px; font-weight: 600; color: #F1F5F9; margin: 0 0 8px; }
+.tf-main h4 { font-size: 13px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px; }
+
+/* ── Page Section Spacing ────────────────────────── */
+.tf-main section, .tf-main .page-section {
+    margin-bottom: 24px;
+}
+
+/* ── Override SA/TC Estimator Light Theme ─────────── */
+.tf-main #topbar { display: none !important; }
+.tf-main #main { background: transparent !important; }
+.tf-main .card { background: #1E293B !important; border-color: #334155 !important; color: #E2E8F0 !important; }
 """
 
 # ─────────────────────────────────────────────
@@ -1230,7 +1490,7 @@ async function runGlobalSearch(query) {
             html = quickNavResults(query);
         } else {
             for (const r of results.slice(0, 8)) {
-                const colors = {project:'#EFF6FF;color:#1E40AF', customer:'#ECFDF5;color:#059669', coil:'#FEF3C7;color:#92400E'};
+                const colors = {project:'#1E3A5F;color:#93C5FD', customer:'#0D2818;color:#6EE7B7', coil:'#3B2A1A;color:#FCD34D'};
                 const icons = {project:'&#128194;', customer:'&#128101;', coil:'&#128230;'};
                 html += '<a class="tf-search-item" href="' + (r.url || '#') + '">' +
                     '<div class="si-icon" style="background:' + (colors[r.type] || '#F1F5F9;color:#64748B') + '">' +
@@ -1248,10 +1508,10 @@ async function runGlobalSearch(query) {
 function quickNavResults(query) {
     const q = query.toLowerCase();
     const links = [
-        {label:'Dashboard', desc:'Home', icon:'&#127968;', href:'/', bg:'#EFF6FF;color:#1E40AF'},
-        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', bg:'#ECFDF5;color:#059669'},
-        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', bg:'#FEF3C7;color:#92400E'},
-        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', bg:'#EFF6FF;color:#1E40AF'},
+        {label:'Dashboard', desc:'Home', icon:'&#127968;', href:'/', bg:'#1E3A5F;color:#93C5FD'},
+        {label:'Shop Floor', desc:'Live fabrication tracking', icon:'&#9881;', href:'/shop-floor', bg:'#0D2818;color:#6EE7B7'},
+        {label:'Customers', desc:'Customer database', icon:'&#128101;', href:'/customers', bg:'#3B2A1A;color:#FCD34D'},
+        {label:'SA Estimator', desc:'Structures America calculator', icon:'&#127959;', href:'/sa', bg:'#1E3A5F;color:#93C5FD'},
         {label:'TC Estimator', desc:'Titan Carports calculator', icon:'&#128663;', href:'/tc', bg:'#F0F9FF;color:#0284C7'},
         {label:'Admin', desc:'User management', icon:'&#128274;', href:'/admin', bg:'#F1F5F9;color:#64748B'},
     ];

@@ -76,7 +76,7 @@ PQR_PAGE_HTML = r"""<!DOCTYPE html>
   .pqr-del-btn:hover { background: #7F1D1D; color: #FFF; }
 
   .pqr-empty {
-    color: #475569; padding: 48px; text-align: center;
+    color: #94A3B8; padding: 48px; text-align: center;
     background: #111827; border: 1px solid #1E293B; border-radius: 12px;
   }
 
@@ -296,7 +296,7 @@ PQR_PAGE_HTML = r"""<!DOCTYPE html>
   }
 
   function renderWpsTags(refs) {
-    if (!refs || !refs.length) return '<span style="color:#475569;">None</span>';
+    if (!refs || !refs.length) return '<span style="color: #94A3B8;">None</span>';
     var h = '';
     for (var i = 0; i < refs.length; i++) {
       h += '<a href="/qa/wps" class="pqr-wps-tag">' + refs[i] + '</a>';

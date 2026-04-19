@@ -94,7 +94,7 @@ body {
 .ws-tabs {
     display: flex;
     gap: 0;
-    background: #fff;
+    background: #1E293B;
     border-radius: 10px;
     overflow: hidden;
     margin: 12px 0;
@@ -109,7 +109,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     border: none;
-    background: #fff;
+    background: #1E293B;
     color: var(--tf-gray);
     transition: all 0.2s;
     border-bottom: 3px solid transparent;
@@ -121,7 +121,7 @@ body {
     background: #EFF6FF;
 }
 
-.ws-tab:active { background: #DBEAFE; }
+.ws-tab:active { background: #1E3A5F; }
 
 /* ── Machine Selector ─── */
 .machine-grid {
@@ -132,7 +132,7 @@ body {
 }
 
 .machine-card {
-    background: #fff;
+    background: #1E293B;
     border: 2px solid var(--tf-border);
     border-radius: 10px;
     padding: 16px 12px;
@@ -210,7 +210,7 @@ body {
 }
 
 .item-card {
-    background: #fff;
+    background: #1E293B;
     border-radius: 10px;
     border: 2px solid var(--tf-border);
     margin-bottom: 10px;
@@ -252,9 +252,9 @@ body {
     text-transform: uppercase;
 }
 
-.badge-queued { background: #F1F5F9; color: #64748B; }
+.badge-queued { background: #0F172A; color: #64748B; }
 .badge-approved { background: #EFF6FF; color: #1E40AF; }
-.badge-stickers_printed { background: #FEF3C7; color: #92400E; }
+.badge-stickers_printed { background: #3B2A1A; color: #92400E; }
 .badge-in_progress { background: #D1FAE5; color: #065F46; }
 .badge-complete { background: #F0FDF4; color: #166534; }
 
@@ -342,7 +342,7 @@ body {
 
 /* Current step card */
 .current-step-card {
-    background: #fff;
+    background: #1E293B;
     border-radius: 12px;
     box-shadow: var(--tf-shadow-lg);
     overflow: hidden;
@@ -393,7 +393,7 @@ body {
 .step-safety {
     margin: 0 16px 12px;
     padding: 10px 14px;
-    background: #FEF2F2;
+    background: #3B1A1A;
     border-left: 4px solid #DC2626;
     border-radius: 6px;
     font-size: 0.85rem;
@@ -433,7 +433,7 @@ body {
 .step-nav button:active { transform: scale(0.97); }
 
 .btn-prev {
-    background: #F1F5F9;
+    background: #0F172A;
     color: #64748B;
 }
 
@@ -453,7 +453,7 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: #fff;
+    background: #1E293B;
     border-top: 2px solid var(--tf-border);
     padding: 12px 16px;
     display: flex;
@@ -610,7 +610,7 @@ body {
 
 /* ── Item Checklist ─── */
 .item-checklist {
-    background: white; border-radius: 10px; box-shadow: var(--tf-shadow);
+    background: #1E293B; border-radius: 10px; box-shadow: var(--tf-shadow);
     margin-bottom: 16px; overflow: hidden;
 }
 .item-checklist-header {
@@ -622,7 +622,7 @@ body {
     display: flex; align-items: center; padding: 12px 16px;
     border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
 }
-.checklist-item:hover { background: #F8FAFC; }
+.checklist-item:hover { background: #0F172A; }
 .checklist-item:last-child { border-bottom: none; }
 .checklist-item.done { background: #F0FDF4; }
 .checklist-item.done .cl-mark { text-decoration: line-through; opacity: 0.6; }
@@ -639,7 +639,7 @@ body {
 
 /* ── My Queue ─── */
 .my-queue-card {
-    background: white; border-radius: 10px; box-shadow: var(--tf-shadow);
+    background: #1E293B; border-radius: 10px; box-shadow: var(--tf-shadow);
     margin-bottom: 16px; overflow: hidden;
 }
 .my-queue-header {
@@ -651,7 +651,7 @@ body {
     display: flex; align-items: center; padding: 12px 16px;
     border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
 }
-.queue-wo-item:hover { background: #F8FAFC; }
+.queue-wo-item:hover { background: #0F172A; }
 .queue-wo-item:last-child { border-bottom: none; }
 .queue-wo-item .qw-priority {
     width: 6px; height: 40px; border-radius: 3px; flex-shrink: 0;
@@ -659,7 +659,7 @@ body {
 .qw-priority.urgent { background: #DC2626; }
 .qw-priority.high { background: #F59E0B; }
 .qw-priority.normal { background: #D1D5DB; }
-.qw-priority.low { background: #E5E7EB; }
+.qw-priority.low { background: #334155; }
 .queue-wo-item .qw-info { flex: 1; }
 .qw-info .qw-id { font-family: 'SF Mono', monospace; font-weight: 700; font-size: 0.85rem; }
 .qw-info .qw-detail { font-size: 0.78rem; color: var(--tf-gray); margin-top: 2px; }
@@ -1330,15 +1330,15 @@ function renderItemChecklist(wo) {
         const isDone = doneStatuses.includes(item.status);
         const statusColors = {
             'in_progress': 'background:#D1FAE5;color:#065F46;',
-            'queued': 'background:#F1F5F9;color:#64748B;',
-            'approved': 'background:#DBEAFE;color:#1E40AF;',
-            'stickers_printed': 'background:#FEF3C7;color:#92400E;',
-            'fabricated': 'background:#ECFDF5;color:#065F46;',
-            'qc_pending': 'background:#FFF7ED;color:#9A3412;',
+            'queued': 'background: #0F172A;color:#64748B;',
+            'approved': 'background:#1E3A5F;color:#1E40AF;',
+            'stickers_printed': 'background:#3B2A1A;color:#92400E;',
+            'fabricated': 'background:#0D2818;color:#065F46;',
+            'qc_pending': 'background: #3B2A1A;color:#9A3412;',
             'qc_approved': 'background:#D1FAE5;color:#065F46;',
             'complete': 'background:#D1FAE5;color:#065F46;'
         };
-        const stStyle = statusColors[item.status] || 'background:#F1F5F9;color:#64748B;';
+        const stStyle = statusColors[item.status] || 'background: #0F172A;color:#64748B;';
         html += '<div class="checklist-item ' + (isDone ? 'done' : '') + '" onclick="openItem(\\'' + item.item_id + '\\')">' +
             '<div class="cl-check">' + (isDone ? '&#10003;' : '') + '</div>' +
             '<div class="cl-info"><div class="cl-mark">' + escHtml(item.ship_mark) + '</div>' +

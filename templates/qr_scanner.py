@@ -19,7 +19,7 @@ QR_SCANNER_HTML = """
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: #0F172A; color: #F1F5F9;
     min-height: 100vh; overflow-x: hidden;
     -webkit-tap-highlight-color: transparent;
@@ -153,7 +153,7 @@ QR_SCANNER_HTML = """
     color: #F1F5F9; font-size: 16px; font-family: 'Courier New', monospace;
   }
   .manual-input:focus { outline: none; border-color: #C89A2E; }
-  .manual-input::placeholder { color: #475569; }
+  .manual-input::placeholder { color: #94A3B8; }
 
   /* ── Toast ── */
   .toast {

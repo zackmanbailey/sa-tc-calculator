@@ -417,7 +417,7 @@ TOOLTIP_CSS = """
   color: #F1F5F9; font-size: 14px; margin-bottom: 16px;
 }
 .tf-glossary-search:focus { outline: none; border-color: #C89A2E; }
-.tf-glossary-search::placeholder { color: #475569; }
+.tf-glossary-search::placeholder { color: #94A3B8; }
 
 .tf-glossary-item {
   padding: 12px; margin-bottom: 8px; background: #1E293B;

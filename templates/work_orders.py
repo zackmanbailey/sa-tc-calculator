@@ -180,7 +180,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 
 /* ── Cards ─── */
 .wo-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 10px;
     padding: 20px;
@@ -219,12 +219,12 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .status-badge.queued {
-    background: #F1F5F9;
+    background: #0F172A;
     color: #64748B;
 }
 
 .status-badge.approved {
-    background: #DBEAFE;
+    background: #1E3A5F;
     color: #1E40AF;
 }
 
@@ -234,7 +234,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .status-badge.in_progress {
-    background: #FEF3C7;
+    background: #3B2A1A;
     color: #92400E;
 }
 
@@ -244,7 +244,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .status-badge.on_hold {
-    background: #FEE2E2;
+    background: #3B1A1A;
     color: #991B1B;
 }
 
@@ -294,7 +294,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .items-table tr:hover td {
-    background: #F8FAFC;
+    background: #0F172A;
 }
 
 .ship-mark {
@@ -314,10 +314,10 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     letter-spacing: 0.3px;
 }
 
-.component-type-badge.column { background: #DBEAFE; color: #1E40AF; }
+.component-type-badge.column { background: #1E3A5F; color: #1E40AF; }
 .component-type-badge.rafter { background: #E0E7FF; color: #4338CA; }
 .component-type-badge.purlin { background: #D1FAE5; color: #065F46; }
-.component-type-badge.sag_rod { background: #FEF3C7; color: #92400E; }
+.component-type-badge.sag_rod { background: #3B2A1A; color: #92400E; }
 .component-type-badge.strap { background: #FCE7F3; color: #9D174D; }
 .component-type-badge.endcap { background: #F3E8FF; color: #6B21A8; }
 .component-type-badge.roofing { background: #CCFBF1; color: #0F766E; }
@@ -441,7 +441,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .metric-card {
-    background: white;
+    background: #1E293B;
     border: 1px solid var(--tf-border);
     border-radius: 10px;
     padding: 16px;
@@ -518,7 +518,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 }
 
 .btn-wo.outline {
-    background: white;
+    background: #1E293B;
     color: var(--tf-navy);
     border: 1px solid var(--tf-border);
 }

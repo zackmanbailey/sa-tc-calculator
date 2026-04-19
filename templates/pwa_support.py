@@ -484,7 +484,7 @@ OFFLINE_PAGE_HTML = """<!DOCTYPE html>
 :root {
     --tf-navy: #0F172A;
     --tf-navy-light: #1E293B;
-    --tf-gray-100: #F1F5F9;
+    --tf-gray-100: #1E293B;
     --tf-gray-400: #94A3B8;
     --tf-amber: #F6AE2D;
 }
@@ -496,7 +496,7 @@ OFFLINE_PAGE_HTML = """<!DOCTYPE html>
 }
 
 body {
-    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--tf-navy);
     color: var(--tf-gray-100);
     display: flex;

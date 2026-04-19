@@ -18,7 +18,7 @@ ADMIN_SETTINGS_PAGE_HTML = r"""
         max-width: 1400px;
         margin: 0 auto;
         padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
         color: var(--tf-text);
     }
     .page-header { margin-bottom: 32px; }
@@ -61,7 +61,7 @@ ADMIN_SETTINGS_PAGE_HTML = r"""
     }
     .toggle-slider:before {
         content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px;
-        background: #fff; border-radius: 50%; transition: 0.3s;
+        background: #1E293B; border-radius: 50%; transition: 0.3s;
     }
     .toggle-switch input:checked + .toggle-slider { background: var(--tf-blue); }
     .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }

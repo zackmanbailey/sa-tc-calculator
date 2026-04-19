@@ -56,7 +56,7 @@ QC_PAGE_HTML = r"""
         /* Severity */
         .severity-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
         .severity-badge.minor { background: var(--tf-amber-light); color: #92400E; }
-        .severity-badge.major { background: #FEE2E2; color: #991B1B; }
+        .severity-badge.major { background: #3B1A1A; color: #991B1B; }
         .severity-badge.critical { background: #7F1D1D; color: #FEE2E2; }
 
         /* Checklist */
@@ -209,7 +209,7 @@ QC_PAGE_HTML = r"""
         <!-- Tabs -->
         <div class="qc-tabs">
             <button class="qc-tab active" onclick="switchQCTab('inspections')">Inspections <span class="count-badge" id="inspCount">0</span></button>
-            <button class="qc-tab" onclick="switchQCTab('holdpoints')">&#128721; Hold Points <span class="count-badge" id="holdCount" style="background:#FEF3C7;color:#92400E;">0</span></button>
+            <button class="qc-tab" onclick="switchQCTab('holdpoints')">&#128721; Hold Points <span class="count-badge" id="holdCount" style="background:#3B2A1A;color:#92400E;">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('ncrs')">NCRs <span class="count-badge" id="ncrCount">0</span></button>
             <button class="qc-tab" onclick="switchQCTab('traceability')">Material Traceability</button>
             <button class="qc-tab" onclick="switchQCTab('reports')">&#128196; Inspection Reports <span class="count-badge" id="reportsCount">0</span></button>
@@ -222,7 +222,7 @@ QC_PAGE_HTML = r"""
 
         <!-- QC HOLD POINTS TAB -->
         <div class="qc-section" id="sec-holdpoints">
-            <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:var(--tf-radius-lg);padding:14px 18px;margin-bottom:var(--tf-sp-4);">
+            <div style="background:#3B2A1A;border:1px solid #F59E0B;border-radius:var(--tf-radius-lg);padding:14px 18px;margin-bottom:var(--tf-sp-4);">
                 <div style="font-weight:700;font-size:14px;color:#92400E;margin-bottom:4px;">&#128721; QC Hold Points — Mandatory Inspection Gates</div>
                 <div style="font-size:12px;color:#78350F;">
                     These items have completed fabrication but require QC inspection before they can be loaded or shipped.
@@ -633,7 +633,7 @@ function renderHoldPoints() {
                         ${item.finished_by ? ' by '+item.finished_by : ''}
                     </div>
                 </div>
-                <span style="padding:4px 12px;border-radius:10px;font-size:11px;font-weight:700;background:${isFailed?'#FEE2E2;color:#DC2626':'#FEF3C7;color:#92400E'};">
+                <span style="padding:4px 12px;border-radius:10px;font-size:11px;font-weight:700;background:${isFailed?'#FEE2E2;color:#DC2626':'#3B2A1A;color:#FCD34D'};">
                     ${isFailed ? 'FAILED' : 'QC HOLD'}
                 </span>
             </div>
@@ -790,8 +790,8 @@ function renderNCRs() {
             </div>
             <div style="font-size:var(--tf-text-sm);color:var(--tf-gray-700);margin-bottom:4px;">${n.description||''}</div>
             ${(n.member_marks||[]).length ? '<div style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);">Members: '+(n.member_marks||[]).join(', ')+'</div>' : ''}
-            ${n.root_cause ? '<div style="margin-top:6px;padding:6px 10px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;font-size:12px;"><b>Root Cause:</b> '+n.root_cause+'</div>' : ''}
-            ${n.corrective_action ? '<div style="margin-top:6px;padding:6px 10px;background:#DBEAFE;border:1px solid #3B82F6;border-radius:6px;font-size:12px;"><b>Corrective Action:</b> '+n.corrective_action+'</div>' : ''}
+            ${n.root_cause ? '<div style="margin-top:6px;padding:6px 10px;background:#3B2A1A;border:1px solid #F59E0B;border-radius:6px;font-size:12px;"><b>Root Cause:</b> '+n.root_cause+'</div>' : ''}
+            ${n.corrective_action ? '<div style="margin-top:6px;padding:6px 10px;background:#1E3A5F;border:1px solid #3B82F6;border-radius:6px;font-size:12px;"><b>Corrective Action:</b> '+n.corrective_action+'</div>' : ''}
             ${n.disposition ? '<div style="margin-top:6px;padding:6px 10px;background:#D1FAE5;border:1px solid #10B981;border-radius:6px;font-size:12px;"><b>Disposition:</b> '+n.disposition+'</div>' : ''}
 
             <!-- EXPANDED DETAIL (workflow forms) -->
@@ -1072,8 +1072,8 @@ function openInspDetail(inspId) {
     html += `<div style="margin-top:var(--tf-sp-4);border-top:1px solid var(--tf-gray-300);padding-top:var(--tf-sp-4);">
         <label class="form-label">Inspector Signature</label>
         ${insp.signature ?
-            '<div style="background:#fff;border:1px solid var(--tf-gray-300);border-radius:6px;padding:8px;text-align:center;"><img src="'+insp.signature+'" style="max-height:80px;" alt="Signature"></div>' :
-            '<canvas id="sigPad_'+inspId+'" width="400" height="120" style="border:1px solid var(--tf-gray-300);border-radius:6px;background:#fff;cursor:crosshair;display:block;margin:4px 0;"></canvas>'+
+            '<div style="background: #1E293B;border:1px solid var(--tf-gray-300);border-radius:6px;padding:8px;text-align:center;"><img src="'+insp.signature+'" style="max-height:80px;" alt="Signature"></div>' :
+            '<canvas id="sigPad_'+inspId+'" width="400" height="120" style="border:1px solid var(--tf-gray-300);border-radius:6px;background: #1E293B;cursor:crosshair;display:block;margin:4px 0;"></canvas>'+
             '<div style="display:flex;gap:8px;margin-top:4px;">'+
             '<button class="btn btn-outline" style="font-size:12px;padding:4px 10px;" onclick="clearSigPad(\''+inspId+'\')">Clear</button>'+
             '<button class="btn btn-primary" style="font-size:12px;padding:4px 10px;" onclick="saveSigPad(\''+inspId+'\')">Save Signature</button>'+

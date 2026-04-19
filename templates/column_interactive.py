@@ -16,7 +16,7 @@ COLUMN_DRAWING_HTML = r"""
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: #0F172A; color: #F1F5F9; min-height: 100vh;
     display: flex; flex-direction: column;
   }

@@ -18,7 +18,7 @@ EXECUTIVE_REPORT_PAGE_HTML = r"""
         max-width: 1400px;
         margin: 0 auto;
         padding: 24px 32px;
-        font-family: 'Inter', 'Segoe UI', sans-serif;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
         color: var(--tf-text);
     }
     .page-header { margin-bottom: 32px; }

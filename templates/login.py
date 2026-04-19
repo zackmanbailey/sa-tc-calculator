@@ -13,7 +13,7 @@ LOGIN_HTML = r"""
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: linear-gradient(135deg, #0F172A 0%, #1a2744 100%);
             min-height: 100vh;
             display: flex;

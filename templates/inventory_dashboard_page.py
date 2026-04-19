@@ -18,7 +18,7 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
     --purple: #a855f7; --cyan: #06b6d4;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif;
          background: var(--bg); color: var(--text); line-height: 1.5; }
 
   .topbar { background: var(--surface); border-bottom: 1px solid var(--border);

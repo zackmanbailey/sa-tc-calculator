@@ -42,8 +42,8 @@ SHIPPING_PAGE_HTML = """
             --tf-info-bg:    #F0F9FF;
 
             /* Neutrals */
-            --tf-gray-50:    #F8FAFC;
-            --tf-gray-100:   #F1F5F9;
+            --tf-gray-50: #0F172A;
+            --tf-gray-100: #1E293B;
             --tf-gray-200:   #E2E8F0;
             --tf-gray-300:   #CBD5E1;
             --tf-gray-400:   #94A3B8;
@@ -61,7 +61,7 @@ SHIPPING_PAGE_HTML = """
             --tf-text-muted: #94A3B8;
 
             /* Typography */
-            --tf-font:       'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --tf-font: 'Inter', system-ui, -apple-system, sans-serif;
             --tf-font-mono:  'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
             /* Type Scale */
@@ -485,7 +485,7 @@ SHIPPING_PAGE_HTML = """
 
         @media print {
             body {
-                background-color: white;
+                background-color: #1E293B;
                 color: #000;
             }
 
@@ -507,7 +507,7 @@ SHIPPING_PAGE_HTML = """
             }
 
             .card {
-                background-color: white;
+                background-color: #1E293B;
                 border: 1px solid #000;
                 box-shadow: none;
                 page-break-inside: avoid;
@@ -541,12 +541,12 @@ SHIPPING_PAGE_HTML = """
 
             .form-input, .form-select, .form-textarea {
                 border: 1px solid #000;
-                background-color: white;
+                background-color: #1E293B;
                 color: #000;
             }
 
             .info-item {
-                background-color: white;
+                background-color: #1E293B;
                 border: 1px solid #000;
             }
 

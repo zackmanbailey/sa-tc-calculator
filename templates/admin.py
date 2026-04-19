@@ -13,7 +13,7 @@ ADMIN_HTML = r"""
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: #0F172A;
             color: #e5e7eb;
         }

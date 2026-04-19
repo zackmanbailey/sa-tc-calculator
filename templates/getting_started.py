@@ -15,7 +15,7 @@ GETTING_STARTED_HTML = """
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: #0B1120; color: #E2E8F0;
     min-height: 100vh;
   }
@@ -111,7 +111,7 @@ GETTING_STARTED_HTML = """
 
   /* ── Footer ── */
   .gs-footer {
-    text-align: center; padding: 24px; color: #475569; font-size: 12px;
+    text-align: center; padding: 24px; color: #94A3B8; font-size: 12px;
     border-top: 1px solid #1E293B; margin-top: 32px;
   }
   .gs-footer a { color: #C89A2E; text-decoration: none; }
@@ -127,7 +127,7 @@ GETTING_STARTED_HTML = """
     color: #94A3B8; font-size: 13px; font-weight: 600;
     cursor: pointer; transition: all 0.2s;
   }
-  .role-tab:hover { border-color: #475569; color: #CBD5E1; }
+  .role-tab:hover { border-color: #94A3B8; color: #CBD5E1; }
   .role-tab.active { background: #1E40AF; border-color: #3B82F6; color: #FFF; }
 
   .role-section { display: none; }

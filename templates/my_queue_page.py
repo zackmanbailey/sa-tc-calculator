@@ -24,7 +24,7 @@ MY_QUEUE_HTML = r"""<!DOCTYPE html>
             --tf-gray-400: #94A3B8;
             --tf-gray-500: #64748B;
             --tf-gray-800: #1E293B;
-            --tf-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --tf-font: 'Inter', system-ui, -apple-system, sans-serif;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

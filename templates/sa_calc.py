@@ -9,12 +9,12 @@ SA_CALC_HTML = r"""<html lang="en">
 <style>
 :root {
   --tf-dark:#0F172A; --tf-blue:#1E40AF; --tf-blue-m:#3B82F6;
-  --tf-blue-l:#DBEAFE; --tf-red:#DC2626; --tf-amber:#F59E0B;
-  --tf-green:#16A34A; --tf-gray:#475569; --tf-light:#F8FAFC;
-  --tf-white:#ffffff; --tf-border:#E2E8F0;
+  --tf-blue-l:#1E3A5F; --tf-red:#DC2626; --tf-amber:#F59E0B;
+  --tf-green:#16A34A; --tf-gray:#94A3B8; --tf-light:#0F172A;
+  --tf-white:#1E293B; --tf-border:#334155;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--tf-light);color:var(--tf-gray);font-size:13px}
+body{font-family:'Inter',system-ui,sans-serif;background:#0F172A;color:#E2E8F0;font-size:13px}
 /* Topbar */
 #topbar{background:var(--tf-dark);color:#fff;padding:0 20px;display:flex;align-items:center;height:52px;box-shadow:0 2px 8px #0005}
 #topbar .logo{font-size:18px;font-weight:700;letter-spacing:1px;color:#fff}
@@ -29,20 +29,20 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--tf-light);color:va
 .tab.active{color:#fff;border-bottom-color:var(--tf-amber)}
 /* Main layout */
 #main{display:flex;gap:0;height:calc(100vh - 94px)}
-#sidebar{width:310px;min-width:260px;background:#fff;border-right:1px solid var(--tf-border);overflow-y:auto;padding:16px;flex-shrink:0}
-#content{flex:1;overflow-y:auto;padding:20px}
+#sidebar{width:310px;min-width:260px;background:#1E293B;border-right:1px solid #334155;overflow-y:auto;padding:16px;flex-shrink:0}
+#content{flex:1;overflow-y:auto;padding:20px;background:#0F172A}
 /* Cards */
-.card{background:#fff;border:1px solid var(--tf-border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.card{background:#1E293B;border:1px solid #334155;border-radius:8px;margin-bottom:16px;overflow:hidden}
 .card-hdr{background:var(--tf-blue-m);color:#fff;padding:8px 14px;font-weight:700;font-size:12px;display:flex;align-items:center;gap:8px}
 .card-hdr .icon{font-size:15px}
 .card-body{padding:14px}
 /* Form elements */
 .form-group{margin-bottom:12px}
-label{display:block;font-size:11px;font-weight:600;color:var(--tf-blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+label{display:block;font-size:11px;font-weight:600;color:#93C5FD;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
 input[type=text],input[type=number],select,textarea{
   width:100%;padding:7px 10px;border:1px solid var(--tf-border);border-radius:4px;
-  font-size:13px;color:var(--tf-gray);background:#fff;transition:border .2s}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-m);box-shadow:0 0 0 3px #2E75B615}
+  font-size:13px;color:#E2E8F0;background:#0F172A;transition:border .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--tf-blue-m);box-shadow:0 0 0 3px rgba(59,130,246,0.15)}
 input[type=checkbox]{width:auto;margin-right:6px}
 .check-label{display:flex;align-items:center;font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer}
 /* Buttons */
@@ -51,51 +51,51 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .btn-red{background:var(--tf-red);color:#fff}.btn-red:hover{opacity:.9}
 .btn-green{background:var(--tf-green);color:#fff}.btn-green:hover{opacity:.9}
 .btn-gold{background:var(--tf-amber);color:var(--tf-dark)}.btn-gold:hover{opacity:.9}
-.btn-outline{background:transparent;border:1px solid var(--tf-blue-m);color:var(--tf-blue-m)}.btn-outline:hover{background:var(--tf-blue-l)}
+.btn-outline{background:transparent;border:1px solid var(--tf-blue-m);color:var(--tf-blue-m)}.btn-outline:hover{background:#1E3A5F}
 .btn-sm{padding:5px 11px;font-size:12px}
 .btn-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 /* Tables */
 .bom-table{width:100%;border-collapse:collapse;font-size:12px}
 .bom-table th{background:var(--tf-blue);color:#fff;padding:7px 10px;text-align:left;font-weight:600;font-size:11px;position:sticky;top:0}
-.bom-table td{padding:6px 10px;border-bottom:1px solid #EEF0F4}
-.bom-table tr:nth-child(even) td{background:#F7F9FC}
-.bom-table tr:hover td{background:var(--tf-blue-l)}
-.cat-row td{background:var(--tf-blue-l)!important;font-weight:700;color:var(--tf-blue);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.bom-table td{padding:6px 10px;border-bottom:1px solid #334155;color:#E2E8F0}
+.bom-table tr:nth-child(even) td{background:#1E293B}
+.bom-table tr:hover td{background:#334155}
+.cat-row td{background:#1E3A5F!important;font-weight:700;color:#93C5FD;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .total-row td{background:var(--tf-green)!important;color:#fff!important;font-weight:700}
 .sell-row td{background:var(--tf-red)!important;color:#fff!important;font-weight:700;font-size:13px}
-.bom-override td{background:#FFF8E0!important}
+.bom-override td{background:#3D2E00!important}
 .bom-override-marker{color:#C89A2E;font-weight:700;font-size:14px}
 /* Summary stats */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
-.stat-card{background:#fff;border:1px solid var(--tf-border);border-radius:6px;padding:12px 14px;text-align:center}
-.stat-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.stat-value{font-size:18px;font-weight:700;color:var(--tf-blue)}
-.stat-unit{font-size:10px;color:#aaa;margin-top:2px}
+.stat-card{background:#1E293B;border:1px solid #334155;border-radius:6px;padding:12px 14px;text-align:center}
+.stat-label{font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.stat-value{font-size:18px;font-weight:700;color:#60A5FA}
+.stat-unit{font-size:10px;color:#64748B;margin-top:2px}
 /* Building list */
-.bldg-item{background:#F7F9FC;border:1px solid var(--tf-border);border-radius:5px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .2s}
-.bldg-item:hover,.bldg-item.active{background:var(--tf-blue-l);border-color:var(--tf-blue-m)}
-.bldg-item .bldg-name{font-weight:700;color:var(--tf-blue);font-size:13px}
-.bldg-item .bldg-dims{font-size:11px;color:#888;margin-top:2px}
+.bldg-item{background:#0F172A;border:1px solid #334155;border-radius:5px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .2s}
+.bldg-item:hover,.bldg-item.active{background:#334155;border-color:#3B82F6}
+.bldg-item .bldg-name{font-weight:700;color:#60A5FA;font-size:13px}
+.bldg-item .bldg-dims{font-size:11px;color:#94A3B8;margin-top:2px}
 /* Inventory */
 .inv-table{width:100%;border-collapse:collapse;font-size:12px}
 .inv-table th{background:var(--tf-dark);color:#fff;padding:7px 10px;font-size:11px;text-align:left}
-.inv-table td{padding:6px 10px;border-bottom:1px solid #EEF0F4}
-.inv-table tr:nth-child(even) td{background:#F7F9FC}
-.stock-ok{color:#375623;font-weight:700}
+.inv-table td{padding:6px 10px;border-bottom:1px solid #334155;color:#E2E8F0}
+.inv-table tr:nth-child(even) td{background:#1E293B}
+.stock-ok{color:#86EFAC;font-weight:700}
 .stock-low{color:orange;font-weight:700}
 .stock-out{color:var(--tf-red);font-weight:700}
 /* Labels preview */
 .labels-wrap{display:flex;flex-wrap:wrap;gap:8px}
 /* Alerts */
 .alert{padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:12px}
-.alert-info{background:#EEF5FF;border:1px solid #BDD6EE;color:#1F4E79}
-.alert-success{background:#E8F5E9;border:1px solid #A5D6A7;color:#2E7D32}
-.alert-warn{background:#FFF8E1;border:1px solid #FFE082;color:#E65100}
-.alert-error{background:#FFEBEE;border:1px solid #EF9A9A;color:#B71C1C}
+.alert-info{background:#172554;border:1px solid #1E3A5F;color:#93C5FD}
+.alert-success{background:#14532D;border:1px solid #166534;color:#86EFAC}
+.alert-warn{background:#422006;border:1px solid #713F12;color:#FCD34D}
+.alert-error{background:#450A0A;border:1px solid #7F1D1D;color:#FCA5A5}
 /* Section headers */
-.section-hdr{font-size:14px;font-weight:700;color:var(--tf-blue);margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid var(--tf-blue-l)}
+.section-hdr{font-size:14px;font-weight:700;color:#60A5FA;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #334155}
 /* Spinner */
-.spinner{display:none;width:20px;height:20px;border:3px solid #ddd;border-top-color:var(--tf-blue-m);border-radius:50%;animation:spin .8s linear infinite;margin:auto}
+.spinner{display:none;width:20px;height:20px;border:3px solid #334155;border-top-color:var(--tf-blue-m);border-radius:50%;animation:spin .8s linear infinite;margin:auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* Hidden */
 .hidden{display:none}
@@ -111,7 +111,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
 /* Responsive tweaks */
 @media(max-width:768px){
 #main{flex-direction:column}
-#sidebar{width:100%;border-right:none;border-bottom:1px solid var(--tf-border);position:relative}
+#sidebar{width:100%;border-right:none;border-bottom:1px solid #334155;position:relative}
 #sidebar.sa-collapsed > .card,
 #sidebar.sa-collapsed > div:not(.sa-mobile-toggle-bar){display:none}
 .sa-mobile-toggle-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--tf-blue);color:#fff;border-radius:6px;margin-bottom:8px;cursor:pointer;font-weight:600;font-size:13px}
@@ -146,10 +146,10 @@ input[type=checkbox]{width:auto;margin-right:6px}
 </div>
 
 <!-- Inventory Alert Banner (hidden by default, shown by JS) -->
-<div id="inv-alert-banner" style="display:none;background:#FFF3CD;border-bottom:2px solid #FFD43B;padding:8px 20px;font-size:12px;color:#856404;cursor:pointer" onclick="showTab('inventory')">
+<div id="inv-alert-banner" style="display:none;background:#422006;border-bottom:2px solid #713F12;padding:8px 20px;font-size:12px;color:#FCD34D;cursor:pointer" onclick="showTab('inventory')">
   <span style="font-weight:700">⚠️ Inventory Alert:</span>
   <span id="inv-alert-text"></span>
-  <span style="float:right;color:#666;font-size:11px">Click to view →</span>
+  <span style="float:right;color:#94A3B8;font-size:11px">Click to view →</span>
 </div>
 
 <!-- Tabs -->
@@ -1037,7 +1037,7 @@ function buildingFormHTML(b) {
             <input type="number" value="${b.purlin_angle_deg||15}" min="5" max="45" step="0.5"
               onchange="updateBldg('${b.id}','purlin_angle_deg',parseFloat(this.value))"/>
           </div>
-          <div style="font-size:10px;color:#f08c00;background:#fff8e1;padding:4px 8px;border-radius:4px;max-width:280px">
+          <div style="font-size:10px;color:#FCD34D;background:#422006;padding:4px 8px;border-radius:4px;max-width:280px">
             ⚠ P6 end plates (9"×15") will replace P2 end caps (9"×24"). All clips same angle, no mirroring.
           </div>` : ''}
         </div>
@@ -1936,9 +1936,9 @@ async function showRevisionHistory() {
     }
     // Render revision history in a modal-style overlay
     let html = '<div id="revision-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">';
-    html += '<div style="background:#fff;border-radius:10px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3)">';
+    html += '<div style="background:#1E293B;border-radius:10px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5);border:1px solid #334155">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
-    html += '<h2 style="font-size:16px;color:#1F4E79;margin:0">📋 Revision History — ' + jobCode + '</h2>';
+    html += '<h2 style="font-size:16px;color:#93C5FD;margin:0">📋 Revision History — ' + jobCode + '</h2>';
     html += '<button onclick="document.getElementById(\'revision-overlay\').remove()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#888">✕</button>';
     html += '</div>';
 
@@ -2335,7 +2335,7 @@ function renderInventory(data) {
           <div class="form-group" style="margin:0;flex:1;min-width:240px">
             <label>PDF Certificate File</label>
             <input type="file" id="cert_pdf" accept="application/pdf,.pdf"
-              style="width:100%;padding:5px 8px;border:1px dashed var(--tf-blue-m);border-radius:4px;background:#fff;font-size:12px;cursor:pointer"/>
+              style="width:100%;padding:5px 8px;border:1px dashed var(--tf-blue-m);border-radius:4px;background:#0F172A;color:#E2E8F0;font-size:12px;cursor:pointer"/>
           </div>
           <button class="btn btn-primary" style="margin-top:16px;white-space:nowrap"
             onclick="addMillCert()">📜 Add Cert</button>
@@ -2440,7 +2440,7 @@ function renderInventory(data) {
         </div>
 
         <!-- New coil creation option -->
-        <div id="stk_new_coil_row" style="display:none;background:#fff;border:1px solid #C89A2E;border-radius:5px;padding:10px;margin-bottom:10px">
+        <div id="stk_new_coil_row" style="display:none;background:#1E293B;border:1px solid #C89A2E;border-radius:5px;padding:10px;margin-bottom:10px">
           <div style="font-size:12px;color:#7A5C00;margin-bottom:6px;font-weight:bold">
             🆕 New Coil Entry
           </div>
@@ -2966,9 +2966,9 @@ function applyWarningFix(action, bldgIndex) {
 
 <!-- Global Search Overlay -->
 <div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);z-index:9999;align-items:flex-start;justify-content:center;padding-top:100px;">
-<div style="width:600px;max-width:90vw;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.2);overflow:hidden;">
-<input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:16px;outline:none;border-bottom:1px solid #e2e8f0;" oninput="_doGS(this.value)">
-<div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px;"><div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Type to search...</div></div>
+<div style="width:600px;max-width:90vw;background:#1E293B;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.5);overflow:hidden;border:1px solid #334155;">
+<input type="text" id="globalSearchInput" placeholder="Search projects, customers, inventory..." style="width:100%;padding:18px 20px;border:none;font-size:16px;outline:none;border-bottom:1px solid #334155;background:#1E293B;color:#E2E8F0;" oninput="_doGS(this.value)">
+<div id="globalSearchResults" style="max-height:400px;overflow-y:auto;padding:8px;background:#1E293B;"><div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Type to search...</div></div>
 </div></div>
 <script>
 var _gst=null;

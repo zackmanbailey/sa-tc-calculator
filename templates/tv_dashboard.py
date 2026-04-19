@@ -23,7 +23,7 @@ TV_DASHBOARD_HTML = """
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: #0B1120; color: #E2E8F0;
     overflow: hidden; height: 100vh; width: 100vw;
   }
@@ -82,7 +82,7 @@ TV_DASHBOARD_HTML = """
   .target-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .target-header .title { font-size: 13px; color: #64748B; text-transform: uppercase; letter-spacing: 1px; }
   .target-header .count { font-size: 20px; font-weight: 800; }
-  .target-header .count .of { color: #475569; font-weight: 400; }
+  .target-header .count .of { color: #94A3B8; font-weight: 400; }
   .target-track {
     height: 24px; background: #1E293B; border-radius: 12px; overflow: hidden;
     position: relative;
@@ -116,7 +116,7 @@ TV_DASHBOARD_HTML = """
   .mc-stat .num { font-size: 20px; font-weight: 800; }
   .mc-stat .num.green { color: #10B981; }
   .mc-stat .num.amber { color: #F59E0B; }
-  .mc-stat .num.gray { color: #475569; }
+  .mc-stat .num.gray { color: #94A3B8; }
   .mc-stat .slbl { font-size: 9px; color: #64748B; text-transform: uppercase; }
   .mc-bar { height: 4px; background: #1E293B; border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .mc-bar-fill { height: 100%; background: #10B981; border-radius: 2px; transition: width 0.5s; }
@@ -186,7 +186,7 @@ TV_DASHBOARD_HTML = """
   .feed-action { font-weight: 600; }
   .feed-action.started { color: #F59E0B; }
   .feed-action.finished { color: #10B981; }
-  .feed-time { color: #475569; float: right; }
+  .feed-time { color: #94A3B8; float: right; }
   .feed-worker { color: #64748B; }
 
   /* ── CONFETTI OVERLAY ── */
@@ -397,7 +397,7 @@ TV_DASHBOARD_HTML = """
         + '</div>';
     });
     if (lb.length === 0) {
-      html = '<div style="text-align:center;color:#475569;padding:20px;font-size:13px">No completions yet today.<br>Start scanning!</div>';
+      html = '<div style="text-align:center;color: #94A3B8;padding:20px;font-size:13px">No completions yet today.<br>Start scanning!</div>';
     }
     document.getElementById('lbList').innerHTML = html;
   }
@@ -427,7 +427,7 @@ TV_DASHBOARD_HTML = """
         + '<span class="feed-time">' + time + '</span>'
         + '</div>';
     });
-    document.getElementById('actFeed').innerHTML = html || '<div style="color:#475569;font-size:12px;padding:8px">No activity yet</div>';
+    document.getElementById('actFeed').innerHTML = html || '<div style="color: #94A3B8;font-size:12px;padding:8px">No activity yet</div>';
   }
 
   // ── Confetti ──

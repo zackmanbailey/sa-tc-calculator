@@ -110,7 +110,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
   .aisc-item-text { flex: 1; }
   .aisc-item-text strong { color: #FFF; display: block; }
   .aisc-item-text span { color: #94A3B8; font-size: 12px; }
-  .aisc-ref { font-size: 11px; color: #475569; font-style: italic; white-space: nowrap; }
+  .aisc-ref { font-size: 11px; color: #94A3B8; font-style: italic; white-space: nowrap; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {

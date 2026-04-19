@@ -51,7 +51,7 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 }
 .wog-filters input, .wog-filters select {
     padding: 8px 14px; border: 1px solid var(--tf-border); border-radius: 8px;
-    font-size: 0.85rem; font-family: var(--tf-font); background: white; color: var(--tf-navy);
+    font-size: 0.85rem; font-family: var(--tf-font); background: #1E293B; color: var(--tf-navy);
 }
 .wog-filters input { flex: 1; min-width: 200px; }
 .wog-filters input:focus, .wog-filters select:focus {
@@ -88,7 +88,7 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 .wo-table td {
     padding: 12px; border-bottom: 1px solid var(--tf-border); vertical-align: middle;
 }
-.wo-table tr:hover td { background: #F8FAFC; cursor: pointer; }
+.wo-table tr:hover td { background: #0F172A; cursor: pointer; }
 .wo-table tr:last-child td { border-bottom: none; }
 
 /* Badges */
@@ -96,20 +96,20 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
     display: inline-flex; align-items: center; gap: 5px;
     padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; white-space: nowrap;
 }
-.status-badge.queued { background: #F1F5F9; color: #64748B; }
-.status-badge.approved { background: #DBEAFE; color: #1E40AF; }
+.status-badge.queued { background: #0F172A; color: #64748B; }
+.status-badge.approved { background: #1E3A5F; color: #1E40AF; }
 .status-badge.stickers_printed { background: #E0E7FF; color: #4338CA; }
-.status-badge.staged { background: #FFF7ED; color: #C2410C; }
-.status-badge.in_progress { background: #FEF3C7; color: #92400E; }
-.status-badge.fabricated { background: #ECFDF5; color: #065F46; }
-.status-badge.qc_pending { background: #FFF7ED; color: #9A3412; }
+.status-badge.staged { background: #3B2A1A; color: #C2410C; }
+.status-badge.in_progress { background: #3B2A1A; color: #92400E; }
+.status-badge.fabricated { background: #0D2818; color: #065F46; }
+.status-badge.qc_pending { background: #3B2A1A; color: #9A3412; }
 .status-badge.qc_approved { background: #D1FAE5; color: #065F46; }
-.status-badge.qc_rejected { background: #FEE2E2; color: #991B1B; }
-.status-badge.ready_to_ship { background: #DBEAFE; color: #1E3A8A; }
+.status-badge.qc_rejected { background: #3B1A1A; color: #991B1B; }
+.status-badge.ready_to_ship { background: #1E3A5F; color: #1E3A8A; }
 .status-badge.shipped { background: #EDE9FE; color: #5B21B6; }
 .status-badge.delivered { background: #D1FAE5; color: #047857; }
 .status-badge.installed { background: #D1FAE5; color: #064E3B; }
-.status-badge.on_hold { background: #FEE2E2; color: #991B1B; }
+.status-badge.on_hold { background: #3B1A1A; color: #991B1B; }
 .status-badge.complete { background: #D1FAE5; color: #065F46; }
 
 .job-code-link {
@@ -131,7 +131,7 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 
 /* QC Queue specific */
 .qc-item-card {
-    background: white; border: 1px solid var(--tf-border); border-radius: 10px;
+    background: #1E293B; border: 1px solid var(--tf-border); border-radius: 10px;
     padding: 16px; margin-bottom: 12px; transition: box-shadow 0.2s;
 }
 .qc-item-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
@@ -150,7 +150,7 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 .btn-qc.pass:hover { background: #059669; }
 .btn-qc.fail { background: #EF4444; color: white; }
 .btn-qc.fail:hover { background: #DC2626; }
-.btn-qc.notes { background: white; color: var(--tf-navy); border: 1px solid var(--tf-border); }
+.btn-qc.notes { background: #1E293B; color: var(--tf-navy); border: 1px solid var(--tf-border); }
 .btn-qc.notes:hover { background: var(--tf-bg); }
 
 /* Empty */
@@ -179,7 +179,7 @@ WORK_ORDERS_GLOBAL_HTML = """<!DOCTYPE html>
 }
 .modal-overlay.show { display: flex; }
 .modal-box {
-    background: white; border-radius: 12px; padding: 28px; width: 480px; max-width: 95vw;
+    background: #1E293B; border-radius: 12px; padding: 28px; width: 480px; max-width: 95vw;
     box-shadow: 0 20px 60px rgba(0,0,0,0.25);
 }
 .modal-box h3 { margin: 0 0 16px; font-size: 1.1rem; color: var(--tf-navy); }
@@ -608,7 +608,7 @@ function renderQCQueue(q, projectF) {
                 ${item.finished_at ? '<span>Finished: ' + new Date(item.finished_at).toLocaleString() + '</span>' : ''}
                 <a href="${drawLink}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;padding:3px 10px;background:var(--tf-navy);color:white;border-radius:6px;font-size:0.75rem;font-weight:600;text-decoration:none;">&#128208; View Drawing</a>
             </div>
-            ${item.qc_notes ? '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 12px;font-size:0.82rem;margin-bottom:12px;color:#9A3412;">Previous QC Notes: ' + item.qc_notes + '</div>' : ''}
+            ${item.qc_notes ? '<div style="background: #3B2A1A;border:1px solid #FED7AA;border-radius:8px;padding:8px 12px;font-size:0.82rem;margin-bottom:12px;color:#9A3412;">Previous QC Notes: ' + item.qc_notes + '</div>' : ''}
             <div class="qc-actions">
                 <button class="btn-qc pass" onclick="openQCModal('${item.item_id}', '${item.ship_mark}', '${item.job_code}', 'approve')">&#10003; Approve</button>
                 <button class="btn-qc fail" onclick="openQCModal('${item.item_id}', '${item.ship_mark}', '${item.job_code}', 'reject')">&#10007; Reject</button>
