@@ -49,7 +49,7 @@ STATUS_FLOW = {
     STATUS_QC_HOLD: [STATUS_IN_PROGRESS, STATUS_ON_HOLD],
     STATUS_COMPLETE: [STATUS_SHIPPED_WO],
     STATUS_SHIPPED_WO: [],
-    STATUS_ON_HOLD: [STATUS_QUEUED, STATUS_APPROVED],
+    STATUS_ON_HOLD: [STATUS_QUEUED, STATUS_APPROVED, STATUS_IN_PROGRESS],
 }
 
 STATUS_LABELS = {
@@ -131,12 +131,19 @@ PHASE_QC = "qc"
 PHASE_SHIPPING = "shipping"
 
 
+_ALL_VALID_ITEM_STATUSES = set(VALID_STATUSES) | {
+    STATUS_FABRICATED, STATUS_QC_PENDING, STATUS_QC_APPROVED,
+    STATUS_QC_REJECTED, STATUS_READY_TO_SHIP, STATUS_SHIPPED,
+    STATUS_DELIVERED, STATUS_INSTALLED,
+}
+
+
 def transition_item_status(item, new_status: str) -> bool:
     """Transition a WorkOrderItem to a new status.
     Returns True if valid, False if invalid transition.
-    This is a permissive helper — allows extended statuses for
-    QC, shipping, and field ops workflows beyond the core fab flow."""
-    # For extended workflow, allow any status transition
+    Validates that new_status is in the known status set before accepting."""
+    if new_status not in _ALL_VALID_ITEM_STATUSES:
+        return False
     if isinstance(item, WorkOrderItem):
         item.status = new_status
     elif isinstance(item, dict):

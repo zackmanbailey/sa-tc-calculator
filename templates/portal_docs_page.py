@@ -179,7 +179,22 @@ function filterDocs() {
     renderTable(filtered);
 }
 
-function viewDoc(id) { window.location.href = '/portal/docs/' + id; }
+function viewDoc(id) {
+    var doc = allDocs.find(function(d) { return d.id === id; });
+    if (!doc) return;
+    var html = '<div class="modal-overlay active" id="viewDocModal" onclick="if(event.target===this)closeModal(\'viewDocModal\')">' +
+        '<div class="modal"><h2>' + getTypeIcon(doc.type) + ' ' + (doc.name || 'Untitled') + '</h2>' +
+        '<div class="form-group"><label>Type</label><div>' + (doc.type || '--') + '</div></div>' +
+        '<div class="form-group"><label>Project</label><div>' + (doc.project || '--') + '</div></div>' +
+        '<div class="form-group"><label>Uploaded</label><div>' + (doc.uploaded_date || '--') + '</div></div>' +
+        '<div class="form-group"><label>Status</label><div>' + getStatusBadge(doc.status) + '</div></div>' +
+        '<div class="form-group"><label>Notes</label><div>' + (doc.notes || 'No notes') + '</div></div>' +
+        '<div class="modal-actions"><button class="btn-outline" onclick="closeModal(\'viewDocModal\')">Close</button></div>' +
+        '</div></div>';
+    var existing = document.getElementById('viewDocModal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+}
 
 async function uploadDoc() {
     const payload = {

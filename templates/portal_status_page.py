@@ -173,7 +173,7 @@ async function loadProjectStatus() {
     const id = document.getElementById('projectSelect').value;
     if (!id) { document.getElementById('statusContent').innerHTML = '<div class="empty-state"><h3>Select a project</h3><p>Choose a project from the dropdown to view its status.</p></div>'; return; }
     try {
-        const resp = await fetch('/api/portal/status/' + encodeURIComponent(id));
+        const resp = await fetch('/api/portal/status?project=' + encodeURIComponent(id));
         projectData = await resp.json();
         renderStatus(projectData);
     } catch(e) {

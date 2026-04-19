@@ -257,7 +257,7 @@ async function init() {
 
 async function loadQueue() {
     try {
-        const res = await fetch(`/api/operator/queue?username=${encodeURIComponent(USERNAME)}`);
+        const res = await fetch(`/api/my-queue?username=${encodeURIComponent(USERNAME)}`);
         const data = await res.json();
         if (!data.ok) return;
         queueData = data;

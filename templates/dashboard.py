@@ -2653,7 +2653,7 @@ DASHBOARD_HTML = r"""
         // Calibration due — fetch from calibration API
         var calEl = document.getElementById('qcCalibDue');
         if (calEl) {
-            fetch('/api/qc/calibration')
+            fetch('/api/qa/calibration')
                 .then(function(r) { return r.json(); })
                 .then(function(cData) {
                     var records = cData.records || cData.calibration_records || [];

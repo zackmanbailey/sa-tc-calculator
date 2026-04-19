@@ -329,7 +329,8 @@ function openNewBOL() {
     if (storedItems) {
         document.getElementById('bolItemsList').innerHTML = '';
         bolItemCount = 0;
-        const items = JSON.parse(storedItems);
+        let items;
+        try { items = JSON.parse(storedItems); } catch(e) { console.error('Bad bol_items JSON:', e); items = []; }
         items.forEach(it => addBOLItem(it.description, it.quantity, it.weight));
         calcTotals();
         sessionStorage.removeItem('bol_items');

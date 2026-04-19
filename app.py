@@ -36,6 +36,8 @@ def make_app():
         os.makedirs(os.path.dirname(secret_path), exist_ok=True)
         with open(secret_path, "w") as f:
             f.write(cookie_secret)
+        # SEC-010: Restrict cookie secret file permissions to owner-only
+        os.chmod(secret_path, 0o600)
 
     tf_handlers.COOKIE_SECRET = cookie_secret
 

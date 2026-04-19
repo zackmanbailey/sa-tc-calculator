@@ -18,6 +18,23 @@ Usage in templates:
 # ─────────────────────────────────────────────
 
 NAV_CSS = r"""
+/* ── Z-Index Scale ──────────────────────────────────── */
+:root {
+    --z-sticky: 10;
+    --z-topbar: 100;
+    --z-sidebar: 200;
+    --z-sidebar-toggle: 201;
+    --z-dropdown: 300;
+    --z-search-overlay: 500;
+    --z-mobile-hamburger: 1100;
+    --z-mobile-overlay: 1050;
+    --z-mobile-sidebar: 1000;
+    --z-modal: 1200;
+    --z-toast: 1300;
+    --z-walkthrough: 9000;
+    --z-error: 9500;
+}
+
 /* ── Sidebar Navigation ─────────────────────────────── */
 .tf-sidebar {
     position: fixed;
@@ -185,7 +202,6 @@ NAV_CSS = r"""
     text-decoration: none;
     font-size: 0.85rem;
     font-weight: 500;
-    border-radius: 0;
     margin: 1px 8px;
     border-radius: 6px;
     transition: all 0.15s;
@@ -517,7 +533,7 @@ body.sidebar-collapsed .tf-main {
         position: fixed;
         top: 12px;
         left: 12px;
-        z-index: 999;
+        z-index: 1100;
         background: #1E293B;
         border: 1px solid #334155;
         border-radius: 8px;
@@ -531,11 +547,11 @@ body.sidebar-collapsed .tf-main {
         position: fixed;
         inset: 0;
         background: rgba(0,0,0,0.5);
-        z-index: 999;
+        z-index: 1050;
     }
     .tf-mobile-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-        z-index: 999; display: none;
+        z-index: 1050; display: none;
     }
     .tf-mobile-overlay.show { display: block; }
 
@@ -1139,8 +1155,7 @@ body.sidebar-collapsed .tf-main {
 NAV_HTML = r"""
 <!-- Mobile hamburger button (fixed, visible only on mobile) -->
 <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
-<!-- Mobile overlay -->
-<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
+<!-- Mobile overlay (single consolidated element) -->
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->
@@ -1533,29 +1548,24 @@ function toggleNavGroup(header) {
 // ── Mobile Sidebar ──
 function toggleMobileSidebar() {
     const sb = document.querySelector('.tf-sidebar');
-    const ov = document.getElementById('mobileOverlayFixed');
-    const legacyOv = document.getElementById('mobileOverlay');
+    const ov = document.getElementById('mobileOverlay');
     if (sb.classList.contains('mobile-open')) {
         sb.classList.remove('mobile-open');
-        if (ov) ov.style.display = 'none';
-        if (legacyOv) legacyOv.classList.remove('show');
+        if (ov) ov.classList.remove('show');
     } else {
         sb.classList.add('mobile-open');
-        if (ov) ov.style.display = 'block';
-        if (legacyOv) legacyOv.classList.add('show');
+        if (ov) ov.classList.add('show');
     }
 }
 function openMobileSidebar() {
     document.getElementById('tfSidebar').classList.add('mobile-open');
-    document.getElementById('mobileOverlay').classList.add('show');
-    var ov = document.getElementById('mobileOverlayFixed');
-    if (ov) ov.style.display = 'block';
+    var ov = document.getElementById('mobileOverlay');
+    if (ov) ov.classList.add('show');
 }
 function closeMobileSidebar() {
     document.getElementById('tfSidebar').classList.remove('mobile-open');
-    document.getElementById('mobileOverlay').classList.remove('show');
-    var ov = document.getElementById('mobileOverlayFixed');
-    if (ov) ov.style.display = 'none';
+    var ov = document.getElementById('mobileOverlay');
+    if (ov) ov.classList.remove('show');
 }
 
 // ── Project Context ──
@@ -2566,8 +2576,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
     sidebar = f"""
 <!-- Mobile hamburger button (fixed, visible only on mobile) -->
 <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" style="display:none;">&#9776;</button>
-<!-- Mobile overlay -->
-<div class="mobile-overlay" id="mobileOverlayFixed" onclick="toggleMobileSidebar()" style="display:none;"></div>
+<!-- Mobile overlay (single consolidated element) -->
 <div class="tf-mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
 
 <!-- Sidebar -->

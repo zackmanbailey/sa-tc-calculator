@@ -159,7 +159,7 @@ function renderGantt(projects) {
     projects.forEach(p => {
         const start = p.start_date ? new Date(p.start_date) : null;
         const end = p.end_date ? new Date(p.end_date) : null;
-        html += '<div class="gantt-row"><div class="gantt-row-label" title="' + (p.project_name || p.name || '') + '" onclick="window.location.href=\'/project/' + (p.id || '') + '\'">' + (p.project_name || p.name || 'Unnamed') + '</div>';
+        html += '<div class="gantt-row"><div class="gantt-row-label" title="' + (p.project_name || p.name || '') + '" onclick="window.location.href=\'/project/' + (p.job_code || p.project_code || p.id || '') + '\'">' + (p.project_name || p.name || 'Unnamed') + '</div>';
         html += '<div class="gantt-row-bars" style="width:' + (dates.length * cellWidth) + 'px;">';
         if (start && end) {
             const offsetDays = daysBetween(minDate, start);

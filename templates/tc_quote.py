@@ -1392,7 +1392,7 @@ window.addEventListener('DOMContentLoaded', () => {
 </div></div>
 <script>
 var _gst=null;
-function openGlobalSearch(){document.getElementById('globalSearchOverlay').style.display='flex';document.getElementById('globalSearchInput').value='';document.getElementById('globalSearchInput').focus();}
+if(!window.TFNav||!window.TFNav.openGlobalSearch){function openGlobalSearch(){document.getElementById('globalSearchOverlay').style.display='flex';document.getElementById('globalSearchInput').value='';document.getElementById('globalSearchInput').focus();}}
 function _closeGS(){document.getElementById('globalSearchOverlay').style.display='none';}
 document.getElementById('globalSearchOverlay').addEventListener('click',function(e){if(e.target.id==='globalSearchOverlay')_closeGS();});
 document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();openGlobalSearch();}if(e.key==='Escape')_closeGS();});

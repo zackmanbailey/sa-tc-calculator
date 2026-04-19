@@ -172,7 +172,7 @@ async function loadInstallProjects() {
             const stage = p.stage || p.status || '';
             const pct = p.completion_pct != null ? Math.round(p.completion_pct) : estimateProgress(stage);
             const jobCode = p.job_code || p.id || '';
-            return '<div class="install-card" data-stage="' + stage.toLowerCase() + '" onclick="window.location.href=\'/projects/' + encodeURIComponent(jobCode) + '\'">' +
+            return '<div class="install-card" data-stage="' + stage.toLowerCase() + '" onclick="window.location.href=\'/project/' + encodeURIComponent(jobCode) + '\'">' +
                 '<h3 class="card-title">' + (p.project_name || p.name || 'Unnamed') + '</h3>' +
                 '<div class="card-code">' + (p.job_code || p.id || '') + '</div>' +
                 '<div class="card-row"><span class="label">Customer</span><span class="value">' + (p.customer || p.customer_name || '—') + '</span></div>' +

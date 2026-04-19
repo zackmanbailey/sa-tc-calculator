@@ -405,7 +405,7 @@ QA_HUB_HTML = """<!DOCTYPE html>
         if (d.calibrated_tools !== undefined)
           document.getElementById('abCalib').textContent = d.calibrated_tools;
       }
-    }).catch(function(){});
+    }).catch(function(e){ console.error('Stats load failed:', e); });
   })();
 </script>
 </body>

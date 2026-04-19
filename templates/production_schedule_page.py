@@ -206,8 +206,13 @@ let currentDate = new Date().toISOString().slice(0, 10);
 document.getElementById('dateSelect').value = currentDate;
 
 async function fetchJSON(url) {
-  const r = await fetch(url);
-  return r.json();
+  try {
+    const r = await fetch(url);
+    return r.json();
+  } catch(e) {
+    console.error('fetchJSON error:', e);
+    return {};
+  }
 }
 
 function prevDay() {
