@@ -1047,8 +1047,11 @@ class BaseHandler(tornado.web.RequestHandler):
         if bc_html:
             html = bc_html + html
 
+        # Pass the actual request path so the sidebar can do exact URL matching
+        request_path = getattr(self.request, 'uri', '') or getattr(self.request, 'path', '') or ''
         result = inject_nav(html, active_page=active_page, job_code=job_code,
-                            user_name=display, user_role=role, user_roles=roles)
+                            user_name=display, user_role=role, user_roles=roles,
+                            request_path=request_path)
         self.set_header("Content-Type", "text/html; charset=utf-8")
         self.write(result)
 

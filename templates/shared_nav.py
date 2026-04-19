@@ -1427,7 +1427,7 @@ function escNavHtml(s) {
 
 def inject_nav(html: str, active_page: str = "", job_code: str = "",
                user_name: str = "User", user_role: str = "admin",
-               user_roles: list = None) -> str:
+               user_roles: list = None, request_path: str = "") -> str:
     """Inject sidebar navigation into an existing HTML page.
 
     This is the primary integration method. It:
@@ -1462,7 +1462,8 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
             '</body>\n</html>'
         )
 
-    nav = build_nav(active_page, job_code, user_name, user_role, user_roles=user_roles)
+    nav = build_nav(active_page, job_code, user_name, user_role, user_roles=user_roles,
+                    request_path=request_path)
 
     # Prepend CSS to hide old nav elements across all templates
     hide_old = """
@@ -1509,7 +1510,7 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
 
 def build_nav(active_page: str = "", job_code: str = "",
               user_name: str = "User", user_role: str = "admin",
-              user_roles: list = None) -> dict:
+              user_roles: list = None, request_path: str = "") -> dict:
     """Build nav component strings for a specific page.
 
     Args:
@@ -1524,7 +1525,7 @@ def build_nav(active_page: str = "", job_code: str = "",
         dict with keys: css, html, js
     """
     # Build role-aware sidebar if the auth package is available
-    sidebar_html = _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
+    sidebar_html = _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles, request_path)
 
     # Project context JS
     context_js = ""
@@ -1538,7 +1539,7 @@ def build_nav(active_page: str = "", job_code: str = "",
     }
 
 
-def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles):
+def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles, request_path=""):
     """Build sidebar HTML dynamically from user's RBAC roles.
 
     Uses perm.get_sidebar() from auth.permissions to get the role-filtered
@@ -1615,7 +1616,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
 
         if children:
             # Check if any child is active (to auto-expand)
-            has_active = any(_is_nav_active(c.get("url", ""), active_page) for c in children)
+            has_active = any(_is_nav_active(c.get("url", ""), active_page, request_path) for c in children)
             expanded_cls = " expanded" if has_active else ""
             active_hdr = " has-active" if has_active else ""
             open_cls = " open" if has_active else ""
@@ -1632,7 +1633,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
             for child in children:
                 child_url = child.get("url", "#")
                 child_label = child.get("label", "")
-                is_active = _is_nav_active(child_url, active_page)
+                is_active = _is_nav_active(child_url, active_page, request_path)
                 active_cls = " active" if is_active else ""
                 nav_items_html += f'              <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
                 nav_items_html += f'                  <span class="tf-nav-icon">{icon_html}</span>\n'
@@ -1641,7 +1642,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
             nav_items_html += f'            </div>\n'
         elif url:
             # Single-link section (e.g., Dashboard)
-            is_active = _is_nav_active(url, active_page)
+            is_active = _is_nav_active(url, active_page, request_path)
             active_cls = " active" if is_active else ""
             nav_items_html += f'            <a href="{url}" class="tf-nav-item{active_cls}">\n'
             nav_items_html += f'                <span class="tf-nav-icon">{icon_html}</span>\n'
@@ -1810,10 +1811,13 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles)
     return sidebar
 
 
-def _is_nav_active(url: str, active_page: str) -> bool:
+def _is_nav_active(url: str, active_page: str, request_path: str = "") -> bool:
     """Determine if a nav link should be highlighted as active.
 
-    Maps known active_page identifiers to URL patterns.
+    Uses exact URL matching — only the nav item whose URL matches the
+    active_page identifier (or its mapped URLs) gets highlighted.
+    The active_page value can be either a known key or a raw URL path.
+    request_path is the actual browser URL path for precise matching.
     """
     _ACTIVE_MAP = {
         "dashboard":         ["/dashboard", "/"],
@@ -1834,10 +1838,47 @@ def _is_nav_active(url: str, active_page: str) -> bool:
         "workstation":       ["/work-station"],
         "shopdrw":           ["/shop-drawings"],
     }
-    if not active_page:
+    if not active_page and not request_path:
         return False
-    active_urls = _ACTIVE_MAP.get(active_page, [])
-    for pattern in active_urls:
-        if url.startswith(pattern) or url == pattern:
+
+    # Normalise: strip trailing slash from path portion only
+    url_path = url.split("?")[0].rstrip("/") if url else ""
+    url_qs   = url.split("?", 1)[1] if url and "?" in url else ""
+    ap_clean = active_page.split("?")[0].rstrip("/") if active_page else ""
+    rp_path  = request_path.split("?")[0].rstrip("/") if request_path else ""
+    rp_qs    = request_path.split("?", 1)[1] if request_path and "?" in request_path else ""
+
+    # Best match: compare nav item URL against the actual browser request path
+    # For URLs with query strings (e.g. /inventory?type=coils), require both
+    # path AND query string to match so only one child highlights.
+    if url_path and rp_path and url_path == rp_path:
+        if url_qs:
+            # Nav item has a query string — require it to match request
+            if url_qs == rp_qs:
+                return True
+        else:
+            # Nav item has no query string — path match is enough
+            if not rp_qs:
+                return True
+
+    # Direct match: active_page is a URL that matches this nav item
+    if url_path and ap_clean and (url_path == ap_clean or url == active_page):
+        # If the nav URL has a query string, only match if active_page also has it
+        if url_qs:
+            ap_qs = active_page.split("?", 1)[1] if "?" in active_page else ""
+            if url_qs == ap_qs:
+                return True
+        else:
             return True
+
+    # Map-based match: active_page is a known key, use EXACT url matching
+    # Skip if the nav URL has a query string — query-param children should
+    # only match via request_path (handled above), not via the broad map key.
+    if not url_qs:
+        active_urls = _ACTIVE_MAP.get(active_page, [])
+        for pattern in active_urls:
+            pattern_clean = pattern.rstrip("/")
+            if url_path == pattern_clean:
+                return True
+
     return False
