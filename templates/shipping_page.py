@@ -581,7 +581,7 @@ SHIPPING_PAGE_HTML = """
 
     <!-- Job Selector Overlay (shown when no JOB_CODE) -->
     <div id="job-selector-overlay" style="display:none; position:fixed; inset:0; z-index:9999;
-        background:rgba(15,23,42,0.92); display:flex; align-items:center; justify-content:center;">
+        background:rgba(15,23,42,0.92); align-items:center; justify-content:center;">
         <div style="background:#1E293B; border:1px solid #334155; border-radius:12px; padding:2rem; width:min(440px,90vw); box-shadow:0 25px 50px rgba(0,0,0,.5);">
             <h2 style="color:#F8FAFC; margin:0 0 .5rem;">Shipping Hub</h2>
             <p style="color:#94A3B8; margin:0 0 1.5rem;">Select a project to manage shipping:</p>
