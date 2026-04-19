@@ -624,9 +624,7 @@ body.sidebar-collapsed .tf-main {
 .tf-notif-badge.hidden { display: none; }
 .tf-notif-dropdown {
     display: none;
-    position: absolute;
-    top: 44px;
-    right: 0;
+    position: fixed;
     width: 360px;
     max-height: 440px;
     background: #1E293B;
@@ -1270,7 +1268,27 @@ function escNavHtml(s) {
         const dd = document.getElementById('notifDropdown');
         if (dd) {
             dd.classList.toggle('show', notifOpen);
-            if (notifOpen) loadNotifications();
+            if (notifOpen) {
+                // Position the dropdown next to the bell, outside the sidebar
+                const bell = document.querySelector('.tf-notif-bell');
+                if (bell) {
+                    const rect = bell.getBoundingClientRect();
+                    const sidebar = document.getElementById('tfSidebar');
+                    const sidebarRight = sidebar ? sidebar.getBoundingClientRect().right : rect.right;
+                    dd.style.left = sidebarRight + 8 + 'px';
+                    dd.style.bottom = (window.innerHeight - rect.bottom) + 'px';
+                    dd.style.top = 'auto';
+                    // On small screens, position it centered
+                    if (window.innerWidth < 768) {
+                        dd.style.left = '50%';
+                        dd.style.transform = 'translateX(-50%)';
+                        dd.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+                    } else {
+                        dd.style.transform = '';
+                    }
+                }
+                loadNotifications();
+            }
         }
     };
 
