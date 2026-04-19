@@ -857,11 +857,13 @@ NAV_HTML = r"""
         </div>
         <!-- Fallback for no-gamification -->
         <div id="xpFallback" style="display:flex;align-items:center;gap:8px;">
-            <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">U</div>
-            <div class="user-info">
-                <div class="user-name" id="userNameFb">{{USER_NAME}}</div>
-                <div class="user-role" id="userRole">{{USER_ROLE}}</div>
-            </div>
+            <a href="/profile" style="text-decoration:none;display:flex;align-items:center;gap:8px;flex:1;min-width:0;" title="My Profile">
+                <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">U</div>
+                <div class="user-info">
+                    <div class="user-name" id="userNameFb" style="cursor:pointer;">{{USER_NAME}}</div>
+                    <div class="user-role" id="userRole">{{USER_ROLE}}</div>
+                </div>
+            </a>
         </div>
         <!-- Language Toggle -->
         <div id="tfLangToggle" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;padding:4px 0;">
@@ -1801,11 +1803,13 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
         </div>
         <!-- Fallback for no-gamification -->
         <div id="xpFallback" style="display:flex;align-items:center;gap:8px;">
-            <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">{user_name[0:1].upper()}</div>
-            <div class="user-info">
-                <div class="user-name" id="userNameFb">{user_name}</div>
-                <div class="user-role" id="userRole">{role_display}</div>
-            </div>
+            <a href="/profile" style="text-decoration:none;display:flex;align-items:center;gap:8px;flex:1;min-width:0;" title="My Profile">
+                <div class="user-avatar" id="userAvatarFb" style="width:32px;height:32px;font-size:12px;">{user_name[0:1].upper()}</div>
+                <div class="user-info">
+                    <div class="user-name" id="userNameFb" style="cursor:pointer;">{user_name}</div>
+                    <div class="user-role" id="userRole">{role_display}</div>
+                </div>
+            </a>
             <a href="/auth/logout" class="tf-logout-btn" title="Logout" onclick="return confirm('Are you sure you want to logout?')" style="margin-left:auto;">
                 <span style="font-size:16px;">&#9211;</span>
             </a>

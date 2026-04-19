@@ -14596,6 +14596,78 @@ class VendorsAPIHandler(BaseHandler):
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
 
+class ProfilePageHandler(BaseHandler):
+    """GET /profile — User profile / settings page."""
+    def get(self):
+        from templates.profile_page import PROFILE_PAGE_HTML
+        self.render_with_nav(PROFILE_PAGE_HTML, active_page="profile",
+                                breadcrumbs=[("Dashboard", "/"), ("My Profile", "")])
+
+
+class AuthMeHandler(BaseHandler):
+    """GET/POST /api/auth/me — Get or update current user profile."""
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        username = self.get_current_user() or "admin"
+        user_data = {"username": username, "display_name": username, "email": "", "role": "admin", "roles": ["admin"]}
+        if USE_SQLITE:
+            try:
+                import db as _db
+                users = _db.load_users()
+                for u in users:
+                    if u.get("username") == username:
+                        user_data = {
+                            "username": u.get("username", ""),
+                            "display_name": u.get("display_name", u.get("username", "")),
+                            "email": u.get("email", ""),
+                            "role": u.get("role", "admin"),
+                            "roles": u.get("roles", [u.get("role", "admin")]),
+                        }
+                        break
+            except Exception:
+                pass
+        else:
+            try:
+                users = load_users()
+                for u in users:
+                    if u.get("username") == username:
+                        user_data = {
+                            "username": u.get("username", ""),
+                            "display_name": u.get("display_name", u.get("username", "")),
+                            "email": u.get("email", ""),
+                            "role": u.get("role", "admin"),
+                            "roles": u.get("roles", [u.get("role", "admin")]),
+                        }
+                        break
+            except Exception:
+                pass
+        self.write(json_encode({"ok": True, "user": user_data}))
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            username = self.get_current_user() or "admin"
+            body = json_decode(self.request.body)
+            display_name = body.get("display_name", "").strip()
+            email = body.get("email", "").strip()
+            if not display_name:
+                self.write(json_encode({"ok": False, "error": "Display name is required"}))
+                return
+            users = load_users()
+            found = False
+            for u in users:
+                if u.get("username") == username:
+                    u["display_name"] = display_name
+                    u["email"] = email
+                    found = True
+                    break
+            if found:
+                save_users(users)
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class AdminSettingsPageHandler(BaseHandler):
     def get(self):
         from templates.admin_settings_page import ADMIN_SETTINGS_PAGE_HTML
@@ -18605,6 +18677,8 @@ def get_routes():
 
         # ── Operations & Admin pages ─────────────────────────
         (r"/admin/settings",                     AdminSettingsPageHandler),
+        (r"/profile",                            ProfilePageHandler),
+        (r"/api/auth/me",                        AuthMeHandler),
         (r"/aisc",                               AISCPageHandler),
         (r"/budget",                             BudgetPageHandler),
         (r"/financial/equipment",                FinancialEquipmentPageHandler),

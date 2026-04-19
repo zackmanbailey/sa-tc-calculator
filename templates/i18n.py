@@ -468,6 +468,28 @@ TRANSLATIONS = {
     "Proposal": "Propuesta",
     "Contract": "Contrato",
 
+    # ── Profile Page ────────────────────────────
+    "My Profile": "Mi Perfil",
+    "Account Information": "Información de Cuenta",
+    "Display Name": "Nombre para Mostrar",
+    "Change Password": "Cambiar Contraseña",
+    "Current Password": "Contraseña Actual",
+    "New Password": "Nueva Contraseña",
+    "Confirm Password": "Confirmar Contraseña",
+    "Update Password": "Actualizar Contraseña",
+    "Save Preferences": "Guardar Preferencias",
+    "Notification Preferences": "Preferencias de Notificaciones",
+    "Work Order Updates": "Actualizaciones de Órdenes de Trabajo",
+    "Get notified when work orders are created or status changes": "Recibir notificaciones cuando se crean órdenes o cambia el estado",
+    "QC Inspections": "Inspecciones de Calidad",
+    "Alerts for inspection results and NCRs": "Alertas de resultados de inspección y RNCs",
+    "Shipping Updates": "Actualizaciones de Envío",
+    "Notifications when loads are built or shipped": "Notificaciones cuando se arman o envían cargas",
+    "Inventory Alerts": "Alertas de Inventario",
+    "Low stock warnings and receiving notifications": "Avisos de stock bajo y notificaciones de recepción",
+    "Safety Incidents": "Incidentes de Seguridad",
+    "Immediate alerts for safety incidents and near misses": "Alertas inmediatas de incidentes de seguridad y casi accidentes",
+
     # ── Admin / Reports ─────────────────────────
     "User Management": "Gestión de Usuarios",
     "Role": "Rol",
