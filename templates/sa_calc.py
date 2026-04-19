@@ -109,7 +109,16 @@ input[type=checkbox]{width:auto;margin-right:6px}
 .toast-success{background:#16A34A}.toast-error{background:#DC2626}.toast-info{background:#1E40AF}
 @keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 /* Responsive tweaks */
-@media(max-width:768px){#main{flex-direction:column}#sidebar{width:100%;border-right:none;border-bottom:1px solid var(--tf-border)}}
+@media(max-width:768px){
+#main{flex-direction:column}
+#sidebar{width:100%;border-right:none;border-bottom:1px solid var(--tf-border);position:relative}
+#sidebar.sa-collapsed > .card,
+#sidebar.sa-collapsed > div:not(.sa-mobile-toggle-bar){display:none}
+.sa-mobile-toggle-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--tf-blue);color:#fff;border-radius:6px;margin-bottom:8px;cursor:pointer;font-weight:600;font-size:13px}
+.sa-mobile-toggle-bar .sa-toggle-arrow{transition:transform .2s}
+#sidebar.sa-collapsed .sa-toggle-arrow{transform:rotate(-90deg)}
+}
+@media(min-width:769px){.sa-mobile-toggle-bar{display:none}}
 </style>
 </head>
 <body>
@@ -156,7 +165,12 @@ input[type=checkbox]{width:auto;margin-right:6px}
 <div id="main">
 
   <!-- SIDEBAR: Project + Building Setup -->
-  <div id="sidebar">
+  <div id="sidebar" class="sa-collapsed">
+
+    <div class="sa-mobile-toggle-bar" onclick="document.getElementById('sidebar').classList.toggle('sa-collapsed')">
+      <span>📂 Project &amp; Setup Panel</span>
+      <span class="sa-toggle-arrow">▼</span>
+    </div>
 
     <!-- Recent Projects -->
     <div class="card">
@@ -401,6 +415,10 @@ const FOOTING_BY_STATE = {TX:10,NM:10,CO:10,FL:12,CA:10,Default:10};
 
 // Initialize with today's date and one building
 window.onload = function() {
+  // On desktop, remove the mobile-collapsed class
+  if (window.innerWidth > 768) {
+    document.getElementById('sidebar').classList.remove('sa-collapsed');
+  }
   const today = new Date();
   const mm = String(today.getMonth()+1).padStart(2,'0');
   const dd = String(today.getDate()).padStart(2,'0');

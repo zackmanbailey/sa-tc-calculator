@@ -475,7 +475,6 @@ body.sidebar-collapsed .tf-main {
         padding: 12px !important;
     }
     .tf-sidebar-toggle { display: none !important; }
-    .tf-mobile-hamburger { display: flex !important; }
     .tf-contextbar {
         padding: 0 12px 0 48px;
     }
@@ -1398,7 +1397,6 @@ def inject_nav(html: str, active_page: str = "", job_code: str = "",
                 '\n<div class="tf-main">' +
                 '\n<div class="tf-contextbar">' +
                 '  <div class="tf-breadcrumb">' +
-                '    <button class="tf-mobile-hamburger" onclick="openMobileSidebar()">&#9776;</button>' +
                 '  </div>' +
                 '  <div class="tf-contextbar-actions"></div>' +
                 '</div>\n' +

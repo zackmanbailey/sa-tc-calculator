@@ -394,11 +394,14 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
       <button class="btn-close-modal" onclick="closeExportModal()">Close</button>
     </div>
   </div>
+</div>
 
+<div style="position:fixed;bottom:16px;right:16px;z-index:900;display:flex;align-items:center;gap:8px;background:#1E293B;padding:8px 14px;border-radius:10px;border:1px solid #334155;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
     <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ Print</button>
     <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
-    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;margin-left:4px;"></span>
-    <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" style="margin-left:8px;">← Dashboard</a></div>
+    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;"></span>
+    <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" style="color:#3B82F6;text-decoration:none;font-size:0.85rem;">← Dashboard</a>
+</div>
 
 <!-- APPROVAL MODAL -->
 <div class="modal-overlay" id="approvalModal">

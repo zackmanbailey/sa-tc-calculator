@@ -2839,20 +2839,869 @@ class InventoryAlertAcknowledgeHandler(BaseHandler):
 # ─────────────────────────────────────────────
 
 class InventoryPageHandler(BaseHandler):
-    """GET /inventory — Coil Inventory page."""
+    """GET /inventory — Coil Inventory page or Parts Inventory page based on ?type= param."""
     required_roles = ["admin", "estimator", "shop"]
 
     def get(self):
         try:
-            from templates.inventory_page import INVENTORY_PAGE_HTML
-            self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory",
-                                    breadcrumbs=[("Dashboard", "/"), ("Inventory", "")])
-
+            inv_type = self.get_argument("type", "")
+            if inv_type in ("", "coils"):
+                from templates.inventory_page import INVENTORY_PAGE_HTML
+                self.render_with_nav(INVENTORY_PAGE_HTML, active_page="inventory",
+                                        breadcrumbs=[("Dashboard", "/"), ("Inventory", "")])
+            else:
+                from templates.parts_inventory_page import PARTS_INVENTORY_PAGE_HTML
+                self.render_with_nav(PARTS_INVENTORY_PAGE_HTML, active_page="inventory",
+                                        breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), (inv_type.title(), "")])
 
         except Exception as e:
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(f"<h2>Error</h2><p>{str(e).replace(chr(60), '&lt;').replace(chr(62), '&gt;')}</p>")
+
+# ─────────────────────────────────────────────
+# PARTS INVENTORY HANDLERS
+# ─────────────────────────────────────────────
+
+PARTS_INVENTORY_PATH = os.path.join(DATA_DIR, "parts_inventory.json")
+
+def _load_parts_inventory():
+    """Load parts inventory from JSON file."""
+    if os.path.isfile(PARTS_INVENTORY_PATH):
+        with open(PARTS_INVENTORY_PATH, "r") as f:
+            return json.load(f)
+    return {"items": {}, "transactions": [], "fab_runs": []}
+
+def _save_parts_inventory(data):
+    """Save parts inventory to JSON file."""
+    with open(PARTS_INVENTORY_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+def _next_part_id(items_dict):
+    """Generate next PART-NNNN id."""
+    max_seq = 0
+    for pid in items_dict:
+        if pid.startswith("PART-"):
+            try:
+                seq = int(pid[5:])
+                if seq > max_seq:
+                    max_seq = seq
+            except (ValueError, IndexError):
+                pass
+    return f"PART-{max_seq + 1:04d}"
+
+def _next_tx_id(transactions):
+    """Generate next PTX-NNNN id."""
+    max_seq = 0
+    for tx in transactions:
+        tid = tx.get("tx_id", "")
+        if tid.startswith("PTX-"):
+            try:
+                seq = int(tid[4:])
+                if seq > max_seq:
+                    max_seq = seq
+            except (ValueError, IndexError):
+                pass
+    return f"PTX-{max_seq + 1:04d}"
+
+def _next_fab_id(fab_runs):
+    """Generate next FAB-NNNN id."""
+    max_seq = 0
+    for fr in fab_runs:
+        fid = fr.get("fab_id", "")
+        if fid.startswith("FAB-"):
+            try:
+                seq = int(fid[4:])
+                if seq > max_seq:
+                    max_seq = seq
+            except (ValueError, IndexError):
+                pass
+    return f"FAB-{max_seq + 1:04d}"
+
+def _compute_item_status(item):
+    """Compute stock status based on qty_on_hand vs min_stock."""
+    qty = float(item.get("qty_on_hand", 0) or 0)
+    min_s = float(item.get("min_stock", 0) or 0)
+    if qty <= 0:
+        return "out_of_stock"
+    elif min_s > 0 and qty <= min_s:
+        return "low_stock"
+    return "in_stock"
+
+def _generate_sku(name):
+    """Auto-generate a SKU from a part name."""
+    import re
+    cleaned = re.sub(r'[^A-Za-z0-9\s]', '', name).upper().strip()
+    parts = cleaned.split()
+    if len(parts) <= 3:
+        sku = "-".join(parts)
+    else:
+        sku = "-".join(parts[:4])
+    return sku[:20]
+
+
+class PartsInventoryAPIHandler(BaseHandler):
+    """GET/POST/DELETE /api/parts-inventory — CRUD for parts inventory items."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+
+            # Query params
+            category = self.get_argument("category", "").strip().lower()
+            search = self.get_argument("search", "").strip().lower()
+            status_filter = self.get_argument("status", "").strip().lower()
+            location = self.get_argument("location", "").strip().lower()
+
+            items_list = []
+            total_value = 0.0
+            low_stock_count = 0
+
+            for item_id, item in items_dict.items():
+                item_copy = dict(item)
+                item_copy["id"] = item_id
+                item_copy["status"] = _compute_item_status(item)
+
+                # Category filter
+                if category and item.get("category", "").lower() != category:
+                    continue
+
+                # Location filter
+                if location and location not in item.get("storage_location", "").lower():
+                    continue
+
+                # Status filter
+                if status_filter and item_copy["status"] != status_filter:
+                    continue
+
+                # Search filter
+                if search:
+                    searchable = " ".join([
+                        item.get("name", ""),
+                        item.get("sku", ""),
+                        item.get("description", ""),
+                        item.get("category", ""),
+                        item.get("subcategory", ""),
+                        item.get("storage_location", ""),
+                    ]).lower()
+                    if search not in searchable:
+                        continue
+
+                items_list.append(item_copy)
+                qty = float(item.get("qty_on_hand", 0) or 0)
+                cost = float(item.get("cost_per_unit", 0) or 0)
+                total_value += qty * cost
+                if item_copy["status"] == "low_stock":
+                    low_stock_count += 1
+
+            # Count pending POs that reference parts
+            pending_pos = 0
+            try:
+                po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+                if os.path.isfile(po_path):
+                    with open(po_path) as f:
+                        pos = json.load(f)
+                    for po in pos:
+                        if po.get("status") in ("draft", "sent", "acknowledged", "partial"):
+                            for li in po.get("line_items", []):
+                                if li.get("part_id", "").startswith("PART-"):
+                                    pending_pos += 1
+                                    break
+            except Exception:
+                pass
+
+            self.write(json_encode({
+                "ok": True,
+                "items": items_list,
+                "stats": {
+                    "total_items": len(items_list),
+                    "low_stock": low_stock_count,
+                    "total_value": round(total_value, 2),
+                    "pending_pos": pending_pos,
+                },
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+            now = datetime.datetime.now().isoformat()
+
+            item_id = body.get("id", "").strip()
+            if item_id and item_id in items_dict:
+                # Update existing item
+                existing = items_dict[item_id]
+                updatable_fields = [
+                    "name", "sku", "category", "subcategory", "description", "unit",
+                    "qty_on_hand", "min_stock", "reorder_qty", "storage_location",
+                    "bin_number", "preferred_vendor_id", "cost_per_unit", "sell_price",
+                    "weight_lbs", "coil_gauge", "coil_lbs_per_unit", "fab_capable", "notes",
+                ]
+                for field in updatable_fields:
+                    if field in body:
+                        existing[field] = body[field]
+                existing["updated"] = now
+                items_dict[item_id] = existing
+                _save_parts_inventory(data)
+                self._log("updated_part", "parts_inventory", item_id, {"name": existing.get("name", "")})
+                self.write(json_encode({"ok": True, "id": item_id, "action": "updated"}))
+            else:
+                # Create new item
+                item_id = _next_part_id(items_dict)
+                new_item = {
+                    "name": body.get("name", "Unknown Part"),
+                    "sku": body.get("sku", "") or _generate_sku(body.get("name", "PART")),
+                    "category": body.get("category", "custom"),
+                    "subcategory": body.get("subcategory", ""),
+                    "description": body.get("description", ""),
+                    "unit": body.get("unit", "ea"),
+                    "qty_on_hand": float(body.get("qty_on_hand", 0) or 0),
+                    "min_stock": float(body.get("min_stock", 10) or 10),
+                    "reorder_qty": float(body.get("reorder_qty", 0) or 0),
+                    "storage_location": body.get("storage_location", ""),
+                    "bin_number": body.get("bin_number", ""),
+                    "preferred_vendor_id": body.get("preferred_vendor_id", ""),
+                    "cost_per_unit": float(body.get("cost_per_unit", 0) or 0),
+                    "sell_price": float(body.get("sell_price", 0) or 0),
+                    "weight_lbs": float(body.get("weight_lbs", 0) or 0),
+                    "coil_gauge": body.get("coil_gauge", ""),
+                    "coil_lbs_per_unit": float(body.get("coil_lbs_per_unit", 0) or 0),
+                    "fab_capable": bool(body.get("fab_capable", False)),
+                    "notes": body.get("notes", ""),
+                    "created": now,
+                    "updated": now,
+                }
+                items_dict[item_id] = new_item
+                data["items"] = items_dict
+                _save_parts_inventory(data)
+                self._log("created_part", "parts_inventory", item_id, {"name": new_item["name"]})
+                self.write(json_encode({"ok": True, "id": item_id, "action": "created"}))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def delete(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            item_id = self.get_argument("id", "").strip()
+            if not item_id:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Missing item id"}))
+                return
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+            if item_id not in items_dict:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": f"Item {item_id} not found"}))
+                return
+            item_name = items_dict[item_id].get("name", item_id)
+            del items_dict[item_id]
+            _save_parts_inventory(data)
+            self._log("deleted_part", "parts_inventory", item_id, {"name": item_name})
+            self.write(json_encode({"ok": True, "id": item_id, "deleted": True}))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.delete() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PartsInventoryAdjustHandler(BaseHandler):
+    """POST /api/parts-inventory/adjust — Adjust stock quantity for a part."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            item_id = body.get("item_id", "").strip()
+            adjustment = float(body.get("adjustment", 0) or 0)
+            reason = body.get("reason", "manual_adjustment").strip()
+            notes = body.get("notes", "").strip()
+            operator = body.get("operator", self.get_current_user() or "system")
+
+            if not item_id:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Missing item_id"}))
+                return
+            if adjustment == 0:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Adjustment cannot be zero"}))
+                return
+
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+            if item_id not in items_dict:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": f"Item {item_id} not found"}))
+                return
+
+            item = items_dict[item_id]
+            old_qty = float(item.get("qty_on_hand", 0) or 0)
+            new_qty = old_qty + adjustment
+            if new_qty < 0:
+                new_qty = 0
+            item["qty_on_hand"] = round(new_qty, 2)
+            item["updated"] = datetime.datetime.now().isoformat()
+
+            # Create transaction record
+            transactions = data.get("transactions", [])
+            tx_id = _next_tx_id(transactions)
+            tx = {
+                "tx_id": tx_id,
+                "item_id": item_id,
+                "item_name": item.get("name", ""),
+                "type": "adjust",
+                "quantity": adjustment,
+                "reason": reason,
+                "notes": notes,
+                "operator": operator,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "balance_before": old_qty,
+                "balance_after": round(new_qty, 2),
+            }
+            transactions.append(tx)
+            data["transactions"] = transactions
+            _save_parts_inventory(data)
+
+            # Log low-stock notification
+            min_stock = float(item.get("min_stock", 0) or 0)
+            if min_stock > 0 and new_qty <= min_stock and new_qty > 0:
+                logger.warning(f"LOW STOCK ALERT: {item.get('name', item_id)} — {new_qty} remaining (min: {min_stock})")
+                try:
+                    notif_path = os.path.join(DATA_DIR, "notifications", "notifications.json")
+                    notifs = []
+                    if os.path.isfile(notif_path):
+                        with open(notif_path) as f:
+                            notifs = json.load(f)
+                    notifs.append({
+                        "id": f"notif-parts-low-{item_id}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                        "type": "low_stock",
+                        "severity": "warning",
+                        "title": f"Low Stock: {item.get('name', item_id)}",
+                        "message": f"{item.get('name', item_id)} is at {new_qty} {item.get('unit', 'ea')} (min: {min_stock})",
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "read": False,
+                        "entity_type": "parts_inventory",
+                        "entity_id": item_id,
+                    })
+                    with open(notif_path, "w") as f:
+                        json.dump(notifs, f, indent=2)
+                except Exception:
+                    pass
+            elif new_qty <= 0:
+                logger.warning(f"OUT OF STOCK: {item.get('name', item_id)}")
+
+            self._log("adjusted_part_stock", "parts_inventory", item_id, {
+                "adjustment": adjustment, "new_qty": round(new_qty, 2), "reason": reason
+            })
+            self.write(json_encode({
+                "ok": True,
+                "tx_id": tx_id,
+                "item_id": item_id,
+                "old_qty": old_qty,
+                "new_qty": round(new_qty, 2),
+                "status": _compute_item_status(item),
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PartsInventoryFabricateHandler(BaseHandler):
+    """POST /api/parts-inventory/fabricate — Fabricate parts from coil stock."""
+    required_roles = ["admin", "shop"]
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            item_id = body.get("item_id", "").strip()
+            quantity = float(body.get("quantity", 0) or 0)
+            source_coil_id = body.get("source_coil_id", "").strip()
+            operator = body.get("operator", self.get_current_user() or "system")
+            notes = body.get("notes", "").strip()
+
+            if not item_id or not source_coil_id or quantity <= 0:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Missing item_id, source_coil_id, or invalid quantity"}))
+                return
+
+            # Load parts inventory
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+            if item_id not in items_dict:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": f"Part {item_id} not found"}))
+                return
+
+            item = items_dict[item_id]
+            if not item.get("fab_capable", False):
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": f"{item.get('name', item_id)} is not fab-capable"}))
+                return
+
+            coil_lbs_per_unit = float(item.get("coil_lbs_per_unit", 0) or 0)
+            if coil_lbs_per_unit <= 0:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Item has no coil_lbs_per_unit defined"}))
+                return
+
+            coil_lbs_needed = round(quantity * coil_lbs_per_unit, 2)
+
+            # Load coil inventory and validate
+            inv = load_inventory()
+            coils = inv.get("coils", inv) if isinstance(inv, dict) else {}
+            if source_coil_id not in coils:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": f"Coil {source_coil_id} not found"}))
+                return
+
+            coil = coils[source_coil_id]
+            coil_stock = float(coil.get("stock_lbs", 0) or 0)
+            if coil_stock < coil_lbs_needed:
+                self.set_status(400)
+                self.write(json_encode({
+                    "ok": False,
+                    "error": f"Insufficient coil stock. Need {coil_lbs_needed} lbs, have {coil_stock} lbs",
+                    "coil_available_lbs": coil_stock,
+                    "coil_needed_lbs": coil_lbs_needed,
+                }))
+                return
+
+            now = datetime.datetime.now().isoformat()
+
+            # Deduct from coil inventory
+            coil["stock_lbs"] = round(coil_stock - coil_lbs_needed, 2)
+            coil["updated"] = now
+            coils[source_coil_id] = coil
+            if isinstance(inv, dict) and "coils" in inv:
+                inv["coils"] = coils
+            save_inventory(inv)
+
+            # Add coil transaction for traceability
+            try:
+                trace_path = os.path.join(DATA_DIR, "traceability_index.json")
+                if os.path.isfile(trace_path):
+                    with open(trace_path) as f:
+                        trace_data = json.load(f)
+                else:
+                    trace_data = {"transactions": []}
+                trace_data.setdefault("transactions", []).append({
+                    "id": f"CTX-FAB-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "coil_id": source_coil_id,
+                    "type": "fabrication",
+                    "lbs": -coil_lbs_needed,
+                    "description": f"Fabricated {int(quantity)}x {item.get('name', item_id)}",
+                    "operator": operator,
+                    "timestamp": now,
+                    "balance_lbs": coil["stock_lbs"],
+                })
+                with open(trace_path, "w") as f:
+                    json.dump(trace_data, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to log coil traceability for fabrication: {e}")
+
+            # Update parts inventory
+            old_qty = float(item.get("qty_on_hand", 0) or 0)
+            new_qty = round(old_qty + quantity, 2)
+            item["qty_on_hand"] = new_qty
+            item["updated"] = now
+
+            # Create fab run record
+            fab_runs = data.get("fab_runs", [])
+            fab_id = _next_fab_id(fab_runs)
+            fab_run = {
+                "fab_id": fab_id,
+                "item_id": item_id,
+                "item_name": item.get("name", ""),
+                "quantity": quantity,
+                "source_coil_id": source_coil_id,
+                "coil_lbs_used": coil_lbs_needed,
+                "operator": operator,
+                "notes": notes,
+                "timestamp": now,
+            }
+            fab_runs.append(fab_run)
+            data["fab_runs"] = fab_runs
+
+            # Create parts transaction record
+            transactions = data.get("transactions", [])
+            tx_id = _next_tx_id(transactions)
+            tx = {
+                "tx_id": tx_id,
+                "item_id": item_id,
+                "item_name": item.get("name", ""),
+                "type": "fabrication",
+                "quantity": quantity,
+                "reason": "fabricated_from_coil",
+                "notes": f"Fab run {fab_id} from coil {source_coil_id}. {notes}".strip(),
+                "operator": operator,
+                "timestamp": now,
+                "balance_before": old_qty,
+                "balance_after": new_qty,
+                "fab_id": fab_id,
+                "source_coil_id": source_coil_id,
+                "coil_lbs_used": coil_lbs_needed,
+            }
+            transactions.append(tx)
+            data["transactions"] = transactions
+            _save_parts_inventory(data)
+
+            self._log("fabricated_parts", "parts_inventory", item_id, {
+                "fab_id": fab_id, "quantity": quantity, "source_coil": source_coil_id,
+                "coil_lbs_used": coil_lbs_needed,
+            })
+            self.write(json_encode({
+                "ok": True,
+                "success": True,
+                "fab_id": fab_id,
+                "tx_id": tx_id,
+                "coil_remaining_lbs": coil["stock_lbs"],
+                "parts_new_qty": new_qty,
+                "coil_lbs_used": coil_lbs_needed,
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PartsInventoryQuickPOHandler(BaseHandler):
+    """POST /api/parts-inventory/quick-po — Create a quick PO for a parts item."""
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            body = json_decode(self.request.body)
+            item_id = body.get("item_id", "").strip()
+            vendor_id = body.get("vendor_id", "").strip()
+            quantity = float(body.get("quantity", 0) or 0)
+            unit_cost = float(body.get("unit_cost", 0) or 0)
+            notes = body.get("notes", "").strip()
+
+            if not item_id or quantity <= 0:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Missing item_id or invalid quantity"}))
+                return
+
+            # Load parts inventory to get item details
+            parts_data = _load_parts_inventory()
+            items_dict = parts_data.get("items", {})
+            if item_id not in items_dict:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": f"Part {item_id} not found"}))
+                return
+
+            item = items_dict[item_id]
+            if not vendor_id:
+                vendor_id = item.get("preferred_vendor_id", "")
+            if unit_cost <= 0:
+                unit_cost = float(item.get("cost_per_unit", 0) or 0)
+
+            # Load purchase orders
+            po_path = os.path.join(DATA_DIR, "purchase_orders.json")
+            pos = []
+            if os.path.isfile(po_path):
+                with open(po_path) as f:
+                    pos = json.load(f)
+
+            # Generate PO number
+            year = datetime.datetime.now().year
+            prefix = f"PO-{year}-"
+            max_seq = 0
+            for p in pos:
+                pn = p.get("po_number", "")
+                if pn.startswith(prefix):
+                    try:
+                        seq = int(pn[len(prefix):])
+                        if seq > max_seq:
+                            max_seq = seq
+                    except (ValueError, IndexError):
+                        pass
+            po_number = f"{prefix}{max_seq + 1:04d}"
+
+            now = datetime.datetime.now().isoformat()
+            line_total = round(quantity * unit_cost, 2)
+
+            # Resolve vendor name
+            vendor_name = ""
+            if vendor_id:
+                try:
+                    vendor_path = os.path.join(DATA_DIR, "vendors.json")
+                    if os.path.isfile(vendor_path):
+                        with open(vendor_path) as f:
+                            vendors = json.load(f)
+                        for v in (vendors if isinstance(vendors, list) else vendors.get("vendors", [])):
+                            if v.get("id") == vendor_id:
+                                vendor_name = v.get("name", v.get("company", ""))
+                                break
+                except Exception:
+                    pass
+
+            new_po = {
+                "id": po_number,
+                "po_number": po_number,
+                "vendor_id": vendor_id,
+                "vendor": vendor_name,
+                "project": "",
+                "delivery_date": "",
+                "terms": "net30",
+                "notes": f"Quick PO for {item.get('name', item_id)}. {notes}".strip(),
+                "line_items": [{
+                    "part_id": item_id,
+                    "description": item.get("name", ""),
+                    "sku": item.get("sku", ""),
+                    "qty": quantity,
+                    "unit": item.get("unit", "ea"),
+                    "unit_price": unit_cost,
+                    "line_total": line_total,
+                }],
+                "item_count": 1,
+                "total": line_total,
+                "status": "draft",
+                "source": "parts_inventory_quick_po",
+                "created_at": now,
+                "created": now[:10],
+                "created_by": self.get_current_user() or "system",
+            }
+            pos.append(new_po)
+            with open(po_path, "w") as f:
+                json.dump(pos, f, indent=2)
+
+            self._log("created_quick_po", "purchase_order", po_number, {
+                "part_id": item_id, "part_name": item.get("name", ""), "quantity": quantity
+            })
+            self.write(json_encode({
+                "ok": True,
+                "success": True,
+                "po_number": po_number,
+                "total": line_total,
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.post() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PartsInventoryTransactionsHandler(BaseHandler):
+    """GET /api/parts-inventory/transactions — Return transaction history."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = _load_parts_inventory()
+            transactions = data.get("transactions", [])
+
+            # Optional filters
+            item_id = self.get_argument("item_id", "").strip()
+            tx_type = self.get_argument("type", "").strip()
+            limit = int(self.get_argument("limit", "50"))
+
+            if item_id:
+                transactions = [t for t in transactions if t.get("item_id") == item_id]
+            if tx_type:
+                transactions = [t for t in transactions if t.get("type") == tx_type]
+
+            # Sort by timestamp descending
+            transactions.sort(key=lambda t: t.get("timestamp", ""), reverse=True)
+
+            # Apply limit
+            transactions = transactions[:limit]
+
+            self.write(json_encode({
+                "ok": True,
+                "transactions": transactions,
+                "count": len(transactions),
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class PartsInventoryCatalogHandler(BaseHandler):
+    """GET /api/parts-inventory/catalog — Return or auto-populate the standard parts catalog."""
+    required_roles = ["admin", "estimator", "shop"]
+
+    def _build_standard_catalog(self):
+        """Build the default catalog of standard TitanForge parts."""
+        now = datetime.datetime.now().isoformat()
+        catalog = {}
+        seq = 0
+
+        def add_item(name, category, subcategory, unit="ea", min_stock=10,
+                     fab_capable=False, coil_gauge="", coil_lbs_per_unit=0,
+                     weight_lbs=0, description=""):
+            nonlocal seq
+            seq += 1
+            item_id = f"PART-{seq:04d}"
+            catalog[item_id] = {
+                "name": name,
+                "sku": _generate_sku(name),
+                "category": category,
+                "subcategory": subcategory,
+                "description": description or name,
+                "unit": unit,
+                "qty_on_hand": 0,
+                "min_stock": min_stock,
+                "reorder_qty": 0,
+                "storage_location": "",
+                "bin_number": "",
+                "preferred_vendor_id": "",
+                "cost_per_unit": 0,
+                "sell_price": 0,
+                "weight_lbs": weight_lbs,
+                "coil_gauge": coil_gauge,
+                "coil_lbs_per_unit": coil_lbs_per_unit,
+                "fab_capable": fab_capable,
+                "notes": "",
+                "created": now,
+                "updated": now,
+            }
+
+        # ── Fabricated Parts ──
+        add_item("P1 Interior Clips", "fabricated", "clips",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="16", coil_lbs_per_unit=0.35, weight_lbs=0.35)
+        add_item("P2 End Cap Plates", "fabricated", "plates",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="16", coil_lbs_per_unit=0.5, weight_lbs=0.5)
+        add_item("P3 Base Plates", "fabricated", "plates",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="12", coil_lbs_per_unit=1.2, weight_lbs=1.2)
+        add_item("Splice Plates - Small", "fabricated", "plates",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="12", coil_lbs_per_unit=2.5, weight_lbs=2.5)
+        add_item("Splice Plates - Large", "fabricated", "plates",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="10", coil_lbs_per_unit=4.0, weight_lbs=4.0)
+        add_item("Sag Rods - 2x2 Angle", "fabricated", "structural",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="14", coil_lbs_per_unit=1.8, weight_lbs=1.8,
+                 description="Sag Rods - 2x2 Angle (per ft)")
+        add_item("Triangles / Gusset Plates", "fabricated", "plates",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="12", coil_lbs_per_unit=3.0, weight_lbs=3.0)
+        add_item("Hurricane Straps", "fabricated", "straps",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="16", coil_lbs_per_unit=0.6, weight_lbs=0.6)
+        add_item("Endcap U-Channels", "fabricated", "channels",
+                 unit="ea", min_stock=10, fab_capable=True,
+                 coil_gauge="16", coil_lbs_per_unit=0.8, weight_lbs=0.8,
+                 description="Endcap U-Channels (per ft)")
+
+        # ── Fasteners & Hardware ──
+        add_item("#12 Tek Screws 1\"", "fasteners", "tek_screws",
+                 unit="box/250", min_stock=5)
+        add_item("#12 Tek Screws 1.5\"", "fasteners", "tek_screws",
+                 unit="box/250", min_stock=5)
+        add_item("#12 Tek Screws 2\"", "fasteners", "tek_screws",
+                 unit="box/250", min_stock=5)
+        add_item("3/8\" Hex Bolts", "fasteners", "hex_bolts",
+                 unit="box/100", min_stock=5)
+        add_item("1/2\" Hex Bolts", "fasteners", "hex_bolts",
+                 unit="box/100", min_stock=5)
+        add_item("5/8\" Hex Bolts", "fasteners", "hex_bolts",
+                 unit="box/50", min_stock=5)
+        add_item("3/4\" Hex Bolts", "fasteners", "hex_bolts",
+                 unit="box/25", min_stock=5)
+        add_item("3/8\" Nuts", "fasteners", "nuts",
+                 unit="box/100", min_stock=5)
+        add_item("1/2\" Nuts", "fasteners", "nuts",
+                 unit="box/100", min_stock=5)
+        add_item("3/8\" Washers", "fasteners", "washers",
+                 unit="box/100", min_stock=5)
+        add_item("1/2\" Washers", "fasteners", "washers",
+                 unit="box/100", min_stock=5)
+        add_item("3/8\"x3\" Lag Bolts", "fasteners", "lag_bolts",
+                 unit="box/50", min_stock=5)
+        add_item("1/2\"x4\" Lag Bolts", "fasteners", "lag_bolts",
+                 unit="box/25", min_stock=5)
+        add_item("1/2\"x12\" Anchor Bolts", "fasteners", "anchor_bolts",
+                 unit="ea", min_stock=5)
+        add_item("5/8\"x12\" Anchor Bolts", "fasteners", "anchor_bolts",
+                 unit="ea", min_stock=5)
+        add_item("3/4\"x18\" Anchor Bolts", "fasteners", "anchor_bolts",
+                 unit="ea", min_stock=5)
+
+        # ── Rebar ──
+        add_item("#4 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=13.3)
+        add_item("#5 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=20.8)
+        add_item("#6 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=30.0)
+        add_item("#7 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=40.8)
+        add_item("#8 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=53.4)
+        add_item("#9 Rebar 20ft Stick", "rebar", "rebar_stick",
+                 unit="ea", min_stock=20, weight_lbs=68.0)
+        add_item("J-Bolts 1/2\"x8\"", "rebar", "j_bolts",
+                 unit="ea", min_stock=20)
+        add_item("J-Bolts 5/8\"x10\"", "rebar", "j_bolts",
+                 unit="ea", min_stock=20)
+        add_item("Rebar Chairs", "rebar", "accessories",
+                 unit="ea", min_stock=20)
+        add_item("Rebar Tie Wire", "rebar", "accessories",
+                 unit="roll", min_stock=20)
+
+        return catalog
+
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            data = _load_parts_inventory()
+            items_dict = data.get("items", {})
+
+            # If empty, auto-populate with standard catalog
+            if not items_dict:
+                items_dict = self._build_standard_catalog()
+                data["items"] = items_dict
+                _save_parts_inventory(data)
+                logger.info("PartsInventoryCatalogHandler: Auto-populated standard parts catalog")
+
+            # Return all items with status
+            items_list = []
+            for item_id, item in items_dict.items():
+                item_copy = dict(item)
+                item_copy["id"] = item_id
+                item_copy["status"] = _compute_item_status(item)
+                items_list.append(item_copy)
+
+            # Group by category for the catalog view
+            categories = {}
+            for item in items_list:
+                cat = item.get("category", "custom")
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append(item)
+
+            self.write(json_encode({
+                "ok": True,
+                "items": items_list,
+                "categories": categories,
+                "total_items": len(items_list),
+            }))
+        except Exception as e:
+            logger.error(f"{self.__class__.__name__}.get() error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 class TraceabilityPageHandler(BaseHandler):
     """GET /inventory/traceability — Material Traceability page."""
     required_roles = ["admin", "estimator", "shop"]
@@ -5087,6 +5936,33 @@ class GlobalSearchHandler(BaseHandler):
                                 "status": wo_ref.get("status", ""),
                                 "url": f'/work-orders?id={wo_id}',
                                 "icon": "work_order",
+                            })
+                except Exception:
+                    pass
+
+            # Search parts inventory
+            if not entity_filter or entity_filter == "part":
+                try:
+                    parts_data = _load_parts_inventory()
+                    for pid, part in parts_data.get("items", {}).items():
+                        if not isinstance(part, dict):
+                            continue
+                        searchable = " ".join([
+                            pid,
+                            part.get("name", ""),
+                            part.get("sku", ""),
+                            part.get("category", ""),
+                            part.get("subcategory", ""),
+                            part.get("description", ""),
+                        ]).lower()
+                        if q in searchable:
+                            cat = part.get("category", "fabricated")
+                            results.append({
+                                "type": "part",
+                                "title": part.get("name", pid),
+                                "subtitle": f'{part.get("category","").title()} | {part.get("qty_on_hand",0)} {part.get("unit","ea")} in stock',
+                                "url": f'/inventory?type={cat}',
+                                "icon": "\U0001F4E6",
                             })
                 except Exception:
                     pass
@@ -17567,6 +18443,14 @@ def get_routes():
         # ── Inventory Page ────────────────────────────────────
         (r"/inventory",                  InventoryPageHandler),
         (r"/inventory/traceability",     TraceabilityPageHandler),
+
+        # ── Parts Inventory API ───────────────────────────────
+        (r"/api/parts-inventory",              PartsInventoryAPIHandler),
+        (r"/api/parts-inventory/adjust",       PartsInventoryAdjustHandler),
+        (r"/api/parts-inventory/fabricate",    PartsInventoryFabricateHandler),
+        (r"/api/parts-inventory/quick-po",     PartsInventoryQuickPOHandler),
+        (r"/api/parts-inventory/transactions", PartsInventoryTransactionsHandler),
+        (r"/api/parts-inventory/catalog",      PartsInventoryCatalogHandler),
 
         # ── Shipping Documents ────────────────────────────────
         # ── Load Builder ──────────────────────────────────────

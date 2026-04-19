@@ -139,6 +139,7 @@ function draw() {
   // ================================================================
   // ZONE 1: Z-PURLIN PROFILE (cross-section) — LEFT SIDE (x=40..380)
   // ================================================================
+  // Z-purlin: top flange RIGHT, bottom flange LEFT, lips at ends
   svg.appendChild($t(200, 22, 'SECTION A-A: Z-PURLIN PROFILE', 'ttl'));
 
   var cx = 200, cy = 220;
@@ -155,15 +156,25 @@ function draw() {
 
   var secG = $g('hover-part', 'z-section');
 
-  // Top lip (angled 45deg)
+  // Web (vertical, centered on cx)
+  secG.appendChild($r(cx - zT/2, zTop, zT, zD, 'cee'));
+
+  // Top flange (extends RIGHT from top of web)
+  secG.appendChild($r(cx, zTop, zTF, zT, 'cee'));
+
+  // Bottom flange (extends LEFT from bottom of web)
+  secG.appendChild($r(cx - zBF, zBot - zT, zBF, zT, 'cee'));
+
+  // Top lip — at right end of top flange, curls UP-RIGHT at ~45deg
   var lipLen = zLip;
   var lip45 = lipLen * Math.cos(Math.PI/4);
-  var topLipX1 = cx - zTF;
+  var lipNx = zT * Math.cos(Math.PI/4) / 2;
+  var lipNy = zT * Math.sin(Math.PI/4) / 2;
+
+  var topLipX1 = cx + zTF;
   var topLipY1 = zTop;
   var topLipX2 = topLipX1 + lip45;
   var topLipY2 = topLipY1 - lip45;
-  var lipNx = zT * Math.cos(Math.PI/4) / 2;
-  var lipNy = zT * Math.sin(Math.PI/4) / 2;
   var topLipPts = [
     (topLipX1 - lipNy) + ',' + (topLipY1 - lipNx),
     (topLipX2 - lipNy) + ',' + (topLipY2 - lipNx),
@@ -172,31 +183,22 @@ function draw() {
   ].join(' ');
   secG.appendChild($e('polygon', {points: topLipPts, class: 'cee'}));
 
-  // Top flange
-  secG.appendChild($r(cx - zTF, zTop, zTF, zT, 'cee'));
-
-  // Web
-  secG.appendChild($r(cx - zT/2, zTop, zT, zD, 'cee'));
-
-  // Bottom flange
-  secG.appendChild($r(cx, zBot - zT, zBF, zT, 'cee'));
-
-  // Bottom lip (angled 45deg opposite direction)
-  var botLipX1 = cx + zBF;
+  // Bottom lip — at left end of bottom flange, curls DOWN-LEFT at ~45deg
+  var botLipX1 = cx - zBF;
   var botLipY1 = zBot;
   var botLipX2 = botLipX1 - lip45;
   var botLipY2 = botLipY1 + lip45;
   var botLipPts = [
-    (botLipX1 - lipNy) + ',' + (botLipY1 + lipNx),
-    (botLipX2 - lipNy) + ',' + (botLipY2 + lipNx),
-    (botLipX2 + lipNy) + ',' + (botLipY2 - lipNx),
-    (botLipX1 + lipNy) + ',' + (botLipY1 - lipNx)
+    (botLipX1 + lipNy) + ',' + (botLipY1 + lipNx),
+    (botLipX2 + lipNy) + ',' + (botLipY2 + lipNx),
+    (botLipX2 - lipNy) + ',' + (botLipY2 - lipNx),
+    (botLipX1 - lipNy) + ',' + (botLipY1 - lipNx)
   ].join(' ');
   secG.appendChild($e('polygon', {points: botLipPts, class: 'cee'}));
 
   // Centerlines
   secG.appendChild($l(cx, zTop - lip45 - 15, cx, zBot + lip45 + 15, 'center'));
-  secG.appendChild($l(cx - zTF - 20, cy, cx + zBF + 20, cy, 'center'));
+  secG.appendChild($l(cx - zBF - 20, cy, cx + zTF + 20, cy, 'center'));
   svg.appendChild(secG);
 
   // Bolt holes in web
@@ -209,32 +211,32 @@ function draw() {
   svg.appendChild($t(cx + 12, zTop + zD * 0.3, '15/16" HOLES (TYP)', 'note'));
 
   // Profile dimensions
-  dimV(svg, cx + zBF + 10, zTop, zBot, 20, p.depth + '"');
-  dimH(svg, cx - zTF, cx, zTop - 5, -16, sp.topFlange + '"');
-  dimH(svg, cx, cx + zBF, zBot + 5, 16, sp.botFlange + '"');
+  dimV(svg, cx + zTF + 15, zTop, zBot, 20, p.depth + '"');
+  dimH(svg, cx, cx + zTF, zTop - 5, -16, sp.topFlange + '"');
+  dimH(svg, cx - zBF, cx, zBot + 5, 16, sp.botFlange + '"');
   svg.appendChild($t(topLipX2 + 5, topLipY2 - 3, sp.lip + '"', 'note'));
-  svg.appendChild($t(botLipX2 - 25, botLipY2 + 10, sp.lip + '"', 'note'));
+  svg.appendChild($t(botLipX2 - 25, botLipY2 + 12, sp.lip + '"', 'note'));
 
-  // Gauge callout
-  svg.appendChild($t(cx - zTF - 30, cy, p.gauge, 'lblb', 'middle'));
-  svg.appendChild($t(cx - zTF - 30, cy + 10, '(' + fmtDec(p.thick, 3) + '")', 'note', 'middle'));
+  // Gauge callout (left side)
+  svg.appendChild($t(cx - zBF - 40, cy, p.gauge, 'lblb', 'middle'));
+  svg.appendChild($t(cx - zBF - 40, cy + 10, '(' + fmtDec(p.thick, 3) + '")', 'note', 'middle'));
 
-  // Material callout
-  svg.appendChild($t(cx + zBF + 35, cy + 20, 'MATERIAL:', 'noteb'));
-  svg.appendChild($t(cx + zBF + 35, cy + 30, 'G90 GALVANIZED', 'note'));
-  svg.appendChild($t(cx + zBF + 35, cy + 40, 'STEEL', 'note'));
+  // Material callout (right side)
+  svg.appendChild($t(cx + zTF + 40, cy + 20, 'MATERIAL:', 'noteb'));
+  svg.appendChild($t(cx + zTF + 40, cy + 30, 'G90 GALVANIZED', 'note'));
+  svg.appendChild($t(cx + zTF + 40, cy + 40, 'STEEL', 'note'));
 
   // Solar holes on top flange (if enabled)
   if (p.solar) {
     var solarG = $g('hover-part', 'solar-holes');
     // Show holes along top flange in cross-section
-    var hx1 = cx - zTF * 0.4;
-    var hx2 = cx - zTF * 0.6;
+    var hx1 = cx + zTF * 0.4;
+    var hx2 = cx + zTF * 0.6;
     solarG.appendChild($c(hx1, zTop + zT/2, 1.8, 'bolt'));
     solarG.appendChild($c(hx2, zTop + zT/2, 1.8, 'bolt'));
     svg.appendChild(solarG);
-    svg.appendChild($t(cx - zTF - 5, zTop - 10, 'SOLAR HOLES', 'warn-text'));
-    svg.appendChild($t(cx - zTF - 5, zTop - 3, '7/16" DIA (TYP)', 'note'));
+    svg.appendChild($t(cx + zTF + 5, zTop - 10, 'SOLAR HOLES', 'warn-text'));
+    svg.appendChild($t(cx + zTF + 5, zTop - 3, '7/16" DIA (TYP)', 'note'));
   }
 
   svg.appendChild($t(200, zBot + lip45 + 30, 'SCALE: 1" = ' + fmtDec(1/zScale * 12, 1) + '"', 'note', 'middle'));
