@@ -1166,6 +1166,7 @@ INVENTORY_PAGE_HTML = r'''
                 if (!response.ok) throw new Error('API error ' + response.status);
                 const result = await response.json();
                 const coils = result.coils || [];
+                window._lastCoilsData = coils;  // Cache for delete lookup
                 const tbody = $('coils-table');
 
                 if (coils.length === 0) {
@@ -1189,7 +1190,7 @@ INVENTORY_PAGE_HTML = r'''
                             <button class="btn btn-small btn-secondary" onclick="showReceiveModal()">Receive</button>
                             <button class="btn btn-small btn-secondary" onclick="showAllocateModal()">Allocate</button>
                             <button class="btn btn-small btn-secondary" onclick="showEditCoilModal('${c.coil_id}')" style="background:#1E40AF;color:#93C5FD;border-color:#2563EB">Edit</button>
-                            <button class="btn btn-small btn-danger" onclick="deleteCoil('${c.coil_id}', '${(c.name || c.coil_id).replace(/'/g, "\\\\'")}', ${c.committed_lbs || 0})" style="font-size:11px;padding:4px 8px">Delete</button>
+                            <button class="btn btn-small btn-danger" onclick="deleteCoil('${c.coil_id}')" style="font-size:11px;padding:4px 8px">Delete</button>
                         </td>
                     </tr>
                 `).join('');
@@ -1625,8 +1626,12 @@ INVENTORY_PAGE_HTML = r'''
         // ── Delete Coil ────────────────────────────────────────
         let pendingDeleteCoilId = null;
 
-        function deleteCoil(coilId, coilName, committedLbs) {
+        function deleteCoil(coilId) {
             pendingDeleteCoilId = coilId;
+            // Look up coil name and committed lbs from cached data to avoid HTML escaping issues
+            const coilData = (window._lastCoilsData || []).find(c => c.coil_id === coilId);
+            const coilName = coilData ? (coilData.name || coilId) : coilId;
+            const committedLbs = coilData ? (coilData.committed_lbs || 0) : 0;
             $('delete-confirm-msg').textContent = 'Are you sure you want to delete coil "' + coilName + '"? This cannot be undone.';
 
             if (committedLbs > 0) {
