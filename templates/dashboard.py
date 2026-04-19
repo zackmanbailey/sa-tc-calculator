@@ -613,6 +613,16 @@ DASHBOARD_HTML = r"""
         .qli-green  { background: linear-gradient(135deg, rgba(5,150,105,0.2), rgba(52,211,153,0.1)); }
         .qli-purple { background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(167,139,250,0.1)); }
         .qli-navy   { background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(51,65,85,0.6)); }
+        .qli-accent { background: linear-gradient(135deg, rgba(246,174,45,0.25), rgba(251,191,36,0.1)); }
+
+        .quick-link.ql-featured {
+            border-color: rgba(246,174,45,0.3);
+            background: linear-gradient(135deg, var(--dash-surface) 0%, rgba(246,174,45,0.06) 100%);
+        }
+        .quick-link.ql-featured:hover {
+            border-color: rgba(246,174,45,0.5);
+            box-shadow: 0 8px 28px rgba(246,174,45,0.15);
+        }
 
         .quick-link-title {
             font-size: 0.8rem;
@@ -1771,6 +1781,11 @@ DASHBOARD_HTML = r"""
         <!-- ═══════════════════════════════════════════ -->
         <div class="section-divider"><h2>Quick Links</h2></div>
         <div class="quick-links-grid" id="quickLinksGrid">
+            <a class="quick-link ql-featured" href="/sa" data-ql="quick_estimate">
+                <div class="quick-link-icon qli-accent">&#9889;</div>
+                <div class="quick-link-title" data-i18n="dash_quick_estimate">Quick Estimate</div>
+                <div class="quick-link-desc" data-i18n="dash_quick_estimate_desc">Jump straight into a new SA estimate</div>
+            </a>
             <a class="quick-link" href="/sa">
                 <div class="quick-link-icon qli-blue">&#128208;</div>
                 <div class="quick-link-title">SA Estimator</div>

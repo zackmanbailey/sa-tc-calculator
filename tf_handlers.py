@@ -4918,6 +4918,101 @@ class ProjectNextStepsHandler(BaseHandler):
             logger.error(f"{self.__class__.__name__}.{self.request.method}() error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
+
+
+class ProjectBOMHandler(BaseHandler):
+    """GET /api/project/{job_code}/bom — Return BOM data filtered by user role."""
+    def get(self, job_code):
+        try:
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+            cpath = os.path.join(proj_dir, "current.json")
+
+            if not os.path.isfile(cpath):
+                self.write(json_encode({"ok": False, "error": "No BOM saved for this project", "has_bom": False}))
+                return
+
+            with open(cpath) as f:
+                data = json.load(f)
+
+            role = self.get_user_role() or "viewer"
+
+            # Build role-filtered response
+            buildings = data.get("buildings", data.get("bldg_data", []))
+            bom_result = data.get("bom_result") or data.get("results") or {}
+            bom_buildings = bom_result.get("buildings", [])
+
+            # Check if this is a direct BOM result or a saved project config
+            if not bom_buildings and "buildings" in bom_result:
+                bom_buildings = bom_result["buildings"]
+
+            # Role-based filtering
+            show_costs = role in ("admin", "god_mode", "owner", "general_manager", "estimator")
+            show_field_view = role in ("field_super", "installer", "viewer")
+
+            result = {
+                "ok": True,
+                "has_bom": True,
+                "role": role,
+                "show_costs": show_costs,
+                "project": bom_result.get("project", data.get("project", {})),
+                "buildings": [],
+                "saved_at": data.get("saved_at", ""),
+                "version": data.get("version", 1),
+            }
+
+            # Add totals only for cost-visible roles
+            if show_costs:
+                result["total_weight_lbs"] = bom_result.get("total_weight_lbs", 0)
+                result["total_material_cost"] = bom_result.get("total_material_cost", 0)
+                result["total_sell_price"] = bom_result.get("total_sell_price", 0)
+                result["total_labor_sell_price"] = bom_result.get("total_labor_sell_price", 0)
+                result["summary_by_coil"] = bom_result.get("summary_by_coil", [])
+            else:
+                result["total_weight_lbs"] = bom_result.get("total_weight_lbs", 0)
+
+            for bldg in bom_buildings:
+                b = {
+                    "building_name": bldg.get("building_name", bldg.get("building_id", "")),
+                    "type": bldg.get("type", ""),
+                    "width_ft": bldg.get("width_ft", 0),
+                    "length_ft": bldg.get("length_ft", 0),
+                    "total_weight_lbs": bldg.get("total_weight_lbs", 0),
+                    "line_items": [],
+                }
+
+                if show_costs:
+                    b["total_material_cost"] = bldg.get("total_material_cost", 0)
+                    b["total_sell_price"] = bldg.get("total_sell_price", 0)
+                    b["labor_total_days"] = bldg.get("labor_total_days", 0)
+                    b["labor_sell_price"] = bldg.get("labor_sell_price", 0)
+
+                for item in bldg.get("line_items", []):
+                    li = {
+                        "category": item.get("category", ""),
+                        "description": item.get("description", ""),
+                        "qty": item.get("qty", 0),
+                        "unit": item.get("unit", ""),
+                        "total_weight_lbs": item.get("total_weight_lbs", 0),
+                        "piece_count": item.get("piece_count", 0),
+                        "piece_length_in": item.get("piece_length_in", 0),
+                        "notes": item.get("notes", ""),
+                    }
+                    if show_costs:
+                        li["unit_cost"] = item.get("unit_cost", 0)
+                        li["total_cost"] = item.get("total_cost", 0)
+                    b["line_items"].append(li)
+
+                result["buildings"].append(b)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode(result))
+        except Exception as e:
+            logger.error(f"ProjectBOMHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"error": str(e)}))
+
+
 class ProjectPageHandler(BaseHandler):
     """GET /project/{job_code} — Full project page."""
     def get(self, job_code):
@@ -18350,6 +18445,7 @@ def get_routes():
         (r"/api/projects/full",          ProjectListEnhancedHandler),
 
         # ── Project Page ──────────────────────────────────────
+        (r"/api/project/([^/]+)/bom$",   ProjectBOMHandler),
         (r"/project/([^/]+)",            ProjectPageHandler),
 
         # ── Shop Drawings ─────────────────────────────────────

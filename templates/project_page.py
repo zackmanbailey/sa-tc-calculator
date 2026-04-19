@@ -748,12 +748,202 @@ PROJECT_PAGE_HTML = r"""
             .sidebar { order: -1; }
         }
 
+        /* ── BOM Section ───────────────────────────────── */
+        .bom-section {
+            background: var(--tf-surface);
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius-lg);
+            margin-bottom: var(--tf-sp-6);
+            overflow: hidden;
+        }
+
+        .bom-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--tf-sp-4) var(--tf-sp-6);
+            cursor: pointer;
+            user-select: none;
+            background: var(--tf-surface);
+            border-bottom: 1px solid var(--tf-border);
+        }
+
+        .bom-header:hover { background: var(--tf-gray-50); }
+
+        .bom-header-left {
+            display: flex;
+            align-items: center;
+            gap: var(--tf-sp-3);
+        }
+
+        .bom-header-left h2 {
+            font-size: var(--tf-text-lg);
+            font-weight: 700;
+            color: var(--tf-gray-900);
+            margin: 0;
+        }
+
+        .bom-toggle-icon {
+            font-size: 1.2rem;
+            transition: transform 200ms var(--tf-ease);
+            color: var(--tf-gray-500);
+        }
+
+        .bom-section.expanded .bom-toggle-icon { transform: rotate(180deg); }
+
+        .bom-body { display: none; padding: var(--tf-sp-5) var(--tf-sp-6); }
+        .bom-section.expanded .bom-body { display: block; }
+
+        .bom-summary-bar {
+            display: flex;
+            gap: var(--tf-sp-4);
+            flex-wrap: wrap;
+            margin-bottom: var(--tf-sp-5);
+            padding: var(--tf-sp-4);
+            background: var(--tf-gray-50);
+            border-radius: var(--tf-radius);
+            border: 1px solid var(--tf-border);
+        }
+
+        .bom-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 120px;
+        }
+
+        .bom-stat-label {
+            font-size: var(--tf-text-xs);
+            font-weight: 600;
+            color: var(--tf-gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .bom-stat-value {
+            font-size: var(--tf-text-lg);
+            font-weight: 700;
+            color: var(--tf-gray-900);
+        }
+
+        .bom-actions {
+            display: flex;
+            gap: var(--tf-sp-2);
+            margin-bottom: var(--tf-sp-5);
+            flex-wrap: wrap;
+        }
+
+        .bom-bldg-card {
+            background: #fff;
+            border: 1px solid var(--tf-border);
+            border-radius: var(--tf-radius);
+            margin-bottom: var(--tf-sp-4);
+            overflow: hidden;
+        }
+
+        .bom-bldg-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--tf-sp-3) var(--tf-sp-4);
+            background: var(--tf-blue-light);
+            border-bottom: 1px solid var(--tf-border);
+            cursor: pointer;
+        }
+
+        .bom-bldg-header:hover { background: #DBEAFE; }
+
+        .bom-bldg-title {
+            font-size: var(--tf-text-sm);
+            font-weight: 700;
+            color: var(--tf-gray-900);
+        }
+
+        .bom-bldg-meta {
+            font-size: var(--tf-text-xs);
+            color: var(--tf-gray-500);
+            display: flex;
+            gap: var(--tf-sp-3);
+        }
+
+        .bom-bldg-body { display: none; padding: var(--tf-sp-3); }
+        .bom-bldg-card.open .bom-bldg-body { display: block; }
+
+        .bom-cat-heading {
+            font-size: var(--tf-text-xs);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--tf-blue);
+            padding: var(--tf-sp-2) 0;
+            margin-top: var(--tf-sp-3);
+            border-bottom: 2px solid var(--tf-blue-light);
+        }
+
+        .bom-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: var(--tf-text-xs);
+            margin-bottom: var(--tf-sp-2);
+        }
+
+        .bom-table th {
+            text-align: left;
+            padding: 6px 8px;
+            font-weight: 600;
+            color: var(--tf-gray-500);
+            border-bottom: 1px solid var(--tf-border);
+            white-space: nowrap;
+        }
+
+        .bom-table td {
+            padding: 6px 8px;
+            color: var(--tf-gray-800);
+            border-bottom: 1px solid var(--tf-gray-100);
+        }
+
+        .bom-table tr:hover td { background: var(--tf-gray-50); }
+        .bom-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+        .bom-empty {
+            text-align: center;
+            padding: var(--tf-sp-8);
+            color: var(--tf-gray-400);
+        }
+
+        .bom-empty-icon { font-size: 3rem; margin-bottom: var(--tf-sp-3); }
+
+        .bom-empty-text {
+            font-size: var(--tf-text-sm);
+            margin-bottom: var(--tf-sp-4);
+        }
+
+        .bom-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--tf-success-bg);
+            color: var(--tf-success);
+        }
+
+        .bom-badge.empty-badge {
+            background: var(--tf-gray-100);
+            color: var(--tf-gray-500);
+        }
+
         @media (max-width: 768px) {
             .container { padding: var(--tf-sp-4); }
             .project-header { flex-direction: column; }
             .header-actions { width: 100%; }
             .info-cards { grid-template-columns: 1fr; }
             .doc-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+            .bom-summary-bar { flex-direction: column; }
+            .bom-table { font-size: 11px; }
+            .bom-table th, .bom-table td { padding: 4px 6px; }
         }
     </style>
 </head>
@@ -892,6 +1082,36 @@ PROJECT_PAGE_HTML = r"""
             <div class="info-card" id="projectStatsCard">
                 <h3>Project Stats</h3>
                 <div id="projectStats"></div>
+            </div>
+        </div>
+
+        <!-- BILL OF MATERIALS SECTION -->
+        <div class="bom-section" id="bomSection">
+            <div class="bom-header" onclick="toggleBOMSection()">
+                <div class="bom-header-left">
+                    <span style="font-size:1.4rem;">&#128203;</span>
+                    <h2 data-i18n="bom_title">Bill of Materials</h2>
+                    <span class="bom-badge" id="bomBadge" style="display:none;"></span>
+                </div>
+                <span class="bom-toggle-icon">&#9660;</span>
+            </div>
+            <div class="bom-body" id="bomBody">
+                <div id="bomContent">
+                    <div class="bom-empty" id="bomEmpty">
+                        <div class="bom-empty-icon">&#128203;</div>
+                        <div class="bom-empty-text" data-i18n="bom_empty_msg">No BOM calculated yet &mdash; Run the SA Estimator to generate</div>
+                        <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openInSACalc()" data-i18n="bom_open_sa">Open SA Estimator</button>
+                    </div>
+                    <div id="bomLoaded" style="display:none;">
+                        <div class="bom-summary-bar" id="bomSummary"></div>
+                        <div class="bom-actions" id="bomActions">
+                            <button class="tf-btn tf-btn-primary tf-btn-sm" onclick="openInSACalc()" data-i18n="bom_open_estimator">Open in SA Estimator</button>
+                            <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="exportBOMPDF()" data-i18n="bom_export_pdf">Export PDF</button>
+                            <button class="tf-btn tf-btn-outline tf-btn-sm" onclick="exportBOMExcel()" data-i18n="bom_export_excel">Export Excel</button>
+                        </div>
+                        <div id="bomBuildings"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1715,7 +1935,11 @@ PROJECT_PAGE_HTML = r"""
         }
 
         function openBOM() {
-            window.location.href = '/sa?project=' + encodeURIComponent(JOB_CODE) + '&tab=bom';
+            var sec = document.getElementById('bomSection');
+            if (sec) {
+                if (!sec.classList.contains('expanded')) sec.classList.add('expanded');
+                sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
 
         function openQuoteEditor() {
@@ -1967,6 +2191,200 @@ PROJECT_PAGE_HTML = r"""
             } catch(e) { /* silent */ }
         }
         loadTimeline();
+
+        // ── BOM Section ──────────────────────────────────
+        var _bomData = null;
+
+        function toggleBOMSection() {
+            document.getElementById('bomSection').classList.toggle('expanded');
+        }
+
+        function fmtNum(n) {
+            if (n == null || isNaN(n)) return '0';
+            return Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        function fmtCost(n) {
+            if (n == null || isNaN(n)) return '$0.00';
+            return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function fmtQty(n) {
+            if (n == null || isNaN(n)) return '0';
+            return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function loadBOM() {
+            fetch('/api/project/' + encodeURIComponent(JOB_CODE) + '/bom')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                _bomData = data;
+                if (!data.ok || !data.has_bom) {
+                    document.getElementById('bomEmpty').style.display = '';
+                    document.getElementById('bomLoaded').style.display = 'none';
+                    var badge = document.getElementById('bomBadge');
+                    badge.style.display = 'inline-flex';
+                    badge.className = 'bom-badge empty-badge';
+                    badge.textContent = 'Not Generated';
+                    return;
+                }
+
+                document.getElementById('bomEmpty').style.display = 'none';
+                document.getElementById('bomLoaded').style.display = '';
+                document.getElementById('bomSection').classList.add('expanded');
+
+                // Badge
+                var badge = document.getElementById('bomBadge');
+                badge.style.display = 'inline-flex';
+                badge.className = 'bom-badge';
+                badge.textContent = data.buildings.length + ' Building' + (data.buildings.length !== 1 ? 's' : '');
+
+                // Summary bar
+                var summaryHtml = '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_buildings">Buildings</div><div class="bom-stat-value">' + data.buildings.length + '</div></div>';
+                summaryHtml += '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_total_weight">Total Weight</div><div class="bom-stat-value">' + fmtNum(data.total_weight_lbs) + ' lbs</div></div>';
+
+                if (data.show_costs) {
+                    summaryHtml += '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_material_cost">Material Cost</div><div class="bom-stat-value">' + fmtCost(data.total_material_cost) + '</div></div>';
+                    summaryHtml += '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_sell_price">Sell Price</div><div class="bom-stat-value">' + fmtCost(data.total_sell_price) + '</div></div>';
+                    if (data.total_labor_sell_price) {
+                        summaryHtml += '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_labor">Labor</div><div class="bom-stat-value">' + fmtCost(data.total_labor_sell_price) + '</div></div>';
+                    }
+                }
+
+                if (data.saved_at) {
+                    summaryHtml += '<div class="bom-stat"><div class="bom-stat-label" data-i18n="bom_last_saved">Last Saved</div><div class="bom-stat-value" style="font-size:var(--tf-text-sm);">' + new Date(data.saved_at).toLocaleDateString() + '</div></div>';
+                }
+
+                document.getElementById('bomSummary').innerHTML = summaryHtml;
+
+                // Determine role view
+                var isField = (USER_ROLE === 'field_super' || USER_ROLE === 'installer' || USER_ROLE === 'viewer');
+                var isShop = (USER_ROLE === 'shop_foreman' || USER_ROLE === 'fabricator' || USER_ROLE === 'welder' || USER_ROLE === 'machine_operator');
+                var showCosts = data.show_costs;
+
+                // Buildings
+                var bldgsHtml = '';
+                data.buildings.forEach(function(bldg, bi) {
+                    var dims = '';
+                    if (bldg.width_ft && bldg.length_ft) dims = bldg.width_ft + "' x " + bldg.length_ft + "'";
+                    var metaItems = [];
+                    if (dims) metaItems.push(dims);
+                    if (bldg.type) metaItems.push(bldg.type);
+                    metaItems.push(fmtNum(bldg.total_weight_lbs) + ' lbs');
+                    if (showCosts && bldg.total_sell_price) metaItems.push(fmtCost(bldg.total_sell_price));
+
+                    bldgsHtml += '<div class="bom-bldg-card open" id="bomBldg' + bi + '">';
+                    bldgsHtml += '<div class="bom-bldg-header" onclick="document.getElementById(\'bomBldg' + bi + '\').classList.toggle(\'open\')">';
+                    bldgsHtml += '<span class="bom-bldg-title">' + esc(bldg.building_name || ('Building ' + (bi + 1))) + '</span>';
+                    bldgsHtml += '<span class="bom-bldg-meta">' + metaItems.join(' &bull; ') + '</span>';
+                    bldgsHtml += '</div>';
+                    bldgsHtml += '<div class="bom-bldg-body">';
+
+                    // Group items by category
+                    var cats = {};
+                    var catOrder = [];
+                    (bldg.line_items || []).forEach(function(item) {
+                        var cat = item.category || 'Other';
+                        if (!cats[cat]) { cats[cat] = []; catOrder.push(cat); }
+                        cats[cat].push(item);
+                    });
+
+                    catOrder.forEach(function(cat) {
+                        bldgsHtml += '<div class="bom-cat-heading">' + esc(cat) + '</div>';
+                        bldgsHtml += '<table class="bom-table">';
+                        bldgsHtml += '<thead><tr>';
+
+                        if (isField) {
+                            bldgsHtml += '<th data-i18n="bom_col_desc">Description</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_pieces">Pieces</th>';
+                            bldgsHtml += '<th data-i18n="bom_col_notes">Notes</th>';
+                        } else if (isShop) {
+                            bldgsHtml += '<th data-i18n="bom_col_desc">Description</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_qty">Qty</th>';
+                            bldgsHtml += '<th data-i18n="bom_col_unit">Unit</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_weight">Weight (lbs)</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_pieces">Pieces</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_length">Length (in)</th>';
+                            bldgsHtml += '<th data-i18n="bom_col_notes">Notes</th>';
+                        } else {
+                            bldgsHtml += '<th data-i18n="bom_col_desc">Description</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_qty">Qty</th>';
+                            bldgsHtml += '<th data-i18n="bom_col_unit">Unit</th>';
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_weight">Weight (lbs)</th>';
+                            if (showCosts) {
+                                bldgsHtml += '<th class="num" data-i18n="bom_col_unit_cost">Unit Cost</th>';
+                                bldgsHtml += '<th class="num" data-i18n="bom_col_total_cost">Total Cost</th>';
+                            }
+                            bldgsHtml += '<th class="num" data-i18n="bom_col_pieces">Pieces</th>';
+                            bldgsHtml += '<th data-i18n="bom_col_notes">Notes</th>';
+                        }
+
+                        bldgsHtml += '</tr></thead><tbody>';
+
+                        cats[cat].forEach(function(item) {
+                            bldgsHtml += '<tr>';
+                            if (isField) {
+                                bldgsHtml += '<td>' + esc(item.description) + '</td>';
+                                bldgsHtml += '<td class="num">' + (item.piece_count || '-') + '</td>';
+                                bldgsHtml += '<td>' + esc(item.notes || '') + '</td>';
+                            } else if (isShop) {
+                                bldgsHtml += '<td>' + esc(item.description) + '</td>';
+                                bldgsHtml += '<td class="num">' + fmtQty(item.qty) + '</td>';
+                                bldgsHtml += '<td>' + esc(item.unit || '') + '</td>';
+                                bldgsHtml += '<td class="num">' + fmtNum(item.total_weight_lbs) + '</td>';
+                                bldgsHtml += '<td class="num">' + (item.piece_count || '-') + '</td>';
+                                bldgsHtml += '<td class="num">' + (item.piece_length_in || '-') + '</td>';
+                                bldgsHtml += '<td>' + esc(item.notes || '') + '</td>';
+                            } else {
+                                bldgsHtml += '<td>' + esc(item.description) + '</td>';
+                                bldgsHtml += '<td class="num">' + fmtQty(item.qty) + '</td>';
+                                bldgsHtml += '<td>' + esc(item.unit || '') + '</td>';
+                                bldgsHtml += '<td class="num">' + fmtNum(item.total_weight_lbs) + '</td>';
+                                if (showCosts) {
+                                    bldgsHtml += '<td class="num">' + fmtCost(item.unit_cost) + '</td>';
+                                    bldgsHtml += '<td class="num">' + fmtCost(item.total_cost) + '</td>';
+                                }
+                                bldgsHtml += '<td class="num">' + (item.piece_count || '-') + '</td>';
+                                bldgsHtml += '<td>' + esc(item.notes || '') + '</td>';
+                            }
+                            bldgsHtml += '</tr>';
+                        });
+
+                        bldgsHtml += '</tbody></table>';
+                    });
+
+                    // Building totals row
+                    if (showCosts && (bldg.labor_total_days || bldg.labor_sell_price)) {
+                        bldgsHtml += '<div style="display:flex;gap:var(--tf-sp-4);flex-wrap:wrap;padding:var(--tf-sp-3) 0;margin-top:var(--tf-sp-2);border-top:2px solid var(--tf-border);font-size:var(--tf-text-xs);">';
+                        if (bldg.labor_total_days) bldgsHtml += '<span><strong data-i18n="bom_labor_days">Labor Days:</strong> ' + fmtQty(bldg.labor_total_days) + '</span>';
+                        if (bldg.labor_sell_price) bldgsHtml += '<span><strong data-i18n="bom_labor_price">Labor Price:</strong> ' + fmtCost(bldg.labor_sell_price) + '</span>';
+                        if (bldg.total_material_cost) bldgsHtml += '<span><strong data-i18n="bom_mat_cost">Material Cost:</strong> ' + fmtCost(bldg.total_material_cost) + '</span>';
+                        if (bldg.total_sell_price) bldgsHtml += '<span><strong data-i18n="bom_total_sell">Total Sell:</strong> ' + fmtCost(bldg.total_sell_price) + '</span>';
+                        bldgsHtml += '</div>';
+                    }
+
+                    bldgsHtml += '</div></div>';
+                });
+
+                document.getElementById('bomBuildings').innerHTML = bldgsHtml;
+
+                // Re-apply translations if i18n is active
+                if (typeof applyTranslations === 'function') applyTranslations();
+            })
+            .catch(function(err) {
+                console.warn('BOM load error:', err);
+            });
+        }
+
+        function exportBOMPDF() {
+            window.open('/sa?project=' + encodeURIComponent(JOB_CODE) + '&tab=bom&action=pdf', '_blank');
+        }
+
+        function exportBOMExcel() {
+            window.open('/sa?project=' + encodeURIComponent(JOB_CODE) + '&tab=bom&action=excel', '_blank');
+        }
+
+        loadBOM();
 
         // Global Search
         var _gst=null;
