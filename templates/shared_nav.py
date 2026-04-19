@@ -863,6 +863,29 @@ NAV_HTML = r"""
                 <div class="user-role" id="userRole">{{USER_ROLE}}</div>
             </div>
         </div>
+        <!-- Language Toggle -->
+        <div id="tfLangToggle" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;padding:4px 0;">
+            <span style="font-size:11px;color:#64748b;" data-i18n="Language">Language</span>
+            <button onclick="tfI18n.toggleLanguage()" id="tfLangBtn"
+                style="background:rgba(255,255,255,0.08);border:1px solid #334155;border-radius:6px;padding:3px 10px;
+                       color:#e2e8f0;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:4px;"
+                onmouseover="this.style.background='rgba(255,255,255,0.14)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+                <span id="tfLangFlag">&#127482;&#127480;</span>
+                <span id="tfLangLabel">EN</span>
+            </button>
+        </div>
+        <script>
+        (function(){
+            var m = document.cookie.match(/(?:^|;\s*)tf_lang=([^;]+)/);
+            var lang = m ? m[1] : 'en';
+            var flag = document.getElementById('tfLangFlag');
+            var label = document.getElementById('tfLangLabel');
+            if (lang === 'es') {
+                if (flag) flag.innerHTML = '&#127474;&#127485;';
+                if (label) label.textContent = 'ES';
+            }
+        })();
+        </script>
     </div>
 </aside>
 
@@ -1543,10 +1566,16 @@ def build_nav(active_page: str = "", job_code: str = "",
     if job_code:
         context_js = f"\nsetProjectContext('{job_code}');"
 
+    # Import i18n JS
+    try:
+        from templates.i18n import I18N_JS
+    except ImportError:
+        I18N_JS = ""
+
     return {
         "css": NAV_CSS,
         "html": sidebar_html,
-        "js": NAV_JS + context_js,
+        "js": I18N_JS + "\n" + NAV_JS + context_js,
     }
 
 
@@ -1635,7 +1664,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
             # Collapsible group header
             nav_items_html += f'            <div class="tf-group-header{expanded_cls}{active_hdr}" data-group="{sid}" onclick="toggleNavGroup(this)">\n'
             nav_items_html += f'                <span class="gh-icon">{icon_html}</span>\n'
-            nav_items_html += f'                <span class="gh-label">{label}</span>\n'
+            nav_items_html += f'                <span class="gh-label" data-i18n="{label}">{label}</span>\n'
             nav_items_html += f'                <span class="gh-chevron">&#9654;</span>\n'
             nav_items_html += f'            </div>\n'
 
@@ -1648,7 +1677,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
                 active_cls = " active" if is_active else ""
                 nav_items_html += f'              <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
                 nav_items_html += f'                  <span class="tf-nav-icon">{icon_html}</span>\n'
-                nav_items_html += f'                  <span class="tf-nav-label">{child_label}</span>\n'
+                nav_items_html += f'                  <span class="tf-nav-label" data-i18n="{child_label}">{child_label}</span>\n'
                 nav_items_html += f'              </a>\n'
             nav_items_html += f'            </div>\n'
         elif url:
@@ -1657,7 +1686,7 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
             active_cls = " active" if is_active else ""
             nav_items_html += f'            <a href="{url}" class="tf-nav-item{active_cls}">\n'
             nav_items_html += f'                <span class="tf-nav-icon">{icon_html}</span>\n'
-            nav_items_html += f'                <span class="tf-nav-label">{label}</span>\n'
+            nav_items_html += f'                <span class="tf-nav-label" data-i18n="{label}">{label}</span>\n'
             nav_items_html += f'            </a>\n'
 
         nav_items_html += '        </div>\n'
@@ -1781,6 +1810,29 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
                 <span style="font-size:16px;">&#9211;</span>
             </a>
         </div>
+        <!-- Language Toggle -->
+        <div id="tfLangToggle" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;padding:4px 0;">
+            <span style="font-size:11px;color:#64748b;" data-i18n="Language">Language</span>
+            <button onclick="tfI18n.toggleLanguage()" id="tfLangBtn"
+                style="background:rgba(255,255,255,0.08);border:1px solid #334155;border-radius:6px;padding:3px 10px;
+                       color:#e2e8f0;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:4px;"
+                onmouseover="this.style.background='rgba(255,255,255,0.14)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+                <span id="tfLangFlag">&#127482;&#127480;</span>
+                <span id="tfLangLabel">EN</span>
+            </button>
+        </div>
+        <script>
+        (function(){{
+            var m = document.cookie.match(/(?:^;\\s*)tf_lang=([^;]+)/);
+            var lang = m ? m[1] : 'en';
+            var flag = document.getElementById('tfLangFlag');
+            var label = document.getElementById('tfLangLabel');
+            if (lang === 'es') {{
+                if (flag) flag.innerHTML = '&#127474;&#127485;';
+                if (label) label.textContent = 'ES';
+            }}
+        }})();
+        </script>
     </div>
 </aside>
 
