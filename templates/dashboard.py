@@ -1399,7 +1399,7 @@ DASHBOARD_HTML = r"""
                     </div>
                 </div>
             </div>
-            <div class="metric-card mc-amber" onclick="scrollToProjects('fabrication')">
+            <div class="metric-card mc-amber" onclick="window.location.href='/work-orders'">
                 <div class="metric-card-inner">
                     <div class="metric-icon mi-amber">&#128295;</div>
                     <div class="metric-data">
@@ -1408,7 +1408,7 @@ DASHBOARD_HTML = r"""
                     </div>
                 </div>
             </div>
-            <div class="metric-card mc-green" onclick="switchSection('projects')">
+            <div class="metric-card mc-green" onclick="window.location.href='/qc-dashboard'">
                 <div class="metric-card-inner">
                     <div class="metric-icon mi-green">&#128270;</div>
                     <div class="metric-data">
