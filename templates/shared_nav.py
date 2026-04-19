@@ -900,35 +900,55 @@ body.sidebar-collapsed .tf-main {
 }
 
 /* ── Standardized Modals ─────────────────────────── */
-.tf-main .modal {
+/* Modal overlay — the full-screen backdrop (used as .modal-overlay or standalone .modal) */
+.tf-main .modal-overlay {
     display: none;
     position: fixed;
-    z-index: 1000;
-    left: 0; top: 0;
-    width: 100%; height: 100%;
+    z-index: 9000;
+    inset: 0;
     background: rgba(0,0,0,0.6);
     backdrop-filter: blur(4px);
-}
-.tf-main .modal.show {
-    display: flex;
     align-items: center;
     justify-content: center;
 }
-.tf-main .modal-content, .tf-main .modal-box {
+.tf-main .modal-overlay.active,
+.tf-main .modal-overlay.show {
+    display: flex;
+}
+/* Modal content box — the visible dialog */
+.tf-main .modal-overlay > .modal,
+.tf-main .modal-content,
+.tf-main .modal-box {
     background: #1E293B;
     border: 1px solid #334155;
     border-radius: 12px;
-    padding: 28px;
-    max-width: 560px;
+    max-width: 600px;
     width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     color: #E2E8F0;
 }
-.tf-main .modal h2 {
+.tf-main .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #334155;
+}
+.tf-main .modal-body { padding: 24px; }
+.tf-main .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #334155;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.tf-main .modal h2, .tf-main .modal-header h2 {
     font-size: 18px;
     font-weight: 700;
     color: #F1F5F9;
-    margin: 0 0 16px;
+    margin: 0;
 }
 
 /* ── Scrollbar Styling ───────────────────────────── */

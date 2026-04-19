@@ -3391,6 +3391,7 @@ class PartsInventoryQuickPOHandler(BaseHandler):
             body = json_decode(self.request.body)
             item_id = body.get("item_id", "").strip()
             vendor_id = body.get("vendor_id", "").strip()
+            vendor_name_input = body.get("vendor", "").strip()  # frontend sends 'vendor' (name)
             quantity = float(body.get("quantity", 0) or 0)
             unit_cost = float(body.get("unit_cost", 0) or 0)
             notes = body.get("notes", "").strip()
@@ -3439,8 +3440,8 @@ class PartsInventoryQuickPOHandler(BaseHandler):
             now = datetime.datetime.now().isoformat()
             line_total = round(quantity * unit_cost, 2)
 
-            # Resolve vendor name
-            vendor_name = ""
+            # Resolve vendor name — accept both vendor_id (lookup) and vendor (direct name)
+            vendor_name = vendor_name_input  # use the name sent from frontend as default
             if vendor_id:
                 try:
                     vendor_path = os.path.join(DATA_DIR, "vendors.json")
@@ -3453,6 +3454,8 @@ class PartsInventoryQuickPOHandler(BaseHandler):
                                 break
                 except Exception:
                     pass
+            if not vendor_name:
+                vendor_name = item.get("vendor", item.get("preferred_vendor", ""))
 
             new_po = {
                 "id": po_number,
