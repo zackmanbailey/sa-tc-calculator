@@ -299,6 +299,8 @@ NAV_CSS = """
 .tf-main {
     margin-left: 240px;
     min-height: 100vh;
+    background: #0F172A;
+    color: #E2E8F0;
     transition: margin-left 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
@@ -309,16 +311,7 @@ body.sidebar-collapsed .tf-main {
 
 /* ── Top Context Bar (replaces old topbar) ─── */
 .tf-contextbar {
-    background: #fff;
-    border-bottom: 1px solid var(--tf-border);
-    padding: 0 24px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    display: none;
 }
 
 .tf-breadcrumb {
