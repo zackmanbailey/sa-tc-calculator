@@ -992,6 +992,141 @@ body.sidebar-collapsed .tf-main {
 .tf-main #topbar { display: none !important; }
 .tf-main #main { background: transparent !important; }
 .tf-main .card { background: #1E293B !important; border-color: #334155 !important; color: #E2E8F0 !important; }
+
+/* ══════════════════════════════════════════════════════
+   INTERACTIVE WALKTHROUGH SYSTEM
+   ══════════════════════════════════════════════════════ */
+#wt-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 99990;
+    transition: clip-path 0.35s cubic-bezier(0.4,0,0.2,1);
+    pointer-events: auto;
+}
+#wt-card {
+    position: fixed;
+    z-index: 99993;
+    background: #1E293B;
+    border: 2px solid #C89A2E;
+    border-radius: 14px;
+    padding: 0;
+    max-width: 420px;
+    width: 400px;
+    color: #E2E8F0;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+    transition: left 0.35s ease, top 0.35s ease, opacity 0.25s ease;
+    overflow: hidden;
+}
+#wt-card .wt-header {
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid #334155;
+}
+#wt-card .wt-header .wt-phase {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #C89A2E; font-weight: 700; margin-bottom: 6px;
+}
+#wt-card .wt-header .wt-title {
+    font-size: 17px; font-weight: 700; color: #F1F5F9;
+    line-height: 1.3;
+}
+#wt-card .wt-body {
+    padding: 16px 22px 20px;
+}
+#wt-card .wt-body .wt-desc {
+    font-size: 14px; color: #CBD5E1; line-height: 1.65;
+    margin-bottom: 16px;
+}
+#wt-card .wt-body .wt-tip {
+    background: rgba(200,154,46,0.1);
+    border: 1px solid rgba(200,154,46,0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #F59E0B;
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+#wt-card .wt-body .wt-tip::before {
+    content: '💡 '; font-size: 13px;
+}
+#wt-card .wt-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 22px;
+    border-top: 1px solid #334155;
+    background: rgba(15,23,42,0.5);
+}
+#wt-card .wt-progress {
+    display: flex; gap: 4px; align-items: center;
+}
+#wt-card .wt-progress .wt-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #334155; transition: all 0.3s;
+}
+#wt-card .wt-progress .wt-dot.done { background: #C89A2E; }
+#wt-card .wt-progress .wt-dot.active {
+    background: #C89A2E; width: 20px; border-radius: 4px;
+}
+#wt-card .wt-actions { display: flex; gap: 8px; }
+.wt-btn {
+    padding: 9px 18px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; border: none;
+}
+.wt-btn-skip {
+    background: transparent; border: 1px solid #475569;
+    color: #94A3B8;
+}
+.wt-btn-skip:hover { border-color: #94A3B8; color: #CBD5E1; }
+.wt-btn-next {
+    background: linear-gradient(135deg, #C89A2E 0%, #D4A84B 100%);
+    color: #0F172A;
+}
+.wt-btn-next:hover { background: linear-gradient(135deg, #D4A84B 0%, #E5B85C 100%); box-shadow: 0 4px 12px rgba(200,154,46,0.35); }
+.wt-btn-action {
+    background: #1E40AF; color: #DBEAFE; border: 1px solid #2563EB;
+}
+.wt-btn-action:hover { background: #2563EB; }
+/* Pulse ring on highlighted elements */
+#wt-pulse-ring {
+    position: fixed; z-index: 99991;
+    border: 2px solid #C89A2E;
+    border-radius: 10px;
+    pointer-events: none;
+    transition: all 0.35s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 0 0 0 rgba(200,154,46,0.4);
+    animation: wt-pulse 2s infinite;
+}
+@keyframes wt-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(200,154,46,0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(200,154,46,0); }
+    100% { box-shadow: 0 0 0 0 rgba(200,154,46,0); }
+}
+/* Launch button in sidebar */
+.wt-launch-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; margin: 8px 12px;
+    background: linear-gradient(135deg, rgba(200,154,46,0.15) 0%, rgba(200,154,46,0.08) 100%);
+    border: 1px solid rgba(200,154,46,0.3);
+    border-radius: 10px; cursor: pointer;
+    color: #F59E0B; font-size: 13px; font-weight: 600;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+.wt-launch-btn:hover {
+    background: linear-gradient(135deg, rgba(200,154,46,0.25) 0%, rgba(200,154,46,0.15) 100%);
+    border-color: rgba(200,154,46,0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(200,154,46,0.15);
+}
+.wt-launch-btn .wt-launch-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: rgba(200,154,46,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+}
+.tf-sidebar.collapsed .wt-launch-btn span:not(.wt-launch-icon) { display: none; }
+.tf-sidebar.collapsed .wt-launch-btn { justify-content: center; padding: 10px; }
 """
 
 # ─────────────────────────────────────────────
@@ -1116,6 +1251,12 @@ NAV_HTML = r"""
             </div>
         </div>
     </div>
+
+    <!-- Walkthrough Launch Button -->
+    <a class="wt-launch-btn" onclick="TFWalkthrough.start(0); return false;" href="#" title="Start Interactive Walkthrough">
+        <span class="wt-launch-icon">🎓</span>
+        <span>Interactive Tutorial</span>
+    </a>
 
     <div class="tf-sidebar-footer" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
         <!-- XP Level Bar -->
@@ -1737,6 +1878,411 @@ function escNavHtml(s) {
         initNotif();
     }
 })();
+
+// ══════════════════════════════════════════════════════
+// INTERACTIVE WALKTHROUGH ENGINE
+// Persists across page navigations via sessionStorage
+// ══════════════════════════════════════════════════════
+window.TFWalkthrough = (function() {
+    'use strict';
+
+    // ── Full walkthrough step definitions ──────────
+    // Each step: { page, phase, title, desc, tip?, target?, position, action?, actionLabel?, navigateTo? }
+    var STEPS = [
+        // ── PHASE 1: ORIENTATION (Dashboard) ──
+        {
+            page: '/',
+            phase: 'Phase 1 — Getting Oriented',
+            title: 'Welcome to Your First Project!',
+            desc: 'This walkthrough will guide you step-by-step through creating your first building project in TitanForge — from entering building dimensions to generating a full Bill of Materials.',
+            tip: 'You can restart this walkthrough anytime from the sidebar.',
+            target: null,
+            position: 'center'
+        },
+        {
+            page: '/',
+            phase: 'Phase 1 — Getting Oriented',
+            title: 'The Sidebar is Your Hub',
+            desc: 'Every module in TitanForge lives in this sidebar: Estimators, Projects, Shop Floor, Inventory, Shipping, QA/QC, and more. You can collapse it for more workspace.',
+            target: '.tf-sidebar',
+            position: 'right'
+        },
+        {
+            page: '/',
+            phase: 'Phase 1 — Getting Oriented',
+            title: 'Dashboard Overview',
+            desc: 'The dashboard shows your key metrics at a glance — active projects, open work orders, pending shipments. Each card is clickable for more details.',
+            target: '.metrics-row',
+            position: 'bottom'
+        },
+        {
+            page: '/',
+            phase: 'Phase 1 — Getting Oriented',
+            title: 'Quick Actions',
+            desc: 'Use these buttons to quickly start a new estimate or create a project. Let\'s head to the SA Estimator now to design your first building.',
+            target: '.dash-header-actions',
+            position: 'bottom',
+            navigateTo: '/sa',
+            actionLabel: 'Open SA Estimator →'
+        },
+
+        // ── PHASE 2: SA ESTIMATOR — Project Info ──
+        {
+            page: '/sa',
+            phase: 'Phase 2 — Building Design',
+            title: 'The SA Estimator',
+            desc: 'This is where buildings come to life! The left sidebar has your project info and building list. The main area shows the design form. Let\'s start by entering project details.',
+            target: null,
+            position: 'center'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 2 — Building Design',
+            title: 'Enter a Project Name',
+            desc: 'Type a name for your project, like "Smith Warehouse" or "Johnson Barn". This identifies the project throughout the system.',
+            tip: 'The Job Code will be auto-generated, or you can enter your own.',
+            target: '#proj_name',
+            position: 'right'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 2 — Building Design',
+            title: 'Customer & Location',
+            desc: 'Fill in the customer name, site address, city, state, and ZIP. The wind speed auto-fills based on the state. You can override it for specific site conditions.',
+            target: '#proj_customer',
+            position: 'right'
+        },
+
+        // ── PHASE 3: SA ESTIMATOR — Building Dimensions ──
+        {
+            page: '/sa',
+            phase: 'Phase 3 — Building Dimensions',
+            title: 'Your First Building',
+            desc: 'Building B1 is already created. This is where you define the physical dimensions of the structure. The four key inputs are: width, length, clear height, and roof pitch.',
+            target: '#bldg-forms',
+            position: 'left'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 3 — Building Dimensions',
+            title: 'Set Building Width',
+            desc: 'Enter the building width in feet. Common widths for carports range from 18\' to 40\'. For warehouses, 40\' to 100\'. The calculator adjusts column and rafter sizing automatically.',
+            tip: 'Example: Enter 30 for a 30-foot wide building.',
+            target: '#bldg-forms input[type="number"]',
+            position: 'left'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 3 — Building Dimensions',
+            title: 'Length & Bay Configuration',
+            desc: 'Set the building length using either "number of bays × bay width" mode or direct length entry. Bays are the repeating sections between columns — a 60\' building with 10\' bays has 6 bays.',
+            tip: 'Tip: Standard bay spacing is 10\' for carports, 20-25\' for larger buildings.',
+            target: '#bldg-forms',
+            position: 'left'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 3 — Building Dimensions',
+            title: 'Clear Height & Roof Pitch',
+            desc: 'Clear Height is the usable height under the eave. Roof Pitch controls the slope — 1:12 is nearly flat, 4:12 is standard for residential, 2:12 is typical for commercial carports.',
+            target: '#bldg-forms',
+            position: 'left'
+        },
+
+        // ── PHASE 4: CALCULATE ──
+        {
+            page: '/sa',
+            phase: 'Phase 4 — Generate BOM',
+            title: 'Calculate Your Bill of Materials!',
+            desc: 'Once your dimensions are set, click the "CALCULATE BOM" button in the sidebar. This generates the complete parts list — every column, rafter, purlin, sag rod, strap, panel, and fastener.',
+            tip: 'The BOM updates instantly. You can change dimensions and recalculate anytime.',
+            target: '.btn-red',
+            position: 'right'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 4 — Generate BOM',
+            title: 'Review Your BOM',
+            desc: 'After calculating, the BOM tab shows every component with quantities, dimensions, weights, and material specs. Scroll through to see columns, rafters, purlins, hardware, and panels.',
+            tip: 'Click any tab at the top to switch between BOM, Pricing, Labels, and Inventory views.',
+            target: '#bom-content',
+            position: 'left'
+        },
+
+        // ── PHASE 5: PRICING & SAVE ──
+        {
+            page: '/sa',
+            phase: 'Phase 5 — Price & Save',
+            title: 'Set Your Pricing',
+            desc: 'Switch to the Pricing tab to see cost breakdowns. You can adjust the markup percentage, override individual prices, and see the total project cost. Material prices pull from your coil inventory.',
+            target: null,
+            position: 'center'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 5 — Price & Save',
+            title: 'Save Your Project',
+            desc: 'Click "Save (New Revision)" in the sidebar to save your project. This creates a permanent record with all dimensions, BOM, and pricing. You can come back and create new revisions anytime.',
+            tip: 'Every save creates a new revision, so you can always compare or revert to previous versions.',
+            target: null,
+            position: 'center'
+        },
+
+        // ── PHASE 6: NEXT STEPS ──
+        {
+            page: '/sa',
+            phase: 'Phase 6 — What\'s Next',
+            title: 'Your Project is Ready!',
+            desc: 'From here you can: generate a PDF quote for your customer, create work orders for the shop floor, print QR stickers for tracking, and view interactive shop drawings of each component.',
+            target: null,
+            position: 'center'
+        },
+        {
+            page: '/sa',
+            phase: 'Phase 6 — What\'s Next',
+            title: 'You\'re All Set! 🎉',
+            desc: 'You\'ve completed the TitanForge walkthrough! Here\'s a quick summary of what you learned:\n\n• Dashboard — Your command center for all KPIs\n• SA Estimator — Design buildings and generate BOMs\n• Pricing — Set costs and generate quotes\n• Projects — Saved records with full revision history\n\nExplore the sidebar to discover Shop Floor, Inventory, Shipping, QA/QC, and more!',
+            tip: 'Visit the Getting Started page anytime for detailed guides by role.',
+            target: null,
+            position: 'center'
+        }
+    ];
+
+    var currentIdx = -1;
+    var isActive = false;
+
+    function getState() {
+        try {
+            var s = sessionStorage.getItem('tf_walkthrough');
+            return s ? JSON.parse(s) : null;
+        } catch(e) { return null; }
+    }
+
+    function setState(idx) {
+        try {
+            sessionStorage.setItem('tf_walkthrough', JSON.stringify({ step: idx, active: true }));
+        } catch(e) {}
+    }
+
+    function clearState() {
+        try { sessionStorage.removeItem('tf_walkthrough'); } catch(e) {}
+    }
+
+    function createUI() {
+        // Remove existing
+        var old = document.getElementById('wt-backdrop');
+        if (old) old.remove();
+        old = document.getElementById('wt-card');
+        if (old) old.remove();
+        old = document.getElementById('wt-pulse-ring');
+        if (old) old.remove();
+
+        var backdrop = document.createElement('div');
+        backdrop.id = 'wt-backdrop';
+        document.body.appendChild(backdrop);
+
+        var ring = document.createElement('div');
+        ring.id = 'wt-pulse-ring';
+        ring.style.display = 'none';
+        document.body.appendChild(ring);
+
+        var card = document.createElement('div');
+        card.id = 'wt-card';
+        card.innerHTML = '<div class="wt-header">' +
+            '<div class="wt-phase" id="wt-phase"></div>' +
+            '<div class="wt-title" id="wt-title"></div>' +
+            '</div>' +
+            '<div class="wt-body">' +
+            '<div class="wt-desc" id="wt-desc"></div>' +
+            '<div class="wt-tip" id="wt-tip" style="display:none;"></div>' +
+            '</div>' +
+            '<div class="wt-footer">' +
+            '<div class="wt-progress" id="wt-progress"></div>' +
+            '<div class="wt-actions" id="wt-actions"></div>' +
+            '</div>';
+        document.body.appendChild(card);
+    }
+
+    function showStep(idx) {
+        if (idx < 0 || idx >= STEPS.length) { end(); return; }
+        currentIdx = idx;
+        setState(idx);
+
+        var step = STEPS[idx];
+        var currentPage = window.location.pathname.replace(/\/+$/, '') || '/';
+
+        // If this step is for a different page, navigate there
+        if (step.page !== currentPage && step.page !== '*') {
+            window.location.href = step.page;
+            return;
+        }
+
+        // Ensure UI exists
+        if (!document.getElementById('wt-backdrop')) createUI();
+
+        var card = document.getElementById('wt-card');
+        var backdrop = document.getElementById('wt-backdrop');
+        var ring = document.getElementById('wt-pulse-ring');
+
+        // Update content
+        document.getElementById('wt-phase').textContent = step.phase;
+        document.getElementById('wt-title').textContent = step.title;
+
+        // Handle desc with newlines
+        var descEl = document.getElementById('wt-desc');
+        descEl.innerHTML = step.desc.replace(/\n/g, '<br>');
+
+        var tipEl = document.getElementById('wt-tip');
+        if (step.tip) {
+            tipEl.textContent = step.tip;
+            tipEl.style.display = 'block';
+        } else {
+            tipEl.style.display = 'none';
+        }
+
+        // Progress dots
+        var progHtml = '';
+        for (var i = 0; i < STEPS.length; i++) {
+            var cls = 'wt-dot';
+            if (i < idx) cls += ' done';
+            else if (i === idx) cls += ' active';
+            progHtml += '<div class="' + cls + '"></div>';
+        }
+        document.getElementById('wt-progress').innerHTML = progHtml;
+
+        // Actions
+        var actionsHtml = '<button class="wt-btn wt-btn-skip" onclick="TFWalkthrough.end()">Exit</button>';
+        if (idx > 0) {
+            actionsHtml += '<button class="wt-btn wt-btn-skip" onclick="TFWalkthrough.prev()">← Back</button>';
+        }
+        if (step.navigateTo) {
+            actionsHtml += '<button class="wt-btn wt-btn-action" onclick="TFWalkthrough.goAction()">' + step.actionLabel + '</button>';
+        } else if (idx === STEPS.length - 1) {
+            actionsHtml += '<button class="wt-btn wt-btn-next" onclick="TFWalkthrough.end()">Finish! 🎉</button>';
+        } else {
+            actionsHtml += '<button class="wt-btn wt-btn-next" onclick="TFWalkthrough.next()">Next →</button>';
+        }
+        document.getElementById('wt-actions').innerHTML = actionsHtml;
+
+        // Position card and highlight target
+        var el = step.target ? document.querySelector(step.target) : null;
+
+        card.style.transform = '';
+        card.style.left = '';
+        card.style.top = '';
+        card.style.opacity = '1';
+
+        if (el && el.offsetParent !== null) {
+            var rect = el.getBoundingClientRect();
+            var pad = 10;
+
+            // Pulse ring around element
+            ring.style.display = 'block';
+            ring.style.left = (rect.left - pad) + 'px';
+            ring.style.top = (rect.top - pad) + 'px';
+            ring.style.width = (rect.width + pad * 2) + 'px';
+            ring.style.height = (rect.height + pad * 2) + 'px';
+
+            // Clip-path hole in backdrop
+            var hx = rect.left - pad;
+            var hy = rect.top - pad;
+            var hw = rect.width + pad * 2;
+            var hh = rect.height + pad * 2;
+            backdrop.style.clipPath = 'polygon(0% 0%, 0% 100%, ' +
+                hx + 'px 100%, ' + hx + 'px ' + hy + 'px, ' +
+                (hx + hw) + 'px ' + hy + 'px, ' +
+                (hx + hw) + 'px ' + (hy + hh) + 'px, ' +
+                hx + 'px ' + (hy + hh) + 'px, ' +
+                hx + 'px 100%, 100% 100%, 100% 0%)';
+
+            // Position card
+            var cw = 420;
+            if (step.position === 'right') {
+                card.style.left = Math.min(rect.right + 24, window.innerWidth - cw - 20) + 'px';
+                card.style.top = Math.max(rect.top + rect.height / 2 - 120, 20) + 'px';
+            } else if (step.position === 'left') {
+                card.style.left = Math.max(rect.left - cw - 24, 20) + 'px';
+                card.style.top = Math.max(rect.top + rect.height / 2 - 120, 20) + 'px';
+            } else if (step.position === 'bottom') {
+                card.style.left = Math.min(Math.max(rect.left, 20), window.innerWidth - cw - 20) + 'px';
+                card.style.top = Math.min(rect.bottom + 20, window.innerHeight - 300) + 'px';
+            } else if (step.position === 'top') {
+                card.style.left = Math.max(rect.left, 20) + 'px';
+                card.style.top = Math.max(rect.top - 280, 20) + 'px';
+            }
+
+            // Scroll element into view if needed
+            if (rect.top < 0 || rect.bottom > window.innerHeight) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(function() { showStep(idx); }, 400);
+                return;
+            }
+        } else {
+            // Center card (no target)
+            ring.style.display = 'none';
+            backdrop.style.clipPath = '';
+            card.style.left = '50%';
+            card.style.top = '50%';
+            card.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+
+    function next() { showStep(currentIdx + 1); }
+    function prev() { showStep(currentIdx - 1); }
+
+    function goAction() {
+        var step = STEPS[currentIdx];
+        if (step && step.navigateTo) {
+            setState(currentIdx + 1);
+            window.location.href = step.navigateTo;
+        }
+    }
+
+    function end() {
+        clearState();
+        isActive = false;
+        var bd = document.getElementById('wt-backdrop');
+        var cd = document.getElementById('wt-card');
+        var rg = document.getElementById('wt-pulse-ring');
+        if (bd) bd.remove();
+        if (cd) cd.remove();
+        if (rg) rg.remove();
+        // Set cookie so we don't auto-launch again
+        var d = new Date();
+        d.setTime(d.getTime() + 365 * 86400000);
+        document.cookie = 'tf_walkthrough_done=1;expires=' + d.toUTCString() + ';path=/';
+    }
+
+    function start(fromStep) {
+        isActive = true;
+        var idx = fromStep || 0;
+        createUI();
+        showStep(idx);
+    }
+
+    // Auto-resume if walkthrough was in progress (cross-page persistence)
+    function autoResume() {
+        var state = getState();
+        if (state && state.active) {
+            setTimeout(function() { start(state.step); }, 800);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', autoResume);
+    } else {
+        setTimeout(autoResume, 500);
+    }
+
+    return {
+        start: start,
+        next: next,
+        prev: prev,
+        goAction: goAction,
+        end: end,
+        isActive: function() { return isActive; }
+    };
+})();
 """
 
 
@@ -2062,6 +2608,12 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
             </div>
         </div>
     </div>
+
+    <!-- Walkthrough Launch Button -->
+    <a class="wt-launch-btn" onclick="TFWalkthrough.start(0); return false;" href="#" title="Start Interactive Walkthrough">
+        <span class="wt-launch-icon">🎓</span>
+        <span>Interactive Tutorial</span>
+    </a>
 
     <div class="tf-sidebar-footer" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 12px;">
         <!-- XP Level Bar -->

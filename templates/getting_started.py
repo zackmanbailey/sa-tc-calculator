@@ -465,6 +465,23 @@ GETTING_STARTED_HTML = """
   </div>
 
   <!-- ═══════════════════════════════════════════ -->
+  <!-- INTERACTIVE WALKTHROUGH LAUNCH -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div style="margin-top:32px;border-top:2px solid #1E293B;padding-top:32px;margin-bottom:32px;">
+    <div style="background:linear-gradient(135deg, rgba(200,154,46,0.12) 0%, rgba(200,154,46,0.04) 100%);border:1px solid rgba(200,154,46,0.3);border-radius:14px;padding:28px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:12px;">🎓</div>
+      <h2 style="font-size:20px;color:#FFF;margin-bottom:8px;">Interactive Walkthrough</h2>
+      <p style="font-size:14px;color:#94A3B8;max-width:500px;margin:0 auto 20px;line-height:1.6;">
+        New to TitanForge? Take our guided tour! We'll walk you step-by-step through creating your first building project — from entering dimensions to generating a full Bill of Materials.
+      </p>
+      <button onclick="TFWalkthrough.start(0)" style="padding:12px 32px;border-radius:10px;border:none;background:linear-gradient(135deg,#C89A2E,#D4A84B);color:#0F172A;font-size:15px;font-weight:700;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 16px rgba(200,154,46,0.3);" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(200,154,46,0.4)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(200,154,46,0.3)'">
+        Start Interactive Walkthrough →
+      </button>
+      <p style="font-size:11px;color:#64748B;margin-top:12px;">Takes about 3 minutes · Guides you through Dashboard → SA Estimator → BOM → Save</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
   <!-- INTERACTIVE ONBOARDING WIZARD -->
   <!-- ═══════════════════════════════════════════ -->
   <div style="margin-top:32px;border-top:2px solid #1E293B;padding-top:32px;">

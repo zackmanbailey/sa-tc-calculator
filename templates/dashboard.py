@@ -1381,6 +1381,7 @@ DASHBOARD_HTML = r"""
                 <button class="dash-action-btn primary" onclick="openNewProjectForm()" id="newProjectBtn">+ New Project</button>
                 <a class="dash-action-btn" href="/customers">+ New Customer</a>
                 <a class="dash-action-btn" href="/sa">+ New Quote</a>
+                <button class="dash-action-btn" onclick="TFWalkthrough.start(0)" style="background:linear-gradient(135deg,rgba(200,154,46,0.2),rgba(200,154,46,0.1));border-color:rgba(200,154,46,0.4);color:#F59E0B;">🎓 Interactive Tutorial</button>
             </div>
         </div>
 
