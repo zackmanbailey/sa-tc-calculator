@@ -271,6 +271,58 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
 <script>window.RAFTER_CONFIG = {{RAFTER_CONFIG_JSON}};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/2.2.3/svg2pdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+// ── svg2pdf compatibility shim ──────────────────────────────
+// svg2pdf.js v2.x registers as a jsPDF plugin (doc.svg method).
+// If duplicate script loads clobber the registration, or if the
+// old call-style svg2pdf.svg2pdf() is used, this shim fixes it.
+(function() {
+  // Re-register if doc.svg is missing (caused by duplicate jsPDF loads)
+  if (window.jspdf && !window.jspdf.jsPDF.prototype.svg) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.3/dist/svg2pdf.umd.min.js';
+    document.head.appendChild(s);
+  }
+  // Create legacy-compatible global: svg2pdf.svg2pdf(el, doc, opts)
+  if (typeof window.svg2pdf === 'undefined' || !window.svg2pdf.svg2pdf) {
+    window.svg2pdf = window.svg2pdf || {};
+    window.svg2pdf.svg2pdf = function(svgElement, pdfDoc, options) {
+      if (typeof pdfDoc.svg === 'function') {
+        return pdfDoc.svg(svgElement, options);
+      }
+      // Canvas fallback for SVG-to-PDF when plugin fails
+      return new Promise(function(resolve, reject) {
+        try {
+          var serializer = new XMLSerializer();
+          var svgString = serializer.serializeToString(svgElement);
+          var canvas = document.createElement('canvas');
+          var scale = 2;
+          canvas.width = (options.width || 1100) * scale;
+          canvas.height = (options.height || 850) * scale;
+          var ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.scale(scale, scale);
+          var img = new Image();
+          var blob = new Blob([svgString], {type:'image/svg+xml;charset=utf-8'});
+          var url = URL.createObjectURL(blob);
+          img.onload = function() {
+            ctx.drawImage(img, 0, 0, options.width || 1100, options.height || 850);
+            URL.revokeObjectURL(url);
+            var imgData = canvas.toDataURL('image/png');
+            pdfDoc.addImage(imgData, 'PNG', options.x||0, options.y||0,
+              options.width||1100, options.height||850);
+            resolve();
+          };
+          img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('SVG render failed')); };
+          img.src = url;
+        } catch(e) { reject(e); }
+      });
+    };
+  }
+})();
+</script>
 </head>
 <body>
 
@@ -365,6 +417,8 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
     </div>
     <button class="btn-gold" onclick="document.getElementById('bomPanel').classList.toggle('open')">BOM</button>
     <button class="btn-gold" style="background:#475569;color:#F1F5F9;" onclick="window.print()">Print</button>
+    <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
+    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;"></span>
     <button class="btn-gold" style="background:#334155;color:#F6AE2D;border:1px solid #F6AE2D;" onclick="resetZoom()">Reset Zoom</button>
     <button class="btn-gold" style="background:#334155;color:#94A3B8;border:1px solid #475569;font-size:0.9rem;" onclick="undo()" title="Undo (Cmd+Z)">&#8617;</button>
     <button class="btn-gold" style="background:#334155;color:#94A3B8;border:1px solid #475569;font-size:0.9rem;" onclick="redo()" title="Redo (Cmd+Shift+Z)">&#8618;</button>
@@ -396,12 +450,6 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<div style="position:fixed;bottom:16px;right:16px;z-index:900;display:flex;align-items:center;gap:8px;background:#1E293B;padding:8px 14px;border-radius:10px;border:1px solid #334155;box-shadow:0 4px 16px rgba(0,0,0,0.4);">
-    <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ Print</button>
-    <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
-    <span id="savePdfStatus" style="font-size:0.7rem;color:#94A3B8;"></span>
-    <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" style="color:#3B82F6;text-decoration:none;font-size:0.85rem;">← Dashboard</a>
-</div>
 
 <!-- APPROVAL MODAL -->
 <div class="modal-overlay" id="approvalModal">

@@ -8466,6 +8466,27 @@ class SaveInteractivePDFHandler(BaseHandler):
             # Register this file as an interactive-builder source
             _register_interactive_source(job_code, filename, drawing_type)
 
+            # Remove any OLD files for the same drawing type (e.g. old _B1.pdf
+            # when a new _RAFTER_INTERACTIVE.pdf is saved).  This prevents
+            # stale legacy PDFs from lingering in the gallery.
+            sources = _load_interactive_sources(job_code)
+            stale = []
+            for old_fname, old_info in list(sources.items()):
+                if old_fname != filename and old_info.get("drawing_type") == drawing_type:
+                    stale.append(old_fname)
+            for old_fname in stale:
+                old_path = os.path.join(pdfs_dir, old_fname)
+                try:
+                    if os.path.isfile(old_path):
+                        os.remove(old_path)
+                except OSError:
+                    pass
+                del sources[old_fname]
+            if stale:
+                manifest_path = os.path.join(pdfs_dir, "_interactive_sources.json")
+                with open(manifest_path, "w") as mf:
+                    json.dump(sources, mf, indent=2, default=str)
+
             # Sync to project docs/shop_drawings/ so project page shows the file
             safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
             proj_sd_dir = os.path.join(PROJECTS_DIR, safe_name, "docs", "shop_drawings")
