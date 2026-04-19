@@ -79,7 +79,7 @@ body {
 
 .view-toggle.active {
     background: #F6AE2D;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     font-weight: 600;
 }
 
@@ -215,7 +215,7 @@ body {
     top: 5px;
     left: calc(var(--today-offset, 0) + 4px);
     background: #F6AE2D;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     padding: 2px 6px;
     border-radius: 3px;
     font-size: var(--tf-text-xs);

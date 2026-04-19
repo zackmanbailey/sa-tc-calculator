@@ -37,7 +37,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 .sf-header h1 {
     font-size: 1.5rem;
     font-weight: 800;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     margin: 0;
 }
 
@@ -112,7 +112,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-size: 2rem;
     font-weight: 800;
     font-family: 'SF Mono', monospace;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     line-height: 1;
 }
 
@@ -145,7 +145,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-size: 1.1rem;
     font-weight: 700;
     margin: 0 0 14px;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .machines-grid {
@@ -187,7 +187,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 .machine-name {
     font-size: 0.85rem;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     margin-bottom: 2px;
 }
 
@@ -248,7 +248,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 .machine-active-item .mark {
     font-family: 'SF Mono', monospace;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .machine-active-item .job {
@@ -271,7 +271,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-size: 1.1rem;
     font-weight: 700;
     margin: 0 0 14px;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .wo-mini-card {
@@ -300,7 +300,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-family: 'SF Mono', monospace;
     font-size: 0.78rem;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .wo-mini-status {
@@ -345,7 +345,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-size: 1.1rem;
     font-weight: 700;
     margin: 0 0 14px;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .feed-list {
@@ -388,7 +388,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 
 .feed-action {
     font-weight: 600;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .feed-detail {
@@ -430,7 +430,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
 }
 
 .sf-empty h3 {
-    color: var(--tf-navy);
+    color: #E2E8F0;
     margin: 12px 0 8px;
 }
 
@@ -468,7 +468,7 @@ SHOP_FLOOR_HTML = """<!DOCTYPE html>
     font-family: 'SF Mono', monospace;
     font-size: 0.82rem;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 .dispatch-card-detail {
     font-size: 0.75rem;

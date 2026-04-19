@@ -37,7 +37,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 .wo-header h1 {
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     margin: 0;
 }
 
@@ -132,7 +132,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 
 .pipeline-step.reached {
     opacity: 1;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .pipeline-step.current {
@@ -203,7 +203,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
     font-size: 1.05rem;
     font-weight: 700;
     margin: 0;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 /* ── Status badges ─── */
@@ -300,7 +300,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 .ship-mark {
     font-family: 'SF Mono', monospace;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     font-size: 0.9rem;
 }
 
@@ -451,7 +451,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 .metric-value {
     font-size: 1.8rem;
     font-weight: 800;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     font-family: 'SF Mono', monospace;
 }
 
@@ -519,7 +519,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 
 .btn-wo.outline {
     background: #1E293B;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     border: 1px solid var(--tf-border);
 }
 
@@ -552,7 +552,7 @@ WORK_ORDERS_HTML = """<!DOCTYPE html>
 .empty-state h3 {
     font-size: 1.1rem;
     margin: 0 0 8px;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .empty-state p {

@@ -28,7 +28,7 @@ body {
     margin: 0;
     font-family: var(--tf-font);
     background: var(--tf-bg);
-    color: var(--tf-navy);
+    color: #E2E8F0;
     overflow-x: hidden;
 }
 
@@ -161,8 +161,12 @@ body {
 .machine-card .machine-name {
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--tf-navy);
+    color: #E2E8F0;
     line-height: 1.2;
+}
+
+.machine-card.selected .machine-name {
+    color: #0F172A;
 }
 
 .machine-card .machine-count {
@@ -197,7 +201,7 @@ body {
 .queue-header h2 {
     margin: 0;
     font-size: 1.1rem;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .queue-count {
@@ -241,7 +245,7 @@ body {
 .item-ship-mark {
     font-size: 1.3rem;
     font-weight: 700;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .item-status-badge {
@@ -254,7 +258,7 @@ body {
 
 .badge-queued { background: #0F172A; color: #64748B; }
 .badge-approved { background: #EFF6FF; color: #1E40AF; }
-.badge-stickers_printed { background: #3B2A1A; color: #92400E; }
+.badge-stickers_printed { background: #3B2A1A; color: #FBBF24; }
 .badge-in_progress { background: #D1FAE5; color: #065F46; }
 .badge-complete { background: #F0FDF4; color: #166534; }
 
@@ -372,14 +376,14 @@ body {
     font-size: 1.15rem;
     font-weight: 700;
     padding: 16px 16px 8px;
-    color: var(--tf-navy);
+    color: #E2E8F0;
 }
 
 .step-instruction {
     padding: 0 16px 12px;
     font-size: 0.95rem;
     line-height: 1.55;
-    color: #334155;
+    color: #CBD5E1;
 }
 
 .step-tool {
@@ -388,7 +392,7 @@ body {
     color: var(--tf-gray);
 }
 
-.step-tool strong { color: var(--tf-navy); }
+.step-tool strong { color: #E2E8F0; }
 
 .step-safety {
     margin: 0 16px 12px;
@@ -397,7 +401,7 @@ body {
     border-left: 4px solid #DC2626;
     border-radius: 6px;
     font-size: 0.85rem;
-    color: #991B1B;
+    color: #FCA5A5;
 }
 
 .step-safety strong { color: #DC2626; }
@@ -524,7 +528,7 @@ body {
 }
 
 .empty-state .empty-icon { font-size: 3rem; margin-bottom: 10px; }
-.empty-state h3 { margin: 0 0 6px; color: var(--tf-navy); }
+.empty-state h3 { margin: 0 0 6px; color: #E2E8F0; }
 .empty-state p { font-size: 0.9rem; }
 
 /* ── Toast ─── */
@@ -615,12 +619,12 @@ body {
 }
 .item-checklist-header {
     padding: 14px 16px; border-bottom: 1px solid var(--tf-border);
-    font-weight: 700; font-size: 0.95rem; color: var(--tf-navy);
+    font-weight: 700; font-size: 0.95rem; color: #E2E8F0;
     display: flex; justify-content: space-between; align-items: center;
 }
 .checklist-item {
     display: flex; align-items: center; padding: 12px 16px;
-    border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
+    border-bottom: 1px solid #334155; gap: 12px; cursor: pointer; transition: background 0.15s;
 }
 .checklist-item:hover { background: #0F172A; }
 .checklist-item:last-child { border-bottom: none; }
@@ -633,7 +637,8 @@ body {
 }
 .checklist-item.done .cl-check { background: var(--tf-green); border-color: var(--tf-green); color: white; }
 .cl-info { flex: 1; min-width: 0; }
-.cl-mark { font-weight: 700; font-size: 0.95rem; color: var(--tf-navy); }
+.cl-mark { font-weight: 700; font-size: 0.95rem; color: #E2E8F0; }
+.checklist-item.done .cl-mark { color: #065F46; }
 .cl-desc { font-size: 0.78rem; color: var(--tf-gray); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cl-status { font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; white-space: nowrap; }
 
@@ -644,12 +649,12 @@ body {
 }
 .my-queue-header {
     padding: 14px 16px; border-bottom: 1px solid var(--tf-border);
-    font-weight: 700; font-size: 0.95rem; color: var(--tf-navy);
+    font-weight: 700; font-size: 0.95rem; color: #E2E8F0;
     display: flex; justify-content: space-between; align-items: center;
 }
 .queue-wo-item {
     display: flex; align-items: center; padding: 12px 16px;
-    border-bottom: 1px solid #F1F5F9; gap: 12px; cursor: pointer; transition: background 0.15s;
+    border-bottom: 1px solid #334155; gap: 12px; cursor: pointer; transition: background 0.15s;
 }
 .queue-wo-item:hover { background: #0F172A; }
 .queue-wo-item:last-child { border-bottom: none; }

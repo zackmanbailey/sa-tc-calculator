@@ -1398,7 +1398,7 @@ function renderBOM(data) {
       const ov = (priceOverrides[bi] || {})[li];
       const isEdited = ov && ov.cost !== undefined;
       const ovVal = isEdited ? ov.cost.toFixed(2) : '';
-      const rowBg = isEdited ? 'background:#FFF8E0;' : '';
+      const rowBg = isEdited ? 'background:#2D3748;' : '';
       html += `
         <tr style="${rowBg}">
           <td>${isEdited ? '<span title="Price Override" style="color:#C89A2E;font-weight:700;font-size:14px">⬥</span>' : ''}</td>
@@ -1409,7 +1409,7 @@ function renderBOM(data) {
           <td style="text-align:right;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${uc}</td>
           <td style="text-align:right;font-weight:600;${isEdited?'text-decoration:line-through;color:#bbb;':''}">${tc}</td>
           <td style="text-align:right">
-            <input type="number" value="${ovVal}" placeholder="—" step="0.01" style="width:90px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px;background:${isEdited?'#FFF8E0':'#fff'}"
+            <input type="number" value="${ovVal}" placeholder="—" step="0.01" style="width:90px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#4A5568'};border-radius:3px;background:${isEdited?'#2D3748':'#1E293B'};color:#E2E8F0"
               onchange="bomOverrideCost(${bi},${li},this.value)" title="Enter override total cost"/>
           </td>
           <td style="font-size:10px;color:#888">${item.notes||''}</td>
@@ -1635,18 +1635,18 @@ function renderPricingTab() {
       const markupPct = editCost > 0 ? ((editSell / editCost - 1) * 100).toFixed(1) : '—';
       const qty = typeof item.qty === 'number' ? item.qty.toLocaleString('en-US',{maximumFractionDigits:2}) : item.qty;
 
-      html += `<tr${isEdited?' style="background:#FFF8E0"':''}>
+      html += `<tr${isEdited?' style="background:#2D3748"':''}>
         <td></td>
         <td>${item.description}</td>
         <td style="text-align:right">${qty}</td>
         <td>${item.unit}</td>
         <td style="text-align:right;${isEdited?'text-decoration:line-through;color:#bbb':''}">$${origCost.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
         <td style="text-align:right">
-          <input type="number" value="${editCost.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px"
+          <input type="number" value="${editCost.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#4A5568'};border-radius:3px;background:${isEdited?'#2D3748':'#1E293B'};color:#E2E8F0"
             onchange="overrideCost(${bi},${li},parseFloat(this.value))" oninput="liveUpdateTotals()"/>
         </td>
         <td style="text-align:right">
-          <input type="number" value="${editSell.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#ddd'};border-radius:3px"
+          <input type="number" value="${editSell.toFixed(2)}" step="0.01" style="width:100px;padding:3px 6px;font-size:12px;text-align:right;border:1px solid ${isEdited?'#C89A2E':'#4A5568'};border-radius:3px;background:${isEdited?'#2D3748':'#1E293B'};color:#E2E8F0"
             onchange="overrideSell(${bi},${li},parseFloat(this.value))" oninput="liveUpdateTotals()"/>
         </td>
         <td style="text-align:right;font-size:11px;color:#888">${markupPct}%</td>
@@ -1967,7 +1967,7 @@ async function showRevisionHistory() {
     html += '<tr style="background:#1F4E79;color:#fff"><th style="padding:8px;text-align:left">Version</th><th style="padding:8px">Saved</th><th style="padding:8px">By</th><th style="padding:8px;text-align:right">Sell Total</th><th style="padding:8px;text-align:center">Overrides</th><th style="padding:8px"></th></tr>';
     for (const r of result.revisions.reverse()) {
       const isCurrent = r.version === currentVersion;
-      html += '<tr style="border-bottom:1px solid #eee;' + (isCurrent ? 'background:#FFF8E0' : '') + '">';
+      html += '<tr style="border-bottom:1px solid #2D3748;' + (isCurrent ? 'background:#2D3748' : '') + '">';
       html += '<td style="padding:8px;font-weight:700;color:#1F4E79">v' + r.version + (isCurrent ? ' ← current' : '') + '</td>';
       html += '<td style="padding:8px;color:#888">' + (r.saved_at || '').slice(0, 16).replace('T', ' ') + '</td>';
       html += '<td style="padding:8px">' + (r.saved_by || '—') + '</td>';
@@ -2014,7 +2014,7 @@ async function compareVersions(jobCode) {
           : '🏗️ ' + (d.building || '') + ' — ' + (d.description || '?');
         const val_a = d.type === 'manual' ? d.ext_a : (d.sell_a || d.cost_a || 0);
         const val_b = d.type === 'manual' ? d.ext_b : (d.sell_b || d.cost_b || 0);
-        html += '<tr style="border-bottom:1px solid #eee">';
+        html += '<tr style="border-bottom:1px solid #2D3748">';
         html += '<td style="padding:4px">' + label + '</td>';
         html += '<td style="padding:4px;text-align:right">$' + val_a.toFixed(2) + '</td>';
         html += '<td style="padding:4px;text-align:right">$' + val_b.toFixed(2) + '</td>';
@@ -2024,7 +2024,7 @@ async function compareVersions(jobCode) {
       // Total row
       const totalDiff = (result.total_sell_b||0) - (result.total_sell_a||0);
       const tdColor = totalDiff > 0 ? '#C00000' : totalDiff < 0 ? '#2E7D32' : '#888';
-      html += '<tr style="background:#F0F4FA;font-weight:700"><td style="padding:5px">TOTAL (BOM Sell)</td>';
+      html += '<tr style="background:#1E293B;font-weight:700;color:#E2E8F0"><td style="padding:5px">TOTAL (BOM Sell)</td>';
       html += '<td style="padding:5px;text-align:right">$' + (result.total_sell_a||0).toLocaleString('en-US',{minimumFractionDigits:2}) + '</td>';
       html += '<td style="padding:5px;text-align:right">$' + (result.total_sell_b||0).toLocaleString('en-US',{minimumFractionDigits:2}) + '</td>';
       html += '<td style="padding:5px;text-align:right;color:' + tdColor + '">' + (totalDiff>0?'+':'') + '$' + totalDiff.toFixed(2) + '</td>';

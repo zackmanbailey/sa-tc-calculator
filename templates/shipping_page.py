@@ -485,7 +485,7 @@ SHIPPING_PAGE_HTML = """
 
         @media print {
             body {
-                background-color: #1E293B;
+                background-color: #fff;
                 color: #000;
             }
 
@@ -507,7 +507,7 @@ SHIPPING_PAGE_HTML = """
             }
 
             .card {
-                background-color: #1E293B;
+                background-color: #fff;
                 border: 1px solid #000;
                 box-shadow: none;
                 page-break-inside: avoid;
@@ -541,12 +541,12 @@ SHIPPING_PAGE_HTML = """
 
             .form-input, .form-select, .form-textarea {
                 border: 1px solid #000;
-                background-color: #1E293B;
+                background-color: #fff;
                 color: #000;
             }
 
             .info-item {
-                background-color: #1E293B;
+                background-color: #fff;
                 border: 1px solid #000;
             }
 
