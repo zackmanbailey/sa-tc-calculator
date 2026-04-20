@@ -648,7 +648,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
       <!-- BOM Detail Breakdown (auto-populated from SA BOM) -->
       <div class="card" id="card-bom-detail" style="display:none">
         <div class="card-hdr" style="background:linear-gradient(135deg,#1E40AF 0%,#7C3AED 100%);color:#fff;cursor:pointer;"
-          onclick="document.getElementById('bom-detail-body').style.display=document.getElementById('bom-detail-body').style.display==='none'?'':'none'">
+          onclick="var b=document.getElementById('bom-detail-body');b.style.display=b.style.display==='none'?'block':'none'">
           <span>&#128203;</span>SA BOM Detail Breakdown
           <span style="margin-left:auto;font-size:10px;font-weight:400;opacity:0.8">Click to expand/collapse</span>
         </div>
@@ -1078,7 +1078,7 @@ function renderSummary() {
   if (stickyI) stickyI.textContent = '$' + install.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
   if (stickyG) stickyG.textContent = '$' + grand.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
   var sqft = numVal('sa_width') * numVal('sa_length');
-  if (stickySF) stickySF.textContent = sqft > 0 ? ('$' + (grand / sqft).toFixed(2)) : '--';
+  if (stickySF) stickySF.textContent = (sqft > 0 && grand > 0) ? ('$' + (grand / sqft).toFixed(2)) : '--';
 }
 
 function renderIntelligence(q) {
@@ -1292,7 +1292,7 @@ async function tcLoadFromProject(jobCode) {
       if (p.city) document.getElementById('proj_city').value = p.city;
       if (p.state) document.getElementById('proj_state').value = p.state;
       if (p.quote_date) document.getElementById('proj_date').value = p.quote_date;
-      if (p.markup_pct) document.getElementById('proj_markup').value = p.markup_pct;
+      if (p.markup_pct != null) document.getElementById('proj_markup').value = p.markup_pct;
     }
     // Populate salesperson
     if (d.salesperson) {
@@ -1306,7 +1306,7 @@ async function tcLoadFromProject(jobCode) {
     if (d.sa) {
       const sa = d.sa;
       if (sa.quote_num) document.getElementById('sa_quote_num').value = sa.quote_num;
-      if (sa.materials_cost) document.getElementById('sa_materials_cost').value = sa.materials_cost;
+      if (sa.materials_cost != null) document.getElementById('sa_materials_cost').value = sa.materials_cost;
       if (sa.n_cols) { document.getElementById('sa_n_cols').value = sa.n_cols; document.getElementById('conc_n_piers').value = sa.n_cols; document.getElementById('drill_n_holes').value = sa.n_cols; }
       if (sa.footing_depth) { document.getElementById('sa_footing_depth').value = sa.footing_depth; document.getElementById('conc_depth_ft').value = sa.footing_depth; }
       if (sa.width_ft) document.getElementById('sa_width').value = sa.width_ft;
@@ -1770,26 +1770,38 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Progressive disclosure - collapsible sections (targets .card-hdr elements)
   document.querySelectorAll('.card-hdr').forEach(function(hdr) {
-    // Skip Project Info, SA Import, Salesperson, and Summary sections - keep those expanded
+    // Skip Project Info, SA Import, Salesperson, Summary, and BOM Detail sections
     var text = hdr.textContent || '';
-    if (text.match(/project info|sa import|summary|salesperson/i)) return;
+    if (text.match(/project info|sa import|summary|salesperson|bom detail/i)) return;
+    // Skip headers that already have an inline onclick (like BOM detail toggle)
+    if (hdr.getAttribute('onclick')) return;
 
     hdr.classList.add('tc-section-toggle');
-    hdr.classList.add('collapsed');
 
     // Find the card-body sibling (next element after card-hdr)
     var cardBody = hdr.nextElementSibling;
     if (!cardBody) return;
 
+    // Measure scrollHeight BEFORE collapsing so we get the real height
+    var fullHeight = cardBody.scrollHeight;
+
+    hdr.classList.add('collapsed');
     cardBody.classList.add('tc-section-body');
     cardBody.classList.add('collapsed');
-    cardBody.style.maxHeight = cardBody.scrollHeight + 'px';
 
     hdr.addEventListener('click', function() {
         var isCollapsed = this.classList.toggle('collapsed');
         cardBody.classList.toggle('collapsed', isCollapsed);
         if (!isCollapsed) {
-            cardBody.style.maxHeight = cardBody.scrollHeight + 200 + 'px';
+            // Re-measure now that content may have changed
+            cardBody.style.maxHeight = 'none';
+            var h = cardBody.scrollHeight;
+            cardBody.style.maxHeight = '0px';
+            // Force reflow then animate open
+            void cardBody.offsetHeight;
+            cardBody.style.maxHeight = h + 100 + 'px';
+        } else {
+            cardBody.style.maxHeight = '0px';
         }
     });
   });
@@ -1858,7 +1870,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var hotelNights = document.getElementById('hotel_nights');
     if (dist > 80) {
         if (hotelCrew) { hotelCrew.value = crew; _flashField(hotelCrew); }
-        if (hotelNights) { hotelNights.value = days; _flashField(hotelNights); }
+        if (hotelNights) { hotelNights.value = Math.max(0, days - 1); _flashField(hotelNights); }
     }
 
     // Per Diem

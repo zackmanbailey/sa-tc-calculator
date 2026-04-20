@@ -19233,17 +19233,29 @@ class CoilLifecycleReceiveHandler(BaseHandler):
                     "location": _sanitize_string(c.get("location", "Receiving"), 200),
                 }
 
-                # Handle mill cert PDF upload
+                # Handle mill cert PDF upload (with validation)
                 mill_cert_key = f"mill_cert_{i}"
                 if mill_cert_key in self.request.files:
                     file_info = self.request.files[mill_cert_key][0]
-                    cert_dir = os.path.join(COIL_LIFECYCLE_DIR, "mill_certs")
-                    os.makedirs(cert_dir, exist_ok=True)
-                    cert_filename = f"{coil_id}_mill_cert.pdf"
-                    cert_path = os.path.join(cert_dir, cert_filename)
-                    with open(cert_path, "wb") as cf:
-                        cf.write(file_info["body"])
-                    coil_record["mill_cert_filename"] = cert_filename
+                    # Validate file size (max 10MB)
+                    max_size = 10 * 1024 * 1024
+                    if len(file_info["body"]) > max_size:
+                        logger.warning(f"Mill cert upload for {coil_id} exceeds 10MB, skipping")
+                    else:
+                        # Validate content type and PDF magic bytes
+                        content_type = file_info.get("content_type", "")
+                        is_pdf = (content_type == "application/pdf" or
+                                  file_info["body"][:4] == b"%PDF")
+                        if not is_pdf:
+                            logger.warning(f"Mill cert upload for {coil_id} is not a PDF, skipping")
+                        else:
+                            cert_dir = os.path.join(COIL_LIFECYCLE_DIR, "mill_certs")
+                            os.makedirs(cert_dir, exist_ok=True)
+                            cert_filename = f"{coil_id}_mill_cert.pdf"
+                            cert_path = os.path.join(cert_dir, cert_filename)
+                            with open(cert_path, "wb") as cf:
+                                cf.write(file_info["body"])
+                            coil_record["mill_cert_filename"] = cert_filename
                     coil_record["mill_cert_uploaded"] = now
 
                 # Save individual coil file
@@ -19546,7 +19558,7 @@ class CoilLifecycleReturnHandler(BaseHandler):
             location = _sanitize_string(body.get("location", ""), 200)
             operator = _sanitize_string(body.get("operator", coil.get("current_operator", "unknown")), 100)
 
-            coil["status"] = "returned"
+            coil["status"] = "available"  # Returned coils go back to available
             coil["remaining_weight_lbs"] = remaining_weight
             lbs_per_lft = coil.get("lbs_per_lft", 10.0)
             if lbs_per_lft > 0:
@@ -19570,10 +19582,6 @@ class CoilLifecycleReturnHandler(BaseHandler):
                 index["coils"][coil_id]["status"] = "available"
                 index["coils"][coil_id]["remaining_weight_lbs"] = remaining_weight
                 _save_coil_lifecycle_index(index)
-
-            # Also set record status to "available" for consistency with index
-            coil["status"] = "available"
-            _save_coil_lifecycle(coil_id, coil)
 
             self._log("coil_returned", "coil_lifecycle", coil_id, {
                 "remaining_lbs": remaining_weight, "location": location
@@ -20327,7 +20335,8 @@ class CoilCostSummaryHandler(BaseHandler):
             job_code = self.get_argument("job_code", "").strip()
 
             if not job_code:
-                self.write({"status": "error", "message": "job_code parameter is required"})
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "job_code parameter is required"}))
                 return
 
             index = _load_coil_lifecycle_index()
@@ -20347,7 +20356,8 @@ class CoilCostSummaryHandler(BaseHandler):
                 # Check if any assigned work order matches this job
                 assigned_to_job = False
                 for wo in coil.get("assigned_work_orders", []):
-                    wo_id = wo.get("work_order_id", "")
+                    # Handle both string and dict formats for work order entries
+                    wo_id = wo.get("work_order_id", "") if isinstance(wo, dict) else str(wo)
                     if job_code and (job_code in wo_id or wo_id.startswith(job_code)):
                         assigned_to_job = True
                         break
