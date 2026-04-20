@@ -434,6 +434,12 @@ window.onload = function() {
   const projectCode = urlParams.get('project');
   if (projectCode) {
     autoLoadFromProject(projectCode);
+    // Project context bar
+    var ctxBar = document.createElement('div');
+    ctxBar.style.cssText = 'background:linear-gradient(135deg,rgba(200,154,46,0.15),rgba(200,154,46,0.05));padding:8px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(200,154,46,0.3);font-size:13px;color:#C89A2E;';
+    ctxBar.innerHTML = '<span>\ud83d\udcc1 Project: <strong>' + projectCode + '</strong></span><a href="/project/' + encodeURIComponent(projectCode) + '" style="margin-left:auto;color:#C89A2E;text-decoration:none;font-weight:600;">\u2190 Back to Project</a><a href="/project/' + encodeURIComponent(projectCode) + '/bom" style="color:#C89A2E;text-decoration:none;">\ud83d\udccb BOM</a><a href="/shop-drawings/' + encodeURIComponent(projectCode) + '" style="color:#C89A2E;text-decoration:none;">\ud83d\udcd0 Shop Drawings</a>';
+    var target = document.querySelector('.sa-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
+    target.prepend(ctxBar);
   }
   // Auto-switch tab from URL param ?tab=bom (or calc, pricing, labels, inventory)
   const tabParam = urlParams.get('tab');

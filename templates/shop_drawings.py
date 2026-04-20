@@ -615,9 +615,10 @@ SHOP_DRAWINGS_HTML = r"""
         <!-- ══════════════════════════════════════════════════ -->
         <div class="tab-content" id="tab-interactive">
             <div style="padding:8px 0;">
-                <h3 style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin-bottom:4px;">
+                <h3 id="builderTitle" style="font-size:var(--tf-text-md);font-weight:700;color:var(--tf-gray-900);margin-bottom:4px;">
                     Interactive Shop Drawing Builder
                 </h3>
+                <div id="builderBuildingLabel" style="display:none;font-size:var(--tf-text-xs);font-weight:600;color:var(--tf-blue-600,#2563EB);margin-bottom:4px;padding:4px 10px;background:var(--tf-blue-50,#EFF6FF);border-radius:6px;display:inline-block;"></div>
                 <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:20px;">
                     Build detailed, dimensioned shop drawings in-browser. Adjust dimensions, add notes, and save directly as PDF.
                 </p>
@@ -1161,6 +1162,15 @@ SHOP_DRAWINGS_HTML = r"""
             { key: 'packaging', label: 'Packaging results' },
         ];
 
+        // ── Project context bar ──
+        (function() {
+            var ctxBar = document.createElement('div');
+            ctxBar.style.cssText = 'background:linear-gradient(135deg,rgba(200,154,46,0.15),rgba(200,154,46,0.05));padding:8px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(200,154,46,0.3);font-size:13px;color:#C89A2E;';
+            ctxBar.innerHTML = '<span>\ud83d\udcc1 Project: <strong>' + JOB_CODE + '</strong></span><a href="/project/' + encodeURIComponent(JOB_CODE) + '" style="margin-left:auto;color:#C89A2E;text-decoration:none;font-weight:600;">\u2190 Back to Project</a><a href="/project/' + encodeURIComponent(JOB_CODE) + '/bom" style="color:#C89A2E;text-decoration:none;">\ud83d\udccb BOM</a><a href="/sa?project=' + encodeURIComponent(JOB_CODE) + '" style="color:#C89A2E;text-decoration:none;">\ud83d\udcc8 SA Estimator</a>';
+            var target = document.querySelector('.shop-drawings-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
+            target.prepend(ctxBar);
+        })();
+
         // ── Init ──
         loadState();
 
@@ -1197,10 +1207,12 @@ SHOP_DRAWINGS_HTML = r"""
                     selectedBuilding = b.building_id;
                     renderBuildingSelector();
                     updateDrawingLinks();
+                    updateBuilderForBuilding();
                 };
                 tabsEl.appendChild(btn);
             });
             updateDrawingLinks();
+            updateBuilderForBuilding();
         }
 
         function updateDrawingLinks() {
@@ -1209,6 +1221,34 @@ SHOP_DRAWINGS_HTML = r"""
                 var dtype = a.dataset.drawingType;
                 a.href = '/shop-drawings/' + JOB_CODE + '/' + dtype + suffix;
             });
+        }
+
+        function updateBuilderForBuilding() {
+            var lbl = document.getElementById('builderBuildingLabel');
+            var title = document.getElementById('builderTitle');
+            if (!buildings || buildings.length <= 1) {
+                if (lbl) lbl.style.display = 'none';
+                return;
+            }
+            // Find the selected building
+            var bldg = null;
+            for (var i = 0; i < buildings.length; i++) {
+                if (buildings[i].building_id === selectedBuilding) {
+                    bldg = buildings[i]; break;
+                }
+            }
+            if (!bldg) return;
+            var w = Math.round(bldg.width_ft || 0);
+            var l = Math.round(bldg.length_ft || 0);
+            var bLabel = selectedBuilding.replace('B', 'Building ');
+            var dims = (w && l) ? " (" + w + "' x " + l + "')" : '';
+            if (lbl) {
+                lbl.textContent = bLabel + dims;
+                lbl.style.display = 'inline-block';
+            }
+            if (title) {
+                title.textContent = 'Interactive Shop Drawing Builder — ' + bLabel;
+            }
         }
 
         // ══════════════════════════════════════════════════════

@@ -698,7 +698,8 @@ def build_html_shell(
 <!-- TOP BAR -->
 <div class="top-bar">
   <div style="display:flex;align-items:center;gap:12px;">
-    <a class="back-link" href="/shop-drawings/%(job_code_ph)s">Back</a>
+    <a class="back-link" href="/shop-drawings/%(job_code_ph)s" title="Back to Shop Drawings">&#8592; Shop Drawings</a>
+    <a class="back-link" href="/project/%(job_code_ph)s" title="Back to Project" style="background:#1E40AF;color:#DBEAFE;border-color:#3B82F6;">&#128204; Project</a>
     <h1>%(title)s</h1>
     <span class="job-code-label" id="jobLabel">%(drawing_type_upper)s</span>
   </div>

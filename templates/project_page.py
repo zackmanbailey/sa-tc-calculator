@@ -1935,11 +1935,7 @@ PROJECT_PAGE_HTML = r"""
         }
 
         function openBOM() {
-            var sec = document.getElementById('bomSection');
-            if (sec) {
-                if (!sec.classList.contains('expanded')) sec.classList.add('expanded');
-                sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
+            window.location.href = '/project/' + encodeURIComponent(JOB_CODE) + '/bom';
         }
 
         function openQuoteEditor() {

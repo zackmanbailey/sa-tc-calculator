@@ -333,7 +333,11 @@ window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
 <body>
 
 <div class="top-bar">
-  <h1>TitanForge — Column Shop Drawing</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" title="Back to Shop Drawings" style="padding:6px 12px;background:#334155;color:#94A3B8;border:1px solid #475569;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;">&#8592; Shop Drawings</a>
+    <a class="back-link" href="/project/{{JOB_CODE}}" title="Back to Project" style="padding:6px 12px;background:#1E40AF;color:#DBEAFE;border:1px solid #3B82F6;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;">&#128204; Project</a>
+    <h1>TitanForge — Column Shop Drawing</h1>
+  </div>
   <div class="controls">
     <div class="ctrl-group">
       <label>Pitch:</label>
@@ -387,7 +391,7 @@ window.COLUMN_CONFIG = {{COLUMN_CONFIG_JSON}};</script>
     <button class="btn-gold" onclick="window.print()" title="Print or save as PDF">⬇ PDF</button>
     <button class="btn-gold" id="btnSavePdf" style="background:#059669;color:#FFF;" onclick="savePdfToProject()" title="Generate PDF and save to project shop drawings">Save PDF to Project</button>
     <span id="savePdfStatus" style="font-size:0.75rem;color:#94A3B8;"></span>
-    <a style="padding:6px 12px;background:#334155;color:#94A3B8;border:1px solid #475569;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;" href="/shop-drawings/{{JOB_CODE}}">← Dashboard</a>
+    <a style="padding:6px 12px;background:#334155;color:#94A3B8;border:1px solid #475569;border-radius:5px;text-decoration:none;font-size:0.78rem;cursor:pointer;" href="/shop-drawings/{{JOB_CODE}}">&#8592; Shop Drawings</a>
   </div>
 </div>
 

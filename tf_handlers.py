@@ -1733,8 +1733,19 @@ class SACalcHandler(BaseHandler):
     """GET /sa — Structures America Estimator."""
     def get(self):
         try:
+            project = self.get_argument("project", None)
+            if project:
+                safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', project)
+                meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+                proj_name = project
+                if os.path.exists(meta_path):
+                    with open(meta_path) as f:
+                        proj_name = json.load(f).get("project_name", project)
+                breadcrumbs = [("Dashboard", "/"), ("Projects", "/projects"), (proj_name, f"/project/{project}"), ("SA Estimator", "")]
+            else:
+                breadcrumbs = [("Dashboard", "/"), ("SA Estimator", "")]
             self.render_with_nav(MAIN_HTML, active_page="sa",
-                                    breadcrumbs=[("Dashboard", "/"), ("SA Estimator", "")])
+                                    breadcrumbs=breadcrumbs)
 
 
         except Exception as e:
@@ -1745,8 +1756,19 @@ class TCQuoteHandler(BaseHandler):
     """GET /tc — Titan Carports Estimator."""
     def get(self):
         try:
+            project = self.get_argument("project", None)
+            if project:
+                safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', project)
+                meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+                proj_name = project
+                if os.path.exists(meta_path):
+                    with open(meta_path) as f:
+                        proj_name = json.load(f).get("project_name", project)
+                breadcrumbs = [("Dashboard", "/"), ("Projects", "/projects"), (proj_name, f"/project/{project}"), ("TC Estimator", "")]
+            else:
+                breadcrumbs = [("Dashboard", "/"), ("TC Estimator", "")]
             self.render_with_nav(TC_HTML, active_page="tc",
-                                    breadcrumbs=[("Dashboard", "/"), ("TC Estimator", "")])
+                                    breadcrumbs=breadcrumbs)
 
 
         except Exception as e:
@@ -5043,6 +5065,48 @@ class ProjectBOMHandler(BaseHandler):
             logger.error(f"ProjectBOMHandler error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"error": str(e)}))
+
+
+class ProjectBOMPageHandler(BaseHandler):
+    """GET /project/{job_code}/bom — Dedicated BOM page."""
+    def get(self, job_code):
+        try:
+            from templates.bom_page import BOM_PAGE_HTML
+            safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe_name)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+
+            if not os.path.exists(meta_path):
+                self.set_status(404)
+                self.write(f"<h2>Project '{html.escape(job_code)}' not found</h2>")
+                return
+
+            with open(meta_path) as f:
+                metadata = json.load(f)
+
+            proj_name = metadata.get("project_name", job_code)
+
+            # Load BOM data
+            bom_data = {}
+            current_path = os.path.join(proj_dir, "current.json")
+            if os.path.exists(current_path):
+                with open(current_path) as f:
+                    saved = json.load(f)
+                bom_data = saved.get("bom_result") or saved.get("bom_data") or {}
+
+            self.render_with_nav(
+                BOM_PAGE_HTML
+                    .replace("{{JOB_CODE}}", job_code)
+                    .replace("{{PROJECT_NAME}}", html.escape(proj_name))
+                    .replace("{{METADATA_JSON}}", json_encode(metadata))
+                    .replace("{{BOM_JSON}}", json_encode(bom_data)),
+                active_page="projects",
+                breadcrumbs=[("Dashboard", "/"), ("Projects", "/projects"), (proj_name, f"/project/{job_code}"), ("Bill of Materials", "")]
+            )
+        except Exception as e:
+            logger.error(f"ProjectBOMPageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
 
 
 class ProjectPageHandler(BaseHandler):
@@ -8707,12 +8771,20 @@ class ShopDrawingsPageHandler(BaseHandler):
                 users_db = load_users()
                 display = users_db.get(user, {}).get("display_name", user or "User")
 
+            # Load project name for breadcrumbs
+            safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', job_code)
+            meta_path = os.path.join(PROJECTS_DIR, safe_name, "metadata.json")
+            proj_name = job_code
+            if os.path.exists(meta_path):
+                with open(meta_path) as f:
+                    proj_name = json.load(f).get("project_name", job_code)
+
             html = SHOP_DRAWINGS_HTML
             html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
             html = html.replace("{{USER_ROLE}}", role)
             html = html.replace("{{USER_NAME}}", _html_escape(display))
             self.render_with_nav(html, active_page="shopdrw", job_code=job_code,
-                                    breadcrumbs=[("Dashboard", "/"), ("Shop Drawings", "/shop-drawings"), (job_code, "")])
+                                    breadcrumbs=[("Dashboard", "/"), ("Projects", "/projects"), (proj_name, f"/project/{job_code}"), ("Shop Drawings", "")])
 
 
         except Exception as e:
@@ -19000,6 +19072,7 @@ def get_routes():
 
         # ── Project Page ──────────────────────────────────────
         (r"/api/project/([^/]+)/bom$",   ProjectBOMHandler),
+        (r"/project/([^/]+)/bom",        ProjectBOMPageHandler),
         (r"/project/([^/]+)",            ProjectPageHandler),
 
         # ── Shop Drawings ─────────────────────────────────────

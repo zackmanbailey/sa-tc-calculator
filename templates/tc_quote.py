@@ -582,6 +582,18 @@ input[type=checkbox]{width:auto;margin-right:6px}
         </div>
       </div>
 
+      <!-- BOM Detail Breakdown (auto-populated from SA BOM) -->
+      <div class="card" id="card-bom-detail" style="display:none">
+        <div class="card-hdr" style="background:linear-gradient(135deg,#1E40AF 0%,#7C3AED 100%);color:#fff;cursor:pointer;"
+          onclick="document.getElementById('bom-detail-body').style.display=document.getElementById('bom-detail-body').style.display==='none'?'':'none'">
+          <span>&#128203;</span>SA BOM Detail Breakdown
+          <span style="margin-left:auto;font-size:10px;font-weight:400;opacity:0.8">Click to expand/collapse</span>
+        </div>
+        <div class="card-body" id="bom-detail-body" style="display:none;padding:0;">
+          <div id="bom-detail-content" style="max-height:600px;overflow-y:auto;"></div>
+        </div>
+      </div>
+
     </div><!-- /tab-quote -->
 
     <!-- SUMMARY TAB -->
@@ -648,11 +660,21 @@ function prefillFromURL() {
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
 
   // Auto-load project data from ?project=JOB_CODE
-  // First try to load saved TC data; if none exists, fall back to project metadata
+  // Priority: 1) Saved TC data  2) Full BOM  3) tc_import.json  4) Metadata only
   if (p.has('project')) {
     const projCode = p.get('project');
     tcLoadFromProject(projCode).then(loaded => {
-      if (!loaded) autoLoadProjectMetadata(projCode);
+      if (!loaded) {
+        // No saved TC data — try full BOM auto-populate
+        autoLoadFromBOM(projCode).then(bomLoaded => {
+          if (!bomLoaded) {
+            // Fall back to tc_import.json
+            checkSAImport().then(() => {
+              autoLoadProjectMetadata(projCode);
+            });
+          }
+        });
+      }
     });
   }
 }
@@ -1229,6 +1251,175 @@ async function tcLoadFromProject(jobCode) {
 }
 
 // ─────────────────────────────────────────────
+// FULL BOM AUTO-LOAD
+// ─────────────────────────────────────────────
+async function autoLoadFromBOM(jobCode) {
+  try {
+    const resp = await fetch('/api/project/' + encodeURIComponent(jobCode) + '/bom');
+    const result = await resp.json();
+    if (!result.ok || !result.has_bom) return false;
+
+    // Populate project info from metadata
+    await autoLoadProjectMetadata(jobCode);
+
+    // Set the total materials cost
+    if (result.total_sell_price && numVal('sa_materials_cost') === 0) {
+      document.getElementById('sa_materials_cost').value = result.total_sell_price;
+    }
+
+    // Build BOM detail breakdown
+    const detailCard = document.getElementById('card-bom-detail');
+    const detailContent = document.getElementById('bom-detail-content');
+    if (!detailCard || !detailContent) return false;
+
+    let totalWeight = result.total_weight_lbs || 0;
+    let totalCost = result.total_material_cost || 0;
+    let totalSell = result.total_sell_price || 0;
+    let nColumns = 0;
+
+    let html = '';
+    const buildings = result.buildings || [];
+
+    buildings.forEach(function(bldg, bIdx) {
+      const bName = bldg.building_name || ('Building ' + (bIdx + 1));
+      const bW = Math.round(bldg.width_ft || 0);
+      const bL = Math.round(bldg.length_ft || 0);
+
+      html += '<div style="border-bottom:1px solid #334155;padding:12px 14px;">';
+      html += '<div style="font-weight:700;color:#93C5FD;font-size:13px;margin-bottom:8px;">';
+      html += bName + (bW && bL ? " (" + bW + "' x " + bL + "')" : '') + '</div>';
+
+      // Group line items by category
+      var categories = {};
+      (bldg.line_items || []).forEach(function(item) {
+        var cat = item.category || 'Other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(item);
+      });
+
+      // Count columns
+      Object.keys(categories).forEach(function(cat) {
+        if (cat.toLowerCase().indexOf('column') >= 0) {
+          categories[cat].forEach(function(item) {
+            nColumns += (item.qty || item.piece_count || 0);
+          });
+        }
+      });
+
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      html += '<thead><tr style="background:#1E293B;color:#94A3B8;">';
+      html += '<th style="text-align:left;padding:6px 8px;">Category</th>';
+      html += '<th style="text-align:left;padding:6px 8px;">Description</th>';
+      html += '<th style="text-align:right;padding:6px 8px;">Qty</th>';
+      html += '<th style="text-align:left;padding:6px 8px;">Unit</th>';
+      html += '<th style="text-align:right;padding:6px 8px;">Weight (lbs)</th>';
+      if (result.show_costs) {
+        html += '<th style="text-align:right;padding:6px 8px;">Unit Cost</th>';
+        html += '<th style="text-align:right;padding:6px 8px;">Ext Cost</th>';
+      }
+      html += '</tr></thead><tbody>';
+
+      var catColors = {
+        'Structural Steel': '#EF4444', 'Columns': '#EF4444', 'Rafters': '#EF4444',
+        'Panels': '#3B82F6', 'Wall Panels': '#3B82F6', 'Roof Panels': '#3B82F6',
+        'Trim': '#F59E0B', 'Fasteners': '#8B5CF6', 'Accessories': '#10B981',
+        'Purlins': '#EC4899', 'Foundation': '#6B7280', 'Girts': '#14B8A6',
+      };
+
+      Object.keys(categories).forEach(function(cat) {
+        var items = categories[cat];
+        var catTotal = 0;
+        var catWeight = 0;
+        var catColor = catColors[cat] || '#6B7280';
+
+        items.forEach(function(item) {
+          catWeight += (item.total_weight_lbs || 0);
+          catTotal += (item.total_cost || 0);
+          html += '<tr style="border-bottom:1px solid #1E293B;">';
+          html += '<td style="padding:4px 8px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + catColor + ';margin-right:6px;"></span>' + cat + '</td>';
+          html += '<td style="padding:4px 8px;color:#E2E8F0;">' + (item.description || '') + '</td>';
+          html += '<td style="padding:4px 8px;text-align:right;color:#E2E8F0;">' + (item.qty || item.piece_count || 0) + '</td>';
+          html += '<td style="padding:4px 8px;color:#94A3B8;">' + (item.unit || 'ea') + '</td>';
+          html += '<td style="padding:4px 8px;text-align:right;color:#E2E8F0;">' + Math.round(item.total_weight_lbs || 0).toLocaleString() + '</td>';
+          if (result.show_costs) {
+            html += '<td style="padding:4px 8px;text-align:right;color:#93C5FD;">$' + (item.unit_cost || 0).toFixed(2) + '</td>';
+            html += '<td style="padding:4px 8px;text-align:right;color:#6EE7B7;">$' + (item.total_cost || 0).toFixed(2) + '</td>';
+          }
+          html += '</tr>';
+        });
+
+        // Category subtotal row
+        html += '<tr style="background:#0F172A;font-weight:600;">';
+        html += '<td colspan="4" style="padding:4px 8px;text-align:right;color:#94A3B8;font-size:11px;">' + cat + ' Subtotal:</td>';
+        html += '<td style="padding:4px 8px;text-align:right;color:#F6AE2D;">' + Math.round(catWeight).toLocaleString() + '</td>';
+        if (result.show_costs) {
+          html += '<td style="padding:4px 8px;"></td>';
+          html += '<td style="padding:4px 8px;text-align:right;color:#F6AE2D;">$' + catTotal.toFixed(2) + '</td>';
+        }
+        html += '</tr>';
+      });
+
+      html += '</tbody></table>';
+
+      // Building totals
+      html += '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:8px 0;font-size:11px;color:#94A3B8;">';
+      html += '<span>Weight: <strong style="color:#E2E8F0;">' + Math.round(bldg.total_weight_lbs || 0).toLocaleString() + ' lbs</strong></span>';
+      if (result.show_costs && bldg.total_sell_price) {
+        html += '<span>Material Sell: <strong style="color:#6EE7B7;">$' + (bldg.total_sell_price || 0).toFixed(2) + '</strong></span>';
+      }
+      html += '</div>';
+      html += '</div>';
+    });
+
+    // Grand totals banner
+    html += '<div style="padding:12px 14px;background:#0F172A;display:flex;gap:24px;flex-wrap:wrap;font-size:12px;">';
+    html += '<div><span style="color:#94A3B8;">Total Weight:</span> <strong style="color:#E2E8F0;">' + Math.round(totalWeight).toLocaleString() + ' lbs</strong></div>';
+    if (result.show_costs) {
+      html += '<div><span style="color:#94A3B8;">Material Cost:</span> <strong style="color:#93C5FD;">$' + totalCost.toFixed(2) + '</strong></div>';
+      html += '<div><span style="color:#94A3B8;">Sell Price:</span> <strong style="color:#6EE7B7;">$' + totalSell.toFixed(2) + '</strong></div>';
+    }
+    html += '<div><span style="color:#94A3B8;">Buildings:</span> <strong style="color:#E2E8F0;">' + buildings.length + '</strong></div>';
+    html += '</div>';
+
+    detailContent.innerHTML = html;
+    detailCard.style.display = '';
+
+    // Auto-fill column count for concrete/drilling
+    if (nColumns > 0 && numVal('sa_n_cols') === 0) {
+      document.getElementById('sa_n_cols').value = nColumns;
+      document.getElementById('conc_n_piers').value = nColumns;
+      document.getElementById('drill_n_holes').value = nColumns;
+    }
+
+    // Auto-fill building dimensions from first building
+    if (buildings.length > 0) {
+      var b0 = buildings[0];
+      if (b0.width_ft && numVal('sa_width') <= 40) document.getElementById('sa_width').value = b0.width_ft;
+      if (b0.length_ft && numVal('sa_length') <= 180) document.getElementById('sa_length').value = b0.length_ft;
+    }
+
+    // Show SA import banner
+    var banner = document.getElementById('sa-import-banner');
+    if (banner && totalSell > 0) {
+      banner.style.display = 'block';
+      document.getElementById('sa-import-cost-lbl').textContent = fmt(totalSell);
+      var dateLbl = document.getElementById('sa-import-date-lbl');
+      if (dateLbl) dateLbl.textContent = '(auto-populated from BOM)';
+      var hint = document.getElementById('sa-import-hint');
+      if (hint) hint.style.display = 'none';
+    }
+
+    syncConcreteFromSA();
+    calcConcrete(); calcDrilling();
+    renderSummary();
+    return true;
+  } catch(e) {
+    console.warn('BOM auto-load failed:', e);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
 // SA IMPORT AUTO-LOAD
 // ─────────────────────────────────────────────
 async function checkSAImport() {
@@ -1365,6 +1556,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Check for SA import after URL prefill completes
   setTimeout(checkSAImport, 800);
+
+  // Project context bar
+  const tcProjParam = new URLSearchParams(window.location.search).get('project');
+  if (tcProjParam) {
+    var ctxBar = document.createElement('div');
+    ctxBar.style.cssText = 'background:linear-gradient(135deg,rgba(200,154,46,0.15),rgba(200,154,46,0.05));padding:8px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(200,154,46,0.3);font-size:13px;color:#C89A2E;';
+    ctxBar.innerHTML = '<span>\ud83d\udcc1 Project: <strong>' + tcProjParam + '</strong></span><a href="/project/' + encodeURIComponent(tcProjParam) + '" style="margin-left:auto;color:#C89A2E;text-decoration:none;font-weight:600;">\u2190 Back to Project</a><a href="/project/' + encodeURIComponent(tcProjParam) + '/bom" style="color:#C89A2E;text-decoration:none;">\ud83d\udccb BOM</a><a href="/shop-drawings/' + encodeURIComponent(tcProjParam) + '" style="color:#C89A2E;text-decoration:none;">\ud83d\udcd0 Shop Drawings</a>';
+    var target = document.querySelector('.tc-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
+    target.prepend(ctxBar);
+  }
 
   // Sync crew/days
   document.getElementById('lab_crew').addEventListener('change', function() {
