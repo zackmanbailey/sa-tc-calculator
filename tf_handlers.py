@@ -3961,6 +3961,29 @@ class ProjectLoadHandler(BaseHandler):
                 fpath = os.path.join(PROJECTS_DIR, f"{safe_name}.json")
 
             if not os.path.isfile(fpath):
+                # No saved BOM data yet — check if metadata exists (project was created but not configured)
+                meta_path = os.path.join(proj_dir, "metadata.json")
+                if os.path.isfile(meta_path):
+                    with open(meta_path) as f:
+                        metadata = json.load(f)
+                    # Return partial data from metadata so SA can pre-fill project info
+                    data = {
+                        "job_code": job_code,
+                        "project": {
+                            "name": metadata.get("project_name", ""),
+                            "job_code": job_code,
+                            "customer_name": (metadata.get("customer") or {}).get("name", ""),
+                            "address": (metadata.get("location") or {}).get("street", ""),
+                            "city": (metadata.get("location") or {}).get("city", ""),
+                            "state": (metadata.get("location") or {}).get("state", ""),
+                            "zip_code": (metadata.get("location") or {}).get("zip", ""),
+                        },
+                        "buildings": [],
+                        "from_metadata": True,
+                    }
+                    self.set_header("Content-Type", "application/json")
+                    self.write(json_encode({"ok": True, "data": data, "no_bom": True}))
+                    return
                 self.write(json_encode({"ok": False, "error": "Project not found"}))
                 return
             with open(fpath) as f:

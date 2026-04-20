@@ -1922,7 +1922,12 @@ async function loadProject(jobCode, version) {
     updateVersionBadge();
     if (currentBOM) renderPricingTab();
 
-    showToast('Project loaded: ' + jobCode + ' (v' + currentVersion + ')', 'success');
+    // If server returned metadata-only (no BOM saved yet), show a friendly info toast
+    if (result.no_bom) {
+      showToast('Project loaded from CRM. Configure buildings and calculate BOM.', 'info');
+    } else {
+      showToast('Project loaded: ' + jobCode + ' (v' + currentVersion + ')', 'success');
+    }
   } catch(e) { showToast('Load error: ' + e.message, 'error'); throw e; }
 }
 

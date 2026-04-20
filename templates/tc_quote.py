@@ -660,49 +660,58 @@ function prefillFromURL() {
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
 
   // Auto-load project data from ?project=JOB_CODE
-  // Priority: 1) Saved TC data  2) Full BOM  3) tc_import.json  4) Metadata only
+  // ALWAYS load metadata first (has customer name, project name from CRM)
+  // Then: 1) Saved TC data  2) Full BOM  3) tc_import.json
   if (p.has('project')) {
     const projCode = p.get('project');
-    tcLoadFromProject(projCode).then(loaded => {
-      if (!loaded) {
-        // No saved TC data — try full BOM auto-populate
-        autoLoadFromBOM(projCode).then(bomLoaded => {
-          if (!bomLoaded) {
-            // Fall back to tc_import.json
-            checkSAImport().then(() => {
-              autoLoadProjectMetadata(projCode);
-            });
-          }
-        });
-      }
+    // Always load metadata FIRST — this has the canonical customer name
+    autoLoadProjectMetadata(projCode, true).then(() => {
+      tcLoadFromProject(projCode).then(loaded => {
+        // After TC load, re-apply metadata to fill any gaps (customer name)
+        autoLoadProjectMetadata(projCode, false);
+        if (!loaded) {
+          // No saved TC data — try full BOM auto-populate
+          autoLoadFromBOM(projCode).then(bomLoaded => {
+            if (!bomLoaded) {
+              // Fall back to tc_import.json
+              checkSAImport();
+            }
+          });
+        }
+      });
     });
   }
 }
 
-async function autoLoadProjectMetadata(jobCode) {
+async function autoLoadProjectMetadata(jobCode, forceOverwrite) {
   try {
     const resp = await fetch('/api/project/metadata?job_code=' + encodeURIComponent(jobCode));
     const result = await resp.json();
     if (result.ok && result.metadata) {
       const m = result.metadata;
+      // Always set project code and name from metadata
       const projCodeEl = document.getElementById('proj_code');
-      if (projCodeEl && !projCodeEl.value) projCodeEl.value = m.job_code || jobCode;
+      if (projCodeEl) projCodeEl.value = m.job_code || jobCode;
       const projNameEl = document.getElementById('proj_name');
-      if (projNameEl && !projNameEl.value) projNameEl.value = m.project_name || '';
-      if (m.customer) {
+      if (projNameEl && (forceOverwrite || !projNameEl.value)) projNameEl.value = m.project_name || '';
+      // Always set customer from metadata (this is the canonical source)
+      if (m.customer && m.customer.name) {
         const custEl = document.getElementById('proj_customer');
-        if (custEl && !custEl.value) custEl.value = m.customer.name || '';
+        if (custEl) custEl.value = m.customer.name;
       }
       if (m.location) {
         const addrEl = document.getElementById('proj_address');
-        if (addrEl && !addrEl.value) addrEl.value = m.location.street || '';
+        if (addrEl && (forceOverwrite || !addrEl.value)) addrEl.value = m.location.street || '';
         const cityEl = document.getElementById('proj_city');
-        if (cityEl && !cityEl.value) cityEl.value = m.location.city || '';
+        if (cityEl && (forceOverwrite || !cityEl.value)) cityEl.value = m.location.city || '';
         const stateEl = document.getElementById('proj_state');
-        if (stateEl && !stateEl.value) stateEl.value = m.location.state || '';
+        if (stateEl && (forceOverwrite || !stateEl.value)) stateEl.value = m.location.state || '';
       }
+      // Store project code for context bar
+      window._tcProjectCode = jobCode;
+      window._tcProjectName = m.project_name || jobCode;
     }
-  } catch(e) { /* silent */ }
+  } catch(e) { console.error('Metadata load failed:', e); }
 }
 
 // ─────────────────────────────────────────────
@@ -1557,15 +1566,40 @@ window.addEventListener('DOMContentLoaded', () => {
   // Check for SA import after URL prefill completes
   setTimeout(checkSAImport, 800);
 
-  // Project context bar
-  const tcProjParam = new URLSearchParams(window.location.search).get('project');
-  if (tcProjParam) {
+  // Project context bar — show immediately if ?project= in URL, or show after data loads
+  function showProjectContextBar(projCode, projName) {
+    if (document.getElementById('tc-project-ctx-bar')) return; // already shown
     var ctxBar = document.createElement('div');
-    ctxBar.style.cssText = 'background:linear-gradient(135deg,rgba(200,154,46,0.15),rgba(200,154,46,0.05));padding:8px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(200,154,46,0.3);font-size:13px;color:#C89A2E;';
-    ctxBar.innerHTML = '<span>\ud83d\udcc1 Project: <strong>' + tcProjParam + '</strong></span><a href="/project/' + encodeURIComponent(tcProjParam) + '" style="margin-left:auto;color:#C89A2E;text-decoration:none;font-weight:600;">\u2190 Back to Project</a><a href="/project/' + encodeURIComponent(tcProjParam) + '/bom" style="color:#C89A2E;text-decoration:none;">\ud83d\udccb BOM</a><a href="/shop-drawings/' + encodeURIComponent(tcProjParam) + '" style="color:#C89A2E;text-decoration:none;">\ud83d\udcd0 Shop Drawings</a>';
+    ctxBar.id = 'tc-project-ctx-bar';
+    ctxBar.style.cssText = 'background:linear-gradient(135deg,rgba(200,154,46,0.15),rgba(200,154,46,0.05));padding:10px 20px;display:flex;align-items:center;gap:16px;border-bottom:1px solid rgba(200,154,46,0.3);font-size:13px;color:#C89A2E;flex-wrap:wrap;';
+    var label = projName || projCode;
+    ctxBar.innerHTML = '<span style="font-size:15px;">\ud83d\udcc1 <strong>' + label + '</strong> <span style="opacity:0.6;font-size:11px;">(' + projCode + ')</span></span>'
+      + '<a href="/project/' + encodeURIComponent(projCode) + '" style="margin-left:auto;color:#C89A2E;text-decoration:none;font-weight:600;padding:4px 12px;border:1px solid rgba(200,154,46,0.4);border-radius:6px;font-size:12px;">\u2190 Back to Project</a>'
+      + '<a href="/project/' + encodeURIComponent(projCode) + '/bom" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udccb BOM</a>'
+      + '<a href="/sa?project=' + encodeURIComponent(projCode) + '" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udcd0 SA Estimator</a>'
+      + '<a href="/shop-drawings/' + encodeURIComponent(projCode) + '" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udcd0 Shop Drawings</a>';
     var target = document.querySelector('.tc-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
     target.prepend(ctxBar);
   }
+  // Show from URL param
+  const tcProjParam = new URLSearchParams(window.location.search).get('project');
+  if (tcProjParam) {
+    showProjectContextBar(tcProjParam, tcProjParam);
+  }
+  // Also show after metadata loads (picks up project name)
+  var _origAutoLoad = window._tcProjectCode;
+  setInterval(function() {
+    if (window._tcProjectCode && !document.getElementById('tc-project-ctx-bar')) {
+      showProjectContextBar(window._tcProjectCode, window._tcProjectName || window._tcProjectCode);
+    } else if (window._tcProjectCode && window._tcProjectName && document.getElementById('tc-project-ctx-bar')) {
+      // Update label with project name once loaded
+      var bar = document.getElementById('tc-project-ctx-bar');
+      var span = bar.querySelector('span');
+      if (span && span.textContent.indexOf(window._tcProjectName) < 0) {
+        span.innerHTML = '\ud83d\udcc1 <strong>' + window._tcProjectName + '</strong> <span style="opacity:0.6;font-size:11px;">(' + window._tcProjectCode + ')</span>';
+      }
+    }
+  }, 1000);
 
   // Sync crew/days
   document.getElementById('lab_crew').addEventListener('change', function() {
