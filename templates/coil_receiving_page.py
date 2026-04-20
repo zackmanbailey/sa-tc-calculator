@@ -648,6 +648,7 @@ COIL_RECEIVING_HTML = r"""
             var obj = {};
             var fields = entry.querySelectorAll('[data-field]');
             fields.forEach(function(f) {
+                if (f.type === 'file') return; // skip file inputs — handled separately
                 var key = f.dataset.field;
                 var val = f.value ? f.value.trim() : '';
                 obj[key] = val;

@@ -530,7 +530,8 @@ function updateJobCode() {
 function onStateChange() {
   const st = document.getElementById('proj_state').value;
   if (WIND_BY_STATE[st]) document.getElementById('proj_wind').value = WIND_BY_STATE[st];
-  if (FOOTING_BY_STATE[st]) document.getElementById('proj_footing').value = FOOTING_BY_STATE[st];
+  var footEl = document.getElementById('proj_footing');
+  if (FOOTING_BY_STATE[st] && footEl) footEl.value = FOOTING_BY_STATE[st];
   updateJobCode();
 }
 
@@ -1598,6 +1599,7 @@ async function sendToTCQuote() {
   const footingDepth = currentBOM.project?.footing_depth_ft || 10;
   const projName = currentBOM.project?.name || '';
   const projCode = currentBOM.project?.job_code || '';
+  const customerName = (document.getElementById('proj_customer') || {}).value || currentBOM.project?.customer_name || '';
   const width = (currentBOM.buildings || [])[0]?.width_ft || 40;
   const length = (currentBOM.buildings || [])[0]?.length_ft || 180;
   const saQuoteNum = projCode ? 'SA-' + projCode : '';
@@ -1620,6 +1622,7 @@ async function sendToTCQuote() {
         body: JSON.stringify({
           job_code: projCode,
           project_name: projName,
+          customer_name: customerName,
           total_sell_price: sellPrice,
           total_material_cost: currentBOM.total_material_cost || 0,
           n_columns: nCols,
@@ -1647,6 +1650,7 @@ async function sendToTCQuote() {
     footing: footingDepth,
     proj_name: projName,
     proj_code: projCode,
+    customer: customerName,
     sa_quote: saQuoteNum,
     width: width,
     length: length,

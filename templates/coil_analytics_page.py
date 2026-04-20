@@ -295,7 +295,7 @@ COIL_ANALYTICS_HTML = r"""
     </div>
 
     <!-- ========== SCRAP RATE ALERTS ========== -->
-    <div class="ca-section scrap-alerts" id="scrapAlertsSection" style="display:none">
+    <div class="ca-panel scrap-alerts" id="scrapAlertsSection" style="display:none">
         <h2 style="display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800;margin:0 0 12px 0;">
             <span>&#x1F6A8;</span> Scrap Rate Alerts
         </h2>
@@ -918,11 +918,12 @@ COIL_ANALYTICS_HTML = r"""
     /* ------------------------------------------------------------------ */
     /*  INIT                                                               */
     /* ------------------------------------------------------------------ */
-    document.addEventListener('DOMContentLoaded', function() {
+    /* Fire once — either now if DOM ready, or on DOMContentLoaded */
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { caFetchData(); });
+    } else {
         caFetchData();
-    });
-    /* Also fire immediately in case DOM is already ready */
-    if (document.readyState !== 'loading') { caFetchData(); }
+    }
 
 })();
 </script>
