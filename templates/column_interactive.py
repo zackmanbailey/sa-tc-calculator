@@ -2707,6 +2707,7 @@ async function savePdfToProject() {
     formData.append('drawing_type', 'column');
     formData.append('source', 'interactive');
     var bldgId = (window.COLUMN_CONFIG && window.COLUMN_CONFIG.building_id) || 'B1';
+    formData.append('building_id', bldgId);
     var bldgSuffix = bldgId.replace('B', '');
     formData.append('pdf_file', blob, jobCode + '_C1-' + bldgSuffix + '.pdf');
 

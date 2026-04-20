@@ -8092,6 +8092,8 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["length_ft"] = target["length_ft"]
     enriched["clear_height_ft"] = target["clear_height_ft"]
     enriched["roof_pitch_deg"] = target["slope_deg"]
+    enriched["pitch_deg"] = target["slope_deg"]
+    enriched["slope_deg"] = target["slope_deg"]
     enriched["n_frames"] = target["n_frames"]
     enriched["purlin_spacing_ft"] = target["purlin_spacing_ft"]
     enriched["frame_type"] = target["frame_type"]
@@ -8099,6 +8101,10 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["embedment_ft"] = target["embedment_ft"]
     enriched["footing_depth_ft"] = target.get("footing_depth_ft", 10.0)
     enriched["building_name"] = target.get("building_name", building_id)
+    # Override any stale rafter-derived values so building-specific data always wins
+    enriched["_rafter_width_ft"] = target["width_ft"]
+    enriched["_rafter_clear_height_ft"] = target["clear_height_ft"]
+    enriched["_rafter_pitch"] = target["slope_deg"]
     # Column count for shop drawing title block
     # Use BOM geometry if available; otherwise calculate from building params
     # (same formula as BOM: n_frames × columns_per_rafter)
@@ -8189,11 +8195,12 @@ def _load_interactive_sources(job_code):
     return {}
 
 
-def _register_interactive_source(job_code, filename, drawing_type):
+def _register_interactive_source(job_code, filename, drawing_type, building_id="B1"):
     """Record that *filename* was saved by the Interactive Builder."""
     sources = _load_interactive_sources(job_code)
     sources[filename] = {
         "drawing_type": drawing_type,
+        "building_id": building_id,
         "saved_at": datetime.datetime.now().isoformat(),
         "source": "interactive",
     }
@@ -8689,6 +8696,7 @@ class SaveInteractivePDFHandler(BaseHandler):
     def post(self):
         job_code = self.get_argument("job_code", "")
         drawing_type = self.get_argument("drawing_type", "column")
+        building_id = self.get_argument("building_id", "B1")
         if not job_code:
             self.write(json_encode({"ok": False, "error": "job_code required"}))
             return
@@ -8711,16 +8719,18 @@ class SaveInteractivePDFHandler(BaseHandler):
             with open(out_path, "wb") as f:
                 f.write(pdf_file["body"])
 
-            # Register this file as an interactive-builder source
-            _register_interactive_source(job_code, filename, drawing_type)
+            # Register this file as an interactive-builder source (with building_id)
+            _register_interactive_source(job_code, filename, drawing_type, building_id=building_id)
 
-            # Remove any OLD files for the same drawing type (e.g. old _B1.pdf
-            # when a new _RAFTER_INTERACTIVE.pdf is saved).  This prevents
-            # stale legacy PDFs from lingering in the gallery.
+            # Remove any OLD files for the same drawing type AND same building
+            # (e.g. re-saving B1's column replaces the old B1 column PDF).
+            # Other buildings' PDFs are preserved.
             sources = _load_interactive_sources(job_code)
             stale = []
             for old_fname, old_info in list(sources.items()):
-                if old_fname != filename and old_info.get("drawing_type") == drawing_type:
+                if (old_fname != filename
+                    and old_info.get("drawing_type") == drawing_type
+                    and old_info.get("building_id", "B1") == building_id):
                     stale.append(old_fname)
             for old_fname in stale:
                 old_path = os.path.join(pdfs_dir, old_fname)
@@ -8913,11 +8923,13 @@ class ShopDrawingsConfigHandler(BaseHandler):
                             "splice": "Splice Plate Shop Drawing",
                         }
                         desc = _dtype_labels.get(dtype, "Shop Drawing")
+                        bld_id = src_info.get("building_id", "B1")
                         drawings.append({
                             "filename": fname,
                             "type": dtype,
                             "description": desc,
                             "size_bytes": os.path.getsize(fpath),
+                            "building_id": bld_id,
                         })
 
             # Filter generation-log drawings too: remove any that are not

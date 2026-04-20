@@ -4111,6 +4111,7 @@ async function savePdfToProject() {
     formData.append('drawing_type', 'rafter');
     formData.append('source', 'interactive');
     var bldgId = (window.RAFTER_CONFIG && window.RAFTER_CONFIG.building_id) || 'B1';
+    formData.append('building_id', bldgId);
     var bldgSuffix = bldgId.replace('B', '');
     formData.append('pdf_file', blob, jobCode + '_RAFTER_' + bldgSuffix + '.pdf');
 

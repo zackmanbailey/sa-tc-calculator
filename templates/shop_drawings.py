@@ -1212,6 +1212,7 @@ SHOP_DRAWINGS_HTML = r"""
                     renderBuildingSelector();
                     updateDrawingLinks();
                     updateBuilderForBuilding();
+                    renderDrawings();
                 };
                 tabsEl.appendChild(btn);
             });
@@ -1546,7 +1547,15 @@ SHOP_DRAWINGS_HTML = r"""
             const grid = document.getElementById('drawingsGrid');
             const empty = document.getElementById('drawingsEmpty');
 
-            if (drawings.length === 0) {
+            // Filter drawings by selected building (if multi-building project)
+            var filtered = drawings;
+            if (buildings.length > 1) {
+                filtered = drawings.filter(function(d) {
+                    return (d.building_id || 'B1') === selectedBuilding;
+                });
+            }
+
+            if (filtered.length === 0) {
                 empty.style.display = '';
                 grid.style.display = 'none';
                 return;
@@ -1556,10 +1565,16 @@ SHOP_DRAWINGS_HTML = r"""
             grid.style.display = '';
             grid.innerHTML = '';
 
-            drawings.forEach((d, idx) => {
+            filtered.forEach((d) => {
+                // Use the original index in the drawings array for view/download/delete
+                const idx = drawings.indexOf(d);
                 const typeInfo = DRAWING_TYPES[d.type] || { label: d.type, icon: '&#128196;' };
                 const sizeStr = d.size_bytes
                     ? (d.size_bytes < 1024 ? d.size_bytes + ' B' : (d.size_bytes / 1024).toFixed(1) + ' KB')
+                    : '';
+                // Building label for multi-building projects
+                const bldgLabel = (buildings.length > 1 && d.building_id)
+                    ? ' <span style="font-size:0.75rem;color:var(--tf-blue-600);font-weight:600;">(' + d.building_id.replace('B', 'Bldg ') + ')</span>'
                     : '';
 
                 const card = document.createElement('div');
@@ -1570,7 +1585,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <div class="dc-type-badge ${d.type}">${typeInfo.label}</div>
                     </div>
                     <div class="dc-body">
-                        <div class="dc-title">${escHtml(d.filename || d.description || typeInfo.label)}</div>
+                        <div class="dc-title">${escHtml(d.filename || d.description || typeInfo.label)}${bldgLabel}</div>
                         <div class="dc-meta">
                             <span>${sizeStr}</span>
                             <span>${d.description || ''}</span>

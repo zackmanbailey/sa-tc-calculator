@@ -395,7 +395,10 @@ function savePdfToProject() {
       formData.append('job_code', jobCode);
       formData.append('drawing_type', '%(drawing_type)s');
       formData.append('source', 'interactive');
-      formData.append('pdf_file', blob, jobCode + '_%(dt_upper)s_INTERACTIVE.pdf');
+      var bldgId = (window.%(config_var)s && window.%(config_var)s.building_id) || 'B1';
+      formData.append('building_id', bldgId);
+      var bldgSuffix = bldgId.replace('B', '');
+      formData.append('pdf_file', blob, jobCode + '_%(dt_upper)s_' + bldgSuffix + '.pdf');
 
       fetch('/api/shop-drawings/save-interactive-pdf', {
         method: 'POST',
