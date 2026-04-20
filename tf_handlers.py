@@ -8087,7 +8087,9 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched = dict(config)
     enriched["building_id"] = building_id
     enriched["building_width_ft"] = target["width_ft"]
+    enriched["width_ft"] = target["width_ft"]
     enriched["building_length_ft"] = target["length_ft"]
+    enriched["length_ft"] = target["length_ft"]
     enriched["clear_height_ft"] = target["clear_height_ft"]
     enriched["roof_pitch_deg"] = target["slope_deg"]
     enriched["n_frames"] = target["n_frames"]

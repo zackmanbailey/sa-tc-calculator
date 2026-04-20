@@ -4069,9 +4069,11 @@ async function savePdfToProject() {
   try {
     var svgEl = document.getElementById('svg');
     var container = svgEl.parentElement;
-    var vb = svgEl.viewBox.baseVal;
-    var svgW = vb.width || 1100;
-    var svgH = vb.height || 850;
+
+    // Save current viewBox (user may have zoomed/panned) and reset to full drawing
+    var curVB = svgEl.getAttribute('viewBox');
+    var origW = 1100, origH = 850;
+    svgEl.setAttribute('viewBox', '0 0 ' + origW + ' ' + origH);
 
     // Use html2canvas to capture the SVG with all CSS styles intact.
     // svg2pdf produces black backgrounds because it loses CSS context;
@@ -4083,14 +4085,23 @@ async function savePdfToProject() {
       logging: false
     });
 
+    // Restore user's zoom/pan state
+    if (curVB) svgEl.setAttribute('viewBox', curVB);
+
+    // Use canvas aspect ratio for the PDF page so nothing gets cropped
+    var cW = canvas.width;
+    var cH = canvas.height;
+    var pdfW = origW;
+    var pdfH = origW * (cH / cW);
+
     var pdf = new jspdf.jsPDF({
-      orientation: 'landscape',
+      orientation: pdfW >= pdfH ? 'landscape' : 'portrait',
       unit: 'pt',
-      format: [svgW, svgH]
+      format: [pdfW, pdfH]
     });
 
     var imgData = canvas.toDataURL('image/jpeg', 0.95);
-    pdf.addImage(imgData, 'JPEG', 0, 0, svgW, svgH);
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
 
     var pdfData = pdf.output('arraybuffer');
     var blob = new Blob([pdfData], { type: 'application/pdf' });
@@ -4099,7 +4110,9 @@ async function savePdfToProject() {
     formData.append('job_code', jobCode);
     formData.append('drawing_type', 'rafter');
     formData.append('source', 'interactive');
-    formData.append('pdf_file', blob, jobCode + '_RAFTER_INTERACTIVE.pdf');
+    var bldgId = (window.RAFTER_CONFIG && window.RAFTER_CONFIG.building_id) || 'B1';
+    var bldgSuffix = bldgId.replace('B', '');
+    formData.append('pdf_file', blob, jobCode + '_RAFTER_' + bldgSuffix + '.pdf');
 
     var resp = await fetch('/api/shop-drawings/save-interactive-pdf', {
       method: 'POST',
