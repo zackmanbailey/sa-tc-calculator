@@ -94,7 +94,7 @@ sys.path.insert(0, BASE_DIR)
 
 from calc.bom import (
     BOMCalculator, ProjectInfo, BuildingConfig,
-    bom_to_dict, ProjectBOM
+    bom_to_dict, ProjectBOM, calc_rafter_columns
 )
 from calc.defaults import DEFAULTS, WIND_SPEEDS_BY_STATE, FOOTING_DEPTHS_BY_STATE
 from outputs.excel_gen import generate_bom_excel
@@ -8098,11 +8098,24 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["footing_depth_ft"] = target.get("footing_depth_ft", 10.0)
     enriched["building_name"] = target.get("building_name", building_id)
     # Column count for shop drawing title block
+    # Use BOM geometry if available; otherwise calculate from building params
+    # (same formula as BOM: n_frames × columns_per_rafter)
     geom = target.get("geometry", {})
     n_frames = target["n_frames"]
-    frame_type = target["frame_type"]
-    cols_per_frame = 2 if frame_type == "tee" else 3
-    enriched["num_columns"] = geom.get("n_struct_cols", n_frames * cols_per_frame)
+    if geom.get("n_struct_cols"):
+        enriched["num_columns"] = geom["n_struct_cols"]
+    else:
+        # Calculate columns per rafter the same way the BOM does
+        raft_n_cols, _ = calc_rafter_columns(
+            target["width_ft"],
+            column_mode=target.get("column_mode", "auto"),
+            column_spacing_ft=target.get("column_spacing_ft", 25.0),
+            column_count_manual=target.get("column_count_manual", 1),
+            column_positions_manual=target.get("column_positions_manual", ""),
+            include_back_wall=target.get("include_back_wall", False),
+            front_col_position_ft=target.get("front_col_position_ft", 0.0),
+        )
+        enriched["num_columns"] = n_frames * raft_n_cols
     enriched["include_rafter_rebar"] = target.get("include_rafter_rebar", False)
     enriched["col_rebar_size"] = target.get("rebar_col_size", "auto")
     if target.get("col_positions"):
