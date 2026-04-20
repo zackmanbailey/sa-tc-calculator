@@ -1831,6 +1831,7 @@ def bom_to_dict(bom: ProjectBOM) -> dict:
             "pitch_key": bb.building.pitch_key,
             "purlin_spacing_override": bb.building.purlin_spacing_override,
             "embedment_ft": bb.building.embedment_ft,
+            "footing_depth_ft": bb.building.footing_depth_ft,
             "column_buffer_ft": bb.building.column_buffer_ft,
             "reinforced": bb.building.reinforced,
             "rebar_col_size": bb.building.rebar_col_size,

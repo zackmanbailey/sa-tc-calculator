@@ -8039,26 +8039,42 @@ def _load_buildings_list(job_code):
             if not bom_buildings:
                 bom_buildings = data.get("buildings", [])
             if bom_buildings:
+                # Also try to load the INPUT buildings (from SA calc form)
+                # which have fields like footing_depth_ft at the top level,
+                # whereas BOM output buildings store them in geometry.
+                input_buildings = data.get("buildings", [])
+                input_map = {}
+                for ib in input_buildings:
+                    # Input buildings use "id" like "bldg_1", "bldg_2"
+                    idx = ib.get("id", "")
+                    input_map[idx] = ib
+
                 result = []
                 for i, b in enumerate(bom_buildings):
+                    # BOM output has many fields in geometry sub-object;
+                    # check geometry as fallback for fields not at top level
+                    geom = b.get("geometry", {})
+                    # Also check the input building for values not in BOM output
+                    inp = input_map.get(f"bldg_{i+1}", {})
                     result.append({
                         "building_id": f"B{i + 1}",
                         "index": i,
                         "width_ft": b.get("width_ft", 40.0),
                         "length_ft": b.get("length_ft", 120.0),
                         "clear_height_ft": b.get("clear_height_ft", 14.0),
-                        "slope_deg": b.get("slope_deg", 1.19),
-                        "n_frames": b.get("n_frames", 5),
-                        "purlin_spacing_ft": b.get("purlin_spacing_ft") or b.get("purlin_spacing_override") or 5.0,
-                        "frame_type": "tee" if b.get("width_ft", 40) <= 45 else "dbl_col",
-                        "overhang_ft": b.get("overhang_ft", 0.0),
+                        "slope_deg": b.get("slope_deg") or geom.get("slope_deg", 1.19),
+                        "n_frames": b.get("n_frames") or geom.get("n_frames", 5),
+                        "purlin_spacing_ft": b.get("purlin_spacing_ft") or b.get("purlin_spacing_override") or geom.get("purlin_spacing_ft", 5.0),
+                        "frame_type": geom.get("frame_type") or ("tee" if b.get("width_ft", 40) <= 45 else "dbl_col"),
+                        "overhang_ft": b.get("overhang_ft") or geom.get("overhang_ft", 0.0),
                         "embedment_ft": b.get("embedment_ft", 4.333),
-                        "footing_depth_ft": b.get("footing_depth_ft", 10.0),
-                        "col_positions": b.get("col_positions", []),
-                        "bay_sizes": b.get("bay_sizes", []),
+                        "footing_depth_ft": b.get("footing_depth_ft") or geom.get("footing_depth_ft") or inp.get("footing_depth_ft") or 10.0,
+                        "col_positions": b.get("col_positions") or geom.get("col_positions", []),
+                        "bay_sizes": b.get("bay_sizes") or geom.get("bay_sizes_list", []),
                         "building_name": b.get("building_name", f"Building {i+1}"),
                         "include_rafter_rebar": b.get("include_rafter_rebar", False),
                         "rebar_col_size": b.get("rebar_col_size", "auto"),
+                        "column_mode": b.get("column_mode") or geom.get("column_mode", "auto"),
                     })
                 return result
         except Exception:
