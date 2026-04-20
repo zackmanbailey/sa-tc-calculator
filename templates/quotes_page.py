@@ -181,6 +181,15 @@ function formatCurrency(v) {
     return '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
 }
 
+function formatDate(d) {
+    if (!d || d === '—') return '—';
+    try {
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return d;
+        return dt.toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'});
+    } catch(e) { return d; }
+}
+
 function getStatusClass(stage) {
     if (!stage) return 'status-draft';
     const s = stage.toLowerCase();
@@ -203,13 +212,14 @@ function renderQuotes(quotes) {
     quotes.forEach(q => {
         const statusCls = getStatusClass(q.stage || q.status);
         const projectUrl = '/project/' + encodeURIComponent(q.id || q.job_code || '');
-        const custName = q.customer || q.customer_name || '—';
+        const custRaw = q.customer;
+        const custName = (typeof custRaw === 'object' && custRaw !== null) ? (custRaw.name || custRaw.company || JSON.stringify(custRaw)) : (custRaw || q.customer_name || '—');
         const stageTxt = q.stage || q.status || 'Draft';
         html += '<tr onclick="window.location.href=\'' + projectUrl + '\'" title="Click to view project">' +
             '<td><a class="link-blue" href="' + projectUrl + '" onclick="event.stopPropagation()">' + (q.job_code || q.id || '—') + '</a></td>' +
             '<td><a class="project-link" href="' + projectUrl + '" onclick="event.stopPropagation()">' + (q.project_name || q.name || '—') + '</a></td>' +
             '<td><span class="customer-link" onclick="event.stopPropagation();window.location.href=\'/customers\'" title="View customers">' + custName + '</span></td>' +
-            '<td>' + (q.quote_date || q.created_at || '—') + '</td>' +
+            '<td>' + formatDate(q.quote_date || q.created_at) + '</td>' +
             '<td>' + formatCurrency(q.material_cost || q.materialCost) + '</td>' +
             '<td>' + formatCurrency(q.sell_price || q.sellPrice || q.total_price) + '</td>' +
             '<td><span class="status-badge ' + statusCls + '" onclick="event.stopPropagation();filterByStatus(\'' + stageTxt.replace(/'/g, "\\'") + '\')" title="Filter by ' + stageTxt + '">' + stageTxt + '</span></td>' +
@@ -225,7 +235,7 @@ function filterQuotes() {
     const filtered = allQuotes.filter(q =>
         (q.job_code || '').toLowerCase().includes(term) ||
         (q.project_name || q.name || '').toLowerCase().includes(term) ||
-        (q.customer || q.customer_name || '').toLowerCase().includes(term)
+        ((typeof q.customer === 'object' && q.customer !== null) ? (q.customer.name || q.customer.company || '') : (q.customer || q.customer_name || '')).toLowerCase().includes(term)
     );
     renderQuotes(filtered);
 }
