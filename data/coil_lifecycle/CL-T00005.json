@@ -1,0 +1,16 @@
+{
+  "coil_id": "CL-T00005",
+  "vendor": "Klockner Metals",
+  "gauge": "29 GA",
+  "width_in": 48,
+  "weight_lbs": 4200,
+  "estimated_lft": 1494.7,
+  "lbs_per_lft": 2.81,
+  "coil_type": "Spartan Rib Panel",
+  "status": "available",
+  "remaining_weight_lbs": 4200,
+  "remaining_lft": 1494.7,
+  "received_date": "2026-04-19T23:43:23.805942",
+  "usage_log": [],
+  "assigned_work_orders": []
+}

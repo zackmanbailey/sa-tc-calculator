@@ -1,0 +1,44 @@
+{
+  "buildings": {
+    "Bldg_A": {
+      "rafter": {
+        "width": 30,
+        "eave_height": 12,
+        "peak_height": 14,
+        "slope": "2:12"
+      },
+      "columns": [
+        {
+          "label": "C1-A",
+          "height": 12,
+          "gauge": "10 GA"
+        },
+        {
+          "label": "C1-B",
+          "height": 12,
+          "gauge": "10 GA"
+        }
+      ]
+    },
+    "Bldg_B": {
+      "rafter": {
+        "width": 24,
+        "eave_height": 10,
+        "peak_height": 11.5,
+        "slope": "2:12"
+      },
+      "columns": [
+        {
+          "label": "C1-A",
+          "height": 10,
+          "gauge": "10 GA"
+        },
+        {
+          "label": "C1-B",
+          "height": 10,
+          "gauge": "10 GA"
+        }
+      ]
+    }
+  }
+}

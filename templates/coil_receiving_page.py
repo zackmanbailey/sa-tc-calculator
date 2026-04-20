@@ -298,10 +298,11 @@ COIL_RECEIVING_HTML = r"""
                         <th>Weight (lbs)</th>
                         <th>Est. LFT</th>
                         <th>Status</th>
+                        <th>Mill Cert</th>
                     </tr>
                 </thead>
                 <tbody id="logTableBody">
-                    <tr><td colspan="7" class="cr-empty">Loading...</td></tr>
+                    <tr><td colspan="8" class="cr-empty">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -388,7 +389,7 @@ COIL_RECEIVING_HTML = r"""
                 var coils = data.coils || data || [];
                 var tbody = document.getElementById('logTableBody');
                 if (!coils.length) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="cr-empty">No coils received yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="cr-empty">No coils received yet.</td></tr>';
                     return;
                 }
                 var html = '';
@@ -412,13 +413,14 @@ COIL_RECEIVING_HTML = r"""
                         '<td>' + weight + '</td>' +
                         '<td>' + estLft + '</td>' +
                         '<td><span class="status-badge ' + statusClass + '">' + status + '</span></td>' +
+                        '<td>' + (c.mill_cert_filename ? '<a href="/api/coils/lifecycle/mill-cert/' + (c.coil_id || c.id) + '" target="_blank" style="color:var(--tf-blue);text-decoration:none" title="View Mill Cert">\uD83D\uDCC4 View</a>' : '<span style="color:var(--tf-muted);font-size:12px">\u2014</span>') + '</td>' +
                         '</tr>';
                 });
                 tbody.innerHTML = html;
             })
             .catch(function() {
                 document.getElementById('logTableBody').innerHTML =
-                    '<tr><td colspan="7" class="cr-empty">Unable to load receiving log.</td></tr>';
+                    '<tr><td colspan="8" class="cr-empty">Unable to load receiving log.</td></tr>';
             });
     }
 
@@ -511,6 +513,13 @@ COIL_RECEIVING_HTML = r"""
                     '<label>Condition Notes</label>' +
                     '<textarea class="cr-textarea" data-field="condition_notes" placeholder="Optional - note any damage, rust, etc."></textarea>' +
                 '</div>' +
+                '<div class="field full-width">' +
+                    '<label>Mill Cert PDF</label>' +
+                    '<div style="display:flex;align-items:center;gap:12px">' +
+                        '<input type="file" class="cr-input" data-field="mill_cert_file" accept=".pdf" style="padding:8px" onchange="window._crFileSelected(' + index + ', this)">' +
+                        '<span class="mill-cert-status" id="millCertStatus_' + index + '" style="font-size:12px;color:var(--tf-muted)">No file selected</span>' +
+                    '</div>' +
+                '</div>' +
             '</div>' +
             '<!-- Auto-Calc -->' +
             '<div class="calc-box" id="calc_' + index + '">' +
@@ -568,6 +577,31 @@ COIL_RECEIVING_HTML = r"""
             }
         } else {
             warnEl.classList.remove('visible');
+        }
+    };
+
+    // ---- File Selected Handler ----
+    window._crFileSelected = function(index, input) {
+        var status = document.getElementById('millCertStatus_' + index);
+        if (input.files && input.files[0]) {
+            var file = input.files[0];
+            if (file.type !== 'application/pdf') {
+                status.textContent = 'Must be a PDF file';
+                status.style.color = 'var(--tf-red)';
+                input.value = '';
+                return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+                status.textContent = 'File too large (max 10MB)';
+                status.style.color = 'var(--tf-red)';
+                input.value = '';
+                return;
+            }
+            status.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+            status.style.color = 'var(--tf-green)';
+        } else {
+            status.textContent = 'No file selected';
+            status.style.color = 'var(--tf-muted)';
         }
     };
 
@@ -645,18 +679,29 @@ COIL_RECEIVING_HTML = r"""
 
     // ---- Submit Coils ----
     window.submitCoils = function() {
-        var coils = collectCoilData();
-        if (!coils) return;
+        var coilsRaw = collectCoilData();
+        if (!coilsRaw) return;
 
         var btn = document.getElementById('btnReceivePrint');
         var origText = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<span class="cr-spinner"></span> Receiving...';
 
+        var formData = new FormData();
+        formData.append('coils_json', JSON.stringify(coilsRaw));
+
+        // Attach mill cert files
+        var entries = document.querySelectorAll('.coil-entry');
+        entries.forEach(function(entry, i) {
+            var fileInput = entry.querySelector('[data-field="mill_cert_file"]');
+            if (fileInput && fileInput.files && fileInput.files[0]) {
+                formData.append('mill_cert_' + i, fileInput.files[0]);
+            }
+        });
+
         fetch('/api/coils/lifecycle/receive', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ coils: coils })
+            body: formData
         })
         .then(function(r) {
             if (!r.ok) throw new Error('Server returned ' + r.status);
@@ -664,20 +709,14 @@ COIL_RECEIVING_HTML = r"""
         })
         .then(function(data) {
             var ids = data.ids || data.coil_ids || [];
-            showToast(coils.length + ' coil' + (coils.length > 1 ? 's' : '') + ' received successfully!', 'success');
-
-            // Open sticker print page
+            showToast(coilsRaw.length + ' coil' + (coilsRaw.length > 1 ? 's' : '') + ' received successfully!', 'success');
             if (ids.length > 0) {
                 var url = '/api/coils/lifecycle/stickers?ids=' + ids.join(',');
                 window.open(url, '_blank');
             }
-
-            // Reset forms
             document.getElementById('coilFormsContainer').innerHTML = '';
             document.getElementById('submitRow').style.display = 'none';
             document.getElementById('coilCount').value = 1;
-
-            // Refresh data
             fetchSummary();
             fetchRecentLog();
         })

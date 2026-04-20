@@ -19179,8 +19179,15 @@ class CoilLifecycleReceiveHandler(BaseHandler):
     """POST /api/coils/lifecycle/receive — Receive one or more coils into the system."""
     def post(self):
         try:
-            body = json_decode(self.request.body)
-            coils_data = body.get("coils", [])
+            content_type = self.request.headers.get("Content-Type", "")
+            if "multipart/form-data" in content_type:
+                # Multipart upload with potential files
+                coils_json_str = self.get_argument("coils_json", "[]")
+                coils_data = json.loads(coils_json_str)
+            else:
+                # Legacy JSON body
+                body = json_decode(self.request.body)
+                coils_data = body.get("coils", [])
             if not coils_data:
                 self.write(json_encode({"ok": False, "error": "No coils provided"}))
                 return
@@ -19189,7 +19196,7 @@ class CoilLifecycleReceiveHandler(BaseHandler):
             received_ids = []
             now = datetime.datetime.now().isoformat()
 
-            for c in coils_data:
+            for i, c in enumerate(coils_data):
                 coil_id = f"CL-{index['next_id']:05d}"
                 index["next_id"] = index.get("next_id", 1) + 1
 
@@ -19226,6 +19233,19 @@ class CoilLifecycleReceiveHandler(BaseHandler):
                     "location": _sanitize_string(c.get("location", "Receiving"), 200),
                 }
 
+                # Handle mill cert PDF upload
+                mill_cert_key = f"mill_cert_{i}"
+                if mill_cert_key in self.request.files:
+                    file_info = self.request.files[mill_cert_key][0]
+                    cert_dir = os.path.join(COIL_LIFECYCLE_DIR, "mill_certs")
+                    os.makedirs(cert_dir, exist_ok=True)
+                    cert_filename = f"{coil_id}_mill_cert.pdf"
+                    cert_path = os.path.join(cert_dir, cert_filename)
+                    with open(cert_path, "wb") as cf:
+                        cf.write(file_info["body"])
+                    coil_record["mill_cert_filename"] = cert_filename
+                    coil_record["mill_cert_uploaded"] = now
+
                 # Save individual coil file
                 _save_coil_lifecycle(coil_id, coil_record)
 
@@ -19243,6 +19263,8 @@ class CoilLifecycleReceiveHandler(BaseHandler):
                     "received_date": now,
                     "remaining_weight_lbs": weight,
                 }
+                if coil_record.get("mill_cert_filename"):
+                    index["coils"][coil_id]["mill_cert_filename"] = coil_record["mill_cert_filename"]
 
                 # Also update main inventory stock
                 inv = load_inventory()
@@ -19294,6 +19316,27 @@ class CoilLifecycleReceiveHandler(BaseHandler):
 
         except Exception as e:
             logger.error(f"CoilLifecycleReceiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilMillCertHandler(BaseHandler):
+    """GET /api/coils/lifecycle/mill-cert/<coil_id> — Download mill cert PDF."""
+    def get(self, coil_id):
+        try:
+            safe_id = re.sub(r'[^a-zA-Z0-9_-]', '', coil_id)
+            cert_dir = os.path.join(COIL_LIFECYCLE_DIR, "mill_certs")
+            cert_path = os.path.join(cert_dir, f"{safe_id}_mill_cert.pdf")
+            if not os.path.isfile(cert_path):
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Mill cert not found"}))
+                return
+            self.set_header("Content-Type", "application/pdf")
+            self.set_header("Content-Disposition", f"inline; filename={safe_id}_mill_cert.pdf")
+            with open(cert_path, "rb") as f:
+                self.write(f.read())
+        except Exception as e:
+            logger.error(f"CoilMillCertHandler error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
 
@@ -19528,6 +19571,10 @@ class CoilLifecycleReturnHandler(BaseHandler):
                 index["coils"][coil_id]["remaining_weight_lbs"] = remaining_weight
                 _save_coil_lifecycle_index(index)
 
+            # Also set record status to "available" for consistency with index
+            coil["status"] = "available"
+            _save_coil_lifecycle(coil_id, coil)
+
             self._log("coil_returned", "coil_lifecycle", coil_id, {
                 "remaining_lbs": remaining_weight, "location": location
             })
@@ -19575,11 +19622,81 @@ class CoilLifecycleDepleteHandler(BaseHandler):
                 index["coils"][coil_id]["remaining_weight_lbs"] = 0
                 _save_coil_lifecycle_index(index)
 
+                # Sync inventory — deduct depleted coil's original weight
+                try:
+                    inv = load_inventory()
+                    coil_type_map = {
+                        "C-Section (Columns & Rafters)": "c_section_23",
+                        "Z-Purlin": "z_purlin_20",
+                        "Angle (Sag Rods)": "angle_4_16ga",
+                        "Spartan Rib Panel": "spartan_rib_48",
+                        "Plate (Interior Purlin Plates)": "plate_6_10ga",
+                        "Hurricane Strap": "strap_16ga",
+                        "Gusset Plate": "gusset_10ga",
+                    }
+                    inv_coil_id = coil_type_map.get(coil.get("coil_type", ""))
+                    if inv_coil_id and inv_coil_id in inv.get("coils", {}):
+                        original_weight = float(coil.get("weight_lbs", 0))
+                        current_stock = float(inv["coils"][inv_coil_id].get("stock_lbs", 0))
+                        new_stock = max(0, current_stock - original_weight)
+                        inv["coils"][inv_coil_id]["stock_lbs"] = new_stock
+                        lplft = float(inv["coils"][inv_coil_id].get("lbs_per_lft", 1) or 1)
+                        if lplft > 0:
+                            inv["coils"][inv_coil_id]["stock_lft"] = round(new_stock / lplft, 1)
+                        save_inventory(inv)
+                except Exception as inv_err:
+                    logger.warning(f"Inventory sync on deplete failed: {inv_err}")
+
             self._log("coil_depleted", "coil_lifecycle", coil_id, {"operator": operator})
             self.write(json_encode({"ok": True}))
 
         except Exception as e:
             logger.error(f"CoilLifecycleDepleteHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilInventoryStatusHandler(BaseHandler):
+    """GET /api/coils/inventory-status — Get combined inventory + lifecycle coil counts."""
+    def get(self):
+        try:
+            inv = load_inventory()
+            index = _load_coil_lifecycle_index()
+
+            # Count lifecycle coils by type and status
+            lifecycle_counts = {}
+            for cid, cinfo in index.get("coils", {}).items():
+                ctype = cinfo.get("coil_type", "Other")
+                status = cinfo.get("status", "unknown")
+                lifecycle_counts.setdefault(ctype, {"available": 0, "in_use": 0, "depleted": 0, "total": 0})
+                lifecycle_counts[ctype]["total"] += 1
+                if status in ("available",):
+                    lifecycle_counts[ctype]["available"] += 1
+                elif status in ("in_use", "in-use"):
+                    lifecycle_counts[ctype]["in_use"] += 1
+                elif status in ("depleted",):
+                    lifecycle_counts[ctype]["depleted"] += 1
+
+            # Combine with inventory data
+            coil_status = {}
+            for coil_key, coil_data in inv.get("coils", {}).items():
+                coil_status[coil_key] = {
+                    "name": coil_data.get("name", coil_key),
+                    "stock_lbs": float(coil_data.get("stock_lbs", 0)),
+                    "stock_lft": float(coil_data.get("stock_lft", 0)),
+                    "min_stock_lbs": float(coil_data.get("min_stock_lbs", 0)),
+                    "price_per_lb": float(coil_data.get("price_per_lb", 0)),
+                    "low_stock": float(coil_data.get("stock_lbs", 0)) < float(coil_data.get("min_stock_lbs", 0)) if coil_data.get("min_stock_lbs") else False,
+                }
+
+            self.write(json_encode({
+                "ok": True,
+                "inventory": coil_status,
+                "lifecycle_counts": lifecycle_counts,
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilInventoryStatusHandler error: {e}", exc_info=True)
             self.set_status(500)
             self.write(json_encode({"ok": False, "error": str(e)}))
 
@@ -19762,6 +19879,21 @@ class CoilLifecycleAnalyticsHandler(BaseHandler):
                 "savings_at_98": round(total_cost * max(0, (total_waste_pct - 2)) / 100, 2),
             }
 
+            # Compute scrap rate alerts
+            scrap_threshold = float(self.get_argument("scrap_threshold", "85") or 85)
+            scrap_alerts = []
+            for op_stat in operator_stats:
+                if op_stat["avg_yield"] > 0 and op_stat["avg_yield"] < scrap_threshold:
+                    scrap_alerts.append({
+                        "operator": op_stat["operator"],
+                        "avg_yield": op_stat["avg_yield"],
+                        "threshold": scrap_threshold,
+                        "coils_processed": op_stat["coils_processed"],
+                        "severity": "critical" if op_stat["avg_yield"] < scrap_threshold - 10 else "warning",
+                        "message": f"{op_stat['operator']}'s yield dropped to {op_stat['avg_yield']}% (threshold: {scrap_threshold}%)",
+                    })
+            scrap_alerts.sort(key=lambda x: x["avg_yield"])
+
             self.write(json_encode({
                 "ok": True,
                 "summary": summary,
@@ -19769,6 +19901,7 @@ class CoilLifecycleAnalyticsHandler(BaseHandler):
                 "operator_stats": operator_stats,
                 "waste_trend": waste_trend,
                 "type_breakdown": type_breakdown,
+                "scrap_alerts": scrap_alerts,
             }))
 
         except Exception as e:
@@ -20094,6 +20227,205 @@ class CoilLifecycleAssignWOHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+class CoilSuggestHandler(BaseHandler):
+    """GET /api/coils/lifecycle/suggest?gauge=10GA&width=23&color=&min_lft=200 — Suggest matching available coils."""
+    def get(self):
+        try:
+            target_gauge = self.get_argument("gauge", "").strip()
+            target_width = self.get_argument("width", "").strip()
+            target_color = self.get_argument("color", "").strip().lower()
+            min_lft = float(self.get_argument("min_lft", "0") or 0)
+
+            index = _load_coil_lifecycle_index()
+            suggestions = []
+
+            for cid, cinfo in index.get("coils", {}).items():
+                status = cinfo.get("status", "")
+                if status not in ("available", "in_use"):
+                    continue
+
+                coil_gauge = (cinfo.get("gauge", "") or "").replace(" ", "")
+                coil_width = float(cinfo.get("width_in", 0) or 0)
+                remaining = float(cinfo.get("remaining_weight_lbs", 0) or 0)
+
+                # Load full record for remaining LFT
+                coil = _load_coil_lifecycle(cid)
+                if not coil:
+                    continue
+                remaining_lft = float(coil.get("remaining_lft", 0))
+
+                # Match gauge (normalize both to no-space format)
+                match_score = 0
+                gauge_norm = target_gauge.replace(" ", "").upper()
+                if gauge_norm and coil_gauge.upper() == gauge_norm:
+                    match_score += 50
+                elif gauge_norm:
+                    continue  # Wrong gauge, skip
+
+                # Match width (within 0.5 inch tolerance)
+                if target_width:
+                    tw = float(target_width)
+                    if abs(coil_width - tw) <= 0.5:
+                        match_score += 30
+                        if abs(coil_width - tw) < 0.01:
+                            match_score += 10  # exact match bonus
+                    else:
+                        continue  # Wrong width, skip
+
+                # Match color/material
+                material = (coil.get("material_spec", "") or "").lower()
+                if target_color and target_color in material:
+                    match_score += 10
+
+                # Check minimum LFT
+                if min_lft > 0 and remaining_lft < min_lft:
+                    match_score -= 20  # penalize but don't exclude — might combine coils
+
+                # Prefer coils with more remaining
+                if remaining_lft > 0:
+                    match_score += min(20, remaining_lft / 100)
+
+                suggestions.append({
+                    "coil_id": cid,
+                    "gauge": cinfo.get("gauge", ""),
+                    "width_in": coil_width,
+                    "material_spec": coil.get("material_spec", ""),
+                    "coil_type": coil.get("coil_type", ""),
+                    "remaining_lft": round(remaining_lft, 1),
+                    "remaining_weight_lbs": round(remaining, 1),
+                    "status": status,
+                    "vendor": coil.get("vendor", ""),
+                    "match_score": match_score,
+                    "can_fulfill": remaining_lft >= min_lft if min_lft > 0 else True,
+                    "price_per_lb": float(coil.get("price_per_lb", 0)) if coil.get("price_per_lb") else None,
+                })
+
+            # Sort by match score descending, then remaining LFT descending
+            suggestions.sort(key=lambda x: (-x["match_score"], -x["remaining_lft"]))
+
+            self.write(json_encode({
+                "ok": True,
+                "suggestions": suggestions[:10],  # Top 10
+                "total_matches": len(suggestions),
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilSuggestHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilCostSummaryHandler(BaseHandler):
+    """GET /api/coils/lifecycle/cost-summary?job_code=XXX — Get real coil costs for a project."""
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "").strip()
+
+            index = _load_coil_lifecycle_index()
+            inv = load_inventory()
+
+            # Find coils assigned to this job's work orders
+            job_coils = []
+            total_material_cost = 0
+            total_weight_used = 0
+            total_lft_used = 0
+
+            for cid, cinfo in index.get("coils", {}).items():
+                coil = _load_coil_lifecycle(cid)
+                if not coil:
+                    continue
+
+                # Check if any assigned work order matches this job
+                assigned_to_job = False
+                for wo in coil.get("assigned_work_orders", []):
+                    wo_id = wo.get("work_order_id", "")
+                    if job_code and (job_code in wo_id or wo_id.startswith(job_code)):
+                        assigned_to_job = True
+                        break
+
+                # Also check usage log for job references
+                for log_entry in coil.get("usage_log", []):
+                    wo_ref = log_entry.get("work_order_id", "") or log_entry.get("work_order", "")
+                    if job_code and job_code in wo_ref:
+                        assigned_to_job = True
+                        break
+
+                if not assigned_to_job and job_code:
+                    continue
+
+                # Calculate cost
+                original_weight = float(coil.get("weight_lbs", 0))
+                remaining_weight = float(coil.get("remaining_weight_lbs", 0))
+                weight_used = original_weight - remaining_weight
+
+                # Get price per lb
+                price_per_lb = 0.82  # default
+                coil_type_map = {
+                    "C-Section (Columns & Rafters)": "c_section_23",
+                    "Z-Purlin": "z_purlin_20",
+                    "Angle (Sag Rods)": "angle_4_16ga",
+                    "Spartan Rib Panel": "spartan_rib_48",
+                    "Plate (Interior Purlin Plates)": "plate_6_10ga",
+                    "Hurricane Strap": "strap_16ga",
+                    "Gusset Plate": "gusset_10ga",
+                }
+                inv_id = coil_type_map.get(coil.get("coil_type", ""))
+                if inv_id and inv_id in inv.get("coils", {}):
+                    price_per_lb = float(inv["coils"][inv_id].get("price_per_lb", 0.82))
+
+                cost = round(weight_used * price_per_lb, 2)
+                total_material_cost += cost
+                total_weight_used += weight_used
+                total_lft_used += float(coil.get("estimated_lft", 0)) - float(coil.get("remaining_lft", 0))
+
+                job_coils.append({
+                    "coil_id": cid,
+                    "coil_type": coil.get("coil_type", ""),
+                    "gauge": coil.get("gauge", ""),
+                    "weight_used_lbs": round(weight_used, 1),
+                    "price_per_lb": price_per_lb,
+                    "material_cost": cost,
+                    "lft_used": round(float(coil.get("estimated_lft", 0)) - float(coil.get("remaining_lft", 0)), 1),
+                })
+
+            # Also calculate theoretical cost from inventory prices
+            # (for projects without assigned coils, estimate from BOM)
+            theoretical_cost = 0
+            if not job_coils and job_code:
+                bom_path = os.path.join(PROJECTS_DIR, re.sub(r'[^a-zA-Z0-9_-]', '_', job_code), "bom.json")
+                if os.path.isfile(bom_path):
+                    try:
+                        with open(bom_path) as f:
+                            bom = json.load(f)
+                        for item in bom.get("items", []):
+                            qty = float(item.get("qty", 0))
+                            unit_cost = float(item.get("unit_cost", 0) or item.get("material_cost", 0) or 0)
+                            theoretical_cost += qty * unit_cost
+                    except Exception:
+                        pass
+
+            cost_per_lft = round(total_material_cost / total_lft_used, 2) if total_lft_used > 0 else 0
+
+            self.write(json_encode({
+                "ok": True,
+                "job_code": job_code,
+                "coils": job_coils,
+                "summary": {
+                    "total_material_cost": round(total_material_cost, 2),
+                    "total_weight_used_lbs": round(total_weight_used, 1),
+                    "total_lft_used": round(total_lft_used, 1),
+                    "cost_per_lft": cost_per_lft,
+                    "coil_count": len(job_coils),
+                    "theoretical_bom_cost": round(theoretical_cost, 2),
+                },
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilCostSummaryHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 def get_routes():
     """Return list of (pattern, handler) tuples for tornado.web.Application."""
     static_path = os.path.join(BASE_DIR, "static")
@@ -20161,10 +20493,14 @@ def get_routes():
         (r"/coil-analytics",                         CoilAnalyticsPageHandler),
         (r"/coil-scan/([^/]+)",                      CoilMobileScanPageHandler),
         (r"/api/coils/lifecycle/receive",             CoilLifecycleReceiveHandler),
+        (r"/api/coils/lifecycle/mill-cert/([^/]+)",  CoilMillCertHandler),
         (r"/api/coils/lifecycle/list",                CoilLifecycleListHandler),
         (r"/api/coils/lifecycle/stickers",            CoilLifecycleStickerHandler),
+        (r"/api/coils/inventory-status",                CoilInventoryStatusHandler),
         (r"/api/coils/lifecycle/analytics",           CoilLifecycleAnalyticsHandler),
         (r"/api/coils/lifecycle/assign-wo",           CoilLifecycleAssignWOHandler),
+        (r"/api/coils/lifecycle/suggest",             CoilSuggestHandler),
+        (r"/api/coils/lifecycle/cost-summary",        CoilCostSummaryHandler),
         (r"/api/coils/lifecycle/([^/]+)/start-use",   CoilLifecycleStartUseHandler),
         (r"/api/coils/lifecycle/([^/]+)/log-usage",   CoilLifecycleLogUsageHandler),
         (r"/api/coils/lifecycle/([^/]+)/return",      CoilLifecycleReturnHandler),

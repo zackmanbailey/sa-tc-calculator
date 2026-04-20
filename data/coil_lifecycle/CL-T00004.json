@@ -1,0 +1,16 @@
+{
+  "coil_id": "CL-T00004",
+  "vendor": "Klockner Metals",
+  "gauge": "20 GA",
+  "width_in": 20.125,
+  "weight_lbs": 3500,
+  "estimated_lft": 118.6,
+  "lbs_per_lft": 29.5016,
+  "coil_type": "Z-Purlin",
+  "status": "available",
+  "remaining_weight_lbs": 3500,
+  "remaining_lft": 118.6,
+  "received_date": "2026-04-19T23:43:23.805942",
+  "usage_log": [],
+  "assigned_work_orders": []
+}

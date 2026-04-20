@@ -1,0 +1,29 @@
+{
+  "wo_id": "WO-TEST-2026-INTEG-001",
+  "job_code": "TEST-2026-INTEG",
+  "status": "in_progress",
+  "items": [
+    {
+      "part": "Rafter",
+      "qty": 10,
+      "length_ft": 15,
+      "gauge": "10 GA",
+      "width_in": 23
+    },
+    {
+      "part": "Column",
+      "qty": 8,
+      "length_ft": 12,
+      "gauge": "10 GA",
+      "width_in": 23
+    },
+    {
+      "part": "Purlin",
+      "qty": 30,
+      "length_ft": 10,
+      "gauge": "20 GA",
+      "width_in": 20.125
+    }
+  ],
+  "created_at": "2026-04-19T23:43:23.804998"
+}

@@ -22,10 +22,40 @@
       "weight_lbs": 5000.0,
       "estimated_lft": 672.9,
       "coil_type": "Z-Purlin",
-      "status": "available",
+      "status": "returned",
       "received_date": "2026-04-19T23:08:06.668240",
       "remaining_weight_lbs": 2500
+    },
+    "CL-T00003": {
+      "coil_id": "CL-T00003",
+      "gauge": "10 GA",
+      "width_in": 23,
+      "weight_lbs": 7076,
+      "estimated_lft": 653.4,
+      "coil_type": "C-Section (Columns & Rafters)",
+      "status": "available",
+      "remaining_weight_lbs": 7076
+    },
+    "CL-T00004": {
+      "coil_id": "CL-T00004",
+      "gauge": "20 GA",
+      "width_in": 20.125,
+      "weight_lbs": 3500,
+      "estimated_lft": 118.6,
+      "coil_type": "Z-Purlin",
+      "status": "available",
+      "remaining_weight_lbs": 3500
+    },
+    "CL-T00005": {
+      "coil_id": "CL-T00005",
+      "gauge": "29 GA",
+      "width_in": 48,
+      "weight_lbs": 4200,
+      "estimated_lft": 1494.7,
+      "coil_type": "Spartan Rib Panel",
+      "status": "available",
+      "remaining_weight_lbs": 4200
     }
   },
-  "next_id": 3
+  "next_id": 6
 }

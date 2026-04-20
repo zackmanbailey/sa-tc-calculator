@@ -78,6 +78,68 @@ input[type=checkbox]{width:auto;margin-right:6px}
 /* When wrapped by shared_nav inject_nav(), adjust layout */
 .tf-main #main{height:calc(100vh - 84px)}
 .tf-main #topbar{display:none}
+/* Progressive disclosure - collapsible sections */
+.tc-section-toggle { cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; }
+.tc-section-toggle::after { content:'▼'; font-size:10px; color:var(--tf-muted,#94a3b8); transition:transform .2s; margin-left:8px; }
+.tc-section-toggle.collapsed::after { transform:rotate(-90deg); }
+.tc-section-body { transition: max-height .3s ease, opacity .2s ease; overflow:hidden; }
+.tc-section-body.collapsed { max-height:0 !important; opacity:0; padding-top:0 !important; padding-bottom:0 !important; margin-top:0 !important; }
+/* Sticky running total */
+.tc-sticky-total {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:linear-gradient(180deg, rgba(15,23,42,0.0) 0%, rgba(15,23,42,0.95) 20%, #0f172a 40%);
+    padding:12px 32px 16px; display:flex; align-items:center; justify-content:center; gap:24px;
+    font-family:'Inter','Segoe UI',sans-serif; pointer-events:none;
+    transition: opacity .3s;
+}
+.tc-sticky-total.hidden { opacity:0; }
+.tc-sticky-total-inner {
+    pointer-events:auto; background:rgba(30,41,59,0.95); border:1px solid rgba(59,130,246,0.3);
+    border-radius:12px; padding:10px 28px; display:flex; align-items:center; gap:20px;
+    backdrop-filter:blur(12px); box-shadow:0 -4px 24px rgba(0,0,0,0.4);
+}
+.tc-sticky-item { text-align:center; }
+.tc-sticky-item .label { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; }
+.tc-sticky-item .val { font-size:18px; font-weight:800; color:#F1F5F9; }
+.tc-sticky-item .val.highlight { color:#10b981; font-size:22px; }
+.tc-sticky-sep { width:1px; height:32px; background:rgba(148,163,184,0.2); }
+/* Gold flash for auto-filled fields */
+@keyframes tcGoldFlash {
+    0% { box-shadow: 0 0 0 3px rgba(200,154,46,0.5); background: rgba(200,154,46,0.08); }
+    100% { box-shadow: 0 0 0 0 rgba(200,154,46,0); background: transparent; }
+}
+.tc-field-flash { animation: tcGoldFlash 1.5s ease forwards; }
+/* Quick Quote Mode */
+.qq-overlay {
+    display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+    background:rgba(0,0,0,0.7); z-index:1000; align-items:center; justify-content:center;
+    backdrop-filter:blur(4px);
+}
+.qq-overlay.active { display:flex; }
+.qq-modal {
+    background:#1e293b; border:1px solid #334155; border-radius:16px;
+    padding:32px; max-width:600px; width:90%; max-height:85vh; overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.qq-modal h2 { font-size:20px; font-weight:800; color:#F1F5F9; margin:0 0 6px; }
+.qq-modal p { font-size:13px; color:#94a3b8; margin:0 0 24px; }
+.qq-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+.qq-field label { display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:.3px; margin-bottom:6px; }
+.qq-field input, .qq-field select {
+    width:100%; box-sizing:border-box; background:#0f172a; border:1px solid #334155;
+    border-radius:8px; color:#e2e8f0; padding:10px 14px; font-size:14px; font-family:inherit;
+}
+.qq-field input:focus, .qq-field select:focus { outline:none; border-color:#3b82f6; }
+.qq-actions { display:flex; gap:12px; justify-content:flex-end; margin-top:24px; }
+.qq-btn {
+    padding:10px 24px; border-radius:8px; font-size:14px; font-weight:600;
+    border:none; cursor:pointer; font-family:inherit;
+}
+.qq-btn-primary { background:#3b82f6; color:#fff; }
+.qq-btn-primary:hover { background:#2563eb; }
+.qq-btn-outline { background:transparent; border:1px solid #334155; color:#e2e8f0; }
+.qq-btn-outline:hover { border-color:#3b82f6; color:#3b82f6; }
+.btn-amber{background:var(--tf-amber);color:#0F172A;font-weight:700}.btn-amber:hover{opacity:.9}
 </style>
 </head>
 <body>
@@ -144,6 +206,7 @@ input[type=checkbox]{width:auto;margin-right:6px}
     <div class="card">
       <div class="card-hdr red"><span>📁</span>Project Info</div>
       <div class="card-body">
+        <button class="btn btn-amber" onclick="openQuickQuote()" style="margin-bottom:16px">⚡ Quick Quote</button>
         <div class="form-group">
           <label>Project / Job Name</label>
           <input type="text" id="proj_name" value="" placeholder="e.g. Smith RV Canopy"/>
@@ -634,6 +697,23 @@ function fmt(v) {
 function numVal(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 function strVal(id) { return (document.getElementById(id)?.value||'').trim(); }
 
+function _flashField(el) {
+    if (!el) return;
+    el.classList.remove('tc-field-flash');
+    void el.offsetWidth; // force reflow
+    el.classList.add('tc-field-flash');
+}
+
+function _crToast(msg, type) {
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 4px 20px rgba(0,0,0,0.4);transition:opacity .5s;';
+    t.style.background = type === 'success' ? '#16A34A' : type === 'error' ? '#DC2626' : '#3B82F6';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.style.opacity = '0'; }, 2500);
+    setTimeout(function(){ t.remove(); }, 3000);
+}
+
 // ─────────────────────────────────────────────
 // URL PARAM PRE-FILL (from "Send to TC Quote" button on SA page)
 // ─────────────────────────────────────────────
@@ -692,27 +772,52 @@ async function autoLoadProjectMetadata(jobCode, forceOverwrite) {
       const m = result.metadata;
       // Always set project code and name from metadata
       const projCodeEl = document.getElementById('proj_code');
-      if (projCodeEl) projCodeEl.value = m.job_code || jobCode;
+      if (projCodeEl) { projCodeEl.value = m.job_code || jobCode; _flashField(projCodeEl); }
       const projNameEl = document.getElementById('proj_name');
-      if (projNameEl && (forceOverwrite || !projNameEl.value)) projNameEl.value = m.project_name || '';
+      if (projNameEl && (forceOverwrite || !projNameEl.value)) { projNameEl.value = m.project_name || ''; _flashField(projNameEl); }
       // Always set customer from metadata (this is the canonical source)
       if (m.customer && m.customer.name) {
         const custEl = document.getElementById('proj_customer');
-        if (custEl) custEl.value = m.customer.name;
+        if (custEl) { custEl.value = m.customer.name; _flashField(custEl); }
       }
       if (m.location) {
         const addrEl = document.getElementById('proj_address');
-        if (addrEl && (forceOverwrite || !addrEl.value)) addrEl.value = m.location.street || '';
+        if (addrEl && (forceOverwrite || !addrEl.value)) { addrEl.value = m.location.street || ''; _flashField(addrEl); }
         const cityEl = document.getElementById('proj_city');
-        if (cityEl && (forceOverwrite || !cityEl.value)) cityEl.value = m.location.city || '';
+        if (cityEl && (forceOverwrite || !cityEl.value)) { cityEl.value = m.location.city || ''; _flashField(cityEl); }
         const stateEl = document.getElementById('proj_state');
-        if (stateEl && (forceOverwrite || !stateEl.value)) stateEl.value = m.location.state || '';
+        if (stateEl && (forceOverwrite || !stateEl.value)) { stateEl.value = m.location.state || ''; _flashField(stateEl); }
       }
       // Store project code for context bar
       window._tcProjectCode = jobCode;
       window._tcProjectName = m.project_name || jobCode;
     }
   } catch(e) { console.error('Metadata load failed:', e); }
+
+  // Fetch real coil costs for this project
+  try {
+    const costResp = await fetch('/api/coils/lifecycle/cost-summary?job_code=' + encodeURIComponent(jobCode));
+    const costData = await costResp.json();
+    if (costData.ok && costData.summary && costData.summary.total_material_cost > 0) {
+      // Show real coil cost banner
+      var banner = document.getElementById('coil-cost-banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'coil-cost-banner';
+        banner.style.cssText = 'background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 16px;margin:12px 0;font-size:13px;color:#10b981;display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+        var saSection = document.getElementById('sa_materials_cost');
+        if (saSection && saSection.parentNode) {
+          saSection.parentNode.insertBefore(banner, saSection.parentNode.firstChild);
+        }
+      }
+      var realCost = costData.summary.total_material_cost;
+      var perLft = costData.summary.cost_per_lft;
+      var coilCount = costData.summary.coil_count;
+      banner.innerHTML = '<span style="font-size:16px">&#x1F4CA;</span>' +
+        '<span><strong>Real Coil Cost Data:</strong> $' + realCost.toLocaleString(undefined,{minimumFractionDigits:2}) + ' from ' + coilCount + ' coil' + (coilCount!==1?'s':'') + ' ($' + perLft.toFixed(2) + '/LFT)</span>' +
+        '<button onclick="document.getElementById(\'sa_materials_cost\').value=' + realCost.toFixed(2) + ';if(typeof _flashField===\'function\')_flashField(document.getElementById(\'sa_materials_cost\'));if(typeof renderSummary===\'function\')renderSummary();" style="margin-left:auto;background:#10b981;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">Use Real Cost</button>';
+    }
+  } catch(e) { console.warn('Coil cost fetch failed:', e); }
 }
 
 // ─────────────────────────────────────────────
@@ -960,6 +1065,20 @@ function renderSummary() {
 
   // Render Intelligence Panel
   renderIntelligence(q);
+
+  // Update sticky total
+  var stickyM = document.getElementById('stickyMaterials');
+  var stickyI = document.getElementById('stickyInstall');
+  var stickyG = document.getElementById('stickyGrand');
+  var stickySF = document.getElementById('stickyPerSqFt');
+  var materials = numVal('sa_materials_cost');
+  var install = q.subtotal - materials;
+  var grand = q.total;
+  if (stickyM) stickyM.textContent = '$' + materials.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+  if (stickyI) stickyI.textContent = '$' + install.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+  if (stickyG) stickyG.textContent = '$' + grand.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+  var sqft = numVal('sa_width') * numVal('sa_length');
+  if (stickySF) stickySF.textContent = sqft > 0 ? ('$' + (grand / sqft).toFixed(2)) : '--';
 }
 
 function renderIntelligence(q) {
@@ -1460,20 +1579,21 @@ function applySAImport(data) {
 
   if (data.total_sell_price && (currentCost === 0 || currentCost === data.total_sell_price)) {
     document.getElementById('sa_materials_cost').value = data.total_sell_price;
+    _flashField(document.getElementById('sa_materials_cost'));
   }
   if (data.n_columns && numVal('sa_n_cols') === 0) {
-    document.getElementById('sa_n_cols').value = data.n_columns;
-    document.getElementById('conc_n_piers').value = data.n_columns;
-    document.getElementById('drill_n_holes').value = data.n_columns;
+    document.getElementById('sa_n_cols').value = data.n_columns; _flashField(document.getElementById('sa_n_cols'));
+    document.getElementById('conc_n_piers').value = data.n_columns; _flashField(document.getElementById('conc_n_piers'));
+    document.getElementById('drill_n_holes').value = data.n_columns; _flashField(document.getElementById('drill_n_holes'));
   }
   if (data.footing_depth_ft) {
-    document.getElementById('sa_footing_depth').value = data.footing_depth_ft;
-    document.getElementById('conc_depth_ft').value = data.footing_depth_ft;
+    document.getElementById('sa_footing_depth').value = data.footing_depth_ft; _flashField(document.getElementById('sa_footing_depth'));
+    document.getElementById('conc_depth_ft').value = data.footing_depth_ft; _flashField(document.getElementById('conc_depth_ft'));
   }
-  if (data.width_ft) document.getElementById('sa_width').value = data.width_ft;
-  if (data.length_ft) document.getElementById('sa_length').value = data.length_ft;
-  if (data.sa_quote_num) document.getElementById('sa_quote_num').value = data.sa_quote_num;
-  if (data.project_name && !strVal('proj_name')) document.getElementById('proj_name').value = data.project_name;
+  if (data.width_ft) { document.getElementById('sa_width').value = data.width_ft; _flashField(document.getElementById('sa_width')); }
+  if (data.length_ft) { document.getElementById('sa_length').value = data.length_ft; _flashField(document.getElementById('sa_length')); }
+  if (data.sa_quote_num) { document.getElementById('sa_quote_num').value = data.sa_quote_num; _flashField(document.getElementById('sa_quote_num')); }
+  if (data.project_name && !strVal('proj_name')) { document.getElementById('proj_name').value = data.project_name; _flashField(document.getElementById('proj_name')); }
 
   // Show banner
   const banner = document.getElementById('sa-import-banner');
@@ -1616,6 +1736,9 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('hotel_crew').value = this.value;
     document.getElementById('pd_crew').value = this.value;
     document.getElementById('trans_vehicles').value = Math.ceil(parseInt(this.value)/4);
+    _flashField(document.getElementById('hotel_crew'));
+    _flashField(document.getElementById('pd_crew'));
+    _flashField(document.getElementById('trans_vehicles'));
     calcHotels(); calcPerDiem(); calcTransport();
   });
   document.getElementById('lab_days').addEventListener('change', function() {
@@ -1623,9 +1746,150 @@ window.addEventListener('DOMContentLoaded', () => {
     if (days > 1) {
       document.getElementById('hotel_nights').value = Math.ceil(days - 1);
       document.getElementById('pd_days').value = Math.ceil(days);
+      _flashField(document.getElementById('hotel_nights'));
+      _flashField(document.getElementById('pd_days'));
       calcHotels(); calcPerDiem();
     }
   });
+
+  // Smart field sync — columns -> piers -> drill holes
+  ['sa_n_cols'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', function() {
+        var v = parseInt(this.value) || 0;
+        var piers = document.getElementById('conc_n_piers');
+        var holes = document.getElementById('drill_n_holes');
+        if (piers && (parseInt(piers.value) === 0 || !piers.value)) piers.value = v;
+        if (holes && (parseInt(holes.value) === 0 || !holes.value)) holes.value = v;
+        calcConcrete(); calcDrilling();
+        _flashField(piers); _flashField(holes);
+    });
+  });
+
+  // Progressive disclosure - collapsible sections
+  document.querySelectorAll('.section h2, .card h2').forEach(function(h2) {
+    // Skip Project Info, SA Import, and Summary sections - keep those expanded
+    var text = h2.textContent || '';
+    if (text.match(/project info|sa import|summary|equipment|miscellaneous/i)) return;
+
+    h2.classList.add('tc-section-toggle');
+    h2.classList.add('collapsed');
+
+    // Find the content after this h2 (all siblings until next h2 or end)
+    var body = document.createElement('div');
+    body.className = 'tc-section-body collapsed';
+    var sibling = h2.nextElementSibling;
+    var siblings = [];
+    while (sibling) {
+        siblings.push(sibling);
+        sibling = sibling.nextElementSibling;
+    }
+    siblings.forEach(function(s) { body.appendChild(s); });
+    h2.parentNode.appendChild(body);
+    body.style.maxHeight = body.scrollHeight + 'px';
+
+    h2.addEventListener('click', function() {
+        var isCollapsed = this.classList.toggle('collapsed');
+        body.classList.toggle('collapsed', isCollapsed);
+        if (!isCollapsed) {
+            body.style.maxHeight = body.scrollHeight + 200 + 'px';
+        }
+    });
+  });
+
+  // Quick Quote functions
+  window.openQuickQuote = function() {
+    document.getElementById('qqOverlay').classList.add('active');
+  };
+  window.closeQuickQuote = function() {
+    document.getElementById('qqOverlay').classList.remove('active');
+  };
+  window.applyQuickQuote = function() {
+    var w = parseInt(document.getElementById('qqWidth').value) || 30;
+    var l = parseInt(document.getElementById('qqLength').value) || 40;
+    var cols = parseInt(document.getElementById('qqCols').value) || 8;
+    var footing = parseFloat(document.getElementById('qqFooting').value) || 3;
+    var crew = parseInt(document.getElementById('qqCrew').value) || 4;
+    var days = parseInt(document.getElementById('qqDays').value) || 3;
+    var dist = parseInt(document.getElementById('qqDistance').value) || 100;
+    var type = document.getElementById('qqType').value;
+
+    // Fill SA dimensions
+    var widthEl = document.getElementById('sa_width');
+    var lengthEl = document.getElementById('sa_length');
+    if (widthEl) { widthEl.value = w; _flashField(widthEl); }
+    if (lengthEl) { lengthEl.value = l; _flashField(lengthEl); }
+
+    // Columns
+    var colsEl = document.getElementById('sa_n_cols');
+    if (colsEl) { colsEl.value = cols; _flashField(colsEl); }
+
+    // Footing
+    var footEl = document.getElementById('sa_footing_depth');
+    if (footEl) { footEl.value = footing; _flashField(footEl); }
+    var concFootEl = document.getElementById('conc_depth_ft');
+    if (concFootEl) { concFootEl.value = footing; _flashField(concFootEl); }
+
+    // Concrete — piers, diameter based on type
+    var piersEl = document.getElementById('conc_n_piers');
+    if (piersEl) { piersEl.value = cols; _flashField(piersEl); }
+    var diamEl = document.getElementById('conc_dia_in');
+    if (diamEl) { diamEl.value = type === 'commercial' ? 18 : 12; _flashField(diamEl); }
+
+    // Labor
+    var crewEl = document.getElementById('lab_crew');
+    if (crewEl) { crewEl.value = crew; _flashField(crewEl); }
+    var daysEl = document.getElementById('lab_days');
+    if (daysEl) { daysEl.value = days; _flashField(daysEl); }
+    var rateEl = document.getElementById('lab_rate_hr');
+    if (rateEl && (!rateEl.value || rateEl.value == '0')) { rateEl.value = type === 'commercial' ? 45 : 35; _flashField(rateEl); }
+
+    // Drilling
+    var drillHoles = document.getElementById('drill_n_holes');
+    if (drillHoles) { drillHoles.value = cols; _flashField(drillHoles); }
+
+    // Shipping — estimate based on distance
+    var shipDist = document.getElementById('ship_miles');
+    if (shipDist) { shipDist.value = dist; _flashField(shipDist); }
+
+    // Fuel — round trip x 2 (crew vehicles + material truck)
+    var fuelDist = document.getElementById('fuel_miles');
+    if (fuelDist) { fuelDist.value = dist * 2; _flashField(fuelDist); }
+
+    // Hotels
+    var hotelCrew = document.getElementById('hotel_crew');
+    var hotelNights = document.getElementById('hotel_nights');
+    if (dist > 80) {
+        if (hotelCrew) { hotelCrew.value = crew; _flashField(hotelCrew); }
+        if (hotelNights) { hotelNights.value = days; _flashField(hotelNights); }
+    }
+
+    // Per Diem
+    var pdCrew = document.getElementById('pd_crew');
+    var pdDays = document.getElementById('pd_days');
+    if (pdCrew) { pdCrew.value = crew; _flashField(pdCrew); }
+    if (pdDays) { pdDays.value = days; _flashField(pdDays); }
+
+    // Transport
+    var transVeh = document.getElementById('trans_vehicles');
+    if (transVeh) { transVeh.value = Math.ceil(crew / 4); _flashField(transVeh); }
+    var transDist = document.getElementById('trans_miles');
+    if (transDist) { transDist.value = dist * 2; _flashField(transDist); }
+
+    // Recalculate all
+    if (typeof calcConcrete === 'function') calcConcrete();
+    if (typeof calcLabor === 'function') calcLabor();
+    if (typeof calcDrilling === 'function') calcDrilling();
+    if (typeof calcShipping === 'function') calcShipping();
+    if (typeof calcFuel === 'function') calcFuel();
+    if (typeof calcHotels === 'function') calcHotels();
+    if (typeof calcPerDiem === 'function') calcPerDiem();
+    if (typeof calcTransport === 'function') calcTransport();
+    if (typeof renderSummary === 'function') renderSummary();
+
+    closeQuickQuote();
+    if (typeof _crToast === 'function') _crToast('Quick quote applied! Review and adjust values.', 'success');
+  };
 });
 </script>
 
@@ -1645,6 +1909,83 @@ function _doGS(q){clearTimeout(_gst);if(!q||q.length<2){document.getElementById(
 _gst=setTimeout(function(){fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){var c=document.getElementById('globalSearchResults');if(!d.results||!d.results.length){c.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;">No results</div>';return;}
 var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerHTML=d.results.map(function(r){return '<a href="'+r.url+'" style="text-decoration:none;color:inherit;"><div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;cursor:pointer;" onmouseover="this.style.background=\'#334155\'" onmouseout="this.style.background=\'\'"><div style="width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#334155;">'+(ic[r.type]||'')+'</div><div><div style="font-weight:600;font-size:13px;color:#E2E8F0;">'+r.title+'</div><div style="font-size:11px;color:#94a3b8;">'+(r.subtitle||'')+'</div></div></div></a>';}).join('');});},300);}
 </script>
+
+<!-- Sticky Running Total -->
+<div class="tc-sticky-total" id="tcStickyTotal">
+    <div class="tc-sticky-total-inner">
+        <div class="tc-sticky-item">
+            <div class="label">SA Materials</div>
+            <div class="val" id="stickyMaterials">$0</div>
+        </div>
+        <div class="tc-sticky-sep"></div>
+        <div class="tc-sticky-item">
+            <div class="label">Install Costs</div>
+            <div class="val" id="stickyInstall">$0</div>
+        </div>
+        <div class="tc-sticky-sep"></div>
+        <div class="tc-sticky-item">
+            <div class="label">Grand Total</div>
+            <div class="val highlight" id="stickyGrand">$0</div>
+        </div>
+        <div class="tc-sticky-sep"></div>
+        <div class="tc-sticky-item">
+            <div class="label">Per Sq Ft</div>
+            <div class="val" id="stickyPerSqFt">$0</div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Quote Modal -->
+<div class="qq-overlay" id="qqOverlay" onclick="if(event.target===this)closeQuickQuote()">
+    <div class="qq-modal">
+        <h2>⚡ Quick Quote</h2>
+        <p>Enter basic project details and we'll fill reasonable defaults for a fast estimate.</p>
+        <div class="qq-grid">
+            <div class="qq-field">
+                <label>Building Width (ft)</label>
+                <input type="number" id="qqWidth" value="30">
+            </div>
+            <div class="qq-field">
+                <label>Building Length (ft)</label>
+                <input type="number" id="qqLength" value="40">
+            </div>
+            <div class="qq-field">
+                <label>Number of Columns</label>
+                <input type="number" id="qqCols" value="8">
+            </div>
+            <div class="qq-field">
+                <label>Footing Depth (ft)</label>
+                <input type="number" id="qqFooting" value="3" step="0.5">
+            </div>
+            <div class="qq-field">
+                <label>Crew Size</label>
+                <input type="number" id="qqCrew" value="4">
+            </div>
+            <div class="qq-field">
+                <label>Install Days</label>
+                <input type="number" id="qqDays" value="3">
+            </div>
+            <div class="qq-field">
+                <label>Distance (miles one-way)</label>
+                <input type="number" id="qqDistance" value="100">
+            </div>
+            <div class="qq-field">
+                <label>Building Type</label>
+                <select id="qqType">
+                    <option value="standard">Standard Carport</option>
+                    <option value="commercial">Commercial Building</option>
+                    <option value="warehouse">Warehouse / Ag</option>
+                    <option value="residential">Residential Garage</option>
+                </select>
+            </div>
+        </div>
+        <div class="qq-actions">
+            <button class="qq-btn qq-btn-outline" onclick="closeQuickQuote()">Cancel</button>
+            <button class="qq-btn qq-btn-primary" onclick="applyQuickQuote()">⚡ Generate Estimate</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>"""
 

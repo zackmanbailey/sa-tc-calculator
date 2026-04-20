@@ -1,0 +1,43 @@
+{
+  "job_code": "TEST-2026-INTEG",
+  "items": [
+    {
+      "part": "Rafter",
+      "qty": 10,
+      "gauge": "10 GA",
+      "width_in": 23,
+      "length_ft": 15,
+      "unit_cost": 85.5,
+      "material_cost": 855.0
+    },
+    {
+      "part": "Column",
+      "qty": 8,
+      "gauge": "10 GA",
+      "width_in": 23,
+      "length_ft": 12,
+      "unit_cost": 68.4,
+      "material_cost": 547.2
+    },
+    {
+      "part": "Purlin",
+      "qty": 30,
+      "gauge": "20 GA",
+      "width_in": 20.125,
+      "length_ft": 10,
+      "unit_cost": 22.3,
+      "material_cost": 669.0
+    },
+    {
+      "part": "Panel",
+      "qty": 60,
+      "gauge": "29 GA",
+      "width_in": 48,
+      "length_ft": 12,
+      "unit_cost": 33.7,
+      "material_cost": 2022.0
+    }
+  ],
+  "total_material": 4093.2,
+  "total_sell": 5521.82
+}

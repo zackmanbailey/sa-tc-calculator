@@ -161,11 +161,24 @@ WORKSTATION_COIL_PAGE_HTML = r"""
 </div>
 
 <div class="modal-overlay" id="assignModal">
-    <div class="modal">
+    <div class="modal" style="max-width:700px;">
         <h2>Assign Job</h2>
         <div class="form-group"><label>Job Code</label><input type="text" id="assignJob" placeholder="e.g. 2026-0015"></div>
         <div class="form-group"><label>Run Length (ft)</label><input type="number" id="assignLength" placeholder="Total footage needed"></div>
         <div class="form-group"><label>Priority</label><select id="assignPriority"><option value="normal">Normal</option><option value="rush">Rush</option><option value="hold">Hold</option></select></div>
+
+        <!-- Suggested Coils Section -->
+        <div id="suggestedCoilsSection" style="margin-top:16px;display:none;">
+          <h3 style="font-size:14px;font-weight:700;color:var(--tf-gold,#D4A843);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:15px;">&#x1F50D;</span> Suggested Coils
+            <span id="suggestCount" style="font-size:11px;opacity:0.6;font-weight:400;"></span>
+          </h3>
+          <div id="suggestedCoilsList" style="display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;padding-right:4px;"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <button type="button" class="btn-outline" style="font-size:12px;padding:6px 12px;" onclick="fetchSuggestedCoils()">Find Matching Coils</button>
+        </div>
+
         <div class="modal-actions">
             <button class="btn-outline" onclick="closeModal('assignModal')">Cancel</button>
             <button class="btn-gold" onclick="assignJob()">Assign</button>
@@ -259,6 +272,56 @@ async function assignJob() {
         closeModal('assignModal');
         loadCoilData();
     } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function fetchSuggestedCoils() {
+    var gauge = (document.getElementById('coilGauge').textContent || '').trim();
+    var width = (document.getElementById('coilWidth').textContent || '').replace(/[^0-9.]/g,'');
+    var color = (document.getElementById('coilColor').textContent || '').trim();
+    var minLft = parseFloat(document.getElementById('assignLength').value) || 0;
+    var qs = 'gauge=' + encodeURIComponent(gauge) + '&width=' + encodeURIComponent(width) + '&color=' + encodeURIComponent(color) + '&min_lft=' + minLft;
+    var section = document.getElementById('suggestedCoilsSection');
+    var list = document.getElementById('suggestedCoilsList');
+    var countEl = document.getElementById('suggestCount');
+    list.innerHTML = '<div style="color:var(--tf-muted);font-size:12px;padding:8px;">Loading...</div>';
+    section.style.display = '';
+    try {
+        var resp = await fetch('/api/coils/lifecycle/suggest?' + qs);
+        var data = await resp.json();
+        if (!data.ok || !data.suggestions || data.suggestions.length === 0) {
+            list.innerHTML = '<div style="color:var(--tf-muted);font-size:12px;padding:8px;">No matching coils found.</div>';
+            countEl.textContent = '';
+            return;
+        }
+        countEl.textContent = '(' + data.total_matches + ' match' + (data.total_matches !== 1 ? 'es' : '') + ')';
+        list.innerHTML = '';
+        data.suggestions.forEach(function(s) {
+            var scoreColor = s.match_score >= 60 ? '#10b981' : s.match_score >= 30 ? '#f59e0b' : '#ef4444';
+            var card = document.createElement('div');
+            card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+            var dot = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + scoreColor + ';flex-shrink:0;"></span>';
+            var info = '<div style="flex:1;min-width:140px;">' +
+                '<div style="font-weight:700;font-size:13px;">' + dot + ' ' + (s.coil_id||'') + '</div>' +
+                '<div style="font-size:11px;color:var(--tf-muted);">' + (s.gauge||'') + ' | ' + (s.width_in||0) + '" | ' + (s.coil_type||'') + '</div>' +
+                '</div>';
+            var stats = '<div style="text-align:right;font-size:12px;min-width:100px;">' +
+                '<div><strong>' + (s.remaining_lft||0) + '</strong> LFT left</div>' +
+                '<div style="font-size:11px;color:var(--tf-muted);">' + (s.remaining_weight_lbs||0) + ' lbs</div>' +
+                (s.can_fulfill ? '<div style="color:#10b981;font-size:11px;">Can fulfill</div>' : '<div style="color:#f59e0b;font-size:11px;">Partial</div>') +
+                '</div>';
+            var btn = '<button onclick="useCoilSuggestion(\'' + (s.coil_id||'').replace(/'/g,"\\'") + '\')" style="background:var(--tf-gold,#D4A843);color:#000;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Use This</button>';
+            card.innerHTML = info + stats + btn;
+            list.appendChild(card);
+        });
+    } catch(e) { list.innerHTML = '<div style="color:#ef4444;font-size:12px;padding:8px;">Error: ' + e.message + '</div>'; }
+}
+
+function useCoilSuggestion(coilId) {
+    // Auto-fill the swap modal with the suggested coil
+    var swapTag = document.getElementById('swapCoilTag');
+    if (swapTag) swapTag.value = coilId;
+    closeModal('assignModal');
+    openModal('swapModal');
 }
 
 loadCoilData();

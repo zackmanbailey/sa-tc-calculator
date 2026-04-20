@@ -1,0 +1,29 @@
+{
+  "job_code": "TEST-2026-INTEG",
+  "project_name": "Integration Test - 30x40 Commercial",
+  "customer": {
+    "name": "Test Customer Corp",
+    "email": "test@example.com"
+  },
+  "location": {
+    "street": "123 Test St",
+    "city": "Dallas",
+    "state": "TX"
+  },
+  "buildings": [
+    {
+      "label": "Bldg A",
+      "width": 30,
+      "length": 40,
+      "eave_height": 12
+    },
+    {
+      "label": "Bldg B",
+      "width": 24,
+      "length": 30,
+      "eave_height": 10
+    }
+  ],
+  "status": "active",
+  "created_at": "2026-04-19T23:43:23.801440"
+}

@@ -221,6 +221,39 @@ COIL_ANALYTICS_HTML = r"""
 
     /* Scrollable table wrapper */
     .ca-table-wrap { overflow-x: auto; }
+
+    /* Scrap Rate Alerts */
+    .scrap-alerts { margin-bottom:24px; }
+    .scrap-alert-card {
+        background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);
+        border-radius:10px; padding:14px 18px; margin-bottom:10px;
+        display:flex; align-items:center; gap:14px; font-size:13px;
+        animation: alertPulse 2s ease-in-out infinite;
+    }
+    .scrap-alert-card.warning {
+        background:rgba(245,158,11,0.08); border-color:rgba(245,158,11,0.3);
+    }
+    .scrap-alert-card .alert-icon { font-size:24px; }
+    .scrap-alert-card .alert-text { flex:1; }
+    .scrap-alert-card .alert-text strong { display:block; margin-bottom:2px; }
+    .scrap-alert-card .alert-yield {
+        font-size:20px; font-weight:800; min-width:60px; text-align:center;
+    }
+    .scrap-alert-card.warning .alert-yield { color:var(--ca-amber, #f59e0b); }
+    .scrap-alert-card:not(.warning) .alert-yield { color:var(--ca-red, #ef4444); }
+    @keyframes alertPulse {
+        0%, 100% { opacity:1; }
+        50% { opacity:0.85; }
+    }
+    .scrap-threshold-control {
+        display:flex; align-items:center; gap:10px; margin-bottom:16px;
+        font-size:13px; color:var(--ca-muted, #94a3b8);
+    }
+    .scrap-threshold-control input {
+        width:60px; background:var(--ca-bg, #0f172a); border:1px solid var(--ca-border, #334155);
+        border-radius:6px; color:var(--ca-text, #e2e8f0); padding:6px 10px;
+        font-size:13px; text-align:center;
+    }
 </style>
 
 <div class="ca-container" id="caApp">
@@ -259,6 +292,19 @@ COIL_ANALYTICS_HTML = r"""
             <div class="ca-kpi-value" id="kpiActive">--</div>
             <div class="ca-kpi-sub">currently in inventory</div>
         </div>
+    </div>
+
+    <!-- ========== SCRAP RATE ALERTS ========== -->
+    <div class="ca-section scrap-alerts" id="scrapAlertsSection" style="display:none">
+        <h2 style="display:flex;align-items:center;gap:8px;font-size:18px;font-weight:800;margin:0 0 12px 0;">
+            <span>&#x1F6A8;</span> Scrap Rate Alerts
+        </h2>
+        <div class="scrap-threshold-control">
+            <label>Alert when yield drops below:</label>
+            <input type="number" id="scrapThreshold" value="85" min="50" max="99" onchange="refreshAnalytics()">
+            <span>%</span>
+        </div>
+        <div id="scrapAlertsList"></div>
     </div>
 
     <!-- ========== CHARTS ROW ========== -->
@@ -434,9 +480,15 @@ COIL_ANALYTICS_HTML = r"""
     /* ------------------------------------------------------------------ */
     /*  FETCH DATA                                                         */
     /* ------------------------------------------------------------------ */
+    window.refreshAnalytics = function() { caFetchData(); };
+
     function caFetchData() {
         var url = '/api/coils/lifecycle/analytics';
-        if (caRange > 0) url += '?days=' + caRange;
+        var params = [];
+        if (caRange > 0) params.push('days=' + caRange);
+        var threshEl = document.getElementById('scrapThreshold');
+        if (threshEl) params.push('scrap_threshold=' + threshEl.value);
+        if (params.length) url += '?' + params.join('&');
 
         fetch(url)
             .then(function(r) { return r.json(); })
@@ -455,11 +507,40 @@ COIL_ANALYTICS_HTML = r"""
     /* ------------------------------------------------------------------ */
     function caRenderAll() {
         caRenderKPIs();
+        caRenderScrapAlerts();
         caRenderBarChart();
         caRenderLineChart();
         caRenderOperators();
         caRenderCoils();
         caRenderCostImpact();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  SCRAP RATE ALERTS                                                  */
+    /* ------------------------------------------------------------------ */
+    function caRenderScrapAlerts() {
+        var alertsSection = document.getElementById('scrapAlertsSection');
+        var alertsList = document.getElementById('scrapAlertsList');
+        var data = caData;
+        if (data.scrap_alerts && data.scrap_alerts.length > 0) {
+            alertsSection.style.display = '';
+            var alertHtml = '';
+            data.scrap_alerts.forEach(function(alert) {
+                var cls = alert.severity === 'critical' ? '' : 'warning';
+                var icon = alert.severity === 'critical' ? '\uD83D\uDD34' : '\u26A0\uFE0F';
+                alertHtml += '<div class="scrap-alert-card ' + cls + '">' +
+                    '<div class="alert-icon">' + icon + '</div>' +
+                    '<div class="alert-text">' +
+                        '<strong>' + caEsc(alert.operator) + '</strong>' +
+                        '<span>' + caEsc(alert.message) + '</span>' +
+                    '</div>' +
+                    '<div class="alert-yield">' + alert.avg_yield + '%</div>' +
+                '</div>';
+            });
+            alertsList.innerHTML = alertHtml;
+        } else if (alertsSection) {
+            alertsSection.style.display = 'none';
+        }
     }
 
     /* ------------------------------------------------------------------ */

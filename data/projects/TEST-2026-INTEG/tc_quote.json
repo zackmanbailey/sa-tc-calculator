@@ -1,0 +1,17 @@
+{
+  "proj_code": "TC-TEST-2026-INTEG",
+  "proj_name": "Integration Test - 30x40 Commercial",
+  "customer_name": "Test Customer Corp",
+  "sa_materials_cost": 5521.82,
+  "concrete_cost": 1200,
+  "labor_cost": 3360,
+  "drilling_cost": 800,
+  "shipping_cost": 650,
+  "fuel_cost": 280,
+  "hotel_cost": 480,
+  "per_diem_cost": 360,
+  "transport_cost": 320,
+  "equipment_cost": 0,
+  "misc_cost": 200,
+  "total": 13171.82
+}

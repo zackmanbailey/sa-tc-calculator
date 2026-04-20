@@ -1,0 +1,25 @@
+{
+  "coil_id": "CL-T00003",
+  "vendor": "Klockner Metals",
+  "gauge": "10 GA",
+  "width_in": 23,
+  "weight_lbs": 7076,
+  "estimated_lft": 653.4,
+  "lbs_per_lft": 10.83,
+  "coil_type": "C-Section (Columns & Rafters)",
+  "status": "available",
+  "remaining_weight_lbs": 7076,
+  "remaining_lft": 653.4,
+  "received_date": "2026-04-19T23:43:23.805942",
+  "usage_log": [],
+  "assigned_work_orders": [
+    {
+      "work_order_id": "WO-TEST-2026-INTEG-001",
+      "item_description": "Rafters + Columns",
+      "required_pieces": 18,
+      "piece_length_ft": 15,
+      "estimated_available_pieces": 43,
+      "assigned_date": "2026-04-19T23:43:23.810087"
+    }
+  ]
+}
