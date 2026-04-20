@@ -1241,13 +1241,13 @@ PARTS_INVENTORY_PAGE_HTML = r"""
         setTimeout(function() { t.remove(); }, 4000);
     }
 
-    function closeModal(id) {
+    window.closeModal = function(id) {
         document.getElementById(id).classList.remove('active');
-    }
+    };
 
-    function openModal(id) {
+    window.openModal = function(id) {
         document.getElementById(id).classList.add('active');
-    }
+    };
 
     // === Modal: Add/Edit ===
     window.openAddModal = function(editData) {
