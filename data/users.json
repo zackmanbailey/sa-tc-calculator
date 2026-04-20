@@ -1,12 +1,19 @@
 {
   "admin": {
-    "password": "$2b$12$fYLH54O.jy/bFdC51wuJfOcYByHyBDdr43UT4YghnhUPbAeeRWsLy",
+    "password": "pbkdf2$35381355c8c968b625e31e3b19350fac$aabb2e7d653568603fd26ffc73e72aeefdadcd7a37598aa255b74ffe05582fcc",
     "display_name": "Admin",
     "role": "admin",
     "created": "2026-04-07T13:46:01.610235"
   },
+  "zack": {
+    "password": "pbkdf2$35381355c8c968b625e31e3b19350fac$aabb2e7d653568603fd26ffc73e72aeefdadcd7a37598aa255b74ffe05582fcc",
+    "display_name": "Zack Bailey",
+    "role": "god_mode",
+    "email": "zack@titancarports.com",
+    "created": "2026-04-20T12:00:00.000000"
+  },
   "brad": {
-    "password": "$2b$12$rK5xE00paVDmITrneL258ee7lz5LTTwwKhGfNLY9/AEJy2fkZ1fs2",
+    "password": "pbkdf2$35381355c8c968b625e31e3b19350fac$aabb2e7d653568603fd26ffc73e72aeefdadcd7a37598aa255b74ffe05582fcc",
     "display_name": "Brad Spence",
     "role": "estimator",
     "created": "2026-04-07T13:46:01.792616"
