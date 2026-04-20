@@ -280,7 +280,7 @@ table.bom-tbl tr:hover td { background: rgba(200,154,46,0.03); }
 
             catItems.forEach(item => {
                 const qty = item.quantity || item.qty || 0;
-                const wt = item.weight || item.total_weight || 0;
+                const wt = item.total_weight_lbs || item.weight || item.total_weight || 0;
                 const uc = item.unit_cost || 0;
                 const tc = item.total_cost || (uc * qty) || 0;
                 totalItems++;

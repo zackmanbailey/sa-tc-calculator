@@ -8097,6 +8097,12 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["embedment_ft"] = target["embedment_ft"]
     enriched["footing_depth_ft"] = target.get("footing_depth_ft", 10.0)
     enriched["building_name"] = target.get("building_name", building_id)
+    # Column count for shop drawing title block
+    geom = target.get("geometry", {})
+    n_frames = target["n_frames"]
+    frame_type = target["frame_type"]
+    cols_per_frame = 2 if frame_type == "tee" else 3
+    enriched["num_columns"] = geom.get("n_struct_cols", n_frames * cols_per_frame)
     enriched["include_rafter_rebar"] = target.get("include_rafter_rebar", False)
     enriched["col_rebar_size"] = target.get("rebar_col_size", "auto")
     if target.get("col_positions"):

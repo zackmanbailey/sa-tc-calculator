@@ -4073,6 +4073,16 @@ function savePdfToProject() {
     var svgW = vb.width || 1100;
     var svgH = vb.height || 850;
 
+    // Add white background rect so PDF isn't dark/transparent
+    var bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bgRect.setAttribute('x', '0');
+    bgRect.setAttribute('y', '0');
+    bgRect.setAttribute('width', String(svgW));
+    bgRect.setAttribute('height', String(svgH));
+    bgRect.setAttribute('fill', '#FFFFFF');
+    bgRect.setAttribute('data-pdf-bg', 'true');
+    svgEl.insertBefore(bgRect, svgEl.firstChild);
+
     // Create landscape PDF matching the drawing proportions
     var pdf = new jspdf.jsPDF({
       orientation: 'landscape',
@@ -4081,6 +4091,10 @@ function savePdfToProject() {
     });
 
     svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
+      // Remove temp background rect from on-screen SVG
+      var tmpBg = svgEl.querySelector('[data-pdf-bg]');
+      if (tmpBg) tmpBg.remove();
+
       var pdfData = pdf.output('arraybuffer');
       var blob = new Blob([pdfData], { type: 'application/pdf' });
 
@@ -4119,12 +4133,16 @@ function savePdfToProject() {
         status.style.color = '#EF4444';
       });
     }).catch(function(err) {
+      var tmpBg = svgEl.querySelector('[data-pdf-bg]');
+      if (tmpBg) tmpBg.remove();
       btn.textContent = 'Save PDF to Project';
       btn.disabled = false;
       status.textContent = 'PDF render error: ' + err.message;
       status.style.color = '#EF4444';
     });
   } catch(err) {
+    var tmpBg2 = document.querySelector('[data-pdf-bg]');
+    if (tmpBg2) tmpBg2.remove();
     btn.textContent = 'Save PDF to Project';
     btn.disabled = false;
     status.textContent = 'Error: ' + err.message;
