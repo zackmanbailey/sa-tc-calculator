@@ -659,11 +659,12 @@ function prefillFromURL() {
   if (p.has('width')) document.getElementById('sa_width').value = p.get('width');
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
 
-  // Auto-load project data from ?project=JOB_CODE
+  // Auto-load project data from ?project=JOB_CODE or ?proj_code=JOB_CODE
   // ALWAYS load metadata first (has customer name, project name from CRM)
   // Then: 1) Saved TC data  2) Full BOM  3) tc_import.json
-  if (p.has('project')) {
-    const projCode = p.get('project');
+  const resolvedProjectCode = p.get('project') || p.get('proj_code') || '';
+  if (resolvedProjectCode) {
+    const projCode = resolvedProjectCode;
     // Always load metadata FIRST — this has the canonical customer name
     autoLoadProjectMetadata(projCode, true).then(() => {
       tcLoadFromProject(projCode).then(loaded => {
@@ -1578,13 +1579,22 @@ window.addEventListener('DOMContentLoaded', () => {
       + '<a href="/project/' + encodeURIComponent(projCode) + '/bom" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udccb BOM</a>'
       + '<a href="/sa?project=' + encodeURIComponent(projCode) + '" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udcd0 SA Estimator</a>'
       + '<a href="/shop-drawings/' + encodeURIComponent(projCode) + '" style="color:#C89A2E;text-decoration:none;padding:4px 12px;border:1px solid rgba(200,154,46,0.3);border-radius:6px;font-size:12px;">\ud83d\udcd0 Shop Drawings</a>';
-    var target = document.querySelector('.tc-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
-    target.prepend(ctxBar);
+    var target = document.querySelector('.tf-main') || document.querySelector('.tc-main') || document.querySelector('.main-content') || document.querySelector('main') || document.body;
+    if (target) {
+      // Insert after the contextbar div if it exists (breadcrumb area), otherwise prepend
+      var contextBar = target.querySelector('.tf-contextbar');
+      if (contextBar && contextBar.nextSibling) {
+        target.insertBefore(ctxBar, contextBar.nextSibling);
+      } else {
+        target.prepend(ctxBar);
+      }
+    }
   }
-  // Show from URL param
-  const tcProjParam = new URLSearchParams(window.location.search).get('project');
+  // Show from URL param — support both ?project= and ?proj_code=
+  const tcSearchParams = new URLSearchParams(window.location.search);
+  const tcProjParam = tcSearchParams.get('project') || tcSearchParams.get('proj_code');
   if (tcProjParam) {
-    showProjectContextBar(tcProjParam, tcProjParam);
+    showProjectContextBar(tcProjParam, tcSearchParams.get('proj_name') || tcProjParam);
   }
   // Also show after metadata loads (picks up project name)
   var _origAutoLoad = window._tcProjectCode;

@@ -711,7 +711,7 @@ PROJECTS_LIST_HTML = r"""
                 '<td class="date-cell">' + created + '</td>' +
                 '<td><div class="action-btns">' +
                     '<a class="action-btn" href="' + projectUrl + '" onclick="event.stopPropagation()" title="View Project">&#x1F4CB; View</a>' +
-                    '<a class="action-btn view-quote" href="/tc?job=' + encodeURIComponent(p.job_code || '') + '" onclick="event.stopPropagation()" title="View Quote">&#x1F4B0; Quote</a>' +
+                    '<a class="action-btn view-quote" href="/tc?project=' + encodeURIComponent(p.job_code || '') + '" onclick="event.stopPropagation()" title="View Quote">&#x1F4B0; Quote</a>' +
                     '<a class="action-btn view-drawings" href="/shop-drawings/' + encodeURIComponent(p.job_code || '') + '" onclick="event.stopPropagation()" title="View Shop Drawings">&#x1F4D0; Drawings</a>' +
                 '</div></td>' +
             '</tr>';

@@ -1641,6 +1641,7 @@ async function sendToTCQuote() {
 
   // Also open TC page with URL params as fallback
   const params = new URLSearchParams({
+    project: projCode,
     sa_cost: sellPrice.toFixed(2),
     n_cols: nCols,
     footing: footingDepth,
