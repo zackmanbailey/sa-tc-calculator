@@ -9424,7 +9424,7 @@ class ShopDrawingsZipHandler(BaseHandler):
 
 class WorkOrderPageHandler(BaseHandler):
     """GET /work-orders/{job_code} — Work order tracking page."""
-    required_roles = ["admin", "estimator", "shop"]
+    required_roles = ["god_mode", "admin", "project_manager", "estimator", "shop_foreman", "shop_manager", "foreman", "shop"]
 
     def get(self, job_code):
         try:
@@ -9440,7 +9440,7 @@ class WorkOrderPageHandler(BaseHandler):
             self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
 class WorkOrderCreateHandler(BaseHandler):
     """POST /api/work-orders/create — Create a new work order from shop drawings."""
-    required_roles = ["admin", "estimator"]
+    required_roles = ["god_mode", "admin", "project_manager", "estimator", "shop_foreman", "shop_manager", "foreman"]
 
     def post(self):
         try:

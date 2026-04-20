@@ -761,8 +761,17 @@ async function refreshAll() {
 async function apiCall(url, method, body) {
     const opts = { method, headers: {'Content-Type': 'application/json'} };
     if (body) opts.body = JSON.stringify(body);
-    const resp = await fetch(url, opts);
-    return resp.json();
+    try {
+        const resp = await fetch(url, opts);
+        if (!resp.ok) {
+            const text = await resp.text();
+            try { return JSON.parse(text); } catch(e) {}
+            return { ok: false, error: `Server error ${resp.status}: ${text.substring(0, 200)}` };
+        }
+        return resp.json();
+    } catch(err) {
+        return { ok: false, error: 'Network error: ' + err.message };
+    }
 }
 
 async function loadWorkOrders() {
@@ -784,18 +793,27 @@ async function loadWODetail(woId) {
 }
 
 async function createWorkOrder() {
-    const data = await apiCall('/api/work-orders/create', 'POST', { job_code: JOB_CODE });
-    if (data.ok) {
-        showToast('Work order created!', 'success');
-        await refreshAll();
-        // Auto-open the new one
-        if (data.work_order) {
-            currentWO = data.work_order;
-            renderDetail();
-            switchTab('items');
+    try {
+        if (!JOB_CODE || JOB_CODE === '{{JOB_CODE}}') {
+            showToast('No project selected — open work orders from a project page', 'error');
+            return;
         }
-    } else {
-        showToast(data.error || 'Failed to create work order', 'error');
+        const data = await apiCall('/api/work-orders/create', 'POST', { job_code: JOB_CODE });
+        if (data.ok) {
+            showToast('Work order created!', 'success');
+            await refreshAll();
+            // Auto-open the new one
+            if (data.work_order) {
+                currentWO = data.work_order;
+                renderDetail();
+                switchTab('items');
+            }
+        } else {
+            showToast(data.error || 'Failed to create work order', 'error');
+        }
+    } catch(err) {
+        showToast('Error creating work order: ' + err.message, 'error');
+        console.error('createWorkOrder error:', err);
     }
 }
 
