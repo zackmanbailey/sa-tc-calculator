@@ -1,0 +1,31 @@
+{
+  "coils": {
+    "CL-00001": {
+      "coil_id": "CL-00001",
+      "vendor": "Klockner Metals Corp",
+      "material_spec": "Roll Galvanized 10 Ga ASTM A653 HSLA Gr 80 G1",
+      "gauge": "10GA",
+      "width_in": 23.0,
+      "weight_lbs": 7076.0,
+      "estimated_lft": 653.4,
+      "coil_type": "C-Section (Columns & Rafters)",
+      "status": "depleted",
+      "received_date": "2026-04-19T23:08:06.668240",
+      "remaining_weight_lbs": 0
+    },
+    "CL-00002": {
+      "coil_id": "CL-00002",
+      "vendor": "Klockner Metals Corp",
+      "material_spec": "Z-Purlin 12 Ga",
+      "gauge": "12GA",
+      "width_in": 20.125,
+      "weight_lbs": 5000.0,
+      "estimated_lft": 672.9,
+      "coil_type": "Z-Purlin",
+      "status": "available",
+      "received_date": "2026-04-19T23:08:06.668240",
+      "remaining_weight_lbs": 2500
+    }
+  },
+  "next_id": 3
+}

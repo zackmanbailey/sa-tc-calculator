@@ -1,0 +1,46 @@
+{
+  "coil_id": "CL-00001",
+  "vendor": "Klockner Metals Corp",
+  "serial_no": "7026461",
+  "heat_process_no": "42602298",
+  "coil_number": "26G03958",
+  "material_spec": "Roll Galvanized 10 Ga ASTM A653 HSLA Gr 80 G1",
+  "gauge": "10GA",
+  "width_in": 23.0,
+  "weight_lbs": 7076.0,
+  "vendor_lft": 672.0,
+  "estimated_lft": 653.4,
+  "lbs_per_lft": 10.83,
+  "coil_type": "C-Section (Columns & Rafters)",
+  "status": "depleted",
+  "remaining_weight_lbs": 0,
+  "remaining_lft": 0,
+  "received_date": "2026-04-19T23:08:06.668240",
+  "received_by": "test",
+  "usage_log": [
+    {
+      "action": "start_use",
+      "operator": "TestOperator",
+      "timestamp": "2026-04-19T23:08:06.668240"
+    },
+    {
+      "action": "log_usage",
+      "operator": "TestOperator",
+      "pieces": 34,
+      "piece_length_ft": 19.5,
+      "lft_used": 663.0,
+      "weight_used_lbs": 7180.29,
+      "remaining_weight_lbs": 0,
+      "remaining_lft": 0,
+      "timestamp": "2026-04-19T23:08:06.668240"
+    },
+    {
+      "action": "depleted",
+      "timestamp": "2026-04-19T23:08:06.668240"
+    }
+  ],
+  "assigned_work_orders": [],
+  "location": "Receiving",
+  "current_operator": "TestOperator",
+  "use_started": "2026-04-19T23:08:06.668240"
+}

@@ -1,0 +1,30 @@
+{
+  "coil_id": "CL-00002",
+  "vendor": "Klockner Metals Corp",
+  "serial_no": "7026462",
+  "heat_process_no": "42602299",
+  "coil_number": "26G03959",
+  "material_spec": "Z-Purlin 12 Ga",
+  "gauge": "12GA",
+  "width_in": 20.125,
+  "weight_lbs": 5000.0,
+  "vendor_lft": 670.0,
+  "estimated_lft": 672.9,
+  "lbs_per_lft": 7.43,
+  "coil_type": "Z-Purlin",
+  "status": "returned",
+  "remaining_weight_lbs": 2500,
+  "remaining_lft": 336.5,
+  "received_date": "2026-04-19T23:08:06.668240",
+  "received_by": "test",
+  "usage_log": [
+    {
+      "action": "return",
+      "remaining_weight_lbs": 2500,
+      "location": "Bay 3, Rack 2",
+      "timestamp": "2026-04-19T23:08:06.668240"
+    }
+  ],
+  "assigned_work_orders": [],
+  "location": "Bay 3, Rack 2"
+}
