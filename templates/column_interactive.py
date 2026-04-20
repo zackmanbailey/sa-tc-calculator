@@ -204,15 +204,26 @@ function applyServerConfig() {
     if (vp) vp.textContent = cfg.pitch_deg + '°';
   }
   if (cfg.clear_height_ft) document.getElementById('inClearHt').value = cfg.clear_height_ft;
-  if (cfg.width_ft) document.getElementById('inWidth').value = cfg.width_ft;
-  if (cfg.footing_ft) document.getElementById('inFooting').value = cfg.footing_ft;
-  if (cfg.rebar_size) {
+  if (cfg.building_width_ft) document.getElementById('inWidth').value = cfg.building_width_ft;
+  else if (cfg.width_ft) document.getElementById('inWidth').value = cfg.width_ft;
+  // Footing depth — check multiple field names from different config sources
+  var footingVal = cfg.footing_depth_ft || cfg.footing_ft || 0;
+  if (footingVal) document.getElementById('inFooting').value = footingVal;
+  if (cfg.col_rebar_size && cfg.col_rebar_size !== 'auto') {
+    var sel = document.getElementById('inRebar');
+    if (sel) sel.value = cfg.col_rebar_size;
+  } else if (cfg.rebar_size) {
     var sel = document.getElementById('inRebar');
     if (sel) sel.value = cfg.rebar_size;
   }
   if (cfg.above_grade_ft) document.getElementById('inAboveGrade').value = cfg.above_grade_ft;
   if (cfg.cut_allowance_in !== undefined) document.getElementById('inCutAllowance').value = cfg.cut_allowance_in;
-  if (cfg.reinforced === false) {
+  // Embedment from SA calc
+  if (cfg.embedment_ft) {
+    // embedment is part of footing; not a separate input but store for reference
+    window._cfgEmbedmentFt = cfg.embedment_ft;
+  }
+  if (cfg.reinforced === false || cfg.include_rafter_rebar === false) {
     // Click the non-reinforced button
     var btnR = document.getElementById('btnReinforced');
     var btnNR = document.getElementById('btnNonReinforced');
@@ -236,8 +247,15 @@ function applyServerConfig() {
     var cu = document.getElementById('setCustomer');
     if (cu) cu.value = cfg.customer || cfg.customer_name;
   }
-  // Frame data for column count
-  if (cfg.num_frames) C.nFrames = cfg.num_frames;
+  // Building-aware column mark: B1 → C1, B2 → C2, etc.
+  if (cfg.building_id) {
+    var bNum = parseInt(cfg.building_id.replace(/\D/g, '')) || 1;
+    var cm = document.getElementById('setColumnMark');
+    if (cm) cm.value = 'C' + bNum;
+  }
+  // Frame data for column count — use n_frames from SA enrichment
+  if (cfg.n_frames) C.nFrames = cfg.n_frames;
+  else if (cfg.num_frames) C.nFrames = cfg.num_frames;
   if (cfg.frame_type) {
     var ft = cfg.frame_type.toLowerCase();
     C.frameType = (ft === 'tee' || ft === 't-frame') ? 'tee' : '2-post';
@@ -247,6 +265,12 @@ function applyServerConfig() {
     // For tee: totalCols = nFrames * 2, for 2-post: nFrames * 3
     var colsPerFrame = (C.frameType === 'tee') ? 2 : 3;
     C.nFrames = Math.round(cfg.num_columns / colsPerFrame);
+  }
+  // Roof pitch from SA (may be stored as roof_pitch_deg)
+  if (cfg.roof_pitch_deg !== undefined && cfg.pitch_deg === undefined) {
+    document.getElementById('inPitch').value = cfg.roof_pitch_deg;
+    var vp = document.getElementById('vPitch');
+    if (vp) vp.textContent = cfg.roof_pitch_deg + '\u00b0';
   }
   // Auto-populate from rafter drawing data (Rec 5)
   if (cfg._rafter_saved) {
@@ -2701,6 +2725,46 @@ async function savePdfToProject() {
     status.style.color = '#EF4444';
   }
 }
+
+// ── Sync drawing changes back to SA calculator / project ──────────
+var _syncTimer = null;
+function scheduleSyncBack() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncDrawingToProject, 3000);
+}
+
+async function syncDrawingToProject() {
+  var cfg = window.COLUMN_CONFIG || {};
+  var jobCode = cfg.job_code || (document.getElementById('setJobNumber') || {}).value;
+  var buildingId = cfg.building_id || 'B1';
+  if (!jobCode) return;
+
+  var updates = {
+    job_code: jobCode,
+    building_id: buildingId,
+    source: 'column_drawing',
+    fields: {
+      footing_depth_ft: parseFloat(document.getElementById('inFooting').value) || 10,
+      clear_height_ft: parseFloat(document.getElementById('inClearHt').value) || 14,
+      building_width_ft: parseFloat(document.getElementById('inWidth').value) || 40,
+      roof_pitch_deg: parseFloat(document.getElementById('inPitch').value) || 1.2,
+    }
+  };
+  try {
+    await fetch('/api/shop-drawings/sync-back', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates)
+    });
+    console.log('[SyncBack] Column drawing changes synced to project');
+  } catch(e) { console.warn('[SyncBack] Failed:', e); }
+}
+
+// Hook input changes to trigger sync-back
+['inFooting','inClearHt','inWidth','inPitch'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('change', scheduleSyncBack);
+});
 </script>
 </body>
 </html>

@@ -400,6 +400,7 @@ function showToast(msg, type='info', duration=3000) {
 // ─────────────────────────────────────────────
 let buildings = [];
 let currentBOM = null;
+let previousBOM = null;  // last-saved BOM for diff comparison
 let currentLabels = null;
 
 // ── Price Overrides State ──────────────────
@@ -551,12 +552,12 @@ function addBuilding() {
     length_ft: 200,
     n_spaces: 0,
     space_width_ft: 12,    // parking stall width; 0 = legacy equal-overhang
-    overhang_mode: 'none', // 'none' or '1space'
+    overhang_mode: '1space', // 'none' or '1space'
     clear_height_ft: 14,
     max_bay_ft: 36,
     pitch_key: '1/4:12',
     // Purlin spacing: null = auto-calc
-    purlin_spacing_override: null,
+    purlin_spacing_override: 5,
     embedment_ft: 4.333,
     column_buffer_ft: 0.5,
     reinforced: true,
@@ -568,7 +569,7 @@ function addBuilding() {
     include_end_walls: false,
     include_side_walls: false,
     wall_girt_spacing_override: null,
-    include_rafter_rebar: false,
+    include_rafter_rebar: true,
     rebar_rafter_size: '#9',
     include_trim: false,
     include_labor: true,
@@ -963,20 +964,19 @@ function buildingFormHTML(b) {
             <div style="padding-top:18px">
               <label class="check-label">
                 <input type="checkbox" ${b.include_rafter_rebar?'checked':''}
-                  onchange="updateBldg('${b.id}','include_rafter_rebar',this.checked);renderBuildingForms()"/>
-                Include Rafter Rebar
+                  onchange="updateBldg('${b.id}','include_rafter_rebar',this.checked);document.getElementById('${b.id}_rafter_rebar_opts').style.display=this.checked?'':'none';var sc=document.getElementById('${b.id}_rebar_stick_cfg');if(sc)sc.style.display=this.checked?'grid':'none'"/>
+                Reinforced Rafters
               </label>
               <div style="font-size:10px;color:#888;margin-top:3px;margin-left:20px">
                 Diagonal C-section reinforcement inside rafters
               </div>
             </div>
-            ${b.include_rafter_rebar ? `
-            <div class="form-group" style="margin-bottom:0">
+            <div id="${b.id}_rafter_rebar_opts" class="form-group" style="margin-bottom:0;${b.include_rafter_rebar?'':'display:none'}">
               <label>Rafter Rebar Size</label>
               <select onchange="updateBldg('${b.id}','rebar_rafter_size',this.value)">
                 ${['#5','#6','#7','#8','#9','#10','#11'].map(s=>`<option value="${s}" ${(b.rebar_rafter_size||'#9')===s?'selected':''}>${s}</option>`).join('')}
               </select>
-            </div>` : '<div></div>'}
+            </div>
           </div>
         </div>
       </details>`;
@@ -1049,8 +1049,7 @@ function buildingFormHTML(b) {
         </div>
 
         <!-- Rebar stick config -->
-        ${b.include_rafter_rebar ? `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;max-width:440px">
+        <div id="${b.id}_rebar_stick_cfg" style="display:${b.include_rafter_rebar?'grid':'none'};grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;max-width:440px">
           <div class="form-group">
             <label>Max Rebar Stick (ft)</label>
             <input type="number" value="${b.rebar_max_stick_ft||20}" min="5" max="40" step="1"
@@ -1063,7 +1062,7 @@ function buildingFormHTML(b) {
               onchange="updateBldg('${b.id}','rebar_end_gap_ft',parseFloat(this.value))"/>
             <div style="font-size:10px;color:#888;margin-top:2px">Gap from rafter end to first rebar</div>
           </div>
-        </div>` : ''}
+        </div>
 
         <!-- Splice override -->
         <div class="form-group" style="max-width:220px;margin-bottom:10px">
@@ -1283,16 +1282,138 @@ async function calculate() {
       showToast('Calculation error: ' + data.error);
       return;
     }
-    currentBOM = data;
-    priceOverrides = {};  // Reset overrides on new calc
-    renderBOM(data);
+
+    const newBOM = data;
+    const jobCode = project.job_code;
+
+    // Check if there's a previously saved version to compare against
+    if (previousBOM && currentVersion > 0) {
+      const changes = compareBOMs(previousBOM, newBOM);
+      if (changes.length > 0) {
+        // Show diff modal and let user decide
+        showBOMDiffModal(changes, newBOM, jobCode);
+        return;
+      } else {
+        showToast('No changes from saved version.', 'info');
+      }
+    }
+
+    // Apply new BOM
+    currentBOM = newBOM;
+    priceOverrides = {};
+    renderBOM(newBOM);
     renderPricingTab();
-    // Switch to BOM tab
     showTab('bom');
+
+    // Auto-save: if this is a new project (no prior version), save as v1
+    if (jobCode && jobCode !== 'PROJ-00' && currentVersion === 0) {
+      previousBOM = JSON.parse(JSON.stringify(newBOM));
+      await autoSaveProject();
+      showToast('BOM calculated and saved as v' + currentVersion + '.', 'success');
+    }
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }
 }
+
+// Compare two BOM results and return list of human-readable changes
+function compareBOMs(oldBOM, newBOM) {
+  const changes = [];
+  // Compare top-level totals
+  const fields = [
+    { key: 'total_weight_lbs', label: 'Total Weight', unit: ' lbs', fmt: v => Math.round(v).toLocaleString() },
+    { key: 'total_material_cost', label: 'Material Cost', unit: '', fmt: v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2}) },
+    { key: 'total_sell_price', label: 'Total Sell Price', unit: '', fmt: v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2}) },
+    { key: 'total_labor_sell_price', label: 'Fab Labor', unit: '', fmt: v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2}) },
+  ];
+  for (const f of fields) {
+    const oldVal = oldBOM[f.key] || 0;
+    const newVal = newBOM[f.key] || 0;
+    if (Math.abs(oldVal - newVal) > 0.01) {
+      const pct = oldVal > 0 ? ((newVal - oldVal) / oldVal * 100).toFixed(1) : 'new';
+      changes.push({ label: f.label, old: f.fmt(oldVal), new: f.fmt(newVal), pct: pct });
+    }
+  }
+  // Compare building count
+  const oldBldgs = (oldBOM.buildings || []).length;
+  const newBldgs = (newBOM.buildings || []).length;
+  if (oldBldgs !== newBldgs) {
+    changes.push({ label: 'Buildings', old: oldBldgs + '', new: newBldgs + '', pct: '' });
+  }
+  // Compare per-building item counts
+  for (let i = 0; i < Math.max(oldBldgs, newBldgs); i++) {
+    const ob = (oldBOM.buildings || [])[i];
+    const nb = (newBOM.buildings || [])[i];
+    if (!ob && nb) { changes.push({ label: 'Building ' + (i+1), old: '(none)', new: nb.building_name || 'Added', pct: 'new' }); }
+    else if (ob && !nb) { changes.push({ label: 'Building ' + (i+1), old: ob.building_name || 'Existed', new: '(removed)', pct: 'removed' }); }
+    else if (ob && nb) {
+      const oc = (ob.items || []).length;
+      const nc = (nb.items || []).length;
+      if (oc !== nc) {
+        changes.push({ label: (nb.building_name || 'Building '+(i+1)) + ' line items', old: oc + '', new: nc + '', pct: '' });
+      }
+    }
+  }
+  return changes;
+}
+
+function showBOMDiffModal(changes, newBOM, jobCode) {
+  // Remove existing modal if any
+  var existing = document.getElementById('bom-diff-modal');
+  if (existing) existing.remove();
+
+  var rows = changes.map(function(c) {
+    var arrow = c.pct === 'new' ? '🆕' : c.pct === 'removed' ? '🗑️' : (parseFloat(c.pct) > 0 ? '📈 +' + c.pct + '%' : '📉 ' + c.pct + '%');
+    return '<tr><td style="font-weight:600">' + c.label + '</td><td style="color:#888">' + c.old + '</td><td style="font-weight:700">' + c.new + '</td><td>' + arrow + '</td></tr>';
+  }).join('');
+
+  var modal = document.createElement('div');
+  modal.id = 'bom-diff-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  modal.innerHTML = '<div style="background:var(--tf-card,#1a1f2e);border-radius:16px;border:1px solid var(--tf-border,#2a3040);width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,0.5)">'
+    + '<div style="padding:20px 24px;border-bottom:1px solid var(--tf-border,#2a3040);display:flex;justify-content:space-between;align-items:center">'
+    + '<h2 style="margin:0;font-size:18px;font-weight:700;color:var(--tf-text,#e0e6ed)">📊 BOM Changes Detected</h2>'
+    + '<button onclick="document.getElementById(\'bom-diff-modal\').remove()" style="background:none;border:none;color:var(--tf-muted,#888);font-size:22px;cursor:pointer">&times;</button>'
+    + '</div>'
+    + '<div style="padding:24px">'
+    + '<p style="color:var(--tf-muted,#888);margin-bottom:16px">The new calculation differs from saved version <strong>v' + currentVersion + '</strong>:</p>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="border-bottom:2px solid var(--tf-border,#2a3040)"><th style="text-align:left;padding:8px;color:var(--tf-muted,#888)">Item</th><th style="text-align:left;padding:8px;color:var(--tf-muted,#888)">Previous</th><th style="text-align:left;padding:8px;color:var(--tf-muted,#888)">New</th><th style="padding:8px">Change</th></tr></thead>'
+    + '<tbody style="color:var(--tf-text,#e0e6ed)">' + rows + '</tbody></table>'
+    + '</div>'
+    + '<div style="padding:16px 24px;border-top:1px solid var(--tf-border,#2a3040);display:flex;justify-content:flex-end;gap:10px">'
+    + '<button class="btn btn-secondary" onclick="applyBOMWithoutSave()">View Only (Don\\\'t Save)</button>'
+    + '<button class="btn btn-gold" onclick="applyBOMAndSaveNew()">💾 Save as New Version</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+
+  // Store newBOM for the button handlers
+  window._pendingNewBOM = newBOM;
+  window._pendingJobCode = jobCode;
+}
+
+window.applyBOMWithoutSave = function() {
+  var m = document.getElementById('bom-diff-modal');
+  if (m) m.remove();
+  currentBOM = window._pendingNewBOM;
+  priceOverrides = {};
+  renderBOM(currentBOM);
+  renderPricingTab();
+  showTab('bom');
+  showToast('BOM updated (not saved). Click Save Project to keep changes.', 'info');
+};
+
+window.applyBOMAndSaveNew = async function() {
+  var m = document.getElementById('bom-diff-modal');
+  if (m) m.remove();
+  currentBOM = window._pendingNewBOM;
+  previousBOM = JSON.parse(JSON.stringify(currentBOM));
+  priceOverrides = {};
+  renderBOM(currentBOM);
+  renderPricingTab();
+  showTab('bom');
+  await autoSaveProject();
+  showToast('BOM saved as new version v' + currentVersion + '.', 'success');
+};
 
 // ─────────────────────────────────────────────
 // RENDER BOM
@@ -1912,6 +2033,7 @@ async function loadProject(jobCode, version) {
     // Restore BOM data
     if (d.bom_data) {
       currentBOM = d.bom_data;
+      previousBOM = JSON.parse(JSON.stringify(d.bom_data));  // snapshot for diff
       renderBOM(currentBOM);
     }
 

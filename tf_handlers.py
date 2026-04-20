@@ -8053,8 +8053,12 @@ def _load_buildings_list(job_code):
                         "frame_type": "tee" if b.get("width_ft", 40) <= 45 else "dbl_col",
                         "overhang_ft": b.get("overhang_ft", 0.0),
                         "embedment_ft": b.get("embedment_ft", 4.333),
+                        "footing_depth_ft": b.get("footing_depth_ft", 10.0),
                         "col_positions": b.get("col_positions", []),
                         "bay_sizes": b.get("bay_sizes", []),
+                        "building_name": b.get("building_name", f"Building {i+1}"),
+                        "include_rafter_rebar": b.get("include_rafter_rebar", False),
+                        "rebar_col_size": b.get("rebar_col_size", "auto"),
                     })
                 return result
         except Exception:
@@ -8091,6 +8095,10 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["frame_type"] = target["frame_type"]
     enriched["overhang_ft"] = target["overhang_ft"]
     enriched["embedment_ft"] = target["embedment_ft"]
+    enriched["footing_depth_ft"] = target.get("footing_depth_ft", 10.0)
+    enriched["building_name"] = target.get("building_name", building_id)
+    enriched["include_rafter_rebar"] = target.get("include_rafter_rebar", False)
+    enriched["col_rebar_size"] = target.get("rebar_col_size", "auto")
     if target.get("col_positions"):
         enriched["col_positions"] = target["col_positions"]
     if target.get("bay_sizes"):
@@ -9025,6 +9033,75 @@ _FIELD_LABELS = {
     "has_back_wall": "Back Wall",
     "has_side_walls": "Side Walls",
 }
+
+
+class ShopDrawingsSyncBackHandler(BaseHandler):
+    """POST /api/shop-drawings/sync-back — Sync drawing input changes back to SA project.
+
+    When a user modifies values in an interactive drawing (e.g. footing depth),
+    this handler updates the corresponding building in the saved project data
+    so that SA calculator, BOM, and TC all stay in sync.
+    """
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            building_id = body.get("building_id", "B1")
+            fields = body.get("fields", {})
+            source = body.get("source", "unknown")
+
+            if not job_code or not fields:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or fields"}))
+                return
+
+            safe = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            proj_dir = os.path.join(PROJECTS_DIR, safe)
+
+            # Find the latest version file
+            fpath = os.path.join(proj_dir, "current.json")
+            if not os.path.isfile(fpath):
+                # Try versioned files
+                vfiles = sorted([f for f in os.listdir(proj_dir) if f.startswith("v") and f.endswith(".json")], reverse=True) if os.path.isdir(proj_dir) else []
+                if vfiles:
+                    fpath = os.path.join(proj_dir, vfiles[0])
+                else:
+                    self.write(json_encode({"ok": False, "error": "No saved project data"}))
+                    return
+
+            with open(fpath) as f:
+                data = json.load(f)
+
+            # Map building_id (B1, B2) to index
+            bldg_idx = max(0, int(building_id.replace("B", "").replace("b", "")) - 1)
+
+            # Update buildings array
+            bldg_list = data.get("buildings", [])
+            if bldg_idx < len(bldg_list):
+                # Map drawing field names to SA building field names
+                field_map = {
+                    "footing_depth_ft": "footing_depth_ft",
+                    "clear_height_ft": "clear_height_ft",
+                    "building_width_ft": "width_ft",
+                    "roof_pitch_deg": "pitch_deg",
+                }
+                for draw_key, sa_key in field_map.items():
+                    if draw_key in fields:
+                        bldg_list[bldg_idx][sa_key] = fields[draw_key]
+                data["buildings"] = bldg_list
+
+            # Also update shop drawings config
+            cfg = _load_shop_config(job_code, building_id=building_id) or {}
+            cfg.update(fields)
+            _save_shop_config(job_code, cfg)
+
+            # Save updated project data back
+            with open(fpath, "w") as f:
+                json.dump(data, f, indent=2, default=str)
+
+            self.write(json_encode({"ok": True, "source": source, "updated_fields": list(fields.keys())}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class ShopDrawingsDiffHandler(BaseHandler):
@@ -19114,6 +19191,7 @@ def get_routes():
         (r"/api/shop-drawings/save-interactive-pdf", SaveInteractivePDFHandler),
         (r"/api/shop-drawings/delete-pdf",           DeleteShopDrawingPDFHandler),
         (r"/api/shop-drawings/sync-bom",         ShopDrawingsSyncBOMHandler),
+        (r"/api/shop-drawings/sync-back",        ShopDrawingsSyncBackHandler),
         (r"/api/shop-drawings/diff",             ShopDrawingsDiffHandler),
         (r"/api/shop-drawings/generate",         ShopDrawingsGenerateHandler),
         (r"/api/shop-drawings/file",             ShopDrawingsFileHandler),

@@ -4144,6 +4144,41 @@ document.addEventListener('DOMContentLoaded', function() {
   updatePieceTabs();
   draw();
 });
+
+// ── Sync rafter drawing changes back to SA project ──────────
+var _raftSyncTimer = null;
+function scheduleRafterSyncBack() {
+  clearTimeout(_raftSyncTimer);
+  _raftSyncTimer = setTimeout(syncRafterToProject, 3000);
+}
+async function syncRafterToProject() {
+  var cfg = window.RAFTER_CONFIG || {};
+  var jobCode = cfg.job_code || (document.getElementById('inJobNo') || {}).value;
+  var buildingId = cfg.building_id || 'B1';
+  if (!jobCode) return;
+  var updates = {
+    job_code: jobCode,
+    building_id: buildingId,
+    source: 'rafter_drawing',
+    fields: {
+      clear_height_ft: parseFloat((document.getElementById('inputClearHeight') || {}).value) || 14,
+      building_width_ft: parseFloat((document.getElementById('inputWidth') || {}).value) || 40,
+      footing_depth_ft: parseFloat((document.getElementById('inputFootingDepth') || {}).value) || 10,
+    }
+  };
+  try {
+    await fetch('/api/shop-drawings/sync-back', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates)
+    });
+    console.log('[SyncBack] Rafter drawing changes synced');
+  } catch(e) { console.warn('[SyncBack] Failed:', e); }
+}
+['inputClearHeight','inputWidth','inputFootingDepth'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('change', scheduleRafterSyncBack);
+});
 </script>
 </body>
 </html>
