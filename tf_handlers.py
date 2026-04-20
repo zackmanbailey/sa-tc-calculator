@@ -19078,6 +19078,1022 @@ class ProjectSyncFromDrawingHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+# ─────────────────────────────────────────────
+# COIL LIFECYCLE MANAGEMENT SYSTEM
+# ─────────────────────────────────────────────
+
+COIL_LIFECYCLE_DIR = os.path.join(DATA_DIR, "coil_lifecycle")
+os.makedirs(COIL_LIFECYCLE_DIR, exist_ok=True)
+
+COIL_LIFECYCLE_INDEX_PATH = os.path.join(COIL_LIFECYCLE_DIR, "index.json")
+
+
+def _load_coil_lifecycle_index():
+    """Load the coil lifecycle index (list of all received coils)."""
+    if os.path.isfile(COIL_LIFECYCLE_INDEX_PATH):
+        with open(COIL_LIFECYCLE_INDEX_PATH) as f:
+            return json.load(f)
+    return {"coils": {}, "next_id": 1}
+
+
+def _save_coil_lifecycle_index(data):
+    """Save the coil lifecycle index."""
+    with open(COIL_LIFECYCLE_INDEX_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_coil_lifecycle(coil_id):
+    """Load a single coil's full lifecycle data."""
+    path = os.path.join(COIL_LIFECYCLE_DIR, f"{coil_id}.json")
+    if os.path.isfile(path):
+        with open(path) as f:
+            return json.load(f)
+    return None
+
+
+def _save_coil_lifecycle(coil_id, data):
+    """Save a single coil's lifecycle data."""
+    path = os.path.join(COIL_LIFECYCLE_DIR, f"{coil_id}.json")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _estimate_linear_feet(weight_lbs, gauge, width_in):
+    """Estimate linear feet from weight, gauge, and width."""
+    # Known lbs_per_lft from inventory coil types
+    LBS_PER_LFT = {
+        ("10GA", 23.0): 10.83,
+        ("10GA", 23): 10.83,
+        ("12GA", 20.125): 7.43,
+        ("16GA", 4.0): 0.8656,
+        ("16GA", 4): 0.8656,
+        ("29GA", 48.0): 2.81,
+        ("29GA", 48): 2.81,
+        ("10GA", 6.0): 1.04,
+        ("10GA", 6): 1.04,
+        ("16GA", 2.0): 0.65,
+        ("16GA", 2): 0.65,
+        ("10GA", 12.0): 4.0,
+        ("10GA", 12): 4.0,
+    }
+    gauge_str = str(gauge).upper().replace(" ", "")
+    try:
+        width_f = float(width_in)
+    except (TypeError, ValueError):
+        width_f = 0
+
+    # Try exact lookup
+    key = (gauge_str, width_f)
+    if key in LBS_PER_LFT:
+        lbs_per_lft = LBS_PER_LFT[key]
+    else:
+        # Try rounding width
+        key2 = (gauge_str, round(width_f))
+        if key2 in LBS_PER_LFT:
+            lbs_per_lft = LBS_PER_LFT[key2]
+        else:
+            # Fallback formula: steel density 490 lb/ft3
+            gauge_thickness = {
+                "10GA": 0.1345, "12GA": 0.1046, "14GA": 0.0747,
+                "16GA": 0.0598, "18GA": 0.0478, "20GA": 0.0359,
+                "22GA": 0.0299, "24GA": 0.0239, "26GA": 0.0179,
+                "29GA": 0.0149,
+            }
+            t = gauge_thickness.get(gauge_str, 0.1)
+            if width_f > 0:
+                lbs_per_lft = (width_f * t * 490.0) / 12.0
+            else:
+                lbs_per_lft = 10.0  # fallback
+
+    try:
+        weight_f = float(weight_lbs)
+    except (TypeError, ValueError):
+        weight_f = 0
+
+    if lbs_per_lft > 0 and weight_f > 0:
+        return round(weight_f / lbs_per_lft, 1), round(lbs_per_lft, 4)
+    return 0, lbs_per_lft
+
+
+class CoilLifecycleReceiveHandler(BaseHandler):
+    """POST /api/coils/lifecycle/receive — Receive one or more coils into the system."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            coils_data = body.get("coils", [])
+            if not coils_data:
+                self.write(json_encode({"ok": False, "error": "No coils provided"}))
+                return
+
+            index = _load_coil_lifecycle_index()
+            received_ids = []
+            now = datetime.datetime.now().isoformat()
+
+            for c in coils_data:
+                coil_id = f"CL-{index['next_id']:05d}"
+                index["next_id"] = index.get("next_id", 1) + 1
+
+                weight = float(c.get("weight_lbs", 0) or 0)
+                gauge = _sanitize_string(c.get("gauge", ""), 20)
+                width = float(c.get("width_in", 0) or 0)
+                vendor_lft = float(c.get("vendor_lft", 0) or 0)
+                est_lft, lbs_per_lft = _estimate_linear_feet(weight, gauge, width)
+
+                coil_record = {
+                    "coil_id": coil_id,
+                    "vendor": _sanitize_string(c.get("vendor", ""), 200),
+                    "serial_no": _sanitize_string(c.get("serial_no", ""), 100),
+                    "supplier_no": _sanitize_string(c.get("supplier_no", ""), 100),
+                    "customer_order_no": _sanitize_string(c.get("customer_order_no", ""), 100),
+                    "heat_process_no": _sanitize_string(c.get("heat_process_no", ""), 100),
+                    "coil_number": _sanitize_string(c.get("coil_number", ""), 100),
+                    "material_spec": _sanitize_string(c.get("material_spec", ""), 500),
+                    "gauge": gauge,
+                    "width_in": width,
+                    "weight_lbs": weight,
+                    "vendor_lft": vendor_lft,
+                    "estimated_lft": est_lft,
+                    "lbs_per_lft": lbs_per_lft,
+                    "coil_type": _sanitize_string(c.get("coil_type", "Other"), 100),
+                    "condition_notes": _sanitize_string(c.get("condition_notes", ""), 1000),
+                    "status": "available",
+                    "remaining_weight_lbs": weight,
+                    "remaining_lft": est_lft,
+                    "received_date": now,
+                    "received_by": self.get_current_user() or "admin",
+                    "usage_log": [],
+                    "assigned_work_orders": [],
+                    "location": _sanitize_string(c.get("location", "Receiving"), 200),
+                }
+
+                # Save individual coil file
+                _save_coil_lifecycle(coil_id, coil_record)
+
+                # Add to index
+                index["coils"][coil_id] = {
+                    "coil_id": coil_id,
+                    "vendor": coil_record["vendor"],
+                    "material_spec": coil_record["material_spec"],
+                    "gauge": gauge,
+                    "width_in": width,
+                    "weight_lbs": weight,
+                    "estimated_lft": est_lft,
+                    "coil_type": coil_record["coil_type"],
+                    "status": "available",
+                    "received_date": now,
+                    "remaining_weight_lbs": weight,
+                }
+
+                # Also update main inventory stock
+                inv = load_inventory()
+                coil_type_map = {
+                    "C-Section (Columns & Rafters)": "c_section_23",
+                    "Z-Purlin": "z_purlin_20",
+                    "Angle (Sag Rods)": "angle_4_16ga",
+                    "Spartan Rib Panel": "spartan_rib_48",
+                    "Plate (Interior Purlin Plates)": "plate_6_10ga",
+                    "Hurricane Strap": "strap_16ga",
+                    "Gusset Plate": "gusset_10ga",
+                }
+                inv_coil_id = coil_type_map.get(coil_record["coil_type"])
+                if inv_coil_id and inv_coil_id in inv.get("coils", {}):
+                    inv["coils"][inv_coil_id]["stock_lbs"] = float(inv["coils"][inv_coil_id].get("stock_lbs", 0)) + weight
+                    lplft = inv["coils"][inv_coil_id].get("lbs_per_lft", 1)
+                    if lplft > 0:
+                        inv["coils"][inv_coil_id]["stock_lft"] = round(float(inv["coils"][inv_coil_id].get("stock_lbs", 0)) / lplft, 1)
+                    save_inventory(inv)
+
+                # Add to receiving log
+                rcv_path = os.path.join(DATA_DIR, "inventory_receiving.json")
+                records = []
+                if os.path.isfile(rcv_path):
+                    with open(rcv_path) as f:
+                        records = json.load(f)
+                records.append({
+                    "receiving_id": coil_id,
+                    "coil_id": inv_coil_id or coil_record["coil_type"],
+                    "lifecycle_coil_id": coil_id,
+                    "supplier": coil_record["vendor"],
+                    "quantity_lbs": weight,
+                    "po_number": coil_record["customer_order_no"],
+                    "heat_number": coil_record["heat_process_no"],
+                    "serial_no": coil_record["serial_no"],
+                    "date": now,
+                })
+                with open(rcv_path, "w") as f:
+                    json.dump(records, f, indent=2)
+
+                received_ids.append(coil_id)
+
+                self._log("coil_received", "coil_lifecycle", coil_id, {
+                    "weight": weight, "gauge": gauge, "vendor": coil_record["vendor"]
+                })
+
+            _save_coil_lifecycle_index(index)
+            self.write(json_encode({"ok": True, "coil_ids": received_ids}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleReceiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleListHandler(BaseHandler):
+    """GET /api/coils/lifecycle/list — List all lifecycle coils."""
+    def get(self):
+        try:
+            status_filter = self.get_argument("status", "")
+            limit = int(self.get_argument("limit", "200") or 200)
+            index = _load_coil_lifecycle_index()
+            coils = list(index.get("coils", {}).values())
+
+            if status_filter and status_filter != "all":
+                coils = [c for c in coils if c.get("status") == status_filter]
+
+            # Sort by received date descending
+            coils.sort(key=lambda x: x.get("received_date", ""), reverse=True)
+            coils = coils[:limit]
+
+            # Summary stats
+            all_coils = list(index.get("coils", {}).values())
+            summary = {
+                "total": len(all_coils),
+                "available": sum(1 for c in all_coils if c.get("status") == "available"),
+                "in_use": sum(1 for c in all_coils if c.get("status") == "in_use"),
+                "depleted": sum(1 for c in all_coils if c.get("status") == "depleted"),
+                "returned": sum(1 for c in all_coils if c.get("status") == "returned"),
+            }
+
+            self.write(json_encode({"ok": True, "coils": coils, "summary": summary}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleListHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleDetailHandler(BaseHandler):
+    """GET /api/coils/lifecycle/{id} — Get full detail for a single coil."""
+    def get(self, coil_id):
+        try:
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+            self.write(json_encode({"ok": True, "coil": coil}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleDetailHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleStartUseHandler(BaseHandler):
+    """POST /api/coils/lifecycle/{id}/start-use — Mark coil as in-use."""
+    def post(self, coil_id):
+        try:
+            body = json_decode(self.request.body)
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            operator = _sanitize_string(body.get("operator", self.get_current_user() or "unknown"), 100)
+            work_order = _sanitize_string(body.get("work_order", ""), 100)
+
+            coil["status"] = "in_use"
+            coil["current_operator"] = operator
+            coil["use_started"] = datetime.datetime.now().isoformat()
+            if work_order:
+                if work_order not in coil.get("assigned_work_orders", []):
+                    coil.setdefault("assigned_work_orders", []).append(work_order)
+
+            coil.setdefault("usage_log", []).append({
+                "action": "start_use",
+                "operator": operator,
+                "work_order": work_order,
+                "timestamp": datetime.datetime.now().isoformat(),
+            })
+
+            _save_coil_lifecycle(coil_id, coil)
+
+            # Update index
+            index = _load_coil_lifecycle_index()
+            if coil_id in index.get("coils", {}):
+                index["coils"][coil_id]["status"] = "in_use"
+                _save_coil_lifecycle_index(index)
+
+            self._log("coil_start_use", "coil_lifecycle", coil_id, {"operator": operator})
+            self.write(json_encode({"ok": True}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleStartUseHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleLogUsageHandler(BaseHandler):
+    """POST /api/coils/lifecycle/{id}/log-usage — Log pieces rolled from coil."""
+    def post(self, coil_id):
+        try:
+            body = json_decode(self.request.body)
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            pieces = int(body.get("pieces", 0) or 0)
+            piece_length_ft = float(body.get("piece_length_ft", 0) or 0)
+            operator = _sanitize_string(body.get("operator", coil.get("current_operator", "unknown")), 100)
+            work_order = _sanitize_string(body.get("work_order", ""), 100)
+
+            # Calculate weight used
+            lft_used = pieces * piece_length_ft
+            lbs_per_lft = coil.get("lbs_per_lft", 10.0)
+            weight_used = lft_used * lbs_per_lft
+
+            # Update remaining
+            coil["remaining_weight_lbs"] = max(0, float(coil.get("remaining_weight_lbs", 0)) - weight_used)
+            coil["remaining_lft"] = max(0, float(coil.get("remaining_lft", 0)) - lft_used)
+
+            coil.setdefault("usage_log", []).append({
+                "action": "log_usage",
+                "operator": operator,
+                "work_order": work_order,
+                "pieces": pieces,
+                "piece_length_ft": piece_length_ft,
+                "lft_used": round(lft_used, 2),
+                "weight_used_lbs": round(weight_used, 2),
+                "remaining_weight_lbs": coil["remaining_weight_lbs"],
+                "remaining_lft": coil["remaining_lft"],
+                "timestamp": datetime.datetime.now().isoformat(),
+            })
+
+            # Auto-deplete if remaining is near zero
+            if coil["remaining_weight_lbs"] < 50:
+                coil["status"] = "depleted"
+                coil["depleted_date"] = datetime.datetime.now().isoformat()
+
+            _save_coil_lifecycle(coil_id, coil)
+
+            # Update index
+            index = _load_coil_lifecycle_index()
+            if coil_id in index.get("coils", {}):
+                index["coils"][coil_id]["status"] = coil["status"]
+                index["coils"][coil_id]["remaining_weight_lbs"] = coil["remaining_weight_lbs"]
+                _save_coil_lifecycle_index(index)
+
+            # Update main inventory
+            inv = load_inventory()
+            coil_type_map = {
+                "C-Section (Columns & Rafters)": "c_section_23",
+                "Z-Purlin": "z_purlin_20",
+                "Angle (Sag Rods)": "angle_4_16ga",
+                "Spartan Rib Panel": "spartan_rib_48",
+                "Plate (Interior Purlin Plates)": "plate_6_10ga",
+                "Hurricane Strap": "strap_16ga",
+                "Gusset Plate": "gusset_10ga",
+            }
+            inv_coil_id = coil_type_map.get(coil.get("coil_type"))
+            if inv_coil_id and inv_coil_id in inv.get("coils", {}):
+                inv["coils"][inv_coil_id]["stock_lbs"] = max(0, float(inv["coils"][inv_coil_id].get("stock_lbs", 0)) - weight_used)
+                lplft = inv["coils"][inv_coil_id].get("lbs_per_lft", 1)
+                if lplft > 0:
+                    inv["coils"][inv_coil_id]["stock_lft"] = round(float(inv["coils"][inv_coil_id].get("stock_lbs", 0)) / lplft, 1)
+                save_inventory(inv)
+
+            self._log("coil_usage_logged", "coil_lifecycle", coil_id, {
+                "pieces": pieces, "lft": lft_used, "operator": operator
+            })
+
+            # Calculate estimated pieces remaining
+            est_pieces_remaining = 0
+            if piece_length_ft > 0 and coil["remaining_lft"] > 0:
+                est_pieces_remaining = int(coil["remaining_lft"] / piece_length_ft)  # Round down (floor)
+
+            self.write(json_encode({
+                "ok": True,
+                "remaining_weight_lbs": coil["remaining_weight_lbs"],
+                "remaining_lft": coil["remaining_lft"],
+                "estimated_pieces_remaining": est_pieces_remaining,
+                "status": coil["status"],
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleLogUsageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleReturnHandler(BaseHandler):
+    """POST /api/coils/lifecycle/{id}/return — Return partial coil to inventory."""
+    def post(self, coil_id):
+        try:
+            body = json_decode(self.request.body)
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            remaining_weight = float(body.get("remaining_weight_lbs", 0) or 0)
+            location = _sanitize_string(body.get("location", ""), 200)
+            operator = _sanitize_string(body.get("operator", coil.get("current_operator", "unknown")), 100)
+
+            coil["status"] = "returned"
+            coil["remaining_weight_lbs"] = remaining_weight
+            lbs_per_lft = coil.get("lbs_per_lft", 10.0)
+            if lbs_per_lft > 0:
+                coil["remaining_lft"] = round(remaining_weight / lbs_per_lft, 1)
+            coil["location"] = location
+            coil["returned_date"] = datetime.datetime.now().isoformat()
+
+            coil.setdefault("usage_log", []).append({
+                "action": "return",
+                "operator": operator,
+                "remaining_weight_lbs": remaining_weight,
+                "location": location,
+                "timestamp": datetime.datetime.now().isoformat(),
+            })
+
+            _save_coil_lifecycle(coil_id, coil)
+
+            # Update index — set status to available (returned coils can be reused)
+            index = _load_coil_lifecycle_index()
+            if coil_id in index.get("coils", {}):
+                index["coils"][coil_id]["status"] = "available"
+                index["coils"][coil_id]["remaining_weight_lbs"] = remaining_weight
+                _save_coil_lifecycle_index(index)
+
+            self._log("coil_returned", "coil_lifecycle", coil_id, {
+                "remaining_lbs": remaining_weight, "location": location
+            })
+            self.write(json_encode({"ok": True}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleReturnHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleDepleteHandler(BaseHandler):
+    """POST /api/coils/lifecycle/{id}/deplete — Mark coil as fully depleted."""
+    def post(self, coil_id):
+        try:
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            operator = self.get_current_user() or "unknown"
+            try:
+                body = json_decode(self.request.body)
+                operator = _sanitize_string(body.get("operator", operator), 100)
+            except Exception:
+                pass
+
+            coil["status"] = "depleted"
+            coil["remaining_weight_lbs"] = 0
+            coil["remaining_lft"] = 0
+            coil["depleted_date"] = datetime.datetime.now().isoformat()
+
+            coil.setdefault("usage_log", []).append({
+                "action": "depleted",
+                "operator": operator,
+                "timestamp": datetime.datetime.now().isoformat(),
+            })
+
+            _save_coil_lifecycle(coil_id, coil)
+
+            index = _load_coil_lifecycle_index()
+            if coil_id in index.get("coils", {}):
+                index["coils"][coil_id]["status"] = "depleted"
+                index["coils"][coil_id]["remaining_weight_lbs"] = 0
+                _save_coil_lifecycle_index(index)
+
+            self._log("coil_depleted", "coil_lifecycle", coil_id, {"operator": operator})
+            self.write(json_encode({"ok": True}))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleDepleteHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleAnalyticsHandler(BaseHandler):
+    """GET /api/coils/lifecycle/analytics — Return analytics data for coil yield dashboard."""
+    def get(self):
+        try:
+            days = int(self.get_argument("days", "0") or 0)
+            index = _load_coil_lifecycle_index()
+            all_coil_ids = list(index.get("coils", {}).keys())
+
+            coils_data = []
+            operator_map = {}  # operator → {coils_processed, total_yield, best, worst}
+            waste_by_week = {}
+            type_stats = {}  # coil_type → {estimated_lft, actual_lft}
+
+            cutoff = None
+            if days > 0:
+                cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
+
+            for cid in all_coil_ids:
+                coil = _load_coil_lifecycle(cid)
+                if not coil:
+                    continue
+
+                if cutoff and coil.get("received_date", "") < cutoff:
+                    continue
+
+                original_weight = float(coil.get("weight_lbs", 0))
+                est_lft = float(coil.get("estimated_lft", 0))
+                remaining = float(coil.get("remaining_weight_lbs", 0))
+                remaining_lft = float(coil.get("remaining_lft", 0))
+                lbs_per_lft = float(coil.get("lbs_per_lft", 1))
+
+                # Calculate actual LFT used from usage logs
+                actual_lft_used = 0
+                total_pieces = 0
+                for log in coil.get("usage_log", []):
+                    if log.get("action") == "log_usage":
+                        actual_lft_used += float(log.get("lft_used", 0))
+                        total_pieces += int(log.get("pieces", 0))
+
+                        # Track operator stats
+                        op = log.get("operator", "unknown")
+                        if op not in operator_map:
+                            operator_map[op] = {"coils": set(), "total_lft": 0, "total_weight": 0, "yields": []}
+                        operator_map[op]["coils"].add(cid)
+                        operator_map[op]["total_lft"] += float(log.get("lft_used", 0))
+                        operator_map[op]["total_weight"] += float(log.get("weight_used_lbs", 0))
+
+                        # Track waste by week
+                        ts = log.get("timestamp", "")[:10]
+                        if ts:
+                            try:
+                                dt = datetime.datetime.fromisoformat(ts)
+                                week_key = dt.strftime("%Y-W%W")
+                                waste_by_week.setdefault(week_key, {"used_lft": 0, "est_lft": 0})
+                                waste_by_week[week_key]["used_lft"] += float(log.get("lft_used", 0))
+                            except Exception:
+                                pass
+
+                # Yield = actual used / (estimated - remaining)
+                expected_used = est_lft - remaining_lft
+                yield_pct = 0
+                waste_pct = 0
+                if expected_used > 0:
+                    yield_pct = round((actual_lft_used / expected_used) * 100, 1) if actual_lft_used > 0 else 0
+                elif est_lft > 0 and coil.get("status") == "depleted":
+                    yield_pct = round((actual_lft_used / est_lft) * 100, 1) if actual_lft_used > 0 else 0
+
+                if est_lft > 0:
+                    waste_pct = round(max(0, 100 - (actual_lft_used / est_lft * 100)), 1) if actual_lft_used > 0 else 0
+
+                # Track type stats
+                ctype = coil.get("coil_type", "Other")
+                type_stats.setdefault(ctype, {"estimated_lft": 0, "actual_lft": 0, "count": 0})
+                type_stats[ctype]["estimated_lft"] += est_lft
+                type_stats[ctype]["actual_lft"] += actual_lft_used
+                type_stats[ctype]["count"] += 1
+
+                # Track per-operator yield for this coil
+                for log in coil.get("usage_log", []):
+                    if log.get("action") == "log_usage":
+                        op = log.get("operator", "unknown")
+                        if op in operator_map and yield_pct > 0:
+                            operator_map[op]["yields"].append(yield_pct)
+
+                # Price lookup
+                inv = load_inventory()
+                price_per_lb = 0.82  # default
+                coil_type_map = {
+                    "C-Section (Columns & Rafters)": "c_section_23",
+                    "Z-Purlin": "z_purlin_20",
+                    "Angle (Sag Rods)": "angle_4_16ga",
+                    "Spartan Rib Panel": "spartan_rib_48",
+                    "Plate (Interior Purlin Plates)": "plate_6_10ga",
+                    "Hurricane Strap": "strap_16ga",
+                    "Gusset Plate": "gusset_10ga",
+                }
+                inv_id = coil_type_map.get(ctype)
+                if inv_id and inv_id in inv.get("coils", {}):
+                    price_per_lb = float(inv["coils"][inv_id].get("price_per_lb", 0.82))
+
+                coils_data.append({
+                    "coil_id": cid,
+                    "material_spec": coil.get("material_spec", ""),
+                    "gauge": coil.get("gauge", ""),
+                    "width_in": coil.get("width_in", 0),
+                    "coil_type": ctype,
+                    "weight_lbs": original_weight,
+                    "vendor_lft": float(coil.get("vendor_lft", 0)),
+                    "estimated_lft": est_lft,
+                    "actual_lft_used": round(actual_lft_used, 1),
+                    "total_pieces": total_pieces,
+                    "yield_pct": yield_pct,
+                    "waste_pct": waste_pct,
+                    "status": coil.get("status", ""),
+                    "received_date": coil.get("received_date", ""),
+                    "price_per_lb": price_per_lb,
+                    "material_cost": round(original_weight * price_per_lb, 2),
+                })
+
+            # Build operator stats
+            operator_stats = []
+            for op, data in operator_map.items():
+                yields = data["yields"]
+                avg_yield = round(sum(yields) / len(yields), 1) if yields else 0
+                best_yield = round(max(yields), 1) if yields else 0
+                worst_yield = round(min(yields), 1) if yields else 0
+                operator_stats.append({
+                    "operator": op,
+                    "coils_processed": len(data["coils"]),
+                    "total_lft": round(data["total_lft"], 1),
+                    "avg_yield": avg_yield,
+                    "best_yield": best_yield,
+                    "worst_yield": worst_yield,
+                })
+            operator_stats.sort(key=lambda x: x["avg_yield"], reverse=True)
+
+            # Build waste trend
+            waste_trend = []
+            for week, wdata in sorted(waste_by_week.items()):
+                waste_trend.append({
+                    "period": week,
+                    "used_lft": round(wdata["used_lft"], 1),
+                })
+
+            # Build type breakdown
+            type_breakdown = []
+            for ctype, tdata in type_stats.items():
+                type_breakdown.append({
+                    "type": ctype,
+                    "estimated_lft": round(tdata["estimated_lft"], 1),
+                    "actual_lft": round(tdata["actual_lft"], 1),
+                    "count": tdata["count"],
+                    "yield_pct": round((tdata["actual_lft"] / tdata["estimated_lft"]) * 100, 1) if tdata["estimated_lft"] > 0 else 0,
+                })
+
+            # Summary
+            total_weight = sum(c["weight_lbs"] for c in coils_data)
+            total_est_lft = sum(c["estimated_lft"] for c in coils_data)
+            total_actual_lft = sum(c["actual_lft_used"] for c in coils_data)
+            total_cost = sum(c["material_cost"] for c in coils_data)
+            avg_yield = round((total_actual_lft / total_est_lft) * 100, 1) if total_est_lft > 0 else 0
+            total_waste_pct = round(max(0, 100 - avg_yield), 1)
+            waste_cost = round(total_cost * (total_waste_pct / 100), 2)
+            active_count = sum(1 for c in coils_data if c["status"] in ("available", "in_use"))
+
+            summary = {
+                "total_coils": len(coils_data),
+                "total_weight_lbs": round(total_weight, 0),
+                "total_estimated_lft": round(total_est_lft, 1),
+                "total_actual_lft": round(total_actual_lft, 1),
+                "avg_yield_pct": avg_yield,
+                "total_waste_pct": total_waste_pct,
+                "active_coils": active_count,
+                "total_material_cost": total_cost,
+                "waste_cost": waste_cost,
+                "savings_at_98": round(total_cost * max(0, (total_waste_pct - 2)) / 100, 2),
+            }
+
+            self.write(json_encode({
+                "ok": True,
+                "summary": summary,
+                "coils": coils_data,
+                "operator_stats": operator_stats,
+                "waste_trend": waste_trend,
+                "type_breakdown": type_breakdown,
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleAnalyticsHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class CoilLifecycleStickerHandler(BaseHandler):
+    """GET /api/coils/lifecycle/stickers?ids=CL-00001,CL-00002 — Generate printable 4x6 sticker page with QR codes."""
+    def get(self):
+        try:
+            ids_str = self.get_argument("ids", "")
+            coil_ids = [s.strip() for s in ids_str.split(",") if s.strip()]
+            if not coil_ids:
+                self.write("<h2>No coil IDs specified</h2>")
+                return
+
+            # Get base URL for QR codes
+            host = self.request.host or "localhost:8888"
+            protocol = self.request.protocol or "http"
+            base_url = f"{protocol}://{host}"
+
+            stickers_html = []
+            for cid in coil_ids:
+                coil = _load_coil_lifecycle(cid)
+                if not coil:
+                    continue
+
+                qr_url = f"{base_url}/coil-scan/{cid}"
+
+                # Generate QR code as inline SVG using a simple QR encoding
+                # We'll use a JS-based QR generator on the client side
+                sticker = f'''
+                <div class="sticker">
+                    <div class="sticker-header">
+                        <div class="sticker-logo">TITAN FORGE</div>
+                        <div class="sticker-coil-id">{_html_escape(cid)}</div>
+                    </div>
+                    <div class="sticker-body">
+                        <div class="sticker-qr" id="qr-{_html_escape(cid)}"></div>
+                        <div class="sticker-info">
+                            <div class="sticker-row">
+                                <span class="sticker-label">Material:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("material_spec", "")[:60])}</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Gauge/Width:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("gauge", ""))} / {coil.get("width_in", 0)}"</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Weight:</span>
+                                <span class="sticker-value">{coil.get("weight_lbs", 0):,.0f} lbs</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Est. LFT:</span>
+                                <span class="sticker-value">{coil.get("estimated_lft", 0):,.1f} ft</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Heat #:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("heat_process_no", ""))}</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Serial #:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("serial_no", ""))}</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Coil #:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("coil_number", ""))}</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Vendor:</span>
+                                <span class="sticker-value">{_html_escape(coil.get("vendor", ""))}</span>
+                            </div>
+                            <div class="sticker-row">
+                                <span class="sticker-label">Received:</span>
+                                <span class="sticker-value">{coil.get("received_date", "")[:10]}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sticker-footer">
+                        <span>SCAN QR CODE FOR DETAILS</span>
+                        <span>{_html_escape(coil.get("coil_type", ""))}</span>
+                    </div>
+                </div>
+                <script>
+                (function() {{
+                    if (typeof QRCode !== 'undefined') {{
+                        new QRCode(document.getElementById('qr-{_html_escape(cid)}'), {{
+                            text: '{qr_url}',
+                            width: 150,
+                            height: 150,
+                            colorDark: '#000000',
+                            colorLight: '#ffffff',
+                            correctLevel: QRCode.CorrectLevel.M
+                        }});
+                    }}
+                }})();
+                </script>
+                '''
+                stickers_html.append(sticker)
+
+            page_html = f'''<!DOCTYPE html>
+<html>
+<head>
+<title>Coil Stickers</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@page {{
+    size: 4in 6in;
+    margin: 0;
+}}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    background: #fff;
+}}
+.sticker {{
+    width: 4in;
+    height: 6in;
+    padding: 0.15in;
+    page-break-after: always;
+    border: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    margin: 0 auto;
+}}
+.sticker-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #000;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+}}
+.sticker-logo {{
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 2px;
+}}
+.sticker-coil-id {{
+    font-size: 18px;
+    font-weight: 900;
+    color: #333;
+}}
+.sticker-body {{
+    display: flex;
+    gap: 8px;
+    flex: 1;
+}}
+.sticker-qr {{
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 4px;
+}}
+.sticker-info {{
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}}
+.sticker-row {{
+    display: flex;
+    gap: 4px;
+    font-size: 10px;
+    line-height: 1.3;
+    border-bottom: 1px dotted #ddd;
+    padding-bottom: 2px;
+}}
+.sticker-label {{
+    font-weight: 700;
+    white-space: nowrap;
+    min-width: 55px;
+}}
+.sticker-value {{
+    color: #333;
+    word-break: break-word;
+}}
+.sticker-footer {{
+    display: flex;
+    justify-content: space-between;
+    border-top: 2px solid #000;
+    padding-top: 4px;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #666;
+}}
+.no-print {{
+    text-align: center;
+    padding: 20px;
+    background: #f0f0f0;
+}}
+@media print {{
+    .no-print {{ display: none; }}
+    .sticker {{ border: none; }}
+}}
+</style>
+</head>
+<body>
+<div class="no-print">
+    <h2>Coil Stickers — {len(stickers_html)} Label(s)</h2>
+    <p>Click Print or press Ctrl+P to print on 4x6 thermal labels</p>
+    <button onclick="window.print()" style="padding:10px 30px;font-size:16px;cursor:pointer;background:#3b82f6;color:#fff;border:none;border-radius:8px;margin:10px;">
+        Print Stickers
+    </button>
+    <button onclick="window.close()" style="padding:10px 30px;font-size:16px;cursor:pointer;background:#64748b;color:#fff;border:none;border-radius:8px;margin:10px;">
+        Close
+    </button>
+</div>
+{"".join(stickers_html)}
+</body>
+</html>'''
+            self.set_header("Content-Type", "text/html; charset=utf-8")
+            self.write(page_html)
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleStickerHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error generating stickers</h2><p>{html.escape(str(e))}</p>")
+
+
+class CoilReceivingPageHandler(BaseHandler):
+    """GET /coil-receiving — Coil Receiving page."""
+    def get(self):
+        try:
+            from templates.coil_receiving_page import COIL_RECEIVING_HTML
+            self.render_with_nav(COIL_RECEIVING_HTML, active_page="coil_receiving",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Coil Receiving", "")])
+        except Exception as e:
+            logger.error(f"CoilReceivingPageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
+
+
+class CoilAnalyticsPageHandler(BaseHandler):
+    """GET /coil-analytics — Coil Yield Analytics dashboard."""
+    def get(self):
+        try:
+            from templates.coil_analytics_page import COIL_ANALYTICS_HTML
+            self.render_with_nav(COIL_ANALYTICS_HTML, active_page="coil_analytics",
+                                breadcrumbs=[("Dashboard", "/"), ("Inventory", "/inventory"), ("Coil Analytics", "")])
+        except Exception as e:
+            logger.error(f"CoilAnalyticsPageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
+
+
+class CoilMobileScanPageHandler(BaseHandler):
+    """GET /coil-scan/{coil_id} — Mobile-friendly coil scan page."""
+    def get(self, coil_id):
+        try:
+            from templates.coil_mobile_page import COIL_MOBILE_HTML
+            page_html = COIL_MOBILE_HTML.replace("{{COIL_ID}}", _html_escape(coil_id))
+            self.render_with_nav(page_html, active_page="coil_receiving",
+                                breadcrumbs=[("Dashboard", "/"), ("Coil Receiving", "/coil-receiving"), (coil_id, "")])
+        except Exception as e:
+            logger.error(f"CoilMobileScanPageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
+
+
+class CoilLifecycleAssignWOHandler(BaseHandler):
+    """POST /api/coils/lifecycle/assign-wo — Assign a coil to a work order with piece estimates."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            coil_id = body.get("coil_id", "")
+            wo_id = body.get("work_order_id", "")
+            item_desc = _sanitize_string(body.get("item_description", ""), 500)
+            required_pieces = int(body.get("required_pieces", 0) or 0)
+            piece_length_ft = float(body.get("piece_length_ft", 0) or 0)
+
+            coil = _load_coil_lifecycle(coil_id)
+            if not coil:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Coil not found"}))
+                return
+
+            # Calculate estimated pieces from remaining material (round down)
+            remaining_lft = float(coil.get("remaining_lft", 0))
+            estimated_pieces = 0
+            if piece_length_ft > 0:
+                estimated_pieces = int(remaining_lft / piece_length_ft)  # floor/round down
+
+            # Record the assignment
+            assignment = {
+                "work_order_id": wo_id,
+                "item_description": item_desc,
+                "required_pieces": required_pieces,
+                "piece_length_ft": piece_length_ft,
+                "estimated_available_pieces": estimated_pieces,
+                "assigned_date": datetime.datetime.now().isoformat(),
+            }
+            coil.setdefault("assigned_work_orders", [])
+            coil["assigned_work_orders"].append(assignment)
+
+            coil.setdefault("usage_log", []).append({
+                "action": "assign_wo",
+                "work_order_id": wo_id,
+                "required_pieces": required_pieces,
+                "estimated_available_pieces": estimated_pieces,
+                "timestamp": datetime.datetime.now().isoformat(),
+            })
+
+            _save_coil_lifecycle(coil_id, coil)
+
+            self._log("coil_assigned_wo", "coil_lifecycle", coil_id, {
+                "wo": wo_id, "pieces": required_pieces
+            })
+
+            self.write(json_encode({
+                "ok": True,
+                "estimated_available_pieces": estimated_pieces,
+                "can_fulfill": estimated_pieces >= required_pieces,
+            }))
+
+        except Exception as e:
+            logger.error(f"CoilLifecycleAssignWOHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
 def get_routes():
     """Return list of (pattern, handler) tuples for tornado.web.Application."""
     static_path = os.path.join(BASE_DIR, "static")
@@ -19139,6 +20155,21 @@ def get_routes():
         (r"/api/inventory/alerts/auto-mr$",   AutoMRFromAlertHandler),
         (r"/api/inventory/alerts$",      InventoryAlertsHandler),
         (r"/coil/([^/]+)",               CoilDetailHandler),
+
+        # ── Coil Lifecycle Management ─────────────────────────
+        (r"/coil-receiving",                         CoilReceivingPageHandler),
+        (r"/coil-analytics",                         CoilAnalyticsPageHandler),
+        (r"/coil-scan/([^/]+)",                      CoilMobileScanPageHandler),
+        (r"/api/coils/lifecycle/receive",             CoilLifecycleReceiveHandler),
+        (r"/api/coils/lifecycle/list",                CoilLifecycleListHandler),
+        (r"/api/coils/lifecycle/stickers",            CoilLifecycleStickerHandler),
+        (r"/api/coils/lifecycle/analytics",           CoilLifecycleAnalyticsHandler),
+        (r"/api/coils/lifecycle/assign-wo",           CoilLifecycleAssignWOHandler),
+        (r"/api/coils/lifecycle/([^/]+)/start-use",   CoilLifecycleStartUseHandler),
+        (r"/api/coils/lifecycle/([^/]+)/log-usage",   CoilLifecycleLogUsageHandler),
+        (r"/api/coils/lifecycle/([^/]+)/return",      CoilLifecycleReturnHandler),
+        (r"/api/coils/lifecycle/([^/]+)/deplete",     CoilLifecycleDepleteHandler),
+        (r"/api/coils/lifecycle/([^/]+)",             CoilLifecycleDetailHandler),
 
         # ── API - Projects (versioned system) ───────────────────
         (r"/api/project/save",           ProjectSaveHandler),

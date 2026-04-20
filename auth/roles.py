@@ -301,6 +301,8 @@ SIDEBAR_SECTIONS = [
         {"id": "qc_audit",      "label": "Audit Log",         "url": "/audit?filter=qc"},
     ]},
     {"id": "inventory",      "label": "Inventory & Purchasing", "icon": "package", "children": [
+        {"id": "coil_receiving", "label": "Coil Receiving",    "url": "/coil-receiving"},
+        {"id": "coil_analytics", "label": "Coil Analytics",    "url": "/coil-analytics"},
         {"id": "coil_inv",       "label": "Coil Inventory",   "url": "/inventory?type=coils"},
         {"id": "purchased",      "label": "Fabricated Parts",  "url": "/inventory?type=fabricated"},
         {"id": "fasteners",      "label": "Fasteners",        "url": "/inventory?type=fasteners"},

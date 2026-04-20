@@ -1239,6 +1239,22 @@ NAV_HTML = r"""
         </div>
 
         <div class="tf-sidebar-section">
+            <div class="tf-sidebar-section-label">Coil Management</div>
+            <a href="/coil-receiving" class="tf-nav-item {{ACTIVE_coil_receiving}}">
+                <span class="tf-nav-icon">&#128230;</span>
+                <span class="tf-nav-label">Coil Receiving</span>
+            </a>
+            <a href="/coil-analytics" class="tf-nav-item {{ACTIVE_coil_analytics}}">
+                <span class="tf-nav-icon">&#128200;</span>
+                <span class="tf-nav-label">Coil Analytics</span>
+            </a>
+            <a href="/inventory" class="tf-nav-item {{ACTIVE_inventory}}">
+                <span class="tf-nav-icon">&#128230;</span>
+                <span class="tf-nav-label">Inventory</span>
+            </a>
+        </div>
+
+        <div class="tf-sidebar-section">
             <div class="tf-sidebar-section-label">Admin</div>
             <a href="/admin" class="tf-nav-item {{ACTIVE_admin}}">
                 <span class="tf-nav-icon">&#128274;</span>
@@ -2740,6 +2756,8 @@ def _is_nav_active(url: str, active_page: str, request_path: str = "") -> bool:
         "admin":             ["/admin"],
         "qc":                ["/qc"],
         "inventory":         ["/inventory"],
+        "coil_receiving":    ["/coil-receiving", "/coil-scan"],
+        "coil_analytics":    ["/coil-analytics"],
         "shipping":          ["/shipping"],
         "schedule":          ["/schedule"],
         "documents":         ["/documents"],
