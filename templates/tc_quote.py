@@ -738,6 +738,7 @@ function prefillFromURL() {
   if (p.has('sa_quote')) document.getElementById('sa_quote_num').value = p.get('sa_quote');
   if (p.has('width')) document.getElementById('sa_width').value = p.get('width');
   if (p.has('length')) document.getElementById('sa_length').value = p.get('length');
+  if (p.has('customer')) document.getElementById('proj_customer').value = p.get('customer');
 
   // Auto-load project data from ?project=JOB_CODE or ?proj_code=JOB_CODE
   // ALWAYS load metadata first (has customer name, project name from CRM)
@@ -1745,13 +1746,11 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('lab_days').addEventListener('change', function() {
     const days = parseFloat(this.value) || 0;
-    if (days > 1) {
-      document.getElementById('hotel_nights').value = Math.ceil(days - 1);
-      document.getElementById('pd_days').value = Math.ceil(days);
-      _flashField(document.getElementById('hotel_nights'));
-      _flashField(document.getElementById('pd_days'));
-      calcHotels(); calcPerDiem();
-    }
+    document.getElementById('hotel_nights').value = Math.max(0, Math.ceil(days - 1));
+    document.getElementById('pd_days').value = Math.max(0, Math.ceil(days));
+    _flashField(document.getElementById('hotel_nights'));
+    _flashField(document.getElementById('pd_days'));
+    calcHotels(); calcPerDiem();
   });
 
   // Smart field sync — columns -> piers -> drill holes

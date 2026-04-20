@@ -19874,8 +19874,10 @@ class CoilLifecycleAnalyticsHandler(BaseHandler):
             total_est_lft = sum(c["estimated_lft"] for c in coils_data)
             total_actual_lft = sum(c["actual_lft_used"] for c in coils_data)
             total_cost = sum(c["material_cost"] for c in coils_data)
-            avg_yield = round((total_actual_lft / total_est_lft) * 100, 1) if total_est_lft > 0 else 0
-            total_waste_pct = round(max(0, 100 - avg_yield), 1)
+            # Only compute yield/waste when there's actual usage data
+            has_usage = total_actual_lft > 0
+            avg_yield = round((total_actual_lft / total_est_lft) * 100, 1) if (total_est_lft > 0 and has_usage) else 0
+            total_waste_pct = round(max(0, 100 - avg_yield), 1) if has_usage else 0
             waste_cost = round(total_cost * (total_waste_pct / 100), 2)
             active_count = sum(1 for c in coils_data if c["status"] in ("available", "in_use"))
 

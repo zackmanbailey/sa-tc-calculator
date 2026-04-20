@@ -637,6 +637,9 @@ COIL_RECEIVING_HTML = r"""
         document.getElementById('estLft_' + index).textContent = '--';
         document.getElementById('vendorLft_' + index).textContent = '--';
         document.getElementById('calcWarn_' + index).classList.remove('visible');
+        // Reset mill cert file status label
+        var mcStatus = document.getElementById('millCertStatus_' + index);
+        if (mcStatus) { mcStatus.textContent = 'No file selected'; mcStatus.style.color = 'var(--tf-muted)'; }
     };
 
     // ---- Collect form data ----
