@@ -640,7 +640,8 @@ DOCUMENT_MANAGEMENT_PAGE_HTML = r"""<!DOCTYPE html>
     document.getElementById('sidebar').innerHTML = sb;
   }
   function statCard(val, label, color, onclick) {
-    return '<div class="stat-card" onclick="'+(onclick||'')+'">' +
+    var oc = (typeof onclick === 'string') ? onclick : '';
+    return '<div class="stat-card"'+(oc ? ' onclick="'+oc+'" style="cursor:pointer"' : '')+'>' +
       '<div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
   }
 

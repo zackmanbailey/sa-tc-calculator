@@ -378,7 +378,8 @@ INVENTORY_DASHBOARD_PAGE_HTML = r"""<!DOCTYPE html>
   function closeModal(id) { $(id).classList.remove('show'); }
 
   function statCard(val, label, color, onclick) {
-    return '<div class="stat-card" onclick="'+( onclick || '' )+'">' +
+    var oc = (typeof onclick === 'string') ? onclick : '';
+    return '<div class="stat-card"'+(oc ? ' onclick="'+oc+'" style="cursor:pointer"' : '')+'>' +
       '<div class="value" style="color:var('+color+')">'+val+'</div><div class="label">'+label+'</div></div>';
   }
 
