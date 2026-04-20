@@ -1579,6 +1579,9 @@ SHOP_DRAWINGS_HTML = r"""
                         <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
                             Download
                         </button>
+                        <button class="tf-btn tf-btn-sm" style="background:#DC2626;color:#FFF;margin-left:4px;" onclick="deleteDrawing(${idx})" title="Delete this drawing">
+                            &#128465; Delete
+                        </button>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1601,6 +1604,30 @@ SHOP_DRAWINGS_HTML = r"""
                          '&filename=' + encodeURIComponent(d.filename) + '&download=1';
                 a.download = d.filename;
                 a.click();
+            }
+        };
+
+        window.deleteDrawing = async function(idx) {
+            const d = drawings[idx];
+            if (!d || !d.filename) return;
+            if (!confirm('Delete "' + d.filename + '"? This cannot be undone.')) return;
+            try {
+                const resp = await fetch('/api/shop-drawings/delete-pdf', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'job_code=' + encodeURIComponent(JOB_CODE) +
+                          '&filename=' + encodeURIComponent(d.filename)
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    drawings.splice(idx, 1);
+                    renderDrawings();
+                    if (typeof showToast === 'function') showToast('Drawing deleted', 'success');
+                } else {
+                    alert('Delete failed: ' + (data.error || 'unknown error'));
+                }
+            } catch(err) {
+                alert('Delete error: ' + err.message);
             }
         };
 

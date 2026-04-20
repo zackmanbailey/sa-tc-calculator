@@ -8751,7 +8751,7 @@ class SaveInteractivePDFHandler(BaseHandler):
 
 
 class DeleteShopDrawingPDFHandler(BaseHandler):
-    required_roles = ["admin", "estimator"]
+    required_roles = ["god_mode", "admin", "project_manager", "estimator", "shop_foreman", "shop_manager"]
     """POST /api/shop-drawings/delete-pdf — Delete a single shop drawing PDF."""
     def post(self):
         job_code = self.get_argument("job_code", "")
