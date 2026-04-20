@@ -4054,7 +4054,7 @@ document.getElementById('btnNonReinforced').addEventListener('click', function()
 // ═══════════════════════════════════════════════
 // SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
 // ═══════════════════════════════════════════════
-function savePdfToProject() {
+async function savePdfToProject() {
   var btn = document.getElementById('btnSavePdf');
   var status = document.getElementById('savePdfStatus');
   var jobCode = (window.RAFTER_CONFIG && window.RAFTER_CONFIG.job_code) || '{{JOB_CODE}}';
@@ -4068,81 +4068,61 @@ function savePdfToProject() {
 
   try {
     var svgEl = document.getElementById('svg');
-    // Get the SVG's viewBox dimensions for the PDF page size
+    var container = svgEl.parentElement;
     var vb = svgEl.viewBox.baseVal;
     var svgW = vb.width || 1100;
     var svgH = vb.height || 850;
 
-    // Add white background rect so PDF isn't dark/transparent
-    var bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bgRect.setAttribute('x', '0');
-    bgRect.setAttribute('y', '0');
-    bgRect.setAttribute('width', String(svgW));
-    bgRect.setAttribute('height', String(svgH));
-    bgRect.setAttribute('fill', '#FFFFFF');
-    bgRect.setAttribute('data-pdf-bg', 'true');
-    svgEl.insertBefore(bgRect, svgEl.firstChild);
+    // Use html2canvas to capture the SVG with all CSS styles intact.
+    // svg2pdf produces black backgrounds because it loses CSS context;
+    // html2canvas renders the live DOM exactly as the browser displays it.
+    var canvas = await html2canvas(container, {
+      backgroundColor: '#FFFFFF',
+      scale: 2,
+      useCORS: true,
+      logging: false
+    });
 
-    // Create landscape PDF matching the drawing proportions
     var pdf = new jspdf.jsPDF({
       orientation: 'landscape',
       unit: 'pt',
       format: [svgW, svgH]
     });
 
-    svg2pdf.svg2pdf(svgEl, pdf, { x: 0, y: 0, width: svgW, height: svgH }).then(function() {
-      // Remove temp background rect from on-screen SVG
-      var tmpBg = svgEl.querySelector('[data-pdf-bg]');
-      if (tmpBg) tmpBg.remove();
+    var imgData = canvas.toDataURL('image/jpeg', 0.95);
+    pdf.addImage(imgData, 'JPEG', 0, 0, svgW, svgH);
 
-      var pdfData = pdf.output('arraybuffer');
-      var blob = new Blob([pdfData], { type: 'application/pdf' });
+    var pdfData = pdf.output('arraybuffer');
+    var blob = new Blob([pdfData], { type: 'application/pdf' });
 
-      var formData = new FormData();
-      formData.append('job_code', jobCode);
-      formData.append('drawing_type', 'rafter');
-      formData.append('source', 'interactive');
-      formData.append('pdf_file', blob, jobCode + '_RAFTER_INTERACTIVE.pdf');
+    var formData = new FormData();
+    formData.append('job_code', jobCode);
+    formData.append('drawing_type', 'rafter');
+    formData.append('source', 'interactive');
+    formData.append('pdf_file', blob, jobCode + '_RAFTER_INTERACTIVE.pdf');
 
-      fetch('/api/shop-drawings/save-interactive-pdf', {
-        method: 'POST',
-        body: formData
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.ok) {
-          btn.textContent = 'Saved!';
-          btn.style.background = '#059669';
-          status.textContent = 'PDF saved to project';
-          status.style.color = '#10B981';
-          setTimeout(function() {
-            btn.textContent = 'Save PDF to Project';
-            btn.disabled = false;
-          }, 3000);
-        } else {
-          btn.textContent = 'Save PDF to Project';
-          btn.disabled = false;
-          status.textContent = 'Error: ' + (data.error || 'unknown');
-          status.style.color = '#EF4444';
-        }
-      })
-      .catch(function(err) {
+    var resp = await fetch('/api/shop-drawings/save-interactive-pdf', {
+      method: 'POST',
+      body: formData
+    });
+    var data = await resp.json();
+
+    if (data.ok) {
+      btn.textContent = 'Saved!';
+      btn.style.background = '#059669';
+      status.textContent = 'PDF saved to project';
+      status.style.color = '#10B981';
+      setTimeout(function() {
         btn.textContent = 'Save PDF to Project';
         btn.disabled = false;
-        status.textContent = 'Network error';
-        status.style.color = '#EF4444';
-      });
-    }).catch(function(err) {
-      var tmpBg = svgEl.querySelector('[data-pdf-bg]');
-      if (tmpBg) tmpBg.remove();
+      }, 3000);
+    } else {
       btn.textContent = 'Save PDF to Project';
       btn.disabled = false;
-      status.textContent = 'PDF render error: ' + err.message;
+      status.textContent = 'Error: ' + (data.error || 'unknown');
       status.style.color = '#EF4444';
-    });
+    }
   } catch(err) {
-    var tmpBg2 = document.querySelector('[data-pdf-bg]');
-    if (tmpBg2) tmpBg2.remove();
     btn.textContent = 'Save PDF to Project';
     btn.disabled = false;
     status.textContent = 'Error: ' + err.message;

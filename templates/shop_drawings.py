@@ -149,8 +149,12 @@ SHOP_DRAWINGS_HTML = r"""
         .drawing-card .dc-actions {
             padding: var(--tf-sp-2) var(--tf-sp-4) var(--tf-sp-3);
             display: flex;
+            flex-wrap: wrap;
             gap: var(--tf-sp-2);
             border-top: 1px solid var(--tf-gray-100);
+        }
+        .drawing-card .dc-actions .dc-delete-btn {
+            margin-left: auto;
         }
 
         /* ── Questionnaire Form ────────────────────────────── */
@@ -1579,7 +1583,7 @@ SHOP_DRAWINGS_HTML = r"""
                         <button class="tf-btn tf-btn-sm tf-btn-outline" onclick="downloadDrawing(${idx})">
                             Download
                         </button>
-                        <button class="tf-btn tf-btn-sm" style="background:#DC2626;color:#FFF;margin-left:4px;" onclick="deleteDrawing(${idx})" title="Delete this drawing">
+                        <button class="tf-btn tf-btn-sm dc-delete-btn" style="background:#DC2626;color:#FFF;" onclick="deleteDrawing(${idx})" title="Delete this drawing">
                             &#128465; Delete
                         </button>
                     </div>
