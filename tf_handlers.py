@@ -19200,9 +19200,9 @@ class CoilLifecycleReceiveHandler(BaseHandler):
                 coil_id = f"CL-{index['next_id']:05d}"
                 index["next_id"] = index.get("next_id", 1) + 1
 
-                weight = float(c.get("weight_lbs", 0) or 0)
+                weight = float(c.get("weight_lbs", 0) or c.get("actual_weight", 0) or 0)
                 gauge = _sanitize_string(c.get("gauge", ""), 20)
-                width = float(c.get("width_in", 0) or 0)
+                width = float(c.get("width_in", 0) or c.get("width", 0) or 0)
                 vendor_lft = float(c.get("vendor_lft", 0) or 0)
                 est_lft, lbs_per_lft = _estimate_linear_feet(weight, gauge, width)
 
@@ -19210,9 +19210,9 @@ class CoilLifecycleReceiveHandler(BaseHandler):
                     "coil_id": coil_id,
                     "vendor": _sanitize_string(c.get("vendor", ""), 200),
                     "serial_no": _sanitize_string(c.get("serial_no", ""), 100),
-                    "supplier_no": _sanitize_string(c.get("supplier_no", ""), 100),
+                    "supplier_no": _sanitize_string(c.get("supplier_no", "") or c.get("supplier_order_no", ""), 100),
                     "customer_order_no": _sanitize_string(c.get("customer_order_no", ""), 100),
-                    "heat_process_no": _sanitize_string(c.get("heat_process_no", ""), 100),
+                    "heat_process_no": _sanitize_string(c.get("heat_process_no", "") or c.get("heat_no", ""), 100),
                     "coil_number": _sanitize_string(c.get("coil_number", ""), 100),
                     "material_spec": _sanitize_string(c.get("material_spec", ""), 500),
                     "gauge": gauge,
@@ -19603,6 +19603,10 @@ class CoilLifecycleDepleteHandler(BaseHandler):
             except Exception:
                 pass
 
+            # Capture remaining weight BEFORE zeroing — only this amount needs inventory deduction
+            # (incremental usage already deducted previously consumed weight)
+            remaining_before_deplete = float(coil.get("remaining_weight_lbs", 0))
+
             coil["status"] = "depleted"
             coil["remaining_weight_lbs"] = 0
             coil["remaining_lft"] = 0
@@ -19622,7 +19626,7 @@ class CoilLifecycleDepleteHandler(BaseHandler):
                 index["coils"][coil_id]["remaining_weight_lbs"] = 0
                 _save_coil_lifecycle_index(index)
 
-                # Sync inventory — deduct depleted coil's original weight
+                # Sync inventory — deduct only the REMAINING weight (not yet consumed by incremental usage)
                 try:
                     inv = load_inventory()
                     coil_type_map = {
@@ -19636,9 +19640,8 @@ class CoilLifecycleDepleteHandler(BaseHandler):
                     }
                     inv_coil_id = coil_type_map.get(coil.get("coil_type", ""))
                     if inv_coil_id and inv_coil_id in inv.get("coils", {}):
-                        original_weight = float(coil.get("weight_lbs", 0))
                         current_stock = float(inv["coils"][inv_coil_id].get("stock_lbs", 0))
-                        new_stock = max(0, current_stock - original_weight)
+                        new_stock = max(0, current_stock - remaining_before_deplete)
                         inv["coils"][inv_coil_id]["stock_lbs"] = new_stock
                         lplft = float(inv["coils"][inv_coil_id].get("lbs_per_lft", 1) or 1)
                         if lplft > 0:
@@ -19718,6 +19721,9 @@ class CoilLifecycleAnalyticsHandler(BaseHandler):
             if days > 0:
                 cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
 
+            # Load inventory once before the loop (not inside it)
+            inv = load_inventory()
+
             for cid in all_coil_ids:
                 coil = _load_coil_lifecycle(cid)
                 if not coil:
@@ -19785,8 +19791,7 @@ class CoilLifecycleAnalyticsHandler(BaseHandler):
                         if op in operator_map and yield_pct > 0:
                             operator_map[op]["yields"].append(yield_pct)
 
-                # Price lookup
-                inv = load_inventory()
+                # Price lookup (inv loaded before loop)
                 price_per_lb = 0.82  # default
                 coil_type_map = {
                     "C-Section (Columns & Rafters)": "c_section_23",
@@ -20320,6 +20325,10 @@ class CoilCostSummaryHandler(BaseHandler):
     def get(self):
         try:
             job_code = self.get_argument("job_code", "").strip()
+
+            if not job_code:
+                self.write({"status": "error", "message": "job_code parameter is required"})
+                return
 
             index = _load_coil_lifecycle_index()
             inv = load_inventory()

@@ -26,7 +26,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0F172A;color:#E2E8F0;f
 .tab.active{color:#fff;border-bottom-color:var(--tf-amber)}
 #main{display:flex;gap:0;height:calc(100vh - 94px)}
 #sidebar{width:320px;min-width:270px;background:#1E293B;border-right:1px solid #334155;overflow-y:auto;padding:16px;flex-shrink:0}
-#content{flex:1;overflow-y:auto;padding:20px;background:#0F172A}
+#content{flex:1;overflow-y:auto;padding:20px 20px 80px 20px;background:#0F172A}
 .card{background:#1E293B;border:1px solid #334155;border-radius:8px;margin-bottom:14px;overflow:hidden}
 .card-hdr{padding:9px 14px;font-weight:700;font-size:12px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.4px}
 .card-hdr.red{background:var(--tf-red);color:#fff}
@@ -1716,9 +1716,9 @@ window.addEventListener('DOMContentLoaded', () => {
   if (tcProjParam) {
     showProjectContextBar(tcProjParam, tcSearchParams.get('proj_name') || tcProjParam);
   }
-  // Also show after metadata loads (picks up project name)
+  // Also show after metadata loads (picks up project name) — self-clearing interval
   var _origAutoLoad = window._tcProjectCode;
-  setInterval(function() {
+  var _ctxBarInterval = setInterval(function() {
     if (window._tcProjectCode && !document.getElementById('tc-project-ctx-bar')) {
       showProjectContextBar(window._tcProjectCode, window._tcProjectName || window._tcProjectCode);
     } else if (window._tcProjectCode && window._tcProjectName && document.getElementById('tc-project-ctx-bar')) {
@@ -1728,6 +1728,8 @@ window.addEventListener('DOMContentLoaded', () => {
       if (span && span.textContent.indexOf(window._tcProjectName) < 0) {
         span.innerHTML = '\ud83d\udcc1 <strong>' + window._tcProjectName + '</strong> <span style="opacity:0.6;font-size:11px;">(' + window._tcProjectCode + ')</span>';
       }
+      // Context bar is set up with correct name — clear the interval
+      clearInterval(_ctxBarInterval);
     }
   }, 1000);
 
@@ -1766,33 +1768,28 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Progressive disclosure - collapsible sections
-  document.querySelectorAll('.section h2, .card h2').forEach(function(h2) {
-    // Skip Project Info, SA Import, and Summary sections - keep those expanded
-    var text = h2.textContent || '';
-    if (text.match(/project info|sa import|summary|equipment|miscellaneous/i)) return;
+  // Progressive disclosure - collapsible sections (targets .card-hdr elements)
+  document.querySelectorAll('.card-hdr').forEach(function(hdr) {
+    // Skip Project Info, SA Import, Salesperson, and Summary sections - keep those expanded
+    var text = hdr.textContent || '';
+    if (text.match(/project info|sa import|summary|salesperson/i)) return;
 
-    h2.classList.add('tc-section-toggle');
-    h2.classList.add('collapsed');
+    hdr.classList.add('tc-section-toggle');
+    hdr.classList.add('collapsed');
 
-    // Find the content after this h2 (all siblings until next h2 or end)
-    var body = document.createElement('div');
-    body.className = 'tc-section-body collapsed';
-    var sibling = h2.nextElementSibling;
-    var siblings = [];
-    while (sibling) {
-        siblings.push(sibling);
-        sibling = sibling.nextElementSibling;
-    }
-    siblings.forEach(function(s) { body.appendChild(s); });
-    h2.parentNode.appendChild(body);
-    body.style.maxHeight = body.scrollHeight + 'px';
+    // Find the card-body sibling (next element after card-hdr)
+    var cardBody = hdr.nextElementSibling;
+    if (!cardBody) return;
 
-    h2.addEventListener('click', function() {
+    cardBody.classList.add('tc-section-body');
+    cardBody.classList.add('collapsed');
+    cardBody.style.maxHeight = cardBody.scrollHeight + 'px';
+
+    hdr.addEventListener('click', function() {
         var isCollapsed = this.classList.toggle('collapsed');
-        body.classList.toggle('collapsed', isCollapsed);
+        cardBody.classList.toggle('collapsed', isCollapsed);
         if (!isCollapsed) {
-            body.style.maxHeight = body.scrollHeight + 200 + 'px';
+            cardBody.style.maxHeight = cardBody.scrollHeight + 200 + 'px';
         }
     });
   });
@@ -1808,7 +1805,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var w = parseInt(document.getElementById('qqWidth').value) || 30;
     var l = parseInt(document.getElementById('qqLength').value) || 40;
     var cols = parseInt(document.getElementById('qqCols').value) || 8;
-    var footing = parseFloat(document.getElementById('qqFooting').value) || 3;
+    var footing = parseFloat(document.getElementById('qqFooting').value) || 10;
     var crew = parseInt(document.getElementById('qqCrew').value) || 4;
     var days = parseInt(document.getElementById('qqDays').value) || 3;
     var dist = parseInt(document.getElementById('qqDistance').value) || 100;
@@ -1834,7 +1831,7 @@ window.addEventListener('DOMContentLoaded', () => {
     var piersEl = document.getElementById('conc_n_piers');
     if (piersEl) { piersEl.value = cols; _flashField(piersEl); }
     var diamEl = document.getElementById('conc_dia_in');
-    if (diamEl) { diamEl.value = type === 'commercial' ? 18 : 12; _flashField(diamEl); }
+    if (diamEl) { diamEl.value = type === 'commercial' ? 30 : 24; _flashField(diamEl); }
 
     // Labor
     var crewEl = document.getElementById('lab_crew');
@@ -1955,7 +1952,7 @@ var ic={project:'&#128204;',customer:'&#128100;',inventory:'&#128230;'};c.innerH
             </div>
             <div class="qq-field">
                 <label>Footing Depth (ft)</label>
-                <input type="number" id="qqFooting" value="3" step="0.5">
+                <input type="number" id="qqFooting" value="10" step="0.5">
             </div>
             <div class="qq-field">
                 <label>Crew Size</label>
