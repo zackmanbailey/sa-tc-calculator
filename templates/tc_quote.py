@@ -394,6 +394,33 @@ input[type=checkbox]{width:auto;margin-right:6px}
         </div>
       </div>
 
+      <!-- Solar Panel Installation (shown only when solar BOM data present) -->
+      <div class="card" id="card-solar-install" style="display:none">
+        <div class="card-hdr gold"><span>☀️</span>Solar Panel Installation</div>
+        <div class="card-body">
+          <div class="grid3" style="margin-bottom:10px">
+            <div class="form-group">
+              <label>Panel Count</label>
+              <input type="number" id="solar_panel_count" value="0" min="0" readonly
+                style="background:#111827;color:#FDE68A;font-weight:700"/>
+            </div>
+            <div class="form-group">
+              <label>Install Cost / Panel ($)</label>
+              <input type="number" id="solar_install_per_panel" value="45" min="0" step="1"
+                onchange="calcSolarInstall();renderSummary()"/>
+            </div>
+            <div class="form-group">
+              <label>Total Install</label>
+              <input type="text" id="solar_install_total_display" value="$0.00" readonly
+                style="background:#111827;color:var(--tf-amber);font-weight:700"/>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#94A3B8">
+            Customer-supplied panels — this covers mounting labor only
+          </div>
+        </div>
+      </div>
+
       <!-- Equipment Rental -->
       <div class="card" id="card-equip">
         <div class="card-hdr blue"><span>🏗️</span>Equipment Rental</div>
@@ -689,7 +716,7 @@ const equipItems = [];
 const miscItems = [];
 let concreteCost = 0, laborCost = 0, drillingCost = 0,
     shippingCost = 0, fuelCost = 0, hotelCost = 0,
-    perDiemCost = 0, transportCost = 0;
+    perDiemCost = 0, transportCost = 0, solarInstallCost = 0;
 
 function fmt(v) {
   return '$' + (v||0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -876,6 +903,14 @@ function calcLabor() {
   renderSummary();
 }
 
+function calcSolarInstall() {
+  const panels = numVal('solar_panel_count');
+  const perPanel = numVal('solar_install_per_panel');
+  solarInstallCost = panels * perPanel;
+  document.getElementById('solar_install_total_display').value = fmt(solarInstallCost);
+  renderSummary();
+}
+
 function calcDrilling() {
   const method = document.getElementById('drill_method').value;
   const isRental = method === 'rental';
@@ -1028,6 +1063,7 @@ function buildQuoteData() {
     { label: 'Materials (SA Fabrication)', cost: mats, key: 'materials' },
     { label: 'Concrete (Pier Footings)', cost: concreteCost, key: 'concrete' },
     { label: 'Labor — Installation', cost: laborCost, key: 'labor' },
+    { label: 'Solar Panel Installation', cost: solarInstallCost, key: 'solar_install' },
     { label: 'Equipment Rental', cost: equip, key: 'equipment' },
     { label: 'Drilling', cost: drillingCost, key: 'drilling' },
     { label: 'Shipping & Freight', cost: shippingCost, key: 'shipping' },
@@ -1198,6 +1234,8 @@ function buildPayload() {
         rate: numVal('trans_rate'), trips: numVal('trans_trips'),
         notes: strVal('trans_notes'), total: transportCost },
       misc: { items: miscItems, total: miscTotal() },
+      solar_install: { panel_count: numVal('solar_panel_count'),
+        per_panel: numVal('solar_install_per_panel'), total: solarInstallCost },
     },
     summary: q,
   };
@@ -1365,9 +1403,16 @@ async function tcLoadFromProject(jobCode) {
         if (c.transport.trips) document.getElementById('trans_trips').value = c.transport.trips;
         if (c.transport.notes) document.getElementById('trans_notes').value = c.transport.notes;
       }
+      if (c.solar_install) {
+        if (c.solar_install.panel_count) {
+          document.getElementById('solar_panel_count').value = c.solar_install.panel_count;
+          document.getElementById('card-solar-install').style.display = '';
+        }
+        if (c.solar_install.per_panel) document.getElementById('solar_install_per_panel').value = c.solar_install.per_panel;
+      }
     }
     // Recalculate all after loading
-    calcConcrete(); calcLabor(); calcDrilling();
+    calcConcrete(); calcLabor(); calcSolarInstall(); calcDrilling();
     calcShipping(); calcFuel(); calcHotels();
     calcPerDiem(); calcTransport(); renderSummary();
 
@@ -1454,6 +1499,7 @@ async function autoLoadFromBOM(jobCode) {
         'Panels': '#3B82F6', 'Wall Panels': '#3B82F6', 'Roof Panels': '#3B82F6',
         'Trim': '#F59E0B', 'Fasteners': '#8B5CF6', 'Accessories': '#10B981',
         'Purlins': '#EC4899', 'Foundation': '#6B7280', 'Girts': '#14B8A6',
+        'Solar Hardware - Purchased': '#F59E0B', 'Solar Hardware - Informational': '#FCD34D',
       };
 
       Object.keys(categories).forEach(function(cat) {
@@ -1527,6 +1573,20 @@ async function autoLoadFromBOM(jobCode) {
       if (b0.width_ft && numVal('sa_width') <= 40) document.getElementById('sa_width').value = b0.width_ft;
       if (b0.length_ft && numVal('sa_length') <= 180) document.getElementById('sa_length').value = b0.length_ft;
     }
+
+    // Auto-fill solar panel install if BOM has solar data
+    buildings.forEach(function(bldg) {
+      var geo = bldg.geometry || {};
+      if (geo.solar_total_panels && geo.solar_total_panels > 0) {
+        var solarCard = document.getElementById('card-solar-install');
+        if (solarCard) solarCard.style.display = '';
+        var panelEl = document.getElementById('solar_panel_count');
+        if (panelEl) panelEl.value = geo.solar_total_panels;
+        var ippEl = document.getElementById('solar_install_per_panel');
+        if (ippEl && geo.solar_install_per_panel) ippEl.value = geo.solar_install_per_panel;
+        calcSolarInstall();
+      }
+    });
 
     // Show SA import banner
     var banner = document.getElementById('sa-import-banner');

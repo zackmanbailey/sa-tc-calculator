@@ -143,6 +143,14 @@ PURCHASED_ITEMS = {
             10.0: [(7.7135, 2), (9.1925, 2)],
         },
     },
+    "solar_bolt_stack": {
+        "id": "solar_bolt_stack",
+        "name": "SS Panel Mounting Bolt Stack",
+        "description": ("Stainless steel bolt + flat washer + star washer + "
+                        "lock washer + SS nut — one per mounting point"),
+        "price_each": 1.85,    # per bolt stack
+        "qty_per_panel": 4,    # 4 mounting points per solar panel
+    },
 }
 
 # ─────────────────────────────────────────────

@@ -596,6 +596,21 @@ function addBuilding() {
     roofing_overhang_ft: 0.5,         // panel overhang past eave purlin
     above_grade_ft: 8,                // column height above finished grade
     cut_allowance_in: 6,              // extra length for field cuts (inches)
+    // ── Solar Mode ──
+    solar_mode: false,                // master toggle: standard carport vs solar array
+    solar_panel_width_mm: 992,        // panel short dimension (CS3K-P default)
+    solar_panel_length_mm: 2108,      // panel long dimension
+    solar_mount_hole_edge_mm: 20,     // mounting hole distance from panel long edge
+    solar_mount_hole_inset_mm: 250,   // mounting hole inset from panel short edge
+    solar_orientation: 'landscape',   // 'landscape', 'portrait', or 'compare'
+    solar_panels_across: 5,           // panels in width direction
+    solar_panels_along: 20,           // panels in length direction
+    solar_gap_width_in: 0.25,         // gap between panels across
+    solar_gap_length_in: 0.25,        // gap between panels along
+    solar_edge_clearance_in: 4,       // edge clearance at building sides
+    solar_dim_mode: 'panel_count',    // 'panel_count' or 'fit_to_dims'
+    solar_slope_deg: 5,               // solar array tilt angle
+    solar_install_per_panel: 45,      // $/panel install cost for TC estimator
   });
   renderBuildingList();
   renderBuildingForms();
@@ -746,6 +761,145 @@ function buildingFormHTML(b) {
     </div>
     <div class="card-body">
 
+      <!-- Solar Mode Toggle -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;
+        background:${b.solar_mode ? 'linear-gradient(135deg,#FEF3C7,#FDE68A)' : '#F0F4FA'};
+        border:1px solid ${b.solar_mode ? '#F59E0B' : 'var(--tf-border)'}">
+        <label class="check-label" style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;margin:0">
+          <input type="checkbox" ${b.solar_mode?'checked':''}
+            onchange="updateBldg('${b.id}','solar_mode',this.checked);renderBuildingForms()"/>
+          <span style="color:${b.solar_mode ? '#92400E' : '#1E3A5F'}">${b.solar_mode ? '☀️ Solar Array Mode' : 'Standard Carport'}</span>
+        </label>
+        ${b.solar_mode ? `<span style="font-size:11px;color:#92400E">
+          Building dimensions calculated from panel layout. Purlin spacing is panel-dictated.</span>` : ''}
+      </div>
+
+      ${b.solar_mode ? `
+      <!-- ═══ SOLAR PANEL INPUTS ═══ -->
+      <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1px solid #F59E0B;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:#92400E;margin-bottom:8px">☀️ Solar Panel Specification</div>
+
+        <!-- Panel Dimensions -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Panel Width (mm)</label>
+            <input type="number" value="${b.solar_panel_width_mm||992}" min="600" max="1400" step="1"
+              onchange="updateBldg('${b.id}','solar_panel_width_mm',parseFloat(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Short side (${((b.solar_panel_width_mm||992)/25.4).toFixed(1)}")</div>
+          </div>
+          <div class="form-group">
+            <label>Panel Length (mm)</label>
+            <input type="number" value="${b.solar_panel_length_mm||2108}" min="1200" max="2600" step="1"
+              onchange="updateBldg('${b.id}','solar_panel_length_mm',parseFloat(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Long side (${((b.solar_panel_length_mm||2108)/25.4).toFixed(1)}")</div>
+          </div>
+          <div class="form-group">
+            <label>Hole from Edge (mm)</label>
+            <input type="number" value="${b.solar_mount_hole_edge_mm||20}" min="5" max="100" step="1"
+              onchange="updateBldg('${b.id}','solar_mount_hole_edge_mm',parseFloat(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Mount hole → long edge</div>
+          </div>
+          <div class="form-group">
+            <label>Hole Inset (mm)</label>
+            <input type="number" value="${b.solar_mount_hole_inset_mm||250}" min="50" max="600" step="5"
+              onchange="updateBldg('${b.id}','solar_mount_hole_inset_mm',parseFloat(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Mount hole → short edge</div>
+          </div>
+        </div>
+
+        <!-- Orientation + Layout Mode -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Panel Orientation</label>
+            <select onchange="updateBldg('${b.id}','solar_orientation',this.value);renderBuildingForms()">
+              <option value="landscape" ${(b.solar_orientation||'landscape')==='landscape'?'selected':''}>Landscape</option>
+              <option value="portrait" ${b.solar_orientation==='portrait'?'selected':''}>Portrait</option>
+              <option value="compare" ${b.solar_orientation==='compare'?'selected':''}>Compare All (4-way)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Sizing Mode</label>
+            <select onchange="updateBldg('${b.id}','solar_dim_mode',this.value);renderBuildingForms()">
+              <option value="panel_count" ${(b.solar_dim_mode||'panel_count')==='panel_count'?'selected':''}>Panel Count</option>
+              <option value="fit_to_dims" ${b.solar_dim_mode==='fit_to_dims'?'selected':''}>Fit to Dimensions</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Solar Slope (°)</label>
+            <input type="number" value="${b.solar_slope_deg||5}" min="0" max="45" step="0.5"
+              onchange="updateBldg('${b.id}','solar_slope_deg',parseFloat(this.value))"/>
+          </div>
+        </div>
+
+        <!-- Panel Count or Fit-to-Dims inputs -->
+        ${(b.solar_dim_mode||'panel_count')==='panel_count' ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Panels Across</label>
+            <input type="number" value="${b.solar_panels_across||5}" min="1" max="100" step="1"
+              onchange="updateBldg('${b.id}','solar_panels_across',parseInt(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Width direction</div>
+          </div>
+          <div class="form-group">
+            <label>Panels Along</label>
+            <input type="number" value="${b.solar_panels_along||20}" min="1" max="500" step="1"
+              onchange="updateBldg('${b.id}','solar_panels_along',parseInt(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Length direction</div>
+          </div>
+          <div class="form-group">
+            <label>Gap W (in)</label>
+            <input type="number" value="${b.solar_gap_width_in||0.25}" min="0" max="6" step="0.125"
+              onchange="updateBldg('${b.id}','solar_gap_width_in',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+          <div class="form-group">
+            <label>Gap L (in)</label>
+            <input type="number" value="${b.solar_gap_length_in||0.25}" min="0" max="6" step="0.125"
+              onchange="updateBldg('${b.id}','solar_gap_length_in',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+        </div>
+        ` : `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Available Width (ft)</label>
+            <input type="number" value="${b.width_ft||40}" min="10" max="200" step="0.5"
+              onchange="updateBldg('${b.id}','width_ft',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+          <div class="form-group">
+            <label>Available Length (ft)</label>
+            <input type="number" value="${b.length_ft||200}" min="10" max="5000" step="1"
+              onchange="updateBldg('${b.id}','length_ft',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+          <div class="form-group">
+            <label>Gap W (in)</label>
+            <input type="number" value="${b.solar_gap_width_in||0.25}" min="0" max="6" step="0.125"
+              onchange="updateBldg('${b.id}','solar_gap_width_in',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+          <div class="form-group">
+            <label>Gap L (in)</label>
+            <input type="number" value="${b.solar_gap_length_in||0.25}" min="0" max="6" step="0.125"
+              onchange="updateBldg('${b.id}','solar_gap_length_in',parseFloat(this.value));renderBuildingForms()"/>
+          </div>
+        </div>
+        `}
+
+        <!-- Edge clearance + Install cost -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group">
+            <label>Edge Clearance (in)</label>
+            <input type="number" value="${b.solar_edge_clearance_in||4}" min="0" max="24" step="0.5"
+              onchange="updateBldg('${b.id}','solar_edge_clearance_in',parseFloat(this.value));renderBuildingForms()"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Clearance from panels to building edge</div>
+          </div>
+          <div class="form-group">
+            <label>Install Cost ($/panel)</label>
+            <input type="number" value="${b.solar_install_per_panel||45}" min="0" max="200" step="1"
+              onchange="updateBldg('${b.id}','solar_install_per_panel',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">TC estimator install charge per panel</div>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
       <!-- Row 1: Type, Pitch, Width, Clear Height -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="form-group">
@@ -853,13 +1007,21 @@ function buildingFormHTML(b) {
       </div>`;
       })()}
 
-      <!-- Row 3: Purlin spacing (direct input) -->
-      <div style="background:#F0F4FA;border:1px solid var(--tf-border);border-radius:6px;padding:10px;margin-bottom:10px">
+      <!-- Row 3: Purlin spacing (direct input — disabled in solar mode) -->
+      <div style="background:${b.solar_mode?'#FFFBEB':'#F0F4FA'};border:1px solid ${b.solar_mode?'#F59E0B':'var(--tf-border)'};border-radius:6px;padding:10px;margin-bottom:10px">
         <div class="form-group" style="margin-bottom:0">
           <label>Purlin Spacing (ft) <span class="tf-help" data-term="sa_purlin_spacing"></span></label>
+          ${b.solar_mode ? `
+          <input type="number" value="${effSpacing}" min="1" max="10" step="0.5" disabled
+            style="background:#FEF3C7;color:#92400E;font-weight:700;cursor:not-allowed"/>
+          <div style="font-size:10px;color:#B45309;margin-top:2px;font-weight:600">
+            ☀️ Spacing dictated by solar panel layout — not editable in solar mode
+          </div>
+          ` : `
           <input type="number" value="${effSpacing}" min="1" max="10" step="0.5"
             onchange="updateBldg('${b.id}','purlin_spacing_override',parseFloat(this.value)||null);refreshPurlinDisplay('${b.id}')"/>
           <div style="font-size:10px;color:#888;margin-top:2px">OC (on-center) spacing</div>
+          `}
         </div>
       </div>
 
@@ -1581,6 +1743,58 @@ function renderBOM(data) {
         </table>
       </div>
     </div>`;
+
+    // Solar comparison table (when orientation == "compare")
+    if (geo.solar_comparison && geo.solar_comparison.results) {
+      const cmpResults = geo.solar_comparison.results;
+      const bestLabel = geo.solar_best_option || geo.solar_comparison.best || '';
+      html += `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-hdr" style="background:#1E40AF">
+          <span class="icon">&#9788;</span>
+          ${bldgLabel} — Solar 4-Way Comparison
+          <span style="margin-left:auto;font-size:11px;opacity:.85">Best: ${bestLabel}</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <table class="bom-table" style="font-size:12px">
+            <thead>
+              <tr>
+                <th style="padding:6px"></th>
+                <th style="padding:6px">Orientation + Purlin</th>
+                <th style="padding:6px;text-align:right">Width (ft)</th>
+                <th style="padding:6px;text-align:right">Length (ft)</th>
+                <th style="padding:6px;text-align:center">Purlin Lines</th>
+                <th style="padding:6px;text-align:right">Purlin Spacing (ft)</th>
+                <th style="padding:6px;text-align:right">Total Purlin LF</th>
+                <th style="padding:6px;text-align:center">Bolt Stacks</th>
+              </tr>
+            </thead>
+            <tbody>`;
+      for (const cr of cmpResults) {
+        const isBest = cr.label === bestLabel;
+        const rowStyle = isBest ? 'background:#1E3A2F;font-weight:700;' : '';
+        const badge = isBest ? '<span style="color:#4ADE80;font-size:14px;margin-right:4px" title="Recommended">&#9733;</span>' : '';
+        const ly = cr.layout || {};
+        html += `
+              <tr style="${rowStyle}">
+                <td style="padding:6px;text-align:center">${badge}</td>
+                <td style="padding:6px">${cr.label}</td>
+                <td style="padding:6px;text-align:right">${(ly.building_width_ft||0).toFixed(2)}</td>
+                <td style="padding:6px;text-align:right">${(ly.building_length_ft||0).toFixed(2)}</td>
+                <td style="padding:6px;text-align:center">${ly.n_purlin_lines||0}</td>
+                <td style="padding:6px;text-align:right">${(ly.purlin_spacing_ft||0).toFixed(4)}</td>
+                <td style="padding:6px;text-align:right;${isBest?'color:#4ADE80;':''}">
+                  ${(cr.purlin_total_lf||0).toLocaleString('en-US',{minimumFractionDigits:2})}
+                </td>
+                <td style="padding:6px;text-align:center">${ly.bolt_stacks||0}</td>
+              </tr>`;
+      }
+      html += `
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    }
   }
 
   el.innerHTML = html;
