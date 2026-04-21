@@ -8579,6 +8579,37 @@ class PurlinInteractiveHandler(BaseHandler):
             self.write(f"<h2>Error</h2><p>{html.escape(str(e))}</p>")
 
 
+class PurlinLayoutInteractiveHandler(BaseHandler):
+    """GET /shop-drawings/{job_code}/purlin-layout — Interactive Purlin Layout Drawing."""
+    def get(self, job_code):
+        try:
+            from templates.purlin_layout import PURLIN_LAYOUT_HTML
+            building_id = self.get_argument("building", "B1")
+            config_dict = _load_shop_config(job_code, building_id=building_id)
+            if not config_dict:
+                config_dict = {"job_code": job_code}
+            config_dict.setdefault("job_code", job_code)
+            config_dict.setdefault("building_id", building_id)
+
+            proj_dir = os.path.join(PROJECTS_DIR, job_code)
+            meta_path = os.path.join(proj_dir, "metadata.json")
+            if os.path.isfile(meta_path):
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                config_dict.setdefault("project_name", meta.get("project_name", ""))
+                config_dict.setdefault("customer_name", meta.get("customer_name", ""))
+
+            html = PURLIN_LAYOUT_HTML
+            html = html.replace("{{JOB_CODE}}", _html_escape(job_code))
+            html = html.replace("{{PURLIN_LAYOUT_CONFIG_JSON}}", _safe_json_embed(config_dict))
+            self.set_header("Content-Type", "text/html")
+            self.write(html)
+        except Exception as e:
+            logger.error(f"PurlinLayoutInteractiveHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{_html_escape(str(e))}</p>")
+
+
 class SagrodInteractiveHandler(BaseHandler):
     """GET /shop-drawings/{job_code}/sagrod — Interactive Sag Rod Drawing."""
     def get(self, job_code):
@@ -20669,6 +20700,7 @@ def get_routes():
         (r"/shop-drawings/([^/]+)/column",       ColumnInteractiveHandler),
         (r"/shop-drawings/([^/]+)/rafter",       RafterInteractiveHandler),
         (r"/shop-drawings/([^/]+)/purlin",       PurlinInteractiveHandler),
+        (r"/shop-drawings/([^/]+)/purlin-layout", PurlinLayoutInteractiveHandler),
         (r"/shop-drawings/([^/]+)/sagrod",       SagrodInteractiveHandler),
         (r"/shop-drawings/([^/]+)/strap",        StrapInteractiveHandler),
         (r"/shop-drawings/([^/]+)/endcap",       EndcapInteractiveHandler),

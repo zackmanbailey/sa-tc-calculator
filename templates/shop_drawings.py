@@ -667,6 +667,19 @@ SHOP_DRAWINGS_HTML = r"""
                         </a>
                     </div>
 
+                    <!-- Purlin Layout Builder -->
+                    <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
+                        <div style="font-size:2rem;margin-bottom:12px;">&#9638;</div>
+                        <h4 style="font-size:var(--tf-text-sm);font-weight:700;color:var(--tf-gray-800);margin-bottom:6px;">Purlin Layout</h4>
+                        <p style="font-size:var(--tf-text-xs);color:var(--tf-gray-500);margin-bottom:16px;">
+                            Full building-length purlin layout with C/Z purlin options, solar panel mode, piece breaks, cut list, and 4-option cost comparison.
+                        </p>
+                        <a href="/shop-drawings/{{JOB_CODE}}/purlin-layout" data-drawing-type="purlin_layout"
+                           class="tf-btn tf-btn-primary tf-btn-sm" style="text-decoration:none;display:inline-block;">
+                            Open Purlin Layout
+                        </a>
+                    </div>
+
                     <!-- Sag Rod Drawing Builder -->
                     <div style="background:var(--tf-surface);border:1px solid var(--tf-gray-200);border-radius:12px;padding:24px;transition:box-shadow .2s;">
                         <div style="font-size:2rem;margin-bottom:12px;">&#128296;</div>
