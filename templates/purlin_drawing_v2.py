@@ -358,7 +358,7 @@ function draw() {
     var wtTot = wtPc * (g.qty || 1);
     totalWt += wtTot;
 
-    var desc = g.type === 'eave_strut' ? 'EAVE STRUT Z-PURLIN' : 'Z-PURLIN ' + g.depth + '"x' + (g.topFlange || 3.5) + '"';
+    var desc = 'Z-PURLIN ' + g.depth + '"x' + (g.topFlange || 3.5) + '"';
     var sizeStr = fmtFtIn((g.span_ft || 25) * 12) + ' LG';
 
     var rowBg = (i === activeGroupIdx) ? '#FFFDE7' : 'transparent';
@@ -525,7 +525,7 @@ function draw() {
     var wtPc = g.lbs_per_ft * (g.span_ft || 25);
     bomRows.push({
       mk: g.mark, qty: g.qty,
-      desc: g.type === 'eave_strut' ? 'Eave Strut' : 'Z-Purlin ' + g.depth + '"',
+      desc: 'Z-Purlin ' + g.depth + '"',
       size: fmtFtIn((g.span_ft || 25) * 12) + ' x ' + (g.gauge || '12GA'),
       mat: 'G90', wt: Math.round(wtPc * g.qty)
     });

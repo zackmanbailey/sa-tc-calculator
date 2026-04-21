@@ -960,14 +960,19 @@ class ShopDrawingConfig:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def calc_rafter_length(width_ft: float, overhang_ft: float = 1.0,
-                       use_z_purlins: bool = True) -> float:
+                       use_z_purlins: bool = True,
+                       z_eave_overhang_in: float = 3.5) -> float:
     """
     Rafter cut length in feet.
-    rafter_length = building_width - (2 * overhang) - (7\" if z-purlins)
+    rafter_length = building_width - (2 * overhang) - (2 * z_eave_overhang if z-purlins)
+
+    z_eave_overhang_in: Z-purlin top flange overhang at each eave (default 3.5").
+                        Total deduction = 2 × z_eave_overhang_in.
+                        Previous hardcoded value was 7" (3.5" × 2).
     """
     deduction_ft = 2.0 * overhang_ft
     if use_z_purlins:
-        deduction_ft += 7.0 / 12.0  # 7 inches = 0.583 ft
+        deduction_ft += (2.0 * z_eave_overhang_in) / 12.0
     return width_ft - deduction_ft
 
 

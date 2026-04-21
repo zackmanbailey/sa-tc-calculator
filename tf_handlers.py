@@ -8447,18 +8447,8 @@ def _build_purlin_groups_for_building(job_code, building_id, config_dict):
             'lbs_per_ft': lbs_ft, 'mark': mark,
         })
 
-    # Eave strut group
-    eave_spec = _PS[10]
-    eave_lbs = _GL.get(gauge, {}).get(10, 6.30)
-    groups.append({
-        'group': len(groups) + 1,
-        'label': 'Eave Strut 10"', 'type': 'eave_strut',
-        'depth': 10, 'gauge': gauge, 'thickness': thick,
-        'span_ft': round(span_ft, 2), 'spacing_ft': 0, 'qty': 2,
-        'topFlange': eave_spec['topFlange'], 'botFlange': eave_spec['botFlange'],
-        'lip': eave_spec['lip'], 'coilWidth': eave_spec['coilWidth'],
-        'lbs_per_ft': eave_lbs, 'mark': 'ES10-%s' % gauge.replace('GA', ''),
-    })
+    # Eave strut — REMOVED per PURLIN_RULES.md §9.4
+    # Front/back purlins ARE the eave. No separate eave strut.
 
     return groups
 

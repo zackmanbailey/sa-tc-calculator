@@ -24,6 +24,7 @@ from calc.defaults import (
     LABOR, WELDING_CONSUMABLES, BOLT_ASSEMBLIES, ENDCAP_U_CHANNELS,
     get_purlin_spacing, get_rebar_size
 )
+from calc.purlin_layout import calc_purlin_pieces, PurlinLayoutResult
 
 
 # ─────────────────────────────────────────────
@@ -80,7 +81,7 @@ class BuildingConfig:
     rebar_end_gap_ft: float = 5.0          # gap from rafter end to first rebar
     # Angled purlins
     angled_purlins: bool = False            # master toggle for angled purlin mode
-    purlin_angle_deg: float = 15.0          # angle from perpendicular (5–45°)
+    purlin_angle_deg: float = 90.0           # angle from drive aisle (90° = perpendicular to rafter)
     # Column placement on rafter
     column_mode: str = "auto"               # "auto", "spacing", or "manual"
     column_spacing_ft: float = 25.0         # used when column_mode == "spacing"
@@ -90,6 +91,9 @@ class BuildingConfig:
     splice_location_ft: float = 0.0         # user-specified splice (0 = auto)
     # Purlin & column drawing fields
     purlin_type: str = "Z"                  # "Z" or "C" purlin profile
+    max_purlin_length_ft: float = 45.0     # default max piece length (hard cap 53')
+    z_extension_ft: float = 6.0            # Z-purlin extension past rafter (default 6')
+    z_eave_overhang_in: float = 3.5        # Z-purlin top flange overhang at eave (inches)
     roofing_overhang_ft: float = 0.5        # panel overhang past eave purlin
     above_grade_ft: float = 8.0             # column height above finished grade
     cut_allowance_in: float = 6.0           # extra length for field cuts (inches)
@@ -103,7 +107,7 @@ class BuildingConfig:
     # Accessories & secondary structural
     include_base_plates: bool = True     # base plates and anchor bolts
     include_x_bracing: bool = True       # rod bracing in end bays + every 4th bay
-    include_eave_struts: bool = True     # cee purlin at eave, both sides
+    include_eave_struts: bool = False    # REMOVED: front/back purlins ARE the eave (no separate strut)
     include_ridge_cap: bool = True       # ridge cap flashing
     include_gutters: bool = True         # gutters + downspouts
     include_walk_doors: bool = False     # walk doors
@@ -437,7 +441,8 @@ class BOMCalculator:
                               n_struct_cols: int, n_bays: int, n_frames: int,
                               slope_deg: float, tan_slope: float,
                               rafter_slope_ft: float,
-                              wall_panel_ht: float, peak_ht: float):
+                              wall_panel_ht: float, peak_ht: float,
+                              result=None):
         """
         Append accessories and secondary structural members to the BOM items list.
         Handles: base plates, anchor bolts, X-bracing, eave struts, ridge cap,
@@ -525,29 +530,12 @@ class BOMCalculator:
                 piece_length_in=round(xb_diag_ft * 12, 1),
             ))
 
-        # ── 4. Eave Struts (2 per building — one each side) ─────────────
-        if getattr(bldg, 'include_eave_struts', True):
-            es_length_ft = bldg.length_ft
-            es_wt_per_ft = 3.5  # Cee purlin at eave, ~3.5 lbs/ft
-            n_eave_struts = 2
-            es_wt_each = es_length_ft * es_wt_per_ft
-            es_total_wt = n_eave_struts * es_wt_each
-
-            items.append(BOMLineItem(
-                category="Secondary Structural",
-                item_id="eave_struts",
-                description=(f"ES — Cee Purlin Eave Strut "
-                             f"({n_eave_struts} pcs, {es_length_ft:.0f}' ea)"),
-                qty=n_eave_struts, unit="EA",
-                unit_weight_lbs=round(es_wt_each, 1),
-                total_weight_lbs=round(es_total_wt, 1),
-                unit_cost=0.0, total_cost=0.0,
-                notes=(f"2 per building (one each eave side) × {es_length_ft:.0f}' = "
-                       f"{n_eave_struts * es_length_ft:.0f} LFT | "
-                       f"Material: Cee Purlin (eave) @ {es_wt_per_ft} lbs/ft"),
-                piece_count=n_eave_struts,
-                piece_length_in=round(es_length_ft * 12, 1),
-            ))
+        # ── 4. Eave Struts — REMOVED ──────────────────────────────────
+        # Per PURLIN_RULES.md §9.4: There is NO separate eave strut on any
+        # building. The front and back purlins (first/last purlin lines on
+        # the slope) serve as the eave. include_eave_struts kept for backward
+        # compat but defaults to False and this block is disabled.
+        # (Legacy code preserved but unreachable with default=False)
 
         # ── 5. Ridge Cap (1 per building) ────────────────────────────────
         if getattr(bldg, 'include_ridge_cap', True):
@@ -953,31 +941,180 @@ class BOMCalculator:
             piece_length_in=round(rafter_slope_ft * 12, 1),
         ))
 
-        # ── COIL 2: Z-Purlins ────────────────────────────────────────────
-        coil = COILS["z_purlin_20"]
+        # ── COIL 2: Purlins (Z or C) — Piece-Break Engine ──────────────
+        # Uses calc/purlin_layout.py for accurate piece lengths per
+        # PURLIN_RULES.md §2 (piece breaks at rafter centers)
+        coil = COILS["z_purlin_20"]  # Same coil for both Z and C (same lbs/ft)
         wf2 = WASTE_FACTORS["12GA"]
         ppb = coil_price("z_purlin_20", cp)
-        purlin_net = n_purlin_lines * bldg.length_ft
-        purlin_raw = purlin_net * (1 + wf2)
-        purlin_wt = purlin_raw * coil["lbs_per_lft"]
-        purlin_cost_v = purlin_wt * ppb
+
+        # Determine if rafter is spliced (length > 53')
+        has_rafter_splice = rafter_slope_ft > 53.0
+
+        # Calculate piece breaks
+        purlin_layout = calc_purlin_pieces(
+            bay_sizes_ft=bay_sizes_list or [bay_size_ft] * n_bays,
+            n_purlin_lines=n_purlin_lines,
+            purlin_type=bldg.purlin_type,
+            max_purlin_length_ft=getattr(bldg, 'max_purlin_length_ft', 45.0),
+            z_extension_ft=getattr(bldg, 'z_extension_ft', 6.0),
+            splice_overlap_in=6.0,
+            end_extension_in=8.0,
+            overhang_ft=overhang_ft,
+            angled_purlins=bldg.angled_purlins,
+            purlin_angle_deg=bldg.purlin_angle_deg,
+            n_rafters=n_rafters,
+            has_rafter_splice=has_rafter_splice,
+        )
+
+        # Store layout result in geometry for downstream use
+        result.geometry["purlin_layout"] = purlin_layout.to_dict()
+
+        # Add any piece-break warnings/errors
+        for w in purlin_layout.warnings:
+            result.warnings.append(w)
+        for e in purlin_layout.errors:
+            result.errors.append(e)
+
+        # BOM line items — one per distinct piece length (per PURLIN_RULES.md §13.1)
+        purlin_type_label = bldg.purlin_type.upper()
+        purlin_total_net = purlin_layout.total_lf
+        purlin_total_raw = purlin_total_net * (1 + wf2)
+        purlin_total_wt = purlin_total_raw * coil["lbs_per_lft"]
+        purlin_total_cost = purlin_total_wt * ppb
+
+        for pg in purlin_layout.pieces:
+            pg_raw = pg.total_lf * (1 + wf2)
+            pg_wt = pg_raw * coil["lbs_per_lft"]
+            pg_cost = pg_wt * ppb
+            splice_note = " | Splice holes in overlap zone" if pg.has_splice_holes else ""
+            from calc.purlin_layout import _fmt_ft_in
+            items.append(BOMLineItem(
+                category="Structural Steel - Coil 2",
+                item_id=f"{purlin_type_label.lower()}_purlin_{round(pg.length_in)}",
+                description=(f"20.125\" 12GA {purlin_type_label}-Purlin — "
+                             f"{_fmt_ft_in(pg.length_in)} "
+                             f"({pg.total_qty} pcs)"),
+                qty=round(pg_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=coil["lbs_per_lft"],
+                total_weight_lbs=round(pg_wt, 1),
+                unit_cost=ppb, total_cost=round(pg_cost, 2),
+                waste_factor=wf2,
+                notes=(f"{pg.qty_per_line} pcs/line × {pg.n_lines} lines = "
+                       f"{pg.total_qty} pcs × {_fmt_ft_in(pg.length_in)} = "
+                       f"{pg.total_lf:.0f} LFT net | "
+                       f"{purlin_type_label}-purlin {purlin_spacing}' OC"
+                       f"{splice_note}"),
+                piece_count=pg.total_qty,
+                piece_length_in=round(pg.length_in, 1),
+            ))
+
+        # ── Purlin Summary line (total for reference) ────────────────────
         items.append(BOMLineItem(
             category="Structural Steel - Coil 2",
-            item_id="z_purlin",
-            description=(f"20.125\" 12GA Z-Purlin "
-                         f"({n_purlin_lines} lines x {bldg.length_ft:.0f}', {purlin_spacing}' OC)"),
-            qty=round(purlin_raw, 2), unit="LFT (coil)",
+            item_id=f"{purlin_type_label.lower()}_purlin_total",
+            description=(f"20.125\" 12GA {purlin_type_label}-Purlin — TOTAL "
+                         f"({purlin_layout.total_pieces} pcs, "
+                         f"{n_purlin_lines} lines, {purlin_spacing}' OC)"),
+            qty=round(purlin_total_raw, 2), unit="LFT (coil)",
             unit_weight_lbs=coil["lbs_per_lft"],
-            total_weight_lbs=round(purlin_wt, 1),
-            unit_cost=ppb, total_cost=round(purlin_cost_v, 2),
+            total_weight_lbs=round(purlin_total_wt, 1),
+            unit_cost=ppb, total_cost=round(purlin_total_cost, 2),
             waste_factor=wf2,
-            notes=(f"{n_purlin_lines} lines x {bldg.length_ft:.0f}' = "
-                   f"{purlin_net:.0f} LFT net | "
+            notes=(f"TOTAL: {purlin_total_net:.0f} LFT net across "
+                   f"{purlin_layout.total_pieces} pcs | "
                    f"{'Auto' if purlin_auto else 'Manual'} {purlin_spacing}' OC "
-                   f"across {bldg.width_ft}' width"),
-            piece_count=n_purlin_lines * n_bays,
+                   f"across {bldg.width_ft}' width | "
+                   f"P1 plates: {purlin_layout.p1_total}, "
+                   f"P2 plates: {purlin_layout.p2_total}"),
+            piece_count=purlin_layout.total_pieces,
             piece_length_in=round(bay_size_ft * 12, 1),
         ))
+
+        # ── P1 Interior Purlin Plates (10"×6" 10GA) ─────────────────────
+        if purlin_layout.p1_total > 0:
+            p1_coil = COILS["plate_6_10ga"]
+            p1_plate_len_ft = p1_coil.get("plate_length_ft", 10.0 / 12.0)
+            p1_lf_net = purlin_layout.p1_total * p1_plate_len_ft
+            p1_wf = WASTE_FACTORS.get("10GA", 0.04)
+            p1_lf_raw = p1_lf_net * (1 + p1_wf)
+            p1_wt = p1_lf_raw * p1_coil["lbs_per_lft"]
+            p1_ppb = coil_price("plate_6_10ga", cp)
+            p1_cost = p1_wt * p1_ppb
+            items.append(BOMLineItem(
+                category="Structural Steel - Plates",
+                item_id="p1_interior_plates",
+                description=(f"P1 Interior Purlin Plate 10\"×6\" 10GA "
+                             f"({purlin_layout.p1_total} pcs)"),
+                qty=round(p1_lf_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=p1_coil["lbs_per_lft"],
+                total_weight_lbs=round(p1_wt, 1),
+                unit_cost=p1_ppb, total_cost=round(p1_cost, 2),
+                waste_factor=p1_wf,
+                notes=(f"{purlin_layout.p1_per_rafter} per rafter × "
+                       f"{purlin_layout.n_rafters} rafters = "
+                       f"{purlin_layout.p1_total} pcs | "
+                       f"Interior purlin-to-rafter connection (8 holes)"),
+                piece_count=purlin_layout.p1_total,
+                piece_length_in=round(p1_coil.get("plate_length_in", 10.0), 1),
+            ))
+
+        # ── P2 Exterior/Eave Purlin Plates (24"×9" 10GA) ──────────────
+        if purlin_layout.p2_total > 0:
+            p2_coil = COILS["plate_9_10ga"]
+            p2_plate_len_ft = p2_coil.get("plate_length_ft", 24.0 / 12.0)
+            p2_lf_net = purlin_layout.p2_total * p2_plate_len_ft
+            p2_wf = WASTE_FACTORS.get("10GA", 0.04)
+            p2_lf_raw = p2_lf_net * (1 + p2_wf)
+            p2_wt = p2_lf_raw * p2_coil["lbs_per_lft"]
+            p2_ppb = coil_price("plate_9_10ga", cp)
+            p2_cost = p2_wt * p2_ppb
+            items.append(BOMLineItem(
+                category="Structural Steel - Plates",
+                item_id="p2_eave_plates",
+                description=(f"P2 Eave Purlin Plate 24\"×9\" 10GA "
+                             f"({purlin_layout.p2_total} pcs)"),
+                qty=round(p2_lf_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=p2_coil["lbs_per_lft"],
+                total_weight_lbs=round(p2_wt, 1),
+                unit_cost=p2_ppb, total_cost=round(p2_cost, 2),
+                waste_factor=p2_wf,
+                notes=(f"{purlin_layout.p2_per_rafter} per rafter × "
+                       f"{purlin_layout.n_rafters} rafters = "
+                       f"{purlin_layout.p2_total} pcs | "
+                       f"Eave purlin-to-rafter connection (8 holes)"),
+                piece_count=purlin_layout.p2_total,
+                piece_length_in=round(p2_coil.get("plate_length_in", 24.0), 1),
+            ))
+
+        # ── Endcap Plates (angled purlins only) ────────────────────────
+        if purlin_layout.endcap_plates_total > 0:
+            # Endcap plates use same stock as P2 plates
+            ec_coil = COILS["plate_9_10ga"]
+            ec_plate_len_ft = ec_coil.get("plate_length_ft", 24.0 / 12.0)
+            ec_lf_net = purlin_layout.endcap_plates_total * ec_plate_len_ft
+            ec_wf = WASTE_FACTORS.get("10GA", 0.04)
+            ec_lf_raw = ec_lf_net * (1 + ec_wf)
+            ec_wt = ec_lf_raw * ec_coil["lbs_per_lft"]
+            ec_ppb = coil_price("plate_9_10ga", cp)
+            ec_cost = ec_wt * ec_ppb
+            items.append(BOMLineItem(
+                category="Structural Steel - Plates",
+                item_id="endcap_plates",
+                description=(f"Endcap Plate 24\"×9\" 10GA "
+                             f"({purlin_layout.endcap_plates_total} pcs)"),
+                qty=round(ec_lf_raw, 2), unit="LFT (coil)",
+                unit_weight_lbs=ec_coil["lbs_per_lft"],
+                total_weight_lbs=round(ec_wt, 1),
+                unit_cost=ec_ppb, total_cost=round(ec_cost, 2),
+                waste_factor=ec_wf,
+                notes=(f"{purlin_layout.endcap_plates_per_rafter} per rafter × "
+                       f"{purlin_layout.n_rafters} rafters = "
+                       f"{purlin_layout.endcap_plates_total} pcs | "
+                       f"Angled purlin end closure"),
+                piece_count=purlin_layout.endcap_plates_total,
+                piece_length_in=round(ec_coil.get("plate_length_in", 24.0), 1),
+            ))
 
         # ── COIL 3: Sag Rods ─────────────────────────────────────────────
         coil = COILS["angle_4_16ga"]
@@ -1323,9 +1460,14 @@ class BOMCalculator:
                 ))
 
         # ── RAFTER CLIPS & PLATES (P1, P2/P6, P3) ─────────────────────────
-        # P1 interior purlin clips: qty = (purlin_lines - 2) per rafter
-        n_p1_per_rafter = max(0, n_purlin_lines - 2)
-        n_p1_total = n_p1_per_rafter * n_rafters
+        # Use piece-break engine counts if purlin_layout stored in geometry
+        _pl_geo = result.geometry.get("purlin_layout", {}) if result else {}
+        if _pl_geo:
+            n_p1_per_rafter = _pl_geo.get("p1_per_rafter", max(0, n_purlin_lines - 2))
+            n_p1_total = _pl_geo.get("p1_total", n_p1_per_rafter * n_rafters)
+        else:
+            n_p1_per_rafter = max(0, n_purlin_lines - 2)
+            n_p1_total = n_p1_per_rafter * n_rafters
         p1_w_in = 6.0
         p1_l_in = 10.0
         p1_thk_in = 0.135   # 10GA
@@ -1342,10 +1484,10 @@ class BOMCalculator:
             piece_count=n_p1_total,
         ))
 
-        # P2 end caps OR P6 end plates (2 per rafter)
-        if bldg.angled_purlins:
-            # P6: 9"×15"×10GA, ~5.06 lbs each, no purlin holes
-            n_p6_total = 2 * n_rafters
+        # P2 end caps OR P6/Endcap plates (from piece-break engine)
+        if bldg.angled_purlins and bldg.purlin_angle_deg != 90.0:
+            # Endcap plates at rafter ends for angled purlins
+            n_p6_total = _pl_geo.get("endcap_plates_total", 2 * n_rafters)
             p6_wt = 5.06
             items.append(BOMLineItem(
                 category="Rafter Clips & Plates",
@@ -1361,7 +1503,7 @@ class BOMCalculator:
             ))
         else:
             # P2: 9"×24"×10GA
-            n_p2_total = 2 * n_rafters
+            n_p2_total = _pl_geo.get("p2_total", 2 * n_rafters)
             p2_w_in = 9.0
             p2_l_in = 24.0
             p2_wt_each = p2_w_in * p2_l_in * p1_thk_in * 0.2836
@@ -1610,7 +1752,7 @@ class BOMCalculator:
         # ── ACCESSORIES & SECONDARY STRUCTURAL ─────────────────────────────
         self._generate_accessories(bldg, items, n_struct_cols, n_bays, n_frames,
                                    slope_deg, tan_slope, rafter_slope_ft,
-                                   wall_panel_ht, peak_ht)
+                                   wall_panel_ht, peak_ht, result=result)
 
         # ── Welding & Finishing Consumables ──────────────────────────────
         sqft = bldg.width_ft * bldg.length_ft
