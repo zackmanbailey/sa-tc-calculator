@@ -571,10 +571,14 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 40. ~~**TC Estimator**~~ → RESOLVED: TC estimator just pulls from BOM. No direct purlin piece-break knowledge needed.
 41. ~~**Solar + decking**~~ → RESOLVED: Solar buildings almost never use decking. Default decking OFF when solar mode ON. But make it a user option in case it's needed.
 
+42. ~~**Multi-page purlin PDF**~~ → RESOLVED: Page 1 = plan view (all purlin lines on rafters with facing arrows), Page 2 = cut list table (piece lengths, quantities, groups), Page 3+ = individual purlin group details (profile, splice, P1/P2 positions). Confirmed.
+43. ~~**Purlin data → BOM sync**~~ → RESOLVED: Yes — save structured JSON alongside PDF when user saves purlin shop drawing. BOM pulls exact piece counts from this data, preventing disagreement between drawing and BOM.
+44. ~~**Solar panel BOM**~~ → RESOLVED: Panels appear on BOM as informational line (qty, dims, model) but are customer-supplied — not in material cost. Mounting hardware IS in cost. TC estimator adds $45/panel install charge (default, overridable).
+
 ### Still Open
-42. **Multi-page purlin PDF content**: When the interactive purlin builder produces a multi-page PDF for a building, what pages should it contain? My thinking: Page 1 = plan view (purlin layout on rafters), Page 2 = cut list with piece lengths and quantities, Page 3+ = individual purlin group details (profile, splice detail, facing). Is there anything else?
-43. **Purlin layout data → BOM sync**: When the user saves the purlin PDF from the interactive builder, should the piece-break data (piece lengths, quantities) also get saved as structured JSON alongside the PDF? That way the BOM can pull exact piece counts rather than recalculating.
-44. **Solar panel BOM line items**: Should solar panels themselves appear on the BOM (quantity, dimensions), or just the mounting hardware (bolt stacks)? Panels are usually customer-supplied, right?
+45. **Purlin interactive builder — auto-populate from BOM**: When the user opens the purlin layout builder for a building that already has BOM data, should ALL inputs auto-populate from the BOM/SA estimator (building dims, purlin type, spacing, rafter positions)? Or just some?
+46. **Girt interactive builder**: Girts use the same material and piece-break logic as purlins. Should girts get their own interactive builder page, or be a tab/section within the purlin layout builder?
+47. **Purlin weight per foot**: For the BOM weight calculations, what's the lbs/ft for the standard 12" purlin from the 20.125" 12GA G90 coil?
 
 ---
 

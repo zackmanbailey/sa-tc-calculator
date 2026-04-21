@@ -153,11 +153,18 @@ Purlin groups for this example (C-purlin, 18' max bay):
 ### 6.7 Solar Slope
 - Default 5° (user-configurable).
 
-### 6.8 Solar Hardware
-- Add 4 bolt stacks per panel to the BOM.
+### 6.8 Solar Hardware and BOM
+- Add 4 bolt stacks per panel to the BOM (mounting hardware).
 - Total bolt stacks = 4 × total_panels.
+- Solar panels themselves appear on the BOM as an informational line item (quantity, dimensions, model) but are typically customer-supplied — not included in material cost.
+- Mounting hardware (bolts, washers, star washers, lock washers, nuts) IS included in material cost.
 
-### 6.9 Solar + Decking
+### 6.9 Solar Panel Installation Pricing (TC Estimator)
+- TC estimator adds a line item for solar panel installation: **$45 per panel** (default, user-overridable).
+- Total install charge = $45 × total_panels.
+- This covers labor for mounting panels to purlins — the panels themselves are customer-purchased separately.
+
+### 6.10 Solar + Decking
 - Solar buildings almost NEVER use roof decking (metal panels) in addition to solar panels.
 - However, this should be a user option — some edge cases may require decking under the solar array.
 - Default: decking OFF when solar mode is ON.
