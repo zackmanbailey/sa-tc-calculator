@@ -8075,6 +8075,25 @@ def _load_buildings_list(job_code):
                         "include_rafter_rebar": b.get("include_rafter_rebar", False),
                         "rebar_col_size": b.get("rebar_col_size", "auto"),
                         "column_mode": b.get("column_mode") or geom.get("column_mode", "auto"),
+                        # Rafter/purlin drawing fields from BOM geometry
+                        "purlin_type": geom.get("purlin_type") or inp.get("purlin_type", "Z"),
+                        "angled_purlins": geom.get("angled_purlins") or inp.get("angled_purlins", False),
+                        "purlin_angle_deg": geom.get("purlin_angle_deg") or inp.get("purlin_angle_deg", 0),
+                        "roofing_overhang_ft": geom.get("roofing_overhang_ft") or inp.get("roofing_overhang_ft", 0.0),
+                        "n_purlin_lines": geom.get("n_purlin_lines", 0),
+                        "split_pos_ft": geom.get("split_pos_ft", 0.0),
+                        # Column drawing fields from BOM geometry
+                        "above_grade_ft": geom.get("above_grade_ft") or inp.get("above_grade_ft", 0.0),
+                        "cut_allowance_in": geom.get("cut_allowance_in") or inp.get("cut_allowance_in", 6.0),
+                        "col_ht_ft": geom.get("col_ht_ft", 0.0),
+                        "reinforced": b.get("reinforced", True),
+                        "rebar_beam_size": b.get("rebar_beam_size", "auto"),
+                        # Column positioning (from input buildings)
+                        "column_spacing_ft": inp.get("column_spacing_ft") or inp.get("column_spacing", 25.0),
+                        "column_count_manual": inp.get("column_count_manual", 1),
+                        "column_positions_manual": inp.get("column_positions_manual", ""),
+                        "include_back_wall": b.get("include_back_wall") or inp.get("include_back_wall", False),
+                        "front_col_position_ft": inp.get("front_col_position_ft", 0.0),
                     })
                 return result
         except Exception:
@@ -8117,6 +8136,39 @@ def _enrich_config_for_building(job_code, config, building_id):
     enriched["embedment_ft"] = target["embedment_ft"]
     enriched["footing_depth_ft"] = target.get("footing_depth_ft", 10.0)
     enriched["building_name"] = target.get("building_name", building_id)
+    # Column drawing: above-grade and cut allowance
+    if target.get("above_grade_ft"):
+        enriched["above_grade_ft"] = target["above_grade_ft"]
+    if target.get("cut_allowance_in"):
+        enriched["cut_allowance_in"] = target["cut_allowance_in"]
+    if target.get("col_ht_ft"):
+        enriched["col_ht_ft"] = target["col_ht_ft"]
+    enriched["reinforced"] = target.get("reinforced", True)
+    # Rafter drawing: purlin type, angled purlins, column positioning
+    if target.get("purlin_type"):
+        enriched["purlin_type"] = target["purlin_type"]
+    enriched["angled_purlins"] = target.get("angled_purlins", False)
+    if target.get("purlin_angle_deg"):
+        enriched["purlin_angle_deg"] = target["purlin_angle_deg"]
+    enriched["column_mode"] = target.get("column_mode", "auto")
+    if target.get("column_spacing_ft"):
+        enriched["column_spacing_ft"] = target["column_spacing_ft"]
+    if target.get("column_count_manual"):
+        enriched["column_count_manual"] = target["column_count_manual"]
+    if target.get("column_positions_manual"):
+        enriched["column_positions_manual"] = target["column_positions_manual"]
+    enriched["include_back_wall"] = target.get("include_back_wall", False)
+    enriched["back_wall"] = target.get("include_back_wall", False)
+    if target.get("front_col_position_ft"):
+        enriched["front_col_position_ft"] = target["front_col_position_ft"]
+    if target.get("split_pos_ft"):
+        enriched["split_pos_ft"] = target["split_pos_ft"]
+    # Purlin drawing: purlin lines, roofing overhang
+    if target.get("n_purlin_lines"):
+        enriched["n_purlin_lines"] = target["n_purlin_lines"]
+    if target.get("roofing_overhang_ft"):
+        enriched["roofing_overhang_ft"] = target["roofing_overhang_ft"]
+    enriched["rebar_beam_size"] = target.get("rebar_beam_size", "auto")
     # Override any stale rafter-derived values so building-specific data always wins
     enriched["_rafter_width_ft"] = target["width_ft"]
     enriched["_rafter_clear_height_ft"] = target["clear_height_ft"]
