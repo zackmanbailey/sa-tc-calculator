@@ -8205,6 +8205,28 @@ def _enrich_config_for_building(job_code, config, building_id):
     if target.get("roofing_overhang_ft"):
         enriched["roofing_overhang_ft"] = target["roofing_overhang_ft"]
     enriched["rebar_beam_size"] = target.get("rebar_beam_size", "auto")
+    # Purlin detail fields
+    if target.get("max_purlin_length_ft"):
+        enriched["max_purlin_length_ft"] = target["max_purlin_length_ft"]
+    if target.get("z_extension_ft"):
+        enriched["z_extension_ft"] = target["z_extension_ft"]
+    if target.get("z_eave_overhang_in"):
+        enriched["z_eave_overhang_in"] = target["z_eave_overhang_in"]
+    if target.get("purlin_cost_per_ft_z"):
+        enriched["purlin_cost_per_ft_z"] = target["purlin_cost_per_ft_z"]
+    if target.get("purlin_cost_per_ft_c"):
+        enriched["purlin_cost_per_ft_c"] = target["purlin_cost_per_ft_c"]
+    # Solar fields
+    enriched["is_solar"] = target.get("solar_mode", False)
+    if target.get("solar_mode"):
+        for sf in ("solar_orientation", "solar_panel_width_mm", "solar_panel_length_mm",
+                    "solar_mount_hole_edge_mm", "solar_mount_hole_inset_mm",
+                    "solar_panels_across", "solar_panels_along",
+                    "solar_gap_width_in", "solar_gap_length_in",
+                    "solar_edge_clearance_in", "solar_dim_mode",
+                    "solar_slope_deg", "solar_install_per_panel"):
+            if target.get(sf) is not None:
+                enriched[sf] = target[sf]
     # Override any stale rafter-derived values so building-specific data always wins
     enriched["_rafter_width_ft"] = target["width_ft"]
     enriched["_rafter_clear_height_ft"] = target["clear_height_ft"]

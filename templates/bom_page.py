@@ -303,6 +303,37 @@ table.bom-tbl tr:hover td { background: rgba(200,154,46,0.03); }
             html += '</tbody></table></div>';
         });
 
+        // Solar comparison section (if 4-way compare was run)
+        const geo = bldg.geometry || {};
+        if (geo.solar_comparison && geo.solar_comparison.results) {
+            const comp = geo.solar_comparison;
+            const best = geo.solar_best_option || '';
+            html += '<div class="bom-table-wrap">';
+            html += '<div class="bom-cat-header" style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);color:#92400E">';
+            html += '☀️ Solar Layout Comparison <span class="count">(4-way cost analysis)</span></div>';
+            html += '<table class="bom-tbl"><thead><tr>';
+            html += '<th>Configuration</th><th class="text-right">Purlin Lines</th>';
+            html += '<th class="text-right">Spacing (ft)</th><th class="text-right">Total LF</th>';
+            if (CAN_SEE_COSTS) html += '<th class="text-right">Est. Cost</th>';
+            html += '<th>Status</th></tr></thead><tbody>';
+            comp.results.forEach(r => {
+                const isBest = r.label === best;
+                const style = isBest ? ' style="background:#ECFDF5;font-weight:600"' : '';
+                html += '<tr' + style + '>';
+                html += '<td>' + escHtml(r.label) + '</td>';
+                html += '<td class="text-right">' + (r.layout ? r.layout.n_purlin_lines : '-') + '</td>';
+                html += '<td class="text-right">' + (r.layout ? r.layout.purlin_spacing_ft.toFixed(3) : '-') + '</td>';
+                html += '<td class="text-right">' + fmtN(Math.round(r.purlin_total_lf)) + ' LF</td>';
+                if (CAN_SEE_COSTS) {
+                    const costPerFt = r.purlin_type === 'z' ? 2.50 : 2.75;
+                    html += '<td class="text-right">' + fmt$(r.purlin_total_lf * costPerFt) + '</td>';
+                }
+                html += '<td>' + (isBest ? '<span style="color:#059669;font-weight:700">✓ BEST</span>' : '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+
         panel.innerHTML = html;
         panelsEl.appendChild(panel);
 

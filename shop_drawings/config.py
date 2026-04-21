@@ -807,8 +807,30 @@ class ShopDrawingConfig:
     roofing_split_at_center: bool = True
     roofing_overlap_in: float = 3.0
 
-    # Solar toggle (future)
+    # Solar config
     is_solar: bool = False
+    solar_orientation: str = "landscape"
+    solar_panel_width_mm: float = 992.0
+    solar_panel_length_mm: float = 2108.0
+    solar_mount_hole_edge_mm: float = 20.0
+    solar_mount_hole_inset_mm: float = 250.0
+    solar_panels_across: int = 5
+    solar_panels_along: int = 20
+    solar_gap_width_in: float = 0.25
+    solar_gap_length_in: float = 0.25
+    solar_edge_clearance_in: float = 4.0
+    solar_dim_mode: str = "panel_count"
+    solar_slope_deg: float = 5.0
+    solar_install_per_panel: float = 45.0
+
+    # Purlin detail config
+    max_purlin_length_ft: float = 45.0
+    z_extension_ft: float = 6.0
+    z_eave_overhang_in: float = 3.5
+    purlin_cost_per_ft_z: float = 2.50
+    purlin_cost_per_ft_c: float = 2.75
+    angled_purlins: bool = False
+    purlin_angle_deg: float = 90.0
 
     # Explicit field type maps — hardcoded to avoid any Python version issues
     # with dataclass type introspection
@@ -822,12 +844,18 @@ class ShopDrawingConfig:
         'purlin_splice_location_ft', 'purlin_splice_piece_length_in',
         'purlin_end_extension_in', 'wall_girt_spacing_ft',
         'wall_panel_ground_clearance_in', 'roofing_overlap_in',
+        'solar_panel_width_mm', 'solar_panel_length_mm',
+        'solar_mount_hole_edge_mm', 'solar_mount_hole_inset_mm',
+        'solar_gap_width_in', 'solar_gap_length_in',
+        'solar_edge_clearance_in', 'solar_slope_deg', 'solar_install_per_panel',
+        'max_purlin_length_ft', 'z_extension_ft', 'z_eave_overhang_in',
+        'purlin_cost_per_ft_z', 'purlin_cost_per_ft_c', 'purlin_angle_deg',
     }
-    _INT_FIELDS = {'n_frames', 'col_connection_bolts'}
+    _INT_FIELDS = {'n_frames', 'col_connection_bolts', 'solar_panels_across', 'solar_panels_along'}
     _BOOL_FIELDS = {
         'col_reinforced', 'raft_reinforced', 'raft_show_purlin_facing',
         'has_back_wall', 'has_side_walls', 'wall_girt_endcaps',
-        'roofing_split_at_center', 'is_solar',
+        'roofing_split_at_center', 'is_solar', 'angled_purlins',
     }
     _LIST_FLOAT_FIELDS = {'bay_sizes'}
 
