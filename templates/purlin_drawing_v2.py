@@ -43,6 +43,8 @@ var SOLAR_SPEC = {
 // ── State ──
 var activeGroupIdx = 0;
 var solarEnabled = false;
+var angledPurlins = false;
+var purlinAngleDeg = 90;  // 90 = perpendicular to rafter (standard)
 
 // ── Get purlin groups from config ──
 function getGroups() {
@@ -62,6 +64,15 @@ function getGroups() {
 
 // ── Apply server config to controls ──
 function applyComponentConfig(cfg) {
+  // Angled purlin settings from server config
+  if (cfg.angled_purlins) {
+    angledPurlins = true;
+    var btn = document.getElementById('btnAngled');
+    if (btn) { btn.classList.add('active'); btn.textContent = 'Angled: ON'; }
+  }
+  if (cfg.purlin_angle_deg) {
+    purlinAngleDeg = cfg.purlin_angle_deg;
+  }
   // Build tab bar from purlin groups
   buildGroupTabs();
 }
@@ -106,14 +117,49 @@ function getParams() {
   var mark = g.mark || ('Z' + depth + '-' + gauge.replace('GA',''));
   var groupType = g.type || 'standard';
 
+  // Angled purlin adjustment: actual cut length = span / cos(angle from perpendicular)
+  // purlinAngleDeg is angle from the drive aisle. 90 = perpendicular (standard).
+  // Deviation from perpendicular = 90 - purlinAngleDeg
+  var angleFromPerp = angledPurlins ? (90 - purlinAngleDeg) : 0;
+  var cosAngle = Math.cos(angleFromPerp * Math.PI / 180);
+  var angledCutLen = angledPurlins ? (cutLen / cosAngle) : cutLen;
+  var angledWtPiece = lbsLft * (angledCutLen / 12);
+
+  // End plate type: P6 for angled, P2 for standard
+  var endPlateType = angledPurlins ? 'P6' : 'P2';
+  var endPlateSize = angledPurlins ? '9"x15"' : '9"x24"';
+
+  // Splice data from server (calc_purlin_groups)
+  var needsSplice = g.needs_splice || false;
+  var splicePositionFt = g.splice_position_ft || 0;
+  var spliceOverlapIn = g.splice_overlap_in || 6;
+  var spliceTekScrews = g.splice_tek_screws || 8;
+
+  // Facing direction: right (first/eave-right), left (last/eave-left), alternating (middle)
+  var facing = g.facing || 'alternating';
+  var isFirst = g.is_first || false;
+  var isLast = g.is_last || false;
+
   return {
     depth: depth, gauge: gauge, thick: thick, spanFt: spanFt, spanIn: spanIn,
     spacingFt: spacingFt, spacingIn: spacingIn, qty: qty,
     spec: { topFlange: g.topFlange || spec.topFlange, botFlange: g.botFlange || spec.botFlange,
             lip: g.lip || spec.lip, coilWidth: g.coilWidth || spec.coilWidth },
-    lbsLft: lbsLft, cutLen: cutLen, wtPiece: wtPiece, mark: mark,
+    lbsLft: lbsLft, cutLen: angledCutLen, wtPiece: angledWtPiece, mark: mark,
     groupType: groupType, material: 'G90', coating: 'G90',
-    solar: solarEnabled
+    solar: solarEnabled,
+    angled: angledPurlins,
+    angleDeg: purlinAngleDeg,
+    angleFromPerp: angleFromPerp,
+    endPlateType: endPlateType,
+    endPlateSize: endPlateSize,
+    needsSplice: needsSplice,
+    splicePositionFt: splicePositionFt,
+    spliceOverlapIn: spliceOverlapIn,
+    spliceTekScrews: spliceTekScrews,
+    facing: facing,
+    isFirst: isFirst,
+    isLast: isLast
   };
 }
 
@@ -244,7 +290,8 @@ function draw() {
   // ================================================================
   // ZONE 2: ELEVATION VIEW — RIGHT SIDE (x=420..1060, y=30..280)
   // ================================================================
-  svg.appendChild($t(730, 22, 'ELEVATION VIEW', 'ttl'));
+  var evTitle = p.angled ? 'ELEVATION VIEW (' + p.angleDeg + '\u00B0 FROM AISLE)' : 'ELEVATION VIEW';
+  svg.appendChild($t(730, 22, evTitle, 'ttl'));
 
   var evL = 440, evR = 1040;
   var evY = 65;
@@ -273,26 +320,157 @@ function draw() {
   var flangeW = sp.topFlange * scaleFactor;
   if (flangeW < 6) flangeW = 6;
   var purG = $g('hover-part', 'purlin');
-  purG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
-  // Top flange hint
-  purG.appendChild($r(pL - flangeW + 2, evY - 2, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-  // Bottom flange hint
-  purG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-  // Centerline
-  purG.appendChild($l((pL + pR)/2, evY - 15, (pL + pR)/2, evY + purlinH + 15, 'center'));
+
+  if (p.angled && p.angleFromPerp > 0) {
+    // Draw angled purlin: rotate the purlin rectangle around its center
+    var purlinCX = (pL + pR) / 2;
+    var purlinCY = evY + purlinH / 2;
+    var rotG = $e('g', {transform: 'rotate(' + (-p.angleFromPerp) + ' ' + purlinCX + ' ' + purlinCY + ')'});
+    rotG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
+    // Top flange hint
+    rotG.appendChild($r(pL - flangeW + 2, evY - 2, flangeW + (pR - pL) * 0.02, 2, 'cee'));
+    // Bottom flange hint
+    rotG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 2, 'cee'));
+    // Centerline
+    rotG.appendChild($l(purlinCX, evY - 15, purlinCX, evY + purlinH + 15, 'center'));
+    purG.appendChild(rotG);
+
+    // Angle indicator arc: show deviation from perpendicular
+    var arcR = 30;
+    var arcCX = pL + 15;
+    var arcCY = evY + purlinH / 2;
+    // Reference line (perpendicular = horizontal)
+    purG.appendChild($l(arcCX, arcCY, arcCX + arcR + 10, arcCY, 'center'));
+    // Arc from 0 to -angleFromPerp
+    var startAngleRad = 0;
+    var endAngleRad = -p.angleFromPerp * Math.PI / 180;
+    var arcX1 = arcCX + arcR * Math.cos(startAngleRad);
+    var arcY1 = arcCY + arcR * Math.sin(startAngleRad);
+    var arcX2 = arcCX + arcR * Math.cos(endAngleRad);
+    var arcY2 = arcCY + arcR * Math.sin(endAngleRad);
+    var largeArc = (Math.abs(p.angleFromPerp) > 180) ? 1 : 0;
+    var sweep = (p.angleFromPerp > 0) ? 0 : 1;
+    var arcPath = 'M' + arcX1 + ' ' + arcY1 + ' A' + arcR + ' ' + arcR + ' 0 ' + largeArc + ' ' + sweep + ' ' + arcX2 + ' ' + arcY2;
+    var arcEl = $e('path', {d: arcPath, fill: 'none', stroke: '#E03131', 'stroke-width': '1.2'});
+    purG.appendChild(arcEl);
+    // Angle label
+    var labelAngle = -p.angleFromPerp / 2 * Math.PI / 180;
+    var labelX = arcCX + (arcR + 12) * Math.cos(labelAngle);
+    var labelY = arcCY + (arcR + 12) * Math.sin(labelAngle);
+    purG.appendChild($t(labelX, labelY, p.angleFromPerp + '\u00B0 from \u22A5', 'warn-text', 'middle'));
+  } else {
+    // Standard perpendicular purlin
+    purG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
+    // Top flange hint
+    purG.appendChild($r(pL - flangeW + 2, evY - 2, flangeW + (pR - pL) * 0.02, 2, 'cee'));
+    // Bottom flange hint
+    purG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 2, 'cee'));
+    // Centerline
+    purG.appendChild($l((pL + pR)/2, evY - 15, (pL + pR)/2, evY + purlinH + 15, 'center'));
+  }
   svg.appendChild(purG);
 
-  // P1 clips
-  var clipG = $g('hover-part', 'p1-clips');
-  var clipH = 10, clipW = 6;
-  clipG.appendChild($r(pL - 2, evY - 1, clipW, clipH, 'clip-fill'));
-  clipG.appendChild($c(pL + 2, evY + 3, 1.2, 'bolt'));
-  clipG.appendChild($c(pL + 2, evY + clipH - 3, 1.2, 'bolt'));
-  clipG.appendChild($r(pR - clipW + 2, evY - 1, clipW, clipH, 'clip-fill'));
-  clipG.appendChild($c(pR - 2, evY + 3, 1.2, 'bolt'));
-  clipG.appendChild($c(pR - 2, evY + clipH - 3, 1.2, 'bolt'));
-  svg.appendChild(clipG);
-  svg.appendChild($t(pL + 2, evY - 8, 'P1 CLIP (TYP)', 'noteb', 'middle'));
+  // End plates: P6 (angled) or P1 clips (standard)
+  if (p.angled) {
+    // P6 end plates at rafter connections
+    var plateG = $g('hover-part', 'p6-plates');
+    var plateW = 8, plateH = purlinH + 4;
+    // Left P6 plate
+    plateG.appendChild($e('rect', {
+      x: pL - 2, y: evY - 2, width: plateW, height: plateH,
+      fill: '#DD8833', 'fill-opacity': '0.4', stroke: '#DD8833', 'stroke-width': '1'
+    }));
+    // Right P6 plate
+    plateG.appendChild($e('rect', {
+      x: pR - plateW + 2, y: evY - 2, width: plateW, height: plateH,
+      fill: '#DD8833', 'fill-opacity': '0.4', stroke: '#DD8833', 'stroke-width': '1'
+    }));
+    svg.appendChild(plateG);
+    svg.appendChild($t(pL + 4, evY - 8, 'P6 PLATE (TYP)', 'noteb', 'middle'));
+    svg.appendChild($t(pL + 4, evY - 2, p.endPlateSize + ' 10GA', 'note', 'middle'));
+  } else {
+    // P1 clips (standard mode)
+    var clipG = $g('hover-part', 'p1-clips');
+    var clipH = 10, clipW = 6;
+    clipG.appendChild($r(pL - 2, evY - 1, clipW, clipH, 'clip-fill'));
+    clipG.appendChild($c(pL + 2, evY + 3, 1.2, 'bolt'));
+    clipG.appendChild($c(pL + 2, evY + clipH - 3, 1.2, 'bolt'));
+    clipG.appendChild($r(pR - clipW + 2, evY - 1, clipW, clipH, 'clip-fill'));
+    clipG.appendChild($c(pR - 2, evY + 3, 1.2, 'bolt'));
+    clipG.appendChild($c(pR - 2, evY + clipH - 3, 1.2, 'bolt'));
+    svg.appendChild(clipG);
+    svg.appendChild($t(pL + 2, evY - 8, 'P1 CLIP (TYP)', 'noteb', 'middle'));
+  }
+
+  // ── Splice zone callout (Z-purlins only) ──
+  if (p.needsSplice && p.splicePositionFt > 0) {
+    var splG = $g('hover-part', 'splice-zone');
+    var splPosIn = p.splicePositionFt * 12;
+    var splOverlapPx = p.spliceOverlapIn * sc;
+    var splX = pL + splPosIn * sc;
+
+    // Splice zone highlight band
+    splG.appendChild($e('rect', {
+      x: splX - splOverlapPx/2, y: evY - 4,
+      width: splOverlapPx, height: purlinH + 8,
+      fill: '#FF6B35', 'fill-opacity': '0.25',
+      stroke: '#FF6B35', 'stroke-width': '1.2',
+      'stroke-dasharray': '4,2'
+    }));
+
+    // Splice center line
+    splG.appendChild($l(splX, evY - 12, splX, evY + purlinH + 12, 'cut-line'));
+
+    // Tek screw holes at splice (4 on each side of web)
+    var screwSpacing = purlinH / 5;
+    for (var si = 1; si <= 4; si++) {
+      var sy = evY + si * screwSpacing;
+      splG.appendChild($c(splX - 2, sy, 1.2, 'bolt'));
+      splG.appendChild($c(splX + 2, sy, 1.2, 'bolt'));
+    }
+    svg.appendChild(splG);
+
+    // Splice dimension callout
+    dimH(svg, pL, splX, evY + purlinH + 30, 14,
+      fmtFtIn(splPosIn) + ' TO SPLICE');
+
+    // Splice label
+    svg.appendChild($t(splX, evY - 16,
+      'SPLICE: ' + p.spliceOverlapIn + '" OVERLAP, (' + p.spliceTekScrews + ') #10 TEK',
+      'warn-text', 'middle'));
+  }
+
+  // ── Facing direction indicators (Z-purlins) ──
+  if (!p.angled) {
+    var facG = $g('hover-part', 'facing');
+    var facY = evY + purlinH + 48;
+    var facMid = (pL + pR) / 2;
+
+    if (p.facing === 'right' || p.isFirst) {
+      // Top flange points RIGHT — arrow pointing right
+      var arrX = facMid - 30;
+      facG.appendChild($l(arrX, facY, arrX + 60, facY, 'obj'));
+      facG.appendChild($l(arrX + 50, facY - 4, arrX + 60, facY, 'obj'));
+      facG.appendChild($l(arrX + 50, facY + 4, arrX + 60, facY, 'obj'));
+      svg.appendChild($t(facMid, facY - 7, 'FACING: TOP FLANGE \u2192 (EAVE RIGHT)', 'note', 'middle'));
+    } else if (p.facing === 'left' || p.isLast) {
+      // Top flange points LEFT — arrow pointing left
+      var arrX2 = facMid + 30;
+      facG.appendChild($l(arrX2, facY, arrX2 - 60, facY, 'obj'));
+      facG.appendChild($l(arrX2 - 50, facY - 4, arrX2 - 60, facY, 'obj'));
+      facG.appendChild($l(arrX2 - 50, facY + 4, arrX2 - 60, facY, 'obj'));
+      svg.appendChild($t(facMid, facY - 7, 'FACING: TOP FLANGE \u2190 (EAVE LEFT)', 'note', 'middle'));
+    } else {
+      // Middle purlins: alternating (show double-headed arrow)
+      facG.appendChild($l(facMid - 30, facY, facMid + 30, facY, 'obj'));
+      facG.appendChild($l(facMid + 20, facY - 4, facMid + 30, facY, 'obj'));
+      facG.appendChild($l(facMid + 20, facY + 4, facMid + 30, facY, 'obj'));
+      facG.appendChild($l(facMid - 20, facY - 4, facMid - 30, facY, 'obj'));
+      facG.appendChild($l(facMid - 20, facY + 4, facMid - 30, facY, 'obj'));
+      svg.appendChild($t(facMid, facY - 7, 'FACING: ALTERNATING (INTERIOR)', 'note', 'middle'));
+    }
+    svg.appendChild(facG);
+  }
 
   // Solar holes on elevation view
   if (p.solar) {
@@ -402,6 +580,20 @@ function draw() {
     ['WT/PIECE:', fmtDec(p.wtPiece) + ' lbs'],
     ['QTY:', p.qty]
   ];
+  if (p.angled) {
+    infoLines.push(['ANGLE:', p.angleDeg + '\u00B0 from aisle']);
+    infoLines.push(['CUT LEN:', fmtFtIn(p.cutLen)]);
+    infoLines.push(['END PLATE:', p.endPlateType + ' (' + p.endPlateSize + ')']);
+  }
+  if (p.needsSplice) {
+    infoLines.push(['SPLICE:', 'YES @ ' + fmtFtIn(p.splicePositionFt * 12)]);
+    infoLines.push(['OVERLAP:', p.spliceOverlapIn + '" w/ (' + p.spliceTekScrews + ') TEK']);
+  }
+  if (p.facing && !p.angled) {
+    var facLabel = p.facing === 'right' ? 'Top flange RIGHT (eave)' :
+                   p.facing === 'left' ? 'Top flange LEFT (eave)' : 'Alternating (interior)';
+    infoLines.push(['FACING:', facLabel]);
+  }
   infoLines.forEach(function(pair, i) {
     var iy = 325 + i * 13;
     svg.appendChild($t(infoX + 12, iy, pair[0], 'note'));
@@ -460,8 +652,8 @@ function draw() {
       '4. P1 CLIPS SHOP-WELDED TO RAFTER (1/8" FILLET)',
       '5. FIELD-ATTACHED WITH (2) #10 TEK SCREWS PER CLIP',
       '6. SAG RODS AT MID-SPAN FOR LATERAL BRACING',
-      '7. LAP SPLICE 24" MIN AT INTERIOR RAFTERS',
-      '8. SPLICE FASTENED WITH (8) #10 TEK SCREWS',
+      '7. Z-PURLIN SPLICE: 6" OVERLAP, BOXED BEAM',
+      '8. SPLICE FASTENED WITH (8) #10 TEK SCREWS PER SIDE',
       '9. SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
       '10. DO NOT SCALE DRAWING',
       '11. TOL: LENGTH +/-1/16"',
@@ -496,9 +688,12 @@ function draw() {
       'FASTENERS: #10 TEK SCREWS (FIELD)',
       'P1 CLIPS: SHOP WELD 1/8" FILLET (WPS-C)',
       'SAG RODS: CONTINUOUS, ANGLE-BRACKET ATTACH',
-      'LAP SPLICE: 24" MIN, (8) TEK SCREWS',
+      'Z-SPLICE: 6" OVERLAP, BOXED BEAM, (8) TEK/SIDE',
+      p.needsSplice ? 'SPLICE AT ' + fmtFtIn(p.splicePositionFt * 12) + ' FROM END' : '',
       'SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
       p.solar ? 'SOLAR: HOLES PER SPEC (7/16" DIA)' : '',
+      p.angled ? 'ANGLED PURLINS: ' + p.angleDeg + '\u00B0 FROM AISLE' : '',
+      p.angled ? 'END PLATES: ' + p.endPlateType + ' (' + p.endPlateSize + ' 10GA)' : '',
       'FAB: AISC 360-22 / AWS D1.1',
       'DO NOT SCALE DRAWING',
       'TOL: LENGTH +/-1/16" / HOLES +/-1/32"'
@@ -522,14 +717,30 @@ function draw() {
   // ── Update BOM side panel ──
   var bomRows = [];
   groups.forEach(function(g) {
-    var wtPc = g.lbs_per_ft * (g.span_ft || 25);
+    var spanIn = (g.span_ft || 25) * 12;
+    var cutLenIn = spanIn;
+    if (p.angled && p.angleFromPerp > 0) {
+      cutLenIn = spanIn / Math.cos(p.angleFromPerp * Math.PI / 180);
+    }
+    var wtPc = g.lbs_per_ft * (cutLenIn / 12);
     bomRows.push({
       mk: g.mark, qty: g.qty,
-      desc: 'Z-Purlin ' + g.depth + '"',
-      size: fmtFtIn((g.span_ft || 25) * 12) + ' x ' + (g.gauge || '12GA'),
+      desc: 'Z-Purlin ' + g.depth + '"' + (p.angled ? ' (ANGLED)' : ''),
+      size: fmtFtIn(cutLenIn) + ' x ' + (g.gauge || '12GA'),
       mat: 'G90', wt: Math.round(wtPc * g.qty)
     });
   });
+  // Add P6 end plates to BOM when angled
+  if (p.angled) {
+    var p6Qty = p.qty * 2;  // 2 per purlin line (one each end)
+    var p6Wt = 9 * 15 * 0.135 * 0.2836;  // 10GA steel
+    bomRows.push({
+      mk: 'P6', qty: p6Qty,
+      desc: 'End Plate (Angled)',
+      size: p.endPlateSize + ' x 10GA',
+      mat: 'G90', wt: Math.round(p6Wt * p6Qty)
+    });
+  }
   updateBOM(bomRows);
 }
 
@@ -543,6 +754,25 @@ function toggleSolar() {
   }
   draw();
 }
+
+// ── Angled purlin toggle handler ──
+function toggleAngled() {
+  angledPurlins = !angledPurlins;
+  var btn = document.getElementById('btnAngled');
+  if (btn) {
+    btn.classList.toggle('active', angledPurlins);
+    btn.textContent = angledPurlins ? 'Angled: ON' : 'Angled: OFF';
+  }
+  var angleInput = document.getElementById('angledAngleInput');
+  if (angleInput) angleInput.style.display = angledPurlins ? 'inline-flex' : 'none';
+  draw();
+}
+
+function onAngleChange() {
+  var el = document.getElementById('inpPurlinAngle');
+  if (el) purlinAngleDeg = parseFloat(el.value) || 15;
+  draw();
+}
 """
 
 # ===================================================================
@@ -552,6 +782,12 @@ function toggleSolar() {
 PURLIN_V2_CONTROLS = """
     <div id="groupTabBar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
     <button class="toggle-btn" id="btnSolar" onclick="toggleSolar()">Solar: OFF</button>
+    <button class="toggle-btn" id="btnAngled" onclick="toggleAngled()">Angled: OFF</button>
+    <span id="angledAngleInput" style="display:none;align-items:center;gap:4px;">
+      <label style="font-size:11px;">Angle(&deg;):</label>
+      <input type="number" id="inpPurlinAngle" value="15" min="5" max="45" step="0.5"
+        style="width:55px;" onchange="onAngleChange()">
+    </span>
     <button class="toggle-btn" onclick="window.print()">Print</button>
 """
 

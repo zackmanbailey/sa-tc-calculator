@@ -439,13 +439,34 @@ def _draw_purlin_length_view(c, group: Dict, ox: float, oy: float,
     c.setLineWidth(THICK)
     c.rect(bar_x, bar_y - bar_h / 2, bar_w, bar_h)
 
-    # ── Splice location ──
+    # ── Splice location with hole callouts ──
     if group["needs_splice"] and group["splice"]:
         sp = group["splice"]
         sp_x = bar_x + sp["position_in"] * scale
+        overlap_px = sp["overlap_in"] * scale
+
+        # Splice overlap zone highlight
+        c.setStrokeColor(CLR_SECTION_CUT)
+        c.setLineWidth(THIN)
+        c.setFillColor(HexColor("#FF6B3520"))
+        c.rect(sp_x - overlap_px / 2, bar_y - bar_h / 2 - 1,
+               overlap_px, bar_h + 2, fill=1)
+
+        # Center splice line
         c.setStrokeColor(CLR_SECTION_CUT)
         c.setLineWidth(MEDIUM)
         c.line(sp_x, bar_y - bar_h - 20, sp_x, bar_y + bar_h + 5)
+
+        # Splice hole circles (8 tek screws: 4 per side of web)
+        hole_r = max(1.0, 1.5 * scale)
+        screw_spacing = bar_h / 5
+        for si in range(1, 5):
+            sy = bar_y - bar_h / 2 + si * screw_spacing
+            c.setStrokeColor(CLR_SECTION_CUT)
+            c.setFillColor(white)
+            c.circle(sp_x - 2, sy, hole_r, fill=1)
+            c.circle(sp_x + 2, sy, hole_r, fill=1)
+
         c.setFont("Helvetica-Bold", 5)
         c.setFillColor(CLR_SECTION_CUT)
         c.drawCentredString(sp_x, bar_y - bar_h - 23,
@@ -453,6 +474,34 @@ def _draw_purlin_length_view(c, group: Dict, ox: float, oy: float,
         c.setFont("Helvetica", 4)
         c.drawCentredString(sp_x, bar_y + bar_h + 18,
                             f'{sp["tek_screws"]}x #10 TEK + {sp["overlap_in"]}" OVERLAP')
+
+    # ── Facing direction indicator ──
+    if group["purlin_type"] == "z":
+        facing_y = bar_y + bar_h + 30
+        c.setStrokeColor(CLR_DIM)
+        c.setLineWidth(THIN)
+        c.setFont("Helvetica", 4)
+        c.setFillColor(CLR_DIM)
+        if group["is_first"]:
+            # First purlin: top flange RIGHT
+            arrow_x = bar_x + bar_w * 0.5
+            c.line(arrow_x - 15, facing_y, arrow_x + 15, facing_y)
+            c.line(arrow_x + 10, facing_y - 2, arrow_x + 15, facing_y)
+            c.line(arrow_x + 10, facing_y + 2, arrow_x + 15, facing_y)
+            c.drawCentredString(arrow_x, facing_y - 5,
+                                'FACING: TOP FLANGE →')
+        elif group["is_last"]:
+            # Last purlin: top flange LEFT (mirror)
+            arrow_x = bar_x + bar_w * 0.5
+            c.line(arrow_x + 15, facing_y, arrow_x - 15, facing_y)
+            c.line(arrow_x - 10, facing_y - 2, arrow_x - 15, facing_y)
+            c.line(arrow_x - 10, facing_y + 2, arrow_x - 15, facing_y)
+            c.drawCentredString(arrow_x, facing_y - 5,
+                                'FACING: TOP FLANGE ← (MIRROR)')
+        else:
+            # Middle: alternating
+            c.drawCentredString(bar_x + bar_w * 0.5, facing_y - 5,
+                                'FACING: ALTERNATING (INTERIOR)')
 
     # ── Total length dimension ──
     draw_dimension_h(c, bar_x, bar_x + bar_w,

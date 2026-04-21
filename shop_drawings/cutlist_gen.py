@@ -553,6 +553,101 @@ def _calc_splice_items(cfg: ShopDrawingConfig) -> List[Dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PURLIN PIECE-BREAK CUT LIST
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _calc_purlin_cutlist_items(cfg: ShopDrawingConfig) -> List[Dict]:
+    """
+    Calculate purlin cut list items using the piece-break engine.
+    Returns cut list rows with piece group label, qty, length, splice info.
+    """
+    cfg.ensure_numeric()
+
+    try:
+        from calc.purlin_layout import calc_purlin_pieces, _fmt_ft_in as fmt
+    except ImportError:
+        return []
+
+    # Gather parameters from config
+    n_frames = int(cfg.n_frames) if hasattr(cfg, 'n_frames') else 5
+    bay_sizes = cfg.bay_sizes if hasattr(cfg, 'bay_sizes') and cfg.bay_sizes else []
+    if not bay_sizes and n_frames > 1:
+        building_len = float(cfg.building_length_ft)
+        bay_size = building_len / (n_frames - 1)
+        bay_sizes = [bay_size] * (n_frames - 1)
+
+    width_ft = float(cfg.building_width_ft)
+    spacing_ft = float(getattr(cfg, 'purlin_spacing_ft', 5.0))
+    n_purlin_lines = max(1, int(width_ft * 12 / (spacing_ft * 12)) + 1)
+    purlin_type = getattr(cfg, 'purlin_type', 'Z').upper()
+
+    angled = getattr(cfg, 'angled_purlins', False)
+    angle_deg = float(getattr(cfg, 'purlin_angle_deg', 90.0))
+
+    result = calc_purlin_pieces(
+        bay_sizes_ft=bay_sizes,
+        n_purlin_lines=n_purlin_lines,
+        purlin_type=purlin_type,
+        angled_purlins=angled,
+        purlin_angle_deg=angle_deg,
+        n_rafters=n_frames,
+    )
+
+    items = []
+    gauge = getattr(cfg, 'purlin_gauge', '12GA')
+
+    for i, piece in enumerate(result.pieces):
+        mark = f"PUR-{chr(65 + i)}"
+        splice_note = "SPLICE HOLES" if piece.has_splice_holes else ""
+        end_note = "END PIECE" if piece.is_end_piece else ""
+        notes_parts = [n for n in [end_note, splice_note] if n]
+
+        items.append({
+            "mark": mark,
+            "qty": str(piece.total_qty),
+            "description": f"{purlin_type}-Purlin {piece.label}",
+            "length": piece.length_ft_in if hasattr(piece, 'length_ft_in') else fmt(piece.length_in),
+            "material": f"{gauge} G90 Galv",
+            "notes": " | ".join(notes_parts) if notes_parts else
+                     f"{piece.qty_per_line}/line × {piece.n_lines} lines",
+        })
+
+    # Summary row
+    if result.pieces:
+        items.append({
+            "mark": "TOTAL",
+            "qty": str(result.total_pieces),
+            "description": f"TOTAL PURLIN LF: {result.total_lf:.1f}'",
+            "length": "",
+            "material": "",
+            "notes": f"P1: {result.p1_total} | P2: {result.p2_total}"
+                     + (f" | Endcap: {result.endcap_plates_total}" if result.endcap_plates_total else ""),
+        })
+
+    # Add warnings/errors
+    for w in result.warnings:
+        items.append({
+            "mark": "⚠",
+            "qty": "",
+            "description": w,
+            "length": "",
+            "material": "",
+            "notes": "WARNING",
+        })
+    for e in result.errors:
+        items.append({
+            "mark": "⛔",
+            "qty": "",
+            "description": e,
+            "length": "",
+            "material": "",
+            "notes": "ERROR",
+        })
+
+    return items
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMBINED CUT-LIST PAGE GENERATOR
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -693,8 +788,76 @@ def generate_cutlist_drawing(
     # Bottom bar
     notes_w = draw_area_w * 0.55
     _draw_standard_notes(c, MARGIN, MARGIN, notes_w, bar_h)
+
+    # ── Check if we have purlin piece-break data for Page 3 ──
+    purlin_items = _calc_purlin_cutlist_items(cfg)
+    total_sheets = 3 if purlin_items else 2
+
     _draw_cutlist_title_block(c, cfg, "COMPONENTS & HARDWARE",
-                              sheet_num=2, total_sheets=2, revision=revision)
+                              sheet_num=2, total_sheets=total_sheets, revision=revision)
+
+    # Update Page 1 title block sheet count retroactively is not possible,
+    # but the count is correct for pages 2+3
+
+    # ── PAGE 3: Purlin Piece-Break Cut List (if data available) ──
+    if purlin_items:
+        c.showPage()
+        _draw_border(c)
+
+        views_h = draw_area_h - bar_h
+
+        # Purlin cut list table — full width
+        _draw_cutlist_table(c, purlin_items, MARGIN,
+                            MARGIN + bar_h, draw_area_w * 0.70, views_h,
+                            "PURLIN PIECE-BREAK CUT LIST")
+
+        # Right side: Z-purlin profile sketch and notes
+        right_ox = MARGIN + draw_area_w * 0.70
+        right_w = draw_area_w * 0.30
+        right_cy = MARGIN + bar_h + views_h * 0.65
+
+        # Import and draw Z-profile if available
+        try:
+            from shop_drawings.purlin_gen import _draw_z_profile, _draw_c_profile
+            purlin_type = getattr(cfg, 'purlin_type', 'z')
+            if purlin_type == 'z':
+                _draw_z_profile(c, right_ox + right_w / 2, right_cy, scale=2.0)
+                c.setFont("Helvetica-Bold", 5.5)
+                c.setFillColor(black)
+                c.drawCentredString(right_ox + right_w / 2, right_cy - 25,
+                                    "Z-PURLIN PROFILE")
+            else:
+                _draw_c_profile(c, right_ox + right_w / 2, right_cy, scale=2.0)
+                c.setFont("Helvetica-Bold", 5.5)
+                c.setFillColor(black)
+                c.drawCentredString(right_ox + right_w / 2, right_cy - 25,
+                                    "C-PURLIN PROFILE")
+        except ImportError:
+            pass
+
+        # Piece-break notes
+        note_y = MARGIN + bar_h + views_h * 0.35
+        c.setFont("Helvetica-Bold", 5.5)
+        c.setFillColor(black)
+        c.drawString(right_ox + 5, note_y, "PIECE-BREAK NOTES:")
+        c.setFont("Helvetica", 4.5)
+        notes = [
+            "Z-purlins: 6' extension past rafter",
+            "Splice overlap: 6\" (boxed beam)",
+            "Splice fasteners: (8) #10 TEK screws",
+            "End extension: 8\" past end rafter",
+            "Max piece length: 45' (53' hard cap)",
+            "P1 clips at interior purlin positions",
+            "P2 plates at eave purlin positions",
+        ]
+        for ni, note in enumerate(notes):
+            c.drawString(right_ox + 5, note_y - 9 - ni * 7, note)
+
+        # Bottom bar
+        _draw_standard_notes(c, MARGIN, MARGIN, notes_w, bar_h)
+        _draw_cutlist_title_block(c, cfg, "PURLIN PIECE BREAKS",
+                                  sheet_num=3, total_sheets=total_sheets,
+                                  revision=revision)
 
     c.save()
     pdf_bytes = buf.getvalue()

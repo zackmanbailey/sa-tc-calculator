@@ -96,6 +96,9 @@ from calc.bom import (
     BOMCalculator, ProjectInfo, BuildingConfig,
     bom_to_dict, ProjectBOM, calc_rafter_columns
 )
+from calc.solar_layout import (
+    SolarPanelSpec, SolarLayoutConfig, calc_solar_comparison
+)
 from calc.defaults import DEFAULTS, WIND_SPEEDS_BY_STATE, FOOTING_DEPTHS_BY_STATE
 from outputs.excel_gen import generate_bom_excel
 from outputs.pdf_gen import generate_quote_pdf
@@ -1810,6 +1813,39 @@ class CalculateHandler(BaseHandler):
             self.set_status(500)
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({"error": str(e)}))
+
+
+class SolarCompareHandler(BaseHandler):
+    """POST /api/solar-compare — Run 4-way solar comparison without full BOM."""
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            panel_spec = body.get("panel", {})
+            cfg = SolarLayoutConfig(
+                panel=SolarPanelSpec(
+                    width_mm=float(panel_spec.get("width_mm", 992.0)),
+                    length_mm=float(panel_spec.get("length_mm", 2108.0)),
+                    mount_hole_from_edge_mm=float(panel_spec.get("mount_hole_from_edge_mm", 20.0)),
+                    mount_hole_inset_mm=float(panel_spec.get("mount_hole_inset_mm", 250.0)),
+                ),
+                orientation="compare",
+                panels_across=int(body.get("panels_across", 5)),
+                panels_along=int(body.get("panels_along", 20)),
+                gap_width_in=float(body.get("gap_width_in", 0.25)),
+                gap_length_in=float(body.get("gap_length_in", 0.25)),
+                edge_clearance_in=float(body.get("edge_clearance_in", 4.0)),
+                endcap_clearance_in=float(body.get("endcap_clearance_in", 4.0)),
+                mode=body.get("mode", "panel_count"),
+                available_width_ft=float(body.get("available_width_ft", 0.0)),
+                available_length_ft=float(body.get("available_length_ft", 0.0)),
+            )
+            comparison = calc_solar_comparison(cfg)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": True, "comparison": comparison}))
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class ExcelHandler(BaseHandler):
@@ -8425,7 +8461,7 @@ def _build_purlin_groups_for_building(job_code, building_id, config_dict):
             g_type = pg.get('type', 'middle')
             mark = 'Z%d-%s-G%d' % (depth, gauge.replace('GA', ''), pg.get('group', 1))
             label = '%d" Z-Purlin @ %d\'' % (depth, int(g_len_ft))
-            groups.append({
+            g_data = {
                 'group': pg.get('group', 1), 'label': label, 'type': g_type,
                 'depth': depth, 'gauge': gauge, 'thickness': thick,
                 'span_ft': round(g_len_ft, 2), 'spacing_ft': spacing_ft,
@@ -8433,7 +8469,21 @@ def _build_purlin_groups_for_building(job_code, building_id, config_dict):
                 'topFlange': spec['topFlange'], 'botFlange': spec['botFlange'],
                 'lip': spec['lip'], 'coilWidth': spec['coilWidth'],
                 'lbs_per_ft': lbs_ft, 'mark': mark,
-            })
+            }
+            # Pass splice data through to the interactive drawing
+            if pg.get('needs_splice'):
+                g_data['needs_splice'] = True
+                sp = pg.get('splice', {})
+                if sp:
+                    g_data['splice_position_ft'] = sp.get('position_ft', 0)
+                    g_data['splice_overlap_in'] = sp.get('overlap_in', 6)
+                    g_data['splice_tek_screws'] = sp.get('tek_screws', 8)
+            # Pass facing info for Z-purlin direction indicators
+            g_data['is_first'] = pg.get('is_first', False)
+            g_data['is_last'] = pg.get('is_last', False)
+            g_data['facing'] = 'right' if pg.get('is_first') else (
+                'left' if pg.get('is_last') else 'alternating')
+            groups.append(g_data)
     else:
         mark = 'Z%d-%s' % (depth, gauge.replace('GA', ''))
         groups.append({
@@ -20597,6 +20647,7 @@ def get_routes():
 
         # ── API - Calculation & Export ─────────────────────────
         (r"/api/calculate",         CalculateHandler),
+        (r"/api/solar-compare",     SolarCompareHandler),
         (r"/api/excel",             ExcelHandler),
         (r"/api/pdf",               PDFHandler),
 
