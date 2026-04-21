@@ -214,9 +214,17 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Used only at the eave (first and last purlin on the rafter) for PERPENDICULAR purlins.
 - Material: 10GA (same as P1).
 - **Count per rafter (perpendicular)**: 2 (one at each eave end).
-- **Exception — rafter splice**: If the rafter itself is spliced at a point, there is NO P2 plate where the splice plate is. The rafter splice plate takes priority and occupies that space.
+- **Exception — rafter splice**: If the rafter is spliced (length > 53'), the splice plate occupies the connection point. No P2 plate at that position — the rafter splice plate takes priority.
 - When purlins are angled, P2 is NOT used — all positions get P1 plates instead, and a separate 9" × 15" end cap plate (10GA) closes the rafter ends.
 - Solar buildings with perpendicular purlins still use normal P2 plates — the endcap plate is only needed when purlins are angled.
+
+### 8.5 Purlin Splice Connection (at Rafter)
+- When two purlin pieces meet at a rafter (piece-break point), the splice uses a short purlin segment on top.
+- The splice purlin sits ON TOP of the continuous purlin, centered over the rafter (boxed beam).
+- **Fasteners**: 8 × #10 tek screws total (4 per side of the rafter center).
+- The splice purlin must be the same depth and gauge as the main purlins.
+- This detail replaces the older 4/S3.1 connection detail.
+- In the BOM, splice purlins are a separate line item from main purlins.
 
 ### 8.3 Purlin Type and Facing
 - Neither Z vs C nor facing direction changes which plate type (P1 vs P2) is used.
@@ -307,30 +315,47 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ---
 
-## 13. Cost Comparison
+## 13. BOM Line Items for Purlins
 
-### 13.1 Four Options
+### 13.1 Purlin Breakdown
+- The BOM should show purlins broken out by piece length, NOT as a single total LF line.
+- Example: "Purlin 18'-8" × 24 pcs, Purlin 18'-0" × 12 pcs" rather than "Purlins — 1,440 LF".
+- Each distinct piece length gets its own BOM line item with quantity and total LF.
+- Splice purlins (short pieces at rafter connections) are a separate line item from main purlins.
+- Girts get their own set of piece-length line items (same format, separate section).
+
+### 13.2 Sag Rods
+- Sag rods do NOT affect purlin layout, spacing, or piece-break logic.
+- Sag rods attach to the BOTTOM of the purlin flanges.
+- They are a completely independent system — just hole locations on the purlin web.
+- Sag rod rules were established in the rafter/sag rod shop drawing sessions and are unchanged.
+
+---
+
+## 14. Cost Comparison
+
+### 14.1 Four Options
 The purlin layout drawing compares all four combinations:
 1. Landscape + C-Purlin
 2. Landscape + Z-Purlin
 3. Portrait + C-Purlin
 4. Portrait + Z-Purlin
 
-### 13.2 Comparison Metrics
+### 14.2 Comparison Metrics
 - Total linear feet of purlin material per option.
 - Total piece count per option.
 - Estimated cost (LF × cost-per-foot for each purlin type).
 - Recommended option = lowest cost.
 
-### 13.3 Building Size Held Constant
+### 14.3 Building Size Held Constant
 - When comparing portrait vs landscape, the building dimensions stay the same.
 - The comparison shows how many panels fit and the purlin layout for each option within the same footprint.
 
 ---
 
-## 14. Error Conditions and Warnings
+## 15. Error Conditions and Warnings
 
-### 14.1 Errors (Block Calculation)
+### 15.1 Errors (Block Calculation)
 | Condition | Message |
 |---|---|
 | Bay size > max purlin length | "Bay size exceeds max purlin length. Add intermediate rafters to reduce bay size." |
@@ -338,7 +363,7 @@ The purlin layout drawing compares all four combinations:
 | Purlin flange too narrow for shared panels | "Panel gap + bolt clearance exceeds purlin flange width. Use a wider purlin or reduce gap." |
 | Bolt hole outside purlin flange | "Mounting hole position falls outside purlin flange. Check panel spec dimensions." |
 
-### 14.2 Warnings (Allow but Flag)
+### 15.2 Warnings (Allow but Flag)
 | Condition | Message |
 |---|---|
 | Purlin piece < 8' long | "Purlin piece is less than 8'. Consider adjusting bay sizes." |
@@ -349,22 +374,22 @@ The purlin layout drawing compares all four combinations:
 
 ---
 
-## 15. SA Estimator Input Summary
+## 16. SA Estimator Input Summary
 
-### 15.1 Standard Mode (Already Exists)
+### 16.1 Standard Mode (Already Exists)
 - Building length, width, clear height
 - Max bay size, space width, number of spaces
 - Purlin type (Z/C), purlin spacing
 - Overhang mode (none / 1 space)
 - All structural inputs (columns, rebar, footings, etc.)
 
-### 15.2 New Inputs Needed for Standard Purlin Layout
+### 16.2 New Inputs Needed for Standard Purlin Layout
 - Max purlin length (default 45', cap 53')
 - Z-purlin extension past rafter (default 6')
 - Z-purlin eave flange overhang (default 3.5")
 - Cost per foot: C-purlin and Z-purlin
 
-### 15.3 New Inputs Needed for Solar Mode
+### 16.3 New Inputs Needed for Solar Mode
 - Solar mode toggle (changes which inputs are shown)
 - Panel width (mm)
 - Panel length (mm)
@@ -376,7 +401,7 @@ The purlin layout drawing compares all four combinations:
 - Slope (default 5° for solar)
 - Rafter spacing override (when no parking stalls)
 
-### 15.4 Inputs That Remain in Solar Mode
+### 16.4 Inputs That Remain in Solar Mode
 - Reinforced columns and rafters
 - Footing depth, embedment, column buffer
 - Column rebar size, beam rebar size

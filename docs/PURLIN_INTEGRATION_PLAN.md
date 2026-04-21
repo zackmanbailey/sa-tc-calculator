@@ -559,12 +559,16 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 31. ~~**Girt spacing on solar**~~ → RESOLVED: Still 5' OC default for solar buildings with walls. User can change if needed.
 32. ~~**P1/P2 plate count formula**~~ → RESOLVED: Per rafter: P1 = n_purlin_lines - 2 (perpendicular) or n_purlin_lines (angled). P2 = 2 per rafter (one each eave) for perpendicular only. Exception: no P2 where rafter splice plate exists.
 
+33. ~~**Rafter splice vs P2**~~ → RESOLVED: Rafter splices at > 53' length (already coded in rafter_gen.py). Splice plate occupies connection point, no P2 there. Existing code handles this correctly.
+34. ~~**Rafter splice frequency**~~ → RESOLVED: Already implemented — rafter > 53' triggers splice. Max single piece = 53'. Splice within 10' of column, 2 plates per splice (10GA G90, 20-3/4" × 1'-6"). See shop_drawings/config.py line 279+.
+35. ~~**Purlin BOM line items**~~ → RESOLVED: BOM should show purlins broken out by piece length (e.g., "18'-8" × 24 pcs") not as a single total LF line. Each distinct length = its own line item.
+36. ~~**Z-purlin splice detail**~~ → RESOLVED: Per user's engineering drawing — splice uses a short purlin segment on TOP of continuous purlin, centered over rafter (boxed beam). 8 × #10 tek screws total. Splice purlin must match depth and gauge. Replaces old 4/S3.1 detail.
+37. ~~**Sag rods**~~ → RESOLVED: Sag rods do NOT affect purlin layout at all. They attach to bottom of purlin flanges. Completely independent system.
+
 ### Still Open
-33. **Rafter splice vs P2 interaction**: You mentioned no P2 where a rafter splice plate is. Can you clarify the scenario? P2 plates are at the eave ends of the rafter — is it possible for a rafter splice to land at the eave position? Or are you describing a case where the rafter is spliced somewhere mid-span and one of the interior purlin positions happens to coincide with that splice?
-34. **Rafter splice frequency**: How often do rafter splices occur? Is it only when the building width exceeds the max single-piece rafter length (what length is that)?
-35. **Purlin BOM line items**: Should the BOM show purlins as a single line item (total LF) or broken into groups by piece length (e.g., "18'-8" × 24 pcs, 18'-0" × 12 pcs")?
-36. **Z-purlin splice hole pattern**: How many splice holes in the overlap zone, and what's the bolt pattern? (Need this for the shop drawing detail.)
-37. **Sag rod interaction with purlins**: Do sag rods affect purlin placement or piece-break logic at all? Or are they fully independent (just hole locations on the purlin web)?
+38. **Purlin splice segment length**: The splice detail shows a short purlin piece on top at the rafter. How long is that splice segment? Is it a fixed length (e.g., 2') or does it scale with the rafter width?
+39. **Shared piece-break engine**: The codebase has TWO independent piece-break implementations (purlin_gen.py and the interactive purlin_layout.py). When we build Phase 1, should we create one shared Python engine that both use, or keep the interactive JS version separate and just make sure the logic matches?
+40. **TC Estimator impact**: Does the purlin piece-break and solar mode affect TC pricing at all? Or does the TC estimator only care about total LF and material weight (which the BOM already provides)?
 
 ---
 
