@@ -587,12 +587,17 @@ function addBuilding() {
     column_positions_manual: '',      // comma-separated ft positions for manual mode
     front_col_position_ft: 0,         // front column position when back wall enabled
     angled_purlins: false,            // master toggle for angled purlin mode
-    purlin_angle_deg: 15,             // angle from perpendicular (5–45°)
+    purlin_angle_deg: 90,             // angle from aisle (90° = perpendicular, 5–45° = angled)
     rebar_max_stick_ft: 20,           // max rebar stick length in rafter
     rebar_end_gap_ft: 5,              // gap from rafter end to first rebar
     splice_location_ft: 0,            // 0 = auto-calculate splice point
     // Rafter/Column drawing fields
     purlin_type: 'Z',                 // Z or C channel purlins
+    max_purlin_length_ft: 45,         // max purlin piece length before splice (hard cap 53')
+    z_extension_ft: 6,                // Z-purlin overhang past last rafter
+    z_eave_overhang_in: 3.5,          // Z-purlin overhang at eave side
+    purlin_cost_per_ft_z: 2.50,       // $/LF for Z-purlins (for cost comparison)
+    purlin_cost_per_ft_c: 2.75,       // $/LF for C-purlins (for cost comparison)
     roofing_overhang_ft: 0.5,         // panel overhang past eave purlin
     above_grade_ft: 8,                // column height above finished grade
     cut_allowance_in: 6,              // extra length for field cuts (inches)
@@ -1203,7 +1208,7 @@ function buildingFormHTML(b) {
           ${b.angled_purlins ? `
           <div class="form-group" style="margin-bottom:0;max-width:160px">
             <label>Purlin Angle (deg)</label>
-            <input type="number" value="${b.purlin_angle_deg||15}" min="5" max="45" step="0.5"
+            <input type="number" value="${b.purlin_angle_deg||90}" min="5" max="90" step="0.5"
               onchange="updateBldg('${b.id}','purlin_angle_deg',parseFloat(this.value))"/>
           </div>
           <div style="font-size:10px;color:#FCD34D;background:#422006;padding:4px 8px;border-radius:4px;max-width:280px">
@@ -1235,7 +1240,7 @@ function buildingFormHTML(b) {
           <div style="font-size:10px;color:#888;margin-top:2px">0 = auto-calculate</div>
         </div>
 
-        <!-- Purlin Type, Roofing Overhang, Above Grade, Cut Allowance -->
+        <!-- Purlin Type, Max Length, Extensions -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="form-group">
             <label>Purlin Type</label>
@@ -1246,16 +1251,44 @@ function buildingFormHTML(b) {
             <div style="font-size:10px;color:#888;margin-top:2px">Z or C channel purlins</div>
           </div>
           <div class="form-group">
+            <label>Max Purlin Length (ft)</label>
+            <input type="number" value="${b.max_purlin_length_ft||45}" min="20" max="53" step="1"
+              onchange="updateBldg('${b.id}','max_purlin_length_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Hard cap 53' (truck limit)</div>
+          </div>
+          <div class="form-group">
+            <label>Z-Extension (ft)</label>
+            <input type="number" value="${b.z_extension_ft||6}" min="0" max="12" step="0.5"
+              onchange="updateBldg('${b.id}','z_extension_ft',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Z-purlin overhang past last rafter</div>
+          </div>
+          <div class="form-group">
+            <label>Eave Overhang (in)</label>
+            <input type="number" value="${b.z_eave_overhang_in||3.5}" min="0" max="12" step="0.5"
+              onchange="updateBldg('${b.id}','z_eave_overhang_in',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Z-purlin eave side overhang</div>
+          </div>
+        </div>
+
+        <!-- Cost, Roofing Overhang, Above Grade, Cut Allowance -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group">
+            <label>Z-Purlin $/LF</label>
+            <input type="number" value="${b.purlin_cost_per_ft_z||2.50}" min="0" max="20" step="0.05"
+              onchange="updateBldg('${b.id}','purlin_cost_per_ft_z',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Cost per linear foot</div>
+          </div>
+          <div class="form-group">
+            <label>C-Purlin $/LF</label>
+            <input type="number" value="${b.purlin_cost_per_ft_c||2.75}" min="0" max="20" step="0.05"
+              onchange="updateBldg('${b.id}','purlin_cost_per_ft_c',parseFloat(this.value))"/>
+            <div style="font-size:10px;color:#888;margin-top:2px">Cost per linear foot</div>
+          </div>
+          <div class="form-group">
             <label>Roofing Overhang (ft)</label>
             <input type="number" value="${b.roofing_overhang_ft||0.5}" min="0" max="5" step="0.25"
               onchange="updateBldg('${b.id}','roofing_overhang_ft',parseFloat(this.value))"/>
             <div style="font-size:10px;color:#888;margin-top:2px">Panel overhang past eave purlin</div>
-          </div>
-          <div class="form-group">
-            <label>Above-Grade Height (ft)</label>
-            <input type="number" value="${b.above_grade_ft||8}" min="0" max="20" step="0.5"
-              onchange="updateBldg('${b.id}','above_grade_ft',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Column height above finished grade</div>
           </div>
           <div class="form-group">
             <label>Cut Allowance (in)</label>
