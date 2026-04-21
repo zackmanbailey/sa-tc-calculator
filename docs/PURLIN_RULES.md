@@ -231,9 +231,18 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Purpose: closes the open C-section ends where P2 plates would normally go but can't because purlins don't align with the rafter end.
 - Quantity: 2 per rafter (one each eave end).
 - NOT needed for solar buildings with perpendicular purlins — those still use P2 plates normally.
+- When combined with solar panels + angled purlins, the endcap plate is BELOW the panel line (no interference — panels sit on purlin flanges above the rafter).
 - This is DIFFERENT from the U-channel endcap (which caps purlin ends on building ends).
 
-### 9.3 No Eave Strut — Front/Back Purlins ARE the Eave
+### 9.3 U-Channel Endcaps (Building Ends)
+- U-channel endcaps are used on ALL buildings (standard and solar) at both building ends.
+- The endcap goes OVER the purlin ends — its internal dimension matches the purlin depth (e.g., 12" purlin = 12" internal endcap dimension).
+- Profile: U-channel (no lips), same gauge as purlins (12GA), G90.
+- Max length: 30'-4". If building width exceeds this, endcap must be spliced (lands on a purlin).
+- Quantity: 2 per building (one each end).
+- The endcap is NOT affected by solar mode — it's always present.
+
+### 9.4 No Eave Strut — Front/Back Purlins ARE the Eave
 - There is NO separate eave strut on any building type.
 - The front and back purlins (first and last purlin lines on the slope) serve as the eave.
 - The BOM should NOT include a separate "eave strut" line item.
