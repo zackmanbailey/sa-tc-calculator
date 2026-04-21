@@ -178,8 +178,9 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ### 7.4 Connections at Angle
 - Only P1 plates used at the top (no P2 at eave when angled).
-- A different end cap plate caps the rafter ends instead of P2.
-- P1 plate weld position on rafter must account for the angle.
+- A 9" × 15" flat end cap plate (10GA) is welded across each rafter end to close the open C-sections. This is purely structural capping — no purlin connection.
+- The first P1 plate on the rafter is positioned ~2-5/16" from the rafter end (center of plate to end of rafter).
+- P1 plate weld positions along the rafter must account for the angled purlin spacing.
 
 ### 7.5 Solar + Angled Purlins
 - Solar panels CAN go on angled purlins.
@@ -197,17 +198,24 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ### 8.1 P1 Plates (Interior)
 - Used at every interior purlin-to-rafter connection.
-- Welded to the top of the rafter.
+- Welded to the top of the rafter. Material: 10GA.
 - Purlin web bolts to the P1 plate.
 - Position on rafter depends on purlin facing direction (small gap / big gap pattern).
 
 ### 8.2 P2 Plates (Eave)
-- Used only at the eave (end of rafter) for perpendicular purlins.
-- When purlins are angled, P2 is NOT used — only P1 plates at the top, with a separate end cap plate on the rafter ends.
+- Used only at the eave (end of rafter) for PERPENDICULAR purlins.
+- Material: 10GA (same as P1).
+- When purlins are angled, P2 is NOT used — P1 plates are used at the top for all purlin connections, and a separate 9" × 15" end cap plate (10GA) closes the rafter ends.
+- Solar buildings with perpendicular purlins still use normal P2 plates — the endcap plate is only needed when purlins are angled.
 
 ### 8.3 Purlin Type and Facing
 - Neither Z vs C nor facing direction changes which plate type (P1 vs P2) is used.
 - Facing direction only affects WHERE on the rafter the plate is welded.
+
+### 8.4 Plate Gauge Summary
+- P1 plates: 10GA
+- P2 plates: 10GA
+- Rafter end cap plate (angled purlins only): 10GA, 9" × 15" flat
 
 ---
 
@@ -218,10 +226,11 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Same lbs/ft, same coil price. The only difference is the roll-forming profile.
 - Cost per foot = lbs/ft × coil price per lb. These are the same number expressed two ways.
 
-### 9.2 Solar Endcap Plate (Rafter End)
-- In solar mode (or when purlins are angled), a flat plate is welded on each rafter end instead of using P2 plates.
-- Dimensions: 9" × 15" flat plate.
-- Quantity: 2 per rafter (one each end) when using angled purlins or solar mode.
+### 9.2 Rafter End Cap Plate (Angled Purlins Only)
+- When purlins are ANGLED (not perpendicular), a 9" × 15" flat plate (10GA) is welded across each rafter end.
+- Purpose: closes the open C-section ends where P2 plates would normally go but can't because purlins don't align with the rafter end.
+- Quantity: 2 per rafter (one each eave end).
+- NOT needed for solar buildings with perpendicular purlins — those still use P2 plates normally.
 - This is DIFFERENT from the U-channel endcap (which caps purlin ends on building ends).
 
 ### 9.3 No Eave Strut — Front/Back Purlins ARE the Eave

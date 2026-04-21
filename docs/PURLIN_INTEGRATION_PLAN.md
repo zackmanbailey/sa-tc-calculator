@@ -537,10 +537,19 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 11. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes?
 12. **Multiple buildings with different modes**: Can one job have solar building + standard building? Solar toggle is per-building in BuildingConfig, but SA estimator UI needs to handle this.
 13. **Panel spec validation**: Validate user-entered dimensions are reasonable (width 800-1200mm, length 1500-2400mm)?
-14. **Solar endcap plate in BOM**: The 9"×15" rafter end plate needs a new BOM line item. What material/gauge/grade? Is it the same for all rafter sizes?
-15. **U-channel endcap in solar mode**: Are the U-channel purlin endcaps (on building ends) still used in solar mode, or does the solar panel coverage make them unnecessary?
+14. ~~**Solar endcap plate in BOM**~~ → RESOLVED: 9"×15" 10GA flat plate, only for ANGLED purlins (not solar-specific). 2 per rafter. Same gauge as P1/P2.
+15. ~~**Solar perpendicular purlins**~~ → RESOLVED: Solar with perpendicular purlins uses normal P2 plates. Endcap plate only for angled.
+16. ~~**P1/P2 plate gauge**~~ → RESOLVED: Both P1 and P2 are 10GA.
+17. ~~**Eave strut in purlin drawing**~~ → RESOLVED: Remove eave_strut type handling entirely from purlin_drawing_v2.py.
+18. ~~**Panel spec library**~~ → RESOLVED: Manual entry is fine. Add a small diagram showing which measurements are needed.
+19. ~~**Mixed-mode jobs**~~ → RESOLVED: Yes, per-building. One building can be solar, another standard, in the same project.
+20. ~~**P1 position on angled rafter**~~ → RESOLVED: First P1 plate center is ~2-5/16" from rafter end.
+
+### Still Open
+21. **U-channel endcap in solar mode**: Are the U-channel purlin endcaps (on building ends) still used in solar mode, or does the solar panel coverage make them unnecessary?
+22. **Rafter end cap plate — angled solar**: When you have BOTH angled purlins AND solar panels, the end cap plate goes on the rafter and panels overhang the rafter. Does the panel interfere with the end cap plate, or is the plate below the panel line?
 
 ---
 
 *End of integration plan.*
-*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, full data flow trace, and Q&A resolutions.*
+*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, full data flow trace, and Q&A resolutions (rounds 1-3).*
