@@ -15,7 +15,7 @@
 
 ### 1.2 Z-Purlin
 - Asymmetric cross-section: web vertical, top flange extends one direction, bottom flange extends the opposite direction. Lips at ~45° at flange ends.
-- Overlap/splice connection: Z-purlins extend past the rafter by a configurable distance (default 4'). Where two Z-purlins overlap, there is a 6" lap. Splice holes go through BOTH purlins in the overlap zone.
+- Overlap/splice connection: Z-purlins extend past the rafter by a configurable distance (default 6'). Where two Z-purlins overlap, there is a 6" lap. Splice holes go through BOTH purlins in the overlap zone.
 - Z-purlin top flanges extend past the rafter at the eave. A 40' wide building with Z-purlins using 3.5" top flanges has a rafter length of 40' - 3.5" - 3.5" = 39'-5".
 - The eave flange overhang dimension defaults to 3.5" but is user-overridable.
 
@@ -36,7 +36,7 @@
 - **Overhang end pieces**: extend past the end rafter by the overhang distance (typically 1 parking space width).
 
 ### 2.3 Z-Purlin Piece Lengths
-- Pieces extend past the rafter by the Z-extension distance (default 4', configurable).
+- Pieces extend past the rafter by the Z-extension distance (default 6', configurable).
 - Where two Z-purlins meet, they overlap by 6".
 - Splice holes go through both purlins in the overlap zone — must be shown on shop drawing.
 - **No-overhang end pieces**: extend 4" past the outside face of the end rafter for endcap, plus 4" for the half-rafter = 8" total past rafter center. Purlins CANNOT go more than 8" past the center of the end rafter when overhang is off.
@@ -211,44 +211,76 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ---
 
-## 9. Girts and Wall Panels
+## 9. Coil and Material Specs
 
-### 9.1 Girt Rules
+### 9.1 Purlin Coil (Z and C)
+- Both Z-purlins and C-purlins use the SAME coil: 20.125" wide, 12GA, G90 galvanized.
+- Same lbs/ft, same coil price. The only difference is the roll-forming profile.
+- Cost per foot = lbs/ft × coil price per lb. These are the same number expressed two ways.
+
+### 9.2 Solar Endcap Plate (Rafter End)
+- In solar mode (or when purlins are angled), a flat plate is welded on each rafter end instead of using P2 plates.
+- Dimensions: 9" × 15" flat plate.
+- Quantity: 2 per rafter (one each end) when using angled purlins or solar mode.
+- This is DIFFERENT from the U-channel endcap (which caps purlin ends on building ends).
+
+### 9.3 No Eave Strut — Front/Back Purlins ARE the Eave
+- There is NO separate eave strut on any building type.
+- The front and back purlins (first and last purlin lines on the slope) serve as the eave.
+- The BOM should NOT include a separate "eave strut" line item.
+- This applies to ALL buildings — standard, solar, angled, or otherwise.
+
+---
+
+## 10. Girts and Wall Panels
+
+### 10.1 Girt Rules
 - Girts use the same length rules as roof purlins (same piece break logic at rafter positions).
 - Girt spacing: default 5' on-center, user-configurable.
 - Girt rules do NOT change between solar and non-solar buildings.
+- Girts are the same material as purlins (20.125" 12GA G90) — just installed vertically on columns instead of horizontally on rafters.
+- Girts get their OWN cut list and piece-break output (separate from roof purlins) but appear on the same purlin shop drawings since they are the same material.
 
-### 9.2 Wall Panels
+### 10.2 Wall Panels
 - Solar carports may or may not have walls.
 - If walls are included, wall panel rules are the same as non-solar buildings.
 - SA estimator inputs for walls (back wall, end walls, side walls) still apply in solar mode.
 
 ---
 
-## 10. Cost Comparison
+## 11. Panel Type Consistency
 
-### 10.1 Four Options
+### 11.1 One Panel Type Per Project
+- All solar panels on a building must be the same type (same dimensions, same mounting holes).
+- All buildings in a project also use the same panel type.
+- The user enters panel specs once and they apply project-wide.
+
+---
+
+## 12. Cost Comparison
+
+### 12.1 Four Options
 The purlin layout drawing compares all four combinations:
 1. Landscape + C-Purlin
 2. Landscape + Z-Purlin
 3. Portrait + C-Purlin
 4. Portrait + Z-Purlin
 
-### 10.2 Comparison Metrics
+### 12.2 Comparison Metrics
 - Total linear feet of purlin material per option.
 - Total piece count per option.
 - Estimated cost (LF × cost-per-foot for each purlin type).
 - Recommended option = lowest cost.
 
-### 10.3 Building Size Held Constant
+### 12.3 Building Size Held Constant
 - When comparing portrait vs landscape, the building dimensions stay the same.
 - The comparison shows how many panels fit and the purlin layout for each option within the same footprint.
 
 ---
 
-## 11. Error Conditions and Warnings
+## 13. Error Conditions and Warnings
 
-### 11.1 Errors (Block Calculation)
+### 13.1 Errors (Block Calculation)
 | Condition | Message |
 |---|---|
 | Bay size > max purlin length | "Bay size exceeds max purlin length. Add intermediate rafters to reduce bay size." |
@@ -256,7 +288,7 @@ The purlin layout drawing compares all four combinations:
 | Purlin flange too narrow for shared panels | "Panel gap + bolt clearance exceeds purlin flange width. Use a wider purlin or reduce gap." |
 | Bolt hole outside purlin flange | "Mounting hole position falls outside purlin flange. Check panel spec dimensions." |
 
-### 11.2 Warnings (Allow but Flag)
+### 13.2 Warnings (Allow but Flag)
 | Condition | Message |
 |---|---|
 | Purlin piece < 8' long | "Purlin piece is less than 8'. Consider adjusting bay sizes." |
@@ -267,22 +299,22 @@ The purlin layout drawing compares all four combinations:
 
 ---
 
-## 12. SA Estimator Input Summary
+## 14. SA Estimator Input Summary
 
-### 12.1 Standard Mode (Already Exists)
+### 14.1 Standard Mode (Already Exists)
 - Building length, width, clear height
 - Max bay size, space width, number of spaces
 - Purlin type (Z/C), purlin spacing
 - Overhang mode (none / 1 space)
 - All structural inputs (columns, rebar, footings, etc.)
 
-### 12.2 New Inputs Needed for Standard Purlin Layout
+### 14.2 New Inputs Needed for Standard Purlin Layout
 - Max purlin length (default 45', cap 53')
-- Z-purlin extension past rafter (default 4')
+- Z-purlin extension past rafter (default 6')
 - Z-purlin eave flange overhang (default 3.5")
 - Cost per foot: C-purlin and Z-purlin
 
-### 12.3 New Inputs Needed for Solar Mode
+### 14.3 New Inputs Needed for Solar Mode
 - Solar mode toggle (changes which inputs are shown)
 - Panel width (mm)
 - Panel length (mm)
@@ -294,7 +326,7 @@ The purlin layout drawing compares all four combinations:
 - Slope (default 5° for solar)
 - Rafter spacing override (when no parking stalls)
 
-### 12.4 Inputs That Remain in Solar Mode
+### 14.4 Inputs That Remain in Solar Mode
 - Reinforced columns and rafters
 - Footing depth, embedment, column buffer
 - Column rebar size, beam rebar size

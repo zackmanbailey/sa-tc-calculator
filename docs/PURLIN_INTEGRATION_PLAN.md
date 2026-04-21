@@ -376,7 +376,24 @@ Buildings are stored as JSON blobs within project version files (not fixed DB co
 
 ---
 
-## 5. Breakage Risk Assessment
+## 5. Immediate BOM Fix — Remove Eave Struts
+
+### 5.0 Eave Struts Are Incorrect (ALL buildings)
+
+**Discovery:** There is NO separate eave strut on any Titan Carports / Structures America building. The front and back purlins (first and last purlin lines) ARE the eave. The BOM currently adds 2 "Eave Strut" line items per building (`calc/bom.py` lines 528-550, `include_eave_struts: bool = True`).
+
+**Fix required (Phase 0 — before any purlin integration):**
+1. `calc/bom.py` line 106: Change `include_eave_struts: bool = True` to `include_eave_struts: bool = False`
+2. `calc/bom.py` lines 528-550: The eave strut BOM block should be disabled or removed.
+3. `templates/sa_calc.py`: If there's an eave strut checkbox/toggle in the SA estimator UI, remove it or default to off.
+4. `tf_handlers.py` line 8455: The eave strut entry in purlin group data should be removed.
+5. `templates/purlin_drawing_v2.py` lines 361, 528: The "eave strut" type handling in the purlin drawing should be removed.
+
+**Impact:** This reduces BOM cost for every building. All new calculations will be lower. Existing saved BOMs are unaffected until recalculated.
+
+---
+
+## 6. Breakage Risk Assessment
 
 ### 5.1 HIGH RISK — BOM Numbers Will Change
 
@@ -502,24 +519,28 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 
 ---
 
-## 8. Open Questions for Next Session
+## 9. Open Questions — Status Tracker
 
-### Resolved by Audit
-1. ~~**Database storage**: Are building records stored as JSON blobs or fixed columns?~~ **RESOLVED**: JSON blobs in project version files. No DB migration needed.
+### Resolved
+1. ~~**Database storage**~~ → JSON blobs in project version files. No DB migration needed.
+2. ~~**C-purlin coil specs**~~ → Same as Z-purlin: 20.125" 12GA G90. Same lbs/ft and pricing.
+3. ~~**Eave struts**~~ → NO eave struts on any building. Front/back purlins ARE the eave. Remove from BOM (Section 5.0).
+4. ~~**Solar endcaps**~~ → Different piece: 9" × 15" flat plate welded on rafter ends. NOT the U-channel endcap. Used when purlins are angled or in solar mode.
+5. ~~**Hurricane straps + solar**~~ → Same count (4 per rafter) for solar and standard. No change needed.
+6. ~~**Cost per foot vs weight pricing**~~ → They are the same calculation: cost/ft = lbs/ft × coil_price/lb. No conflict.
+7. ~~**Girt cut list**~~ → Girts get their OWN cut list and piece-break output, separate from roof purlins, but appear on the same purlin shop drawings (same material).
+8. ~~**Panel type consistency**~~ → One panel type per project. Specs entered once, apply to all buildings.
+9. ~~**Z-overhang default**~~ → Confirmed 6' (matches existing code). PURLIN_RULES.md updated.
 
 ### Still Open
-2. **Panel spec library**: Should we build a saved panel spec library (dropdown of common panels like CS3K-P) so users don't re-enter dimensions every time?
-3. **Girt layout drawing**: Girts follow the same piece-break rules as purlins (PURLIN_RULES.md §9). Should we extend the purlin layout drawing to include a girt layout view, or keep it separate? The girt piece-break engine would be identical — only spacing differs (default 5' vs panel-dictated).
-4. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes?
-5. **Multiple buildings with different modes**: Can one job have both a solar building and a standard building? If so, the solar toggle is per-building (it already is in BuildingConfig), but the SA estimator UI needs to handle mixed-mode jobs.
-6. **Purlin weight vs cost-per-foot**: The BOM currently uses `lbs_per_lft × coil_price_per_lb` for purlin cost. The cost comparison uses `linear_ft × cost_per_ft`. These are different pricing models. Should the comparison override the BOM cost, or be a separate advisory output?
-7. **Panel spec validation**: Should we validate that user-entered panel dimensions are reasonable (e.g., width 800-1200mm, length 1500-2400mm)?
-8. **C-purlin coil definition**: The COILS dict in `calc/bom.py` only has `z_purlin_20`. We need a C-purlin coil entry with its own width, gauge, and pricing. What are the C-purlin coil specs?
-9. **Endcap interaction with solar mode**: The endcap config (`PURLIN_DEFAULTS["endcap"]`) assumes 2 per building, U-channel profile, max 30'4". In solar mode, do endcaps change? Are they still needed on both ends?
-10. **Eave strut interaction**: The BOM includes eave struts (cee purlin at eave). In solar mode with Z-purlins overhanging the rafter, does the eave strut placement change?
-11. **Strap placement with solar panels**: Hurricane straps connect purlins to rafters. Solar bolt stacks add load. Does strap count or placement need to change for solar buildings?
+10. **Panel spec library**: Should we build a saved panel spec dropdown (CS3K-P, etc.) so users don't re-enter dimensions every time?
+11. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes?
+12. **Multiple buildings with different modes**: Can one job have solar building + standard building? Solar toggle is per-building in BuildingConfig, but SA estimator UI needs to handle this.
+13. **Panel spec validation**: Validate user-entered dimensions are reasonable (width 800-1200mm, length 1500-2400mm)?
+14. **Solar endcap plate in BOM**: The 9"×15" rafter end plate needs a new BOM line item. What material/gauge/grade? Is it the same for all rafter sizes?
+15. **U-channel endcap in solar mode**: Are the U-channel purlin endcaps (on building ends) still used in solar mode, or does the solar panel coverage make them unnecessary?
 
 ---
 
 *End of integration plan.*
-*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, and full data flow trace.*
+*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, full data flow trace, and Q&A resolutions.*
