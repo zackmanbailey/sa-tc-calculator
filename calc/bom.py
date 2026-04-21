@@ -98,6 +98,8 @@ class BuildingConfig:
     max_purlin_length_ft: float = 45.0     # default max piece length (hard cap 53')
     z_extension_ft: float = 6.0            # Z-purlin extension past rafter (default 6')
     z_eave_overhang_in: float = 3.5        # Z-purlin top flange overhang at eave (inches)
+    purlin_cost_per_ft_z: float = 2.50     # $/LF for Z-purlins (cost comparison)
+    purlin_cost_per_ft_c: float = 2.75     # $/LF for C-purlins (cost comparison)
     roofing_overhang_ft: float = 0.5        # panel overhang past eave purlin
     above_grade_ft: float = 8.0             # column height above finished grade
     cut_allowance_in: float = 6.0           # extra length for field cuts (inches)
