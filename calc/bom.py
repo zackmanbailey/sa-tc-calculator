@@ -25,6 +25,10 @@ from calc.defaults import (
     get_purlin_spacing, get_rebar_size
 )
 from calc.purlin_layout import calc_purlin_pieces, PurlinLayoutResult
+from calc.solar_layout import (
+    SolarPanelSpec, SolarLayoutConfig, SolarLayoutResult,
+    calc_solar_layout, calc_solar_comparison, solar_hardware_bom
+)
 
 
 # ─────────────────────────────────────────────
@@ -116,6 +120,21 @@ class BuildingConfig:
     insulation_r_value: str = "R-13"    # R-13, R-19, R-25, etc.
     include_trim_package: bool = True    # full trim package (corners, base, eave, rake)
     column_size: str = "HSS 4x4"        # HSS 4x4 or HSS 6x6 (affects base plate size)
+    # Solar Mode
+    solar_mode: bool = False              # master toggle
+    solar_panel_width_mm: float = 992.0   # panel short dimension
+    solar_panel_length_mm: float = 2108.0 # panel long dimension
+    solar_mount_hole_edge_mm: float = 20.0
+    solar_mount_hole_inset_mm: float = 250.0
+    solar_orientation: str = "landscape"  # landscape, portrait, compare
+    solar_panels_across: int = 5
+    solar_panels_along: int = 20
+    solar_gap_width_in: float = 0.25
+    solar_gap_length_in: float = 0.25
+    solar_edge_clearance_in: float = 4.0
+    solar_dim_mode: str = "panel_count"   # panel_count or fit_to_dims
+    solar_slope_deg: float = 5.0
+    solar_install_per_panel: float = 45.0 # $/panel for TC estimator
 
 
 @dataclass
@@ -792,14 +811,72 @@ class BOMCalculator:
         max_dist_from_eave = max(p / 12.0 for p in raft_col_pos_in) if raft_col_pos_in else bldg.width_ft / 2.0
         angle_add_in = max_dist_from_eave * tan_slope * 12
 
-        # Purlin spacing
-        if bldg.purlin_spacing_override:
+        # Purlin spacing (solar mode overrides this)
+        solar_layout_result = None
+        solar_comparison_data = None  # populated when orientation == "compare"
+        solar_best_option = None
+        if getattr(bldg, 'solar_mode', False):
+            # Solar mode: panel layout dictates building dims and purlin spacing
+            solar_cfg = SolarLayoutConfig(
+                panel=SolarPanelSpec(
+                    width_mm=getattr(bldg, 'solar_panel_width_mm', 992.0),
+                    length_mm=getattr(bldg, 'solar_panel_length_mm', 2108.0),
+                    mount_hole_from_edge_mm=getattr(bldg, 'solar_mount_hole_edge_mm', 20.0),
+                    mount_hole_inset_mm=getattr(bldg, 'solar_mount_hole_inset_mm', 250.0),
+                ),
+                orientation=getattr(bldg, 'solar_orientation', 'landscape'),
+                panels_across=getattr(bldg, 'solar_panels_across', 5),
+                panels_along=getattr(bldg, 'solar_panels_along', 20),
+                gap_width_in=getattr(bldg, 'solar_gap_width_in', 0.25),
+                gap_length_in=getattr(bldg, 'solar_gap_length_in', 0.25),
+                edge_clearance_in=getattr(bldg, 'solar_edge_clearance_in', 4.0),
+                mode=getattr(bldg, 'solar_dim_mode', 'panel_count'),
+                available_width_ft=bldg.width_ft,
+                available_length_ft=bldg.length_ft,
+            )
+
+            if getattr(bldg, 'solar_orientation', 'landscape') == 'compare':
+                # Compare mode: run all 4 combos, pick best (lowest purlin LF)
+                comparison = calc_solar_comparison(solar_cfg)
+                solar_comparison_data = comparison
+                best = comparison["results"][0]  # sorted by purlin_total_lf asc
+                solar_best_option = best["label"]
+                # Re-run the best combo's layout to get the full SolarLayoutResult object
+                best_cfg = SolarLayoutConfig(
+                    panel=solar_cfg.panel,
+                    orientation=best["orientation"],
+                    panels_across=solar_cfg.panels_across,
+                    panels_along=solar_cfg.panels_along,
+                    gap_width_in=solar_cfg.gap_width_in,
+                    gap_length_in=solar_cfg.gap_length_in,
+                    edge_clearance_in=solar_cfg.edge_clearance_in,
+                    endcap_clearance_in=solar_cfg.endcap_clearance_in,
+                    mode=solar_cfg.mode,
+                    available_width_ft=solar_cfg.available_width_ft,
+                    available_length_ft=solar_cfg.available_length_ft,
+                    purlin_type=best["purlin_type"],
+                )
+                solar_layout_result = calc_solar_layout(best_cfg)
+            else:
+                solar_layout_result = calc_solar_layout(solar_cfg)
+
+            # Override building dimensions from solar layout
+            bldg.width_ft = round(solar_layout_result.building_width_ft, 2)
+            bldg.length_ft = round(solar_layout_result.building_length_ft, 2)
+            # Override purlin spacing from solar layout
+            purlin_spacing = round(solar_layout_result.purlin_spacing_ft, 4)
+            purlin_auto = False  # Solar-dictated, not user-set
+            n_purlin_lines = solar_layout_result.n_purlin_lines
+            # solar_layout stored in geometry after geometry dict init (below)
+        elif bldg.purlin_spacing_override:
             purlin_spacing = bldg.purlin_spacing_override
             purlin_auto = False
         else:
             purlin_spacing = get_purlin_spacing(bldg.width_ft)
             purlin_auto = True
-        n_purlin_lines = calc_purlin_lines(bldg.width_ft, purlin_spacing)
+
+        if not getattr(bldg, 'solar_mode', False):
+            n_purlin_lines = calc_purlin_lines(bldg.width_ft, purlin_spacing)
         n_interior_lines = max(0, n_purlin_lines - 2)
 
         # Panel split
@@ -887,6 +964,14 @@ class BOMCalculator:
             "rebar_end_gap_ft": bldg.rebar_end_gap_ft,
             "splice_location_ft": bldg.splice_location_ft,
         }
+
+        # Store solar layout in geometry (after geometry dict init)
+        if solar_layout_result is not None:
+            result.geometry["solar_layout"] = solar_layout_result.to_dict()
+        # Store comparison data when orientation == "compare"
+        if solar_comparison_data is not None:
+            result.geometry["solar_comparison"] = solar_comparison_data
+            result.geometry["solar_best_option"] = solar_best_option
 
         wf = WASTE_FACTORS["10GA"]
         # ── COIL 1: Columns ──────────────────────────────────────────────
@@ -1115,6 +1200,48 @@ class BOMCalculator:
                 piece_count=purlin_layout.endcap_plates_total,
                 piece_length_in=round(ec_coil.get("plate_length_in", 24.0), 1),
             ))
+
+        # ── SOLAR HARDWARE (bolt stacks + informational panel line) ──────
+        if solar_layout_result is not None:
+            sl = solar_layout_result
+            bolt_info = PURCHASED_ITEMS["solar_bolt_stack"]
+            bolt_price = bolt_info["price_each"]
+            bolt_qty = sl.bolt_stacks
+            bolt_cost = bolt_qty * bolt_price
+            items.append(BOMLineItem(
+                category="Solar Hardware - Purchased",
+                item_id="solar_bolt_stacks",
+                description=(f"SS Panel Mounting Bolt Stack "
+                             f"({bolt_qty} stacks: {sl.total_panels} panels × 4)"),
+                qty=bolt_qty, unit="EA",
+                unit_weight_lbs=0.15,  # ~2.4 oz per stack
+                total_weight_lbs=round(bolt_qty * 0.15, 1),
+                unit_cost=bolt_price,
+                total_cost=round(bolt_cost, 2),
+                notes=(f"SS bolt + flat washer + star washer + lock washer + "
+                       f"SS nut | 4 per panel × {sl.total_panels} panels = "
+                       f"{bolt_qty} stacks"),
+                piece_count=bolt_qty,
+            ))
+            # Informational line — panels are customer-supplied, $0 material
+            items.append(BOMLineItem(
+                category="Solar Hardware - Informational",
+                item_id="solar_panels_info",
+                description=(f"Solar Panels — Customer Supplied "
+                             f"({sl.total_panels} panels: {sl.panels_across}×"
+                             f"{sl.panels_along} {sl.orientation})"),
+                qty=sl.total_panels, unit="EA",
+                unit_cost=0.0, total_cost=0.0,
+                notes=(f"Customer-supplied — NOT included in material cost | "
+                       f"{sl.orientation} orientation, "
+                       f"{sl.panels_across} across × {sl.panels_along} along | "
+                       f"Coverage: {sl.panel_coverage_sqft:.0f} sqft"),
+                piece_count=sl.total_panels,
+            ))
+            # Store solar install cost info in geometry for TC estimator
+            result.geometry["solar_install_per_panel"] = getattr(
+                bldg, 'solar_install_per_panel', 45.0)
+            result.geometry["solar_total_panels"] = sl.total_panels
 
         # ── COIL 3: Sag Rods ─────────────────────────────────────────────
         coil = COILS["angle_4_16ga"]
