@@ -201,17 +201,21 @@ Purlin groups for this example (C-purlin, 18' max bay):
 ## 8. P1 and P2 Plates
 
 ### 8.1 P1 Plates (Interior)
-- Used at every interior purlin-to-rafter connection.
+- Used at every INTERIOR purlin-to-rafter connection (i.e., not the eave purlins).
 - Welded to the top of the rafter. Material: 10GA.
 - Purlin web bolts to the P1 plate.
 - Position on rafter depends on purlin facing direction (small gap / big gap pattern).
-- **Count**: 1 P1 plate per purlin line per rafter = `n_purlin_lines × n_rafters`.
+- **Count per rafter (perpendicular purlins)**: `n_purlin_lines - 2` (the 2 eave purlins get P2 plates instead).
+- **Count per rafter (angled purlins)**: `n_purlin_lines` (all positions get P1, including the 2 eave positions, since P2 cannot be used at an angle). Plus 2 endcap plates per rafter.
+- **Total P1 plates**: P1_per_rafter × n_rafters.
 - **Fasteners**: 8 tek screws per P1 connection (purlin-to-clip and P1 clip counts are the same thing — 8 screws total per connection, not 8+8).
 
 ### 8.2 P2 Plates (Eave)
-- Used only at the eave (end of rafter) for PERPENDICULAR purlins.
+- Used only at the eave (first and last purlin on the rafter) for PERPENDICULAR purlins.
 - Material: 10GA (same as P1).
-- When purlins are angled, P2 is NOT used — P1 plates are used at the top for all purlin connections, and a separate 9" × 15" end cap plate (10GA) closes the rafter ends.
+- **Count per rafter (perpendicular)**: 2 (one at each eave end).
+- **Exception — rafter splice**: If the rafter itself is spliced at a point, there is NO P2 plate where the splice plate is. The rafter splice plate takes priority and occupies that space.
+- When purlins are angled, P2 is NOT used — all positions get P1 plates instead, and a separate 9" × 15" end cap plate (10GA) closes the rafter ends.
 - Solar buildings with perpendicular purlins still use normal P2 plates — the endcap plate is only needed when purlins are angled.
 
 ### 8.3 Purlin Type and Facing
@@ -232,7 +236,14 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Same lbs/ft, same coil price. The only difference is the roll-forming profile.
 - Cost per foot = lbs/ft × coil price per lb. These are the same number expressed two ways.
 
-### 9.5 Purlin Depth
+### 9.5 Purlin Cross-Section Dimensions (Standard 12")
+- Web height: 12"
+- Top flange width: 3.5"
+- Bottom flange width: 3.5"
+- Lip length: 0.75" (at flange ends)
+- These dimensions are needed for bolt hole clearance validation in solar mode (§6.4 requires 0.5" minimum from flange edge to bolt hole center).
+
+### 9.6 Purlin Depth
 - Default purlin depth: 12".
 - Purlin depth is a user-configurable option.
 - **WARNING**: Changing the purlin depth requires a different coil width. If the user changes from 12", the system must warn them and prompt them to input the coil width and specifications for the non-standard depth.

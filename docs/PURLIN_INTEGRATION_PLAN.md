@@ -30,7 +30,7 @@ These inputs currently exist ONLY in the interactive purlin layout drawing. They
 | Input | Default | Where to Add |
 |---|---|---|
 | Max purlin length (ft) | 45 (hard cap 53) | Building form, structural section |
-| Z-purlin extension past rafter (ft) | 4 | Building form, shown only when purlin_type = Z |
+| Z-purlin extension past rafter (ft) | 6 | Building form, shown only when purlin_type = Z |
 | Z-purlin eave flange overhang (in) | 3.5 | Building form, shown only when purlin_type = Z |
 | Cost per foot — C-purlin ($/ft) | user input | Building form, cost section |
 | Cost per foot — Z-purlin ($/ft) | user input | Building form, cost section |
@@ -525,7 +525,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 1. ~~**Database storage**~~ → JSON blobs in project version files. No DB migration needed.
 2. ~~**C-purlin coil specs**~~ → Same as Z-purlin: 20.125" 12GA G90. Same lbs/ft and pricing.
 3. ~~**Eave struts**~~ → NO eave struts on any building. Front/back purlins ARE the eave. Remove from BOM (Section 5.0).
-4. ~~**Solar endcaps**~~ → Different piece: 9" × 15" flat plate welded on rafter ends. NOT the U-channel endcap. Used when purlins are angled or in solar mode.
+4. ~~**Solar endcaps**~~ → Different piece: 9" × 15" flat plate welded on rafter ends. NOT the U-channel endcap. Used ONLY when purlins are angled (not solar-specific). 2 per rafter.
 5. ~~**Hurricane straps + solar**~~ → Same count (4 per rafter) for solar and standard. No change needed.
 6. ~~**Cost per foot vs weight pricing**~~ → They are the same calculation: cost/ft = lbs/ft × coil_price/lb. No conflict.
 7. ~~**Girt cut list**~~ → Girts get their OWN cut list and piece-break output, separate from roof purlins, but appear on the same purlin shop drawings (same material).
@@ -545,9 +545,26 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 19. ~~**Mixed-mode jobs**~~ → RESOLVED: Yes, per-building. One building can be solar, another standard, in the same project.
 20. ~~**P1 position on angled rafter**~~ → RESOLVED: First P1 plate center is ~2-5/16" from rafter end.
 
+21. ~~**U-channel endcap in solar mode**~~ → RESOLVED: Yes, U-channel endcaps are still used on ALL buildings including solar. They go over the purlin ends at both building ends. Internal dimension matches purlin depth (e.g., 12" purlin = 12" internal endcap).
+22. ~~**Rafter end cap plate — angled solar**~~ → RESOLVED: The endcap plate is BELOW the panel line. Panels sit on purlin flanges above the rafter — no interference with the end cap plate.
+23. ~~**Stagger calculation**~~ → RESOLVED: `purlin_spacing × tan(angle_from_perpendicular)`. All pieces still break at rafter centers.
+24. ~~**Purlin depth**~~ → RESOLVED: Default 12". Make it user-configurable. Warn that different depths require different coil widths — prompt user to input coil specs if they change from 12".
+25. ~~**Roofing panels vs purlin piece breaks**~~ → RESOLVED: Independent. Roofing panels only care about WHERE purlins land, not how they're spliced.
+26. ~~**P1 count formula**~~ → RESOLVED: 1 P1 plate per purlin line per rafter = `n_purlin_lines × n_rafters`.
+27. ~~**Tek screw clarification**~~ → RESOLVED: purlin-to-clip and P1 clip screws are the same thing — 8 total per connection, not 8+8.
+
+28. ~~**Purlin flange width**~~ → RESOLVED: Top flange 3.5", bottom flange 3.5", lips 0.75", web 12". Usable flange for bolt holes = 3.5" - 0.75" lip = 2.75" per flange (minus 0.5" clearance each side = 1.75" usable).
+29. ~~**SA estimator solar toggle**~~ → RESOLVED: Keep purlin spacing input visible but grayed out with note "Spacing is dictated by panels in solar mode."
+30. ~~**Cost comparison auto-select**~~ → RESOLVED: Highlight cheapest with "Recommended" badge. Let user pick — do NOT auto-select into BOM.
+31. ~~**Girt spacing on solar**~~ → RESOLVED: Still 5' OC default for solar buildings with walls. User can change if needed.
+32. ~~**P1/P2 plate count formula**~~ → RESOLVED: Per rafter: P1 = n_purlin_lines - 2 (perpendicular) or n_purlin_lines (angled). P2 = 2 per rafter (one each eave) for perpendicular only. Exception: no P2 where rafter splice plate exists.
+
 ### Still Open
-21. **U-channel endcap in solar mode**: Are the U-channel purlin endcaps (on building ends) still used in solar mode, or does the solar panel coverage make them unnecessary?
-22. **Rafter end cap plate — angled solar**: When you have BOTH angled purlins AND solar panels, the end cap plate goes on the rafter and panels overhang the rafter. Does the panel interfere with the end cap plate, or is the plate below the panel line?
+33. **Rafter splice vs P2 interaction**: You mentioned no P2 where a rafter splice plate is. Can you clarify the scenario? P2 plates are at the eave ends of the rafter — is it possible for a rafter splice to land at the eave position? Or are you describing a case where the rafter is spliced somewhere mid-span and one of the interior purlin positions happens to coincide with that splice?
+34. **Rafter splice frequency**: How often do rafter splices occur? Is it only when the building width exceeds the max single-piece rafter length (what length is that)?
+35. **Purlin BOM line items**: Should the BOM show purlins as a single line item (total LF) or broken into groups by piece length (e.g., "18'-8" × 24 pcs, 18'-0" × 12 pcs")?
+36. **Z-purlin splice hole pattern**: How many splice holes in the overlap zone, and what's the bolt pattern? (Need this for the shop drawing detail.)
+37. **Sag rod interaction with purlins**: Do sag rods affect purlin placement or piece-break logic at all? Or are they fully independent (just hole locations on the purlin web)?
 
 ---
 
