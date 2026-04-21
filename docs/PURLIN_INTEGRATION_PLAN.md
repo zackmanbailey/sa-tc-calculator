@@ -266,12 +266,13 @@ Already has the Purlin Layout card added (this session's commit).
 - Include piece lengths, quantities, and group labels (end piece vs middle piece).
 - For Z-purlins: note which pieces have splice holes.
 
-### 3.6 Purlin Generator (`shop_drawings/purlin_gen.py`) — UPDATE
+### 3.6 Purlin Generator (`shop_drawings/purlin_gen.py`) — DEPRECATED / DO NOT USE
 
-- Feed purlin layout calculations (piece breaks, facing direction, splice holes) into the PDF generator.
-- Support angled purlins in the generated drawing.
-- **CRITICAL:** `calc_purlin_groups()` (line 58) has its own length formula: `bay_size + 2*overhang_ft` for Z, `bay_size + end_ext` for C. This must be replaced with the shared piece-break function from Section 2.2 to avoid divergence with BOM numbers.
-- The function already handles first/middle/last grouping and splice checks — preserve this structure but feed it correct lengths.
+- **ARCHITECTURAL DECISION**: The static `purlin_gen.py` should NOT be used for purlin shop drawings. All purlin shop drawings come from the INTERACTIVE builder (`templates/purlin_layout.py`), just like rafters and columns.
+- The workflow is: Interactive builder → user configures → Save PDF to Project → BOM and work orders reference saved PDFs.
+- The interactive purlin layout builder must produce multi-page PDFs covering all purlins for a building (plan views, cut lists, facing direction, splice details — all pages).
+- This is per-building, matching how rafter and column interactive drawings work today.
+- `purlin_gen.py` may be kept for reference but should not be called in production flow.
 
 ### 3.7 Rafter Generator (`shop_drawings/rafter_gen.py`) — UPDATE
 
@@ -565,10 +566,15 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 36. ~~**Z-purlin splice detail**~~ → RESOLVED: Per user's engineering drawing — splice uses a short purlin segment on TOP of continuous purlin, centered over rafter (boxed beam). 8 × #10 tek screws total. Splice purlin must match depth and gauge. Replaces old 4/S3.1 detail.
 37. ~~**Sag rods**~~ → RESOLVED: Sag rods do NOT affect purlin layout at all. They attach to bottom of purlin flanges. Completely independent system.
 
+38. ~~**Purlin splice detail**~~ → RESOLVED: Z-purlin splice is just the 6" overlap — two Z-purlins lapping over each other on the rafter, fastened with 8 × #10 tek screws. No separate splice piece. The engineering drawing (Purlin Splice Option 1) is an alternative detail used at contractor's discretion.
+39. ~~**Interactive-only architecture**~~ → RESOLVED: **Do NOT use static `purlin_gen.py`**. All purlin shop drawings come from the interactive builder (`purlin_layout.py`). Flow: interactive → Save PDF to Project → BOM and work orders reference saved PDFs. Multi-page PDF per building. Same pattern as rafter and column interactive drawings.
+40. ~~**TC Estimator**~~ → RESOLVED: TC estimator just pulls from BOM. No direct purlin piece-break knowledge needed.
+41. ~~**Solar + decking**~~ → RESOLVED: Solar buildings almost never use decking. Default decking OFF when solar mode ON. But make it a user option in case it's needed.
+
 ### Still Open
-38. **Purlin splice segment length**: The splice detail shows a short purlin piece on top at the rafter. How long is that splice segment? Is it a fixed length (e.g., 2') or does it scale with the rafter width?
-39. **Shared piece-break engine**: The codebase has TWO independent piece-break implementations (purlin_gen.py and the interactive purlin_layout.py). When we build Phase 1, should we create one shared Python engine that both use, or keep the interactive JS version separate and just make sure the logic matches?
-40. **TC Estimator impact**: Does the purlin piece-break and solar mode affect TC pricing at all? Or does the TC estimator only care about total LF and material weight (which the BOM already provides)?
+42. **Multi-page purlin PDF content**: When the interactive purlin builder produces a multi-page PDF for a building, what pages should it contain? My thinking: Page 1 = plan view (purlin layout on rafters), Page 2 = cut list with piece lengths and quantities, Page 3+ = individual purlin group details (profile, splice detail, facing). Is there anything else?
+43. **Purlin layout data → BOM sync**: When the user saves the purlin PDF from the interactive builder, should the piece-break data (piece lengths, quantities) also get saved as structured JSON alongside the PDF? That way the BOM can pull exact piece counts rather than recalculating.
+44. **Solar panel BOM line items**: Should solar panels themselves appear on the BOM (quantity, dimensions), or just the mounting hardware (bolt stacks)? Panels are usually customer-supplied, right?
 
 ---
 

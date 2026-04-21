@@ -157,6 +157,12 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Add 4 bolt stacks per panel to the BOM.
 - Total bolt stacks = 4 × total_panels.
 
+### 6.9 Solar + Decking
+- Solar buildings almost NEVER use roof decking (metal panels) in addition to solar panels.
+- However, this should be a user option — some edge cases may require decking under the solar array.
+- Default: decking OFF when solar mode is ON.
+- If the user enables decking in solar mode, standard decking rules apply (panels bear on purlins as normal).
+
 ---
 
 ## 7. Angled Purlins
@@ -219,12 +225,9 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Solar buildings with perpendicular purlins still use normal P2 plates — the endcap plate is only needed when purlins are angled.
 
 ### 8.5 Purlin Splice Connection (at Rafter)
-- When two purlin pieces meet at a rafter (piece-break point), the splice uses a short purlin segment on top.
-- The splice purlin sits ON TOP of the continuous purlin, centered over the rafter (boxed beam).
-- **Fasteners**: 8 × #10 tek screws total (4 per side of the rafter center).
-- The splice purlin must be the same depth and gauge as the main purlins.
-- This detail replaces the older 4/S3.1 connection detail.
-- In the BOM, splice purlins are a separate line item from main purlins.
+- **Z-Purlins**: The splice IS the overlap. Two Z-purlins extend past the rafter and overlap by 6". The overlapping sections are fastened together with 8 × #10 tek screws total. No separate splice piece needed — it's just the two Z-purlins lapping over each other on top of the rafter (boxed beam).
+- **C-Purlins**: C-purlins butt-joint at the rafter center (4" on each side). The connection is through the P1 plate — no overlap, no separate splice piece.
+- The engineering drawing (Purlin Splice Option 1) shows a splice detail used in lieu of 4/S3.1 for special cases where a purlin sits on top of a continuous purlin — this is at the contractor's discretion and uses 2 purlins of the same depth and gauge with 8 #10 screws.
 
 ### 8.3 Purlin Type and Facing
 - Neither Z vs C nor facing direction changes which plate type (P1 vs P2) is used.
