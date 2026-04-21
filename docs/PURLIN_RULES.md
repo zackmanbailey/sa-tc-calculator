@@ -240,10 +240,10 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Neither Z vs C nor facing direction changes which plate type (P1 vs P2) is used.
 - Facing direction only affects WHERE on the rafter the plate is welded.
 
-### 8.4 Plate Gauge Summary
-- P1 plates: 10GA
-- P2 plates: 10GA
-- Rafter end cap plate (angled purlins only): 10GA, 9" × 15" flat
+### 8.4 Plate Dimensions and Gauge Summary
+- **P1 plates**: 10GA (dimensions per existing rafter interactive drawing specs)
+- **P2 plates**: 10GA × 9" wide × 24" long, G90 galvanized. 8 × 1/4" diameter holes for eave purlin attachment.
+- **Rafter end cap plate** (angled purlins only): 10GA, 9" × 15" flat
 
 ---
 

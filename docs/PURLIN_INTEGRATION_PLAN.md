@@ -579,10 +579,20 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 46. ~~**Girt builder**~~ → RESOLVED: Girts get their own separate interactive builder page (not a tab within purlin builder). Same material, same piece-break logic, but separate page and separate PDF output.
 47. ~~**Purlin weight**~~ → RESOLVED: 7.43 lbs/ft for standard 12" purlin from 20.125" 12GA G90 coil. Verified by cross-section calculation (7.35-7.41 base + G90 coating ≈ 7.43). Use as default in BOM weight calculations.
 
+48. ~~**P2 plate dimensions**~~ → RESOLVED: P2 end cap plate = 10GA × 9" wide × 24" long, G90 galvanized, 8 × 1/4" dia holes for eave purlin attachment. Already defined in rafter interactive drawing.
+49. ~~**Girt builder content**~~ → RESOLVED: Side elevation view (girts on column). Straightforward piece-break and cut list output. No cost comparison needed.
+50. ~~**Angled purlin toggle**~~ → RESOLVED: Yes, add "Angled Purlins: ON/OFF" toggle in SA estimator. When OFF, angle input hidden (default 90° perpendicular). When ON, show angle input field. Same UX pattern as solar toggle.
+
+### ⚠️ CRITICAL CONSTRAINT — DO NOT BREAK EXISTING DRAWINGS
+The rafter and column interactive shop drawings (`templates/rafter_drawing.py`, `templates/column_drawing.py`) are complex, heavily tested, and working correctly. When integrating purlin rules:
+- **DO NOT modify** the rafter or column interactive drawing templates unless absolutely required.
+- **DO NOT change** the existing `_enrich_config_for_building()` output format — only ADD new fields.
+- **DO NOT alter** the existing `_load_shop_config()` behavior — only extend it.
+- **Test rafter and column drawings FIRST** after any shared code changes (config.py, tf_handlers.py).
+- If a purlin change requires touching shared infrastructure, verify rafter + column drawings still render correctly before committing.
+
 ### Still Open
-48. **P2 plate dimensions**: We have P1 plate specs in the codebase but I don't see explicit P2 plate dimensions (width × height). What are the P2 plate dimensions?
-49. **Girt page content**: The girt interactive builder — should it show a side elevation view (girts on column) rather than a plan view? And does it need its own cost comparison (since girts are same material, the cost/ft is identical to purlins)?
-50. **Purlin angle default in SA estimator**: Currently `purlin_angle_deg` defaults to 15.0 in BuildingConfig. We agreed 90° (perpendicular) is the right default. Should I also add a quick "Angled Purlins" toggle that shows/hides the angle input (similar to solar toggle)?
+51. **Are we ready to build?** All major rules are documented, 50 questions resolved. The remaining areas are implementation details that can be decided during coding. Should we start building Phase 0 (remove eave struts from BOM) and Phase 1 (standard purlin piece-break in BOM)?
 
 ---
 
