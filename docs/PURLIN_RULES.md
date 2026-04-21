@@ -1,6 +1,6 @@
 # Purlin Rules Reference — TitanForge / Structures America
 
-> Living document. Last updated: 2026-04-20
+> Living document. Last updated: 2026-04-20 (audit pass — fixed §8 numbering, §10.1 girt builder correction)
 > Source: Design discussions between Zack (Titan Carports) and engineering team.
 
 ---
@@ -231,11 +231,6 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - When purlins are angled, P2 is NOT used — all positions get P1 plates instead, and a separate 9" × 15" end cap plate (10GA) closes the rafter ends.
 - Solar buildings with perpendicular purlins still use normal P2 plates — the endcap plate is only needed when purlins are angled.
 
-### 8.5 Purlin Splice Connection (at Rafter)
-- **Z-Purlins**: The splice IS the overlap. Two Z-purlins extend past the rafter and overlap by 6". The overlapping sections are fastened together with 8 × #10 tek screws total. No separate splice piece needed — it's just the two Z-purlins lapping over each other on top of the rafter (boxed beam).
-- **C-Purlins**: C-purlins butt-joint at the rafter center (4" on each side). The connection is through the P1 plate — no overlap, no separate splice piece.
-- The engineering drawing (Purlin Splice Option 1) shows a splice detail used in lieu of 4/S3.1 for special cases where a purlin sits on top of a continuous purlin — this is at the contractor's discretion and uses 2 purlins of the same depth and gauge with 8 #10 screws.
-
 ### 8.3 Purlin Type and Facing
 - Neither Z vs C nor facing direction changes which plate type (P1 vs P2) is used.
 - Facing direction only affects WHERE on the rafter the plate is welded.
@@ -244,6 +239,11 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - **P1 plates**: 10GA (dimensions per existing rafter interactive drawing specs)
 - **P2 plates**: 10GA × 9" wide × 24" long, G90 galvanized. 8 × 1/4" diameter holes for eave purlin attachment.
 - **Rafter end cap plate** (angled purlins only): 10GA, 9" × 15" flat
+
+### 8.5 Purlin Splice Connection (at Rafter)
+- **Z-Purlins**: The splice IS the overlap. Two Z-purlins extend past the rafter and overlap by 6". The overlapping sections are fastened together with 8 × #10 tek screws total. No separate splice piece needed — it's just the two Z-purlins lapping over each other on top of the rafter (boxed beam).
+- **C-Purlins**: C-purlins butt-joint at the rafter center (4" on each side). The connection is through the P1 plate — no overlap, no separate splice piece.
+- The engineering drawing (Purlin Splice Option 1) shows a splice detail used in lieu of 4/S3.1 for special cases where a purlin sits on top of a continuous purlin — this is at the contractor's discretion and uses 2 purlins of the same depth and gauge with 8 #10 screws.
 
 ---
 
@@ -299,7 +299,7 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Girt spacing: default 5' on-center, user-configurable.
 - Girt rules do NOT change between solar and non-solar buildings.
 - Girts are the same material as purlins (20.125" 12GA G90) — just installed vertically on columns instead of horizontally on rafters.
-- Girts get their OWN cut list and piece-break output (separate from roof purlins) but appear on the same purlin shop drawings since they are the same material.
+- Girts get their OWN separate interactive builder page (not a tab within purlin builder). Same material, same piece-break logic, but separate page and separate PDF output. Side elevation view showing girts on columns.
 
 ### 10.2 Wall Panels
 - Solar carports may or may not have walls.

@@ -117,7 +117,7 @@ These existing SA estimator inputs remain and are used by both standard and sola
 - Algorithm: maximize piece length up to max purlin length, break at rafter centers
 
 **Needed — Z-purlin pieces:**
-- Pieces extend past rafter by Z-extension (default 4')
+- Pieces extend past rafter by Z-extension (default 6')
 - 6" overlap where two Z-purlins meet
 - Same end piece rules as C-purlin (8" past center, no overhang; overhang distance when on)
 - Splice holes through both purlins in overlap zone
@@ -133,13 +133,13 @@ These existing SA estimator inputs remain and are used by both standard and sola
 
 **File:** `calc/bom.py` — new purlin piece-break function, called from existing purlin calculation. Must also update existing piece count and net LF formula.
 
-**Interaction with `shop_drawings/purlin_gen.py`:**
-- `calc_purlin_groups()` (line 58) already does its own piece-break math for shop drawings. The BOM and shop drawing piece-break logic MUST produce the same results.
-- **Recommendation:** Extract piece-break logic into a shared function in `calc/bom.py` (or new `calc/purlin_layout.py`) that both BOM and `purlin_gen.py` call. Do NOT have two independent implementations.
+**Interaction with interactive builder (replaces `purlin_gen.py`):**
+- **ARCHITECTURAL DECISION (Q39/Q43):** `purlin_gen.py` is DEPRECATED. The interactive builder (`templates/purlin_layout.py`) handles all piece-break logic in JavaScript. When the user saves the purlin shop drawing, structured JSON is saved alongside the PDF. The BOM pulls exact piece counts from this saved JSON — no independent BOM-side piece-break calculation needed.
+- If no interactive drawing has been saved yet, the BOM can use a simplified estimate (n_purlin_lines × building_length_ft) with a warning that exact piece breaks require saving the interactive drawing first.
 
 **Existing `config.py` values that already align with PURLIN_RULES.md:**
 - `PURLIN_DEFAULTS["max_length_ft"]` = 53 (hard cap) ✓
-- `PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0 (Z-extension past rafter) — BUT rules say default 4'. **CONFLICT: config says 6', rules say 4'.** Resolve: the 6' was set before rules were finalized. Change default to 4' per PURLIN_RULES.md, make editable.
+- `PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0 (Z-extension past rafter) ✓ — confirmed correct per user (Q9/Q47). PURLIN_RULES.md updated to match.
 - `PURLIN_DEFAULTS["splice_overlap_in"]` = 6.0 ✓
 - `PURLIN_DEFAULTS["end_extension_past_rafter_in"]` = 4.0 ✓
 - `PURLIN_DEFAULTS["facing"]` already has correct rules ✓
@@ -317,7 +317,7 @@ ShopDrawingConfig dataclass (config.py line 742) → interactive templates
 New fields to add to the JS building data model:
 ```javascript
 max_purlin_length_ft: 45,
-z_extension_ft: 4,
+z_extension_ft: 6,
 z_eave_overhang_in: 3.5,
 purlin_cost_per_ft_c: null,
 purlin_cost_per_ft_z: null,
@@ -355,10 +355,10 @@ Already has `is_solar: bool = False` (line 817), `purlin_type`, `purlin_spacing_
 
 | Field in config.py | Current Value | PURLIN_RULES.md Value | Action |
 |---|---|---|---|
-| `PURLIN_DEFAULTS["z_overhang_default_ft"]` | 6.0 | 4.0 | Change to 4.0 |
+| `PURLIN_DEFAULTS["z_overhang_default_ft"]` | 6.0 | 6.0 | Keep 6.0 ✓ (confirmed correct) |
 | `PURLIN_DEFAULTS["max_length_ft"]` | 53.0 | 53 (hard cap), 45 (default max) | Keep 53 as hard cap, add `default_max_length_ft: 45` |
 | `RAFTER_DEFAULTS["z_purlin_deduction_in"]` | 7.0 | 7.0 (3.5×2) | Keep, but make source configurable |
-| `ShopDrawingConfig.purlin_overhang_ft` | 6.0 | 4.0 | Change to 4.0 |
+| `ShopDrawingConfig.purlin_overhang_ft` | 6.0 | 6.0 | Keep 6.0 ✓ (confirmed correct) |
 | `BuildingConfig.purlin_angle_deg` | 15.0 | 90 (perpendicular default) | Change to 90.0 |
 
 ### 4.3 `_load_shop_config` and `_enrich_config_for_building` (tf_handlers.py)
@@ -396,43 +396,39 @@ Buildings are stored as JSON blobs within project version files (not fixed DB co
 
 ## 6. Breakage Risk Assessment
 
-### 5.1 HIGH RISK — BOM Numbers Will Change
+### 6.1 HIGH RISK — BOM Numbers Will Change
 
 Adding piece-break logic to `calc/bom.py` will change purlin LF totals, piece counts, and therefore costs. Currently the BOM uses `n_purlin_lines × building_length_ft` as total purlin LF. With piece breaks, the total will include overlap zones (Z-purlins add 6" overlap at every joint) and may change piece counts.
 
 **Mitigation:** All BOM results are versioned in project JSON files. Old BOMs keep their saved values. Only recalculation produces new numbers. The BOM diff feature (already implemented) will highlight changes when recalculating.
 
-### 5.2 MEDIUM RISK — Rafter Length Divergence
+### 6.2 MEDIUM RISK — Rafter Length Divergence
 
 `shop_drawings/config.py` `calc_rafter_length()` hardcodes 7" Z-deduction. If we make `z_eave_overhang_in` configurable (e.g., user sets 4" per side = 8" total instead of 7"), the shop drawing cut length changes. Existing rafter drawings for saved projects will render differently.
 
 **Mitigation:** Only affects new calculations. Saved shop drawing configs preserve their values. Add `z_eave_overhang_in` to ShopDrawingConfig with default 3.5 (→ 7" total) to match existing behavior.
 
-### 5.3 MEDIUM RISK — `purlin_gen.py` and BOM Piece Counts Must Match
+### 6.3 ~~RESOLVED~~ — Interactive-Only Architecture Eliminates Dual Implementation
 
-Two independent piece-break implementations (BOM and `purlin_gen.calc_purlin_groups()`) will produce different numbers if they diverge.
+**ARCHITECTURAL DECISION (Q39):** `purlin_gen.py` is DEPRECATED. All purlin shop drawings come from the interactive builder. The BOM pulls piece data from the saved JSON (exported alongside the interactive PDF). There is only ONE piece-break implementation — in the interactive builder's JavaScript — and the BOM reads its output. No dual-implementation risk.
 
-**Mitigation:** Extract shared piece-break engine. Both BOM and purlin_gen call the same function.
-
-### 5.4 LOW RISK — PDF/Excel Exports
+### 6.4 LOW RISK — PDF/Excel Exports
 
 Exports use `.get()` with defaults. New geometry fields will be silently ignored. No breakage. Add display logic for new fields in a later pass.
 
-### 5.5 LOW RISK — Stickers, Shipping, Cut Lists
+### 6.5 LOW RISK — Stickers, Shipping, Cut Lists
 
 Read existing config fields (`purlin_type`, `purlin_spacing_ft`). As long as these are populated correctly for solar mode, no breakage. Verify during Phase 2 testing.
 
-### 5.6 NO RISK — TC Estimator
+### 6.6 NO RISK — TC Estimator
 
 TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin option, solar hardware) will appear as additional BOM rows. TC Estimator iterates all rows — no schema dependency. No changes needed to TC Estimator code.
 
-### 5.7 CRITICAL DEFAULT CONFLICT — Z-Overhang 6' vs 4'
+### 6.7 ~~RESOLVED~~ — Z-Overhang Confirmed at 6'
 
-`config.py PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0 but PURLIN_RULES.md says default 4'. The existing `purlin_gen.py` uses this 6' value for all current shop drawings. Changing to 4' will affect all NEW purlin drawings.
+`config.py PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0. This is confirmed CORRECT per user (Q9/Q47). PURLIN_RULES.md §2.3 says default 6'. No conflict — no change needed.
 
-**Mitigation:** Change default to 4'. Existing saved configs keep their 6' value. Only new projects get 4'. The interactive drawing allows override.
-
-### 5.8 CRITICAL DEFAULT CONFLICT — Purlin Angle Default
+### 6.8 CRITICAL DEFAULT CONFLICT — Purlin Angle Default
 
 `BuildingConfig.purlin_angle_deg` defaults to 15.0 (line 83 of bom.py). This should default to 90 (perpendicular) since angled purlins are the exception, not the rule. The `angled_purlins` bool is False by default so the angle value is ignored, but it's confusing and could cause bugs if `angled_purlins` gets toggled on without setting the angle.
 
@@ -440,7 +436,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 
 ---
 
-## 6. Implementation Phases
+## 7. Implementation Phases
 
 ### Phase 1: Standard Mode Purlin Layout (Foundation)
 **Goal:** SA estimator collects all standard purlin inputs, BOM calculates piece breaks correctly.
@@ -497,7 +493,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 
 ---
 
-## 7. Files Affected Summary
+## 8. Files Affected Summary
 
 | File | Phase | Change Type | Risk |
 |---|---|---|---|
@@ -510,7 +506,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 | `templates/rafter_drawing.py` | 1, 4 | P1/P2 plates, rafter length | Medium (dimensions) |
 | `tf_handlers.py` | 1, 2 | Config enrichment for new fields | Low (additive) |
 | `shop_drawings/config.py` | 1 | Parameterize Z-deduction in calc_rafter_length | Medium (formula change) |
-| `shop_drawings/purlin_gen.py` | 1, 4, 5 | Replace with shared piece-break engine | High (must match BOM) |
+| `shop_drawings/purlin_gen.py` | — | **DEPRECATED** — do not use in production (Q39) | None (unused) |
 | `shop_drawings/rafter_gen.py` | 4 | Angled purlin clip positions | Medium (geometry) |
 | `shop_drawings/cutlist_gen.py` | 5 | Piece-break data, angled adjustment | Low (additive) |
 | `shop_drawings/wo_fab_stickers.py` | 2 | Verify solar mode fields flow through | Low (verify only) |
@@ -533,11 +529,10 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 8. ~~**Panel type consistency**~~ → One panel type per project. Specs entered once, apply to all buildings.
 9. ~~**Z-overhang default**~~ → Confirmed 6' (matches existing code). PURLIN_RULES.md updated.
 
-### Still Open
-10. **Panel spec library**: Should we build a saved panel spec dropdown (CS3K-P, etc.) so users don't re-enter dimensions every time?
-11. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes?
-12. **Multiple buildings with different modes**: Can one job have solar building + standard building? Solar toggle is per-building in BuildingConfig, but SA estimator UI needs to handle this.
-13. **Panel spec validation**: Validate user-entered dimensions are reasonable (width 800-1200mm, length 1500-2400mm)?
+10. ~~**Panel spec library**~~ → RESOLVED (by Q18): Manual entry is fine. Add a small diagram showing which measurements are needed. No saved dropdown needed.
+11. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes? *(Still open — decide during Phase 3)*
+12. ~~**Multiple buildings with different modes**~~ → RESOLVED (by Q19): Yes, per-building. Solar toggle is per-building in BuildingConfig. One building can be solar, another standard, in the same project.
+13. **Panel spec validation**: Validate user-entered dimensions are reasonable (width 800-1200mm, length 1500-2400mm)? *(Still open — decide during Phase 2)*
 14. ~~**Solar endcap plate in BOM**~~ → RESOLVED: 9"×15" 10GA flat plate, only for ANGLED purlins (not solar-specific). 2 per rafter. Same gauge as P1/P2.
 15. ~~**Solar perpendicular purlins**~~ → RESOLVED: Solar with perpendicular purlins uses normal P2 plates. Endcap plate only for angled.
 16. ~~**P1/P2 plate gauge**~~ → RESOLVED: Both P1 and P2 are 10GA.
@@ -551,7 +546,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 23. ~~**Stagger calculation**~~ → RESOLVED: `purlin_spacing × tan(angle_from_perpendicular)`. All pieces still break at rafter centers.
 24. ~~**Purlin depth**~~ → RESOLVED: Default 12". Make it user-configurable. Warn that different depths require different coil widths — prompt user to input coil specs if they change from 12".
 25. ~~**Roofing panels vs purlin piece breaks**~~ → RESOLVED: Independent. Roofing panels only care about WHERE purlins land, not how they're spliced.
-26. ~~**P1 count formula**~~ → RESOLVED: 1 P1 plate per purlin line per rafter = `n_purlin_lines × n_rafters`.
+26. ~~**P1 count formula**~~ → RESOLVED: **SUPERSEDED by Q32.** Correct formula: P1 per rafter = `n_purlin_lines - 2` (perpendicular) or `n_purlin_lines` (angled). Total P1 = P1_per_rafter × n_rafters.
 27. ~~**Tek screw clarification**~~ → RESOLVED: purlin-to-clip and P1 clip screws are the same thing — 8 total per connection, not 8+8.
 
 28. ~~**Purlin flange width**~~ → RESOLVED: Top flange 3.5", bottom flange 3.5", lips 0.75", web 12". Usable flange for bolt holes = 3.5" - 0.75" lip = 2.75" per flange (minus 0.5" clearance each side = 1.75" usable).
@@ -563,7 +558,7 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 33. ~~**Rafter splice vs P2**~~ → RESOLVED: Rafter splices at > 53' length (already coded in rafter_gen.py). Splice plate occupies connection point, no P2 there. Existing code handles this correctly.
 34. ~~**Rafter splice frequency**~~ → RESOLVED: Already implemented — rafter > 53' triggers splice. Max single piece = 53'. Splice within 10' of column, 2 plates per splice (10GA G90, 20-3/4" × 1'-6"). See shop_drawings/config.py line 279+.
 35. ~~**Purlin BOM line items**~~ → RESOLVED: BOM should show purlins broken out by piece length (e.g., "18'-8" × 24 pcs") not as a single total LF line. Each distinct length = its own line item.
-36. ~~**Z-purlin splice detail**~~ → RESOLVED: Per user's engineering drawing — splice uses a short purlin segment on TOP of continuous purlin, centered over rafter (boxed beam). 8 × #10 tek screws total. Splice purlin must match depth and gauge. Replaces old 4/S3.1 detail.
+36. ~~**Z-purlin splice detail**~~ → RESOLVED: **SUPERSEDED by Q38.** The Z-purlin splice is just the 6" overlap — two Z-purlins lapping over each other, fastened with 8 × #10 tek screws. No separate splice piece. The engineering drawing (Purlin Splice Option 1) is an alternative detail at contractor's discretion only.
 37. ~~**Sag rods**~~ → RESOLVED: Sag rods do NOT affect purlin layout at all. They attach to bottom of purlin flanges. Completely independent system.
 
 38. ~~**Purlin splice detail**~~ → RESOLVED: Z-purlin splice is just the 6" overlap — two Z-purlins lapping over each other on the rafter, fastened with 8 × #10 tek screws. No separate splice piece. The engineering drawing (Purlin Splice Option 1) is an alternative detail used at contractor's discretion.
@@ -591,10 +586,12 @@ The rafter and column interactive shop drawings (`templates/rafter_drawing.py`, 
 - **Test rafter and column drawings FIRST** after any shared code changes (config.py, tf_handlers.py).
 - If a purlin change requires touching shared infrastructure, verify rafter + column drawings still render correctly before committing.
 
-### Still Open
+### Still Open (3 remaining)
+11. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes? *(Decide during Phase 3)*
+13. **Panel spec validation**: Validate user-entered dimensions are reasonable (width 800-1200mm, length 1500-2400mm)? *(Decide during Phase 2)*
 51. **Are we ready to build?** All major rules are documented, 50 questions resolved. The remaining areas are implementation details that can be decided during coding. Should we start building Phase 0 (remove eave struts from BOM) and Phase 1 (standard purlin piece-break in BOM)?
 
 ---
 
 *End of integration plan.*
-*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, full data flow trace, and Q&A resolutions (rounds 1-3).*
+*Updated: 2026-04-20 — Full audit pass: fixed all Z-overhang conflicts (6' confirmed), corrected P1 count formula (Q26→Q32), corrected splice detail (Q36→Q38), deprecated purlin_gen.py, resolved Q10/Q12, fixed section numbering, updated architecture to interactive-only.*
