@@ -575,10 +575,14 @@ TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin o
 43. ~~**Purlin data → BOM sync**~~ → RESOLVED: Yes — save structured JSON alongside PDF when user saves purlin shop drawing. BOM pulls exact piece counts from this data, preventing disagreement between drawing and BOM.
 44. ~~**Solar panel BOM**~~ → RESOLVED: Panels appear on BOM as informational line (qty, dims, model) but are customer-supplied — not in material cost. Mounting hardware IS in cost. TC estimator adds $45/panel install charge (default, overridable).
 
+45. ~~**Auto-populate from BOM**~~ → RESOLVED: Yes, ALL inputs auto-populate from SA estimator/BOM when available. Same pattern as rafter/column interactive drawings.
+46. ~~**Girt builder**~~ → RESOLVED: Girts get their own separate interactive builder page (not a tab within purlin builder). Same material, same piece-break logic, but separate page and separate PDF output.
+47. ~~**Purlin weight**~~ → RESOLVED: 7.43 lbs/ft for standard 12" purlin from 20.125" 12GA G90 coil. Verified by cross-section calculation (7.35-7.41 base + G90 coating ≈ 7.43). Use as default in BOM weight calculations.
+
 ### Still Open
-45. **Purlin interactive builder — auto-populate from BOM**: When the user opens the purlin layout builder for a building that already has BOM data, should ALL inputs auto-populate from the BOM/SA estimator (building dims, purlin type, spacing, rafter positions)? Or just some?
-46. **Girt interactive builder**: Girts use the same material and piece-break logic as purlins. Should girts get their own interactive builder page, or be a tab/section within the purlin layout builder?
-47. **Purlin weight per foot**: For the BOM weight calculations, what's the lbs/ft for the standard 12" purlin from the 20.125" 12GA G90 coil?
+48. **P2 plate dimensions**: We have P1 plate specs in the codebase but I don't see explicit P2 plate dimensions (width × height). What are the P2 plate dimensions?
+49. **Girt page content**: The girt interactive builder — should it show a side elevation view (girts on column) rather than a plan view? And does it need its own cost comparison (since girts are same material, the cost/ft is identical to purlins)?
+50. **Purlin angle default in SA estimator**: Currently `purlin_angle_deg` defaults to 15.0 in BuildingConfig. We agreed 90° (perpendicular) is the right default. Should I also add a quick "Angled Purlins" toggle that shows/hides the angle input (similar to solar toggle)?
 
 ---
 

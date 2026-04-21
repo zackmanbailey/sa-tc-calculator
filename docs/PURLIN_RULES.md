@@ -252,7 +252,8 @@ Purlin groups for this example (C-purlin, 18' max bay):
 ### 9.1 Purlin Coil (Z and C)
 - Both Z-purlins and C-purlins use the SAME coil: 20.125" wide, 12GA, G90 galvanized.
 - Same lbs/ft, same coil price. The only difference is the roll-forming profile.
-- Cost per foot = lbs/ft × coil price per lb. These are the same number expressed two ways.
+- **Weight**: 7.43 lbs/ft (verified against coil cross-section calc: 20.125" × 0.105" = ~7.35-7.41 base + G90 coating).
+- Cost per foot = lbs/ft × coil price per lb = 7.43 × coil_price_per_lb.
 
 ### 9.5 Purlin Cross-Section Dimensions (Standard 12")
 - Web height: 12"
