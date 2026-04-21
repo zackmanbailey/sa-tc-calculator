@@ -82,21 +82,33 @@ These existing SA estimator inputs remain and are used by both standard and sola
 
 ## 2. BOM Engine (`calc/bom.py`) — Calculations to Add/Update
 
-### 2.1 Rafter Length Calculation (UPDATE)
+### 2.1 Rafter Length Calculation (UPDATE — TWO LOCATIONS)
 
-**Current:** Rafter length = building width. No purlin-type adjustment.
+**Current state — there are TWO rafter length formulas that must stay in sync:**
+
+1. **`calc/bom.py` line 787**: `calc_rafter_slope_length(width_ft, slope_deg)` — uses `2 × sqrt((width/2)² + rise²)`. Does NOT deduct Z-purlin overhang at all. This drives the BOM weight/cost for rafter coil.
+
+2. **`shop_drawings/config.py` line 962**: `calc_rafter_length(width_ft, overhang_ft, use_z_purlins)` — deducts `2 × roofing_overhang` and 7" for Z-purlins. This drives the shop drawing cut length.
+
+**RISK:** These two formulas diverge. The BOM uses full eave-to-eave slope length (for material ordering — you need the full coil length). The shop drawing uses the actual cut length after deductions. This is correct behavior — do NOT merge them.
 
 **Needed:**
-- C-purlin: rafter length = building width (no change)
-- Z-purlin: rafter length = building width − (2 × eave flange overhang)
-  - Default overhang = 3.5" → 40' building = 39'-5" rafter
-- This affects rafter material weight and cost
+- `calc/bom.py`: No change to material length. But add rafter CUT length to geometry dict so shop drawings get it directly.
+- `shop_drawings/config.py` line 970: The 7" hardcoded Z-purlin deduction (3.5" × 2) must become configurable — use `z_eave_overhang_in × 2` from config instead.
+- C-purlin: cut length = building width − 2 × roofing_overhang (no Z deduction)
+- Z-purlin: cut length = building width − 2 × roofing_overhang − 2 × z_eave_overhang_in
 
-**File:** `calc/bom.py` — rafter length calculation section
+**Files:** `calc/bom.py` (add cut length to geometry), `shop_drawings/config.py` (parameterize Z deduction)
 
-### 2.2 Purlin Piece Length Calculation (NEW)
+### 2.2 Purlin Piece Length Calculation (NEW — replaces simple LF calc)
 
-**Current:** BOM calculates total linear feet of purlins but does NOT break them into pieces with joint rules.
+**Current state (`calc/bom.py` lines 956-980):**
+- Z-Purlin BOM: `purlin_net = n_purlin_lines × building_length_ft` (total linear feet, no piece breaks)
+- Piece count: `n_purlin_lines × n_bays` (assumes 1 piece per bay per line — wrong for multi-bay purlins)
+- Coil used: `z_purlin_20` (20.125" 12GA)
+- No C-purlin coil option at all — currently hardcoded to Z only
+
+**RISK:** Changing piece count/length will change the BOM total weight and cost. This is the correct behavior, but existing saved BOMs will produce different numbers on recalculation. Consider versioning or flagging.
 
 **Needed — C-purlin pieces:**
 - Pieces break at rafter centers, 4" per purlin on each rafter at a joint
@@ -115,7 +127,22 @@ These existing SA estimator inputs remain and are used by both standard and sola
 - All pieces on a line are the same length even when angled
 - Butt joint rule unchanged (4" of rafter width per purlin)
 
-**File:** `calc/bom.py` — new purlin piece-break function, called from existing purlin calculation
+**Needed — C-purlin coil option:**
+- Currently only Z-purlin coil exists in BOM. Need to add C-purlin coil type to COILS dict in `calc/bom.py`.
+- When `purlin_type = "C"`, use C-purlin coil pricing instead of Z.
+
+**File:** `calc/bom.py` — new purlin piece-break function, called from existing purlin calculation. Must also update existing piece count and net LF formula.
+
+**Interaction with `shop_drawings/purlin_gen.py`:**
+- `calc_purlin_groups()` (line 58) already does its own piece-break math for shop drawings. The BOM and shop drawing piece-break logic MUST produce the same results.
+- **Recommendation:** Extract piece-break logic into a shared function in `calc/bom.py` (or new `calc/purlin_layout.py`) that both BOM and `purlin_gen.py` call. Do NOT have two independent implementations.
+
+**Existing `config.py` values that already align with PURLIN_RULES.md:**
+- `PURLIN_DEFAULTS["max_length_ft"]` = 53 (hard cap) ✓
+- `PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0 (Z-extension past rafter) — BUT rules say default 4'. **CONFLICT: config says 6', rules say 4'.** Resolve: the 6' was set before rules were finalized. Change default to 4' per PURLIN_RULES.md, make editable.
+- `PURLIN_DEFAULTS["splice_overlap_in"]` = 6.0 ✓
+- `PURLIN_DEFAULTS["end_extension_past_rafter_in"]` = 4.0 ✓
+- `PURLIN_DEFAULTS["facing"]` already has correct rules ✓
 
 ### 2.3 Purlin Layout Options Generator (NEW)
 
@@ -243,52 +270,159 @@ Already has the Purlin Layout card added (this session's commit).
 
 - Feed purlin layout calculations (piece breaks, facing direction, splice holes) into the PDF generator.
 - Support angled purlins in the generated drawing.
+- **CRITICAL:** `calc_purlin_groups()` (line 58) has its own length formula: `bay_size + 2*overhang_ft` for Z, `bay_size + end_ext` for C. This must be replaced with the shared piece-break function from Section 2.2 to avoid divergence with BOM numbers.
+- The function already handles first/middle/last grouping and splice checks — preserve this structure but feed it correct lengths.
+
+### 3.7 Rafter Generator (`shop_drawings/rafter_gen.py`) — UPDATE
+
+- `_calc_rafter_data()` (line 52) calls `calc_rafter_length()` which hardcodes 7" Z-deduction. Must be parameterized (see Section 2.1).
+- `_draw_top_view()` (line 186) draws clip positions at linear offsets. When purlins are angled, the attachment surface footprint on the rafter changes — the rectangular grid assumption needs an `if angled_purlins` branch.
+
+### 3.8 Work Order Fab Stickers (`shop_drawings/wo_fab_stickers.py`) — VERIFY
+
+- Uses `purlin_type` (line 308) for machine assignment. Adding C-purlin option to BOM means stickers must handle both purlin types. Currently reads `purlin_type` from config — should work as-is if the field is populated.
+- Uses `_n_purlin_lines()` (line 106) calculated from `purlin_spacing_ft`. In solar mode, purlin spacing is panel-dictated — ensure `purlin_spacing_ft` in config is set correctly BEFORE sticker generation runs.
+
+### 3.9 Shipping Generator (`shop_drawings/shipping_gen.py`) — VERIFY
+
+- References `purlin_spacing_ft`, `building_width_ft`, `purlin_type`. Same concern as stickers — ensure these values reflect solar mode when applicable.
+
+### 3.10 PDF/Excel Exports (`outputs/pdf_gen.py`, `outputs/excel_gen.py`) — LOW RISK
+
+- Both use `geometry.get()` with safe defaults. New fields added to geometry dict will be silently ignored by existing code. No breakage risk.
+- To DISPLAY new fields (piece counts, solar panel info), add new lines to the BOM summary section in both generators.
 
 ---
 
 ## 4. Config and Data Flow
 
-### 4.1 Config Pipeline
+### 4.1 Config Pipeline (FULL TRACE)
 
-The data flows: SA Estimator → `config.py` → `calc/bom.py` → shop drawing config → interactive templates.
+The data flows through 5 layers. Every new field must exist in ALL layers:
 
-New fields need to be added at every step:
-
-**`config.py` DEFAULT_CONFIG additions:**
 ```
-max_purlin_length_ft: 45
-z_extension_ft: 4
-z_eave_overhang_in: 3.5
-purlin_cost_per_ft_c: null
-purlin_cost_per_ft_z: null
-purlin_angle_deg: 90
-solar_mode: false
-panel_width_mm: null
-panel_length_mm: null
-mounting_hole_dist_mm: null
-mounting_hole_inset_mm: null
-panels_across: null
-panels_along: null
-panel_gap_width_in: 0.25
-panel_gap_length_in: 0.25
-panel_orientation: 'landscape'
-solar_slope_deg: 5
+SA Estimator UI (templates/sa_calc.py, JS building object)
+    ↓ saves via AJAX to
+BuildingConfig dataclass (calc/bom.py line 50)
+    ↓ feeds into
+BOM calculation → geometry dict (calc/bom.py line 846)
+    ↓ saved to project JSON, then loaded by
+_load_buildings_list → _enrich_config_for_building (tf_handlers.py line 8104)
+    ↓ builds
+ShopDrawingConfig dataclass (config.py line 742) → interactive templates
+```
+
+**Layer 1 — SA Estimator JS object** (`templates/sa_calc.py`):
+New fields to add to the JS building data model:
+```javascript
+max_purlin_length_ft: 45,
+z_extension_ft: 4,
+z_eave_overhang_in: 3.5,
+purlin_cost_per_ft_c: null,
+purlin_cost_per_ft_z: null,
+solar_mode: false,
+panel_width_mm: null,
+panel_length_mm: null,
+mounting_hole_dist_mm: null,
+mounting_hole_inset_mm: null,
+panels_across: null,
+panels_along: null,
+panel_gap_width_in: 0.25,
+panel_gap_length_in: 0.25,
+panel_orientation: 'landscape',
+solar_slope_deg: 5,
 rafter_spacing_override_ft: null
 ```
 
-### 4.2 `_load_shop_config` and `_enrich_config_for_building` (tf_handlers.py)
+**Layer 2 — BuildingConfig** (`calc/bom.py` line 50):
+Add fields to the dataclass. NOTE: `angled_purlins` and `purlin_angle_deg` already exist (lines 82-83). `purlin_type` already exists (line 92).
+
+**Layer 3 — Geometry dict** (`calc/bom.py` line 846):
+Add new fields to the geometry dict so they flow downstream. `angled_purlins` and `purlin_angle_deg` already included (lines 883-884).
+
+**Layer 4 — `_enrich_config_for_building`** (`tf_handlers.py` line 8104):
+Already passes `angled_purlins`, `purlin_angle_deg`, `purlin_type`. Add solar fields.
+
+**Layer 5 — ShopDrawingConfig** (`config.py` line 742):
+Already has `is_solar: bool = False` (line 817), `purlin_type`, `purlin_spacing_ft`, `purlin_overhang_ft`, `purlin_end_extension_in`. Add:
+- `max_purlin_length_ft`, `z_extension_ft`, `z_eave_overhang_in`
+- `purlin_cost_per_ft_c`, `purlin_cost_per_ft_z`
+- All solar panel fields
+- Must also add to `_FLOAT_FIELDS`, `_BOOL_FIELDS`, `_INT_FIELDS` sets for `ensure_numeric()` to work
+
+### 4.2 EXISTING CONFIG VALUES — Conflicts to Resolve
+
+| Field in config.py | Current Value | PURLIN_RULES.md Value | Action |
+|---|---|---|---|
+| `PURLIN_DEFAULTS["z_overhang_default_ft"]` | 6.0 | 4.0 | Change to 4.0 |
+| `PURLIN_DEFAULTS["max_length_ft"]` | 53.0 | 53 (hard cap), 45 (default max) | Keep 53 as hard cap, add `default_max_length_ft: 45` |
+| `RAFTER_DEFAULTS["z_purlin_deduction_in"]` | 7.0 | 7.0 (3.5×2) | Keep, but make source configurable |
+| `ShopDrawingConfig.purlin_overhang_ft` | 6.0 | 4.0 | Change to 4.0 |
+| `BuildingConfig.purlin_angle_deg` | 15.0 | 90 (perpendicular default) | Change to 90.0 |
+
+### 4.3 `_load_shop_config` and `_enrich_config_for_building` (tf_handlers.py)
 
 These functions populate the config dict passed to interactive drawings. Need to:
 - Include all new purlin/solar fields from the building's saved data.
 - Pass through to the PURLIN_LAYOUT_CONFIG_JSON template variable.
+- The `_enrich_config_for_building` function (line 8104) uses a pattern of `if target.get("field"): enriched["field"] = ...` — follow same pattern for new fields.
 
-### 4.3 Database Schema
+### 4.4 Database/Storage Schema
 
-If buildings are stored in `titanforge.db`, the building record may need new columns for solar inputs. Check whether buildings use JSON blob storage (flexible) or fixed columns (need migration).
+Buildings are stored as JSON blobs within project version files (not fixed DB columns). The `_load_buildings_list()` function reads from `projects/{job_code}/versions/*.json`. This means:
+- **No DB migration needed** — JSON is flexible, new fields just appear.
+- Old projects won't have solar fields — code must handle `None`/missing gracefully.
+- `BuildingConfig` defaults ensure backward compatibility.
 
 ---
 
-## 5. Implementation Phases
+## 5. Breakage Risk Assessment
+
+### 5.1 HIGH RISK — BOM Numbers Will Change
+
+Adding piece-break logic to `calc/bom.py` will change purlin LF totals, piece counts, and therefore costs. Currently the BOM uses `n_purlin_lines × building_length_ft` as total purlin LF. With piece breaks, the total will include overlap zones (Z-purlins add 6" overlap at every joint) and may change piece counts.
+
+**Mitigation:** All BOM results are versioned in project JSON files. Old BOMs keep their saved values. Only recalculation produces new numbers. The BOM diff feature (already implemented) will highlight changes when recalculating.
+
+### 5.2 MEDIUM RISK — Rafter Length Divergence
+
+`shop_drawings/config.py` `calc_rafter_length()` hardcodes 7" Z-deduction. If we make `z_eave_overhang_in` configurable (e.g., user sets 4" per side = 8" total instead of 7"), the shop drawing cut length changes. Existing rafter drawings for saved projects will render differently.
+
+**Mitigation:** Only affects new calculations. Saved shop drawing configs preserve their values. Add `z_eave_overhang_in` to ShopDrawingConfig with default 3.5 (→ 7" total) to match existing behavior.
+
+### 5.3 MEDIUM RISK — `purlin_gen.py` and BOM Piece Counts Must Match
+
+Two independent piece-break implementations (BOM and `purlin_gen.calc_purlin_groups()`) will produce different numbers if they diverge.
+
+**Mitigation:** Extract shared piece-break engine. Both BOM and purlin_gen call the same function.
+
+### 5.4 LOW RISK — PDF/Excel Exports
+
+Exports use `.get()` with defaults. New geometry fields will be silently ignored. No breakage. Add display logic for new fields in a later pass.
+
+### 5.5 LOW RISK — Stickers, Shipping, Cut Lists
+
+Read existing config fields (`purlin_type`, `purlin_spacing_ft`). As long as these are populated correctly for solar mode, no breakage. Verify during Phase 2 testing.
+
+### 5.6 NO RISK — TC Estimator
+
+TC Estimator reads BOM line items for pricing. New purlin line items (C-purlin option, solar hardware) will appear as additional BOM rows. TC Estimator iterates all rows — no schema dependency. No changes needed to TC Estimator code.
+
+### 5.7 CRITICAL DEFAULT CONFLICT — Z-Overhang 6' vs 4'
+
+`config.py PURLIN_DEFAULTS["z_overhang_default_ft"]` = 6.0 but PURLIN_RULES.md says default 4'. The existing `purlin_gen.py` uses this 6' value for all current shop drawings. Changing to 4' will affect all NEW purlin drawings.
+
+**Mitigation:** Change default to 4'. Existing saved configs keep their 6' value. Only new projects get 4'. The interactive drawing allows override.
+
+### 5.8 CRITICAL DEFAULT CONFLICT — Purlin Angle Default
+
+`BuildingConfig.purlin_angle_deg` defaults to 15.0 (line 83 of bom.py). This should default to 90 (perpendicular) since angled purlins are the exception, not the rule. The `angled_purlins` bool is False by default so the angle value is ignored, but it's confusing and could cause bugs if `angled_purlins` gets toggled on without setting the angle.
+
+**Mitigation:** Change default to 90.0.
+
+---
+
+## 6. Implementation Phases
 
 ### Phase 1: Standard Mode Purlin Layout (Foundation)
 **Goal:** SA estimator collects all standard purlin inputs, BOM calculates piece breaks correctly.
@@ -345,33 +479,47 @@ If buildings are stored in `titanforge.db`, the building record may need new col
 
 ---
 
-## 6. Files Affected Summary
+## 7. Files Affected Summary
 
-| File | Phase | Change Type |
-|---|---|---|
-| `templates/sa_calc.py` | 1, 2 | Major — new input sections |
-| `config.py` | 1, 2 | Add defaults for all new fields |
-| `calc/defaults.py` | 1, 2 | Add defaults |
-| `calc/bom.py` | 1, 2, 3 | Major — piece breaks, solar dims, comparison |
-| `templates/purlin_layout.py` | 1, 2, 3, 4 | Wire to config, add facing/plates/angle |
-| `templates/purlin_drawing_v2.py` | 5 | Add facing, overlap detail |
-| `templates/rafter_drawing.py` | 1, 4 | P1/P2 plates, rafter length |
-| `tf_handlers.py` | 1, 2 | Config enrichment for new fields |
-| `shop_drawings/cutlist_gen.py` | 5 | Piece-break data |
-| `shop_drawings/purlin_gen.py` | 5 | PDF generation updates |
+| File | Phase | Change Type | Risk |
+|---|---|---|---|
+| `templates/sa_calc.py` | 1, 2 | Major — new input sections | Low (additive) |
+| `config.py` | 1, 2 | Add defaults, fix conflicts | Medium (default changes) |
+| `calc/defaults.py` | 1, 2 | Add defaults | Low (additive) |
+| `calc/bom.py` | 1, 2, 3 | Major — piece breaks, solar dims, comparison | High (changes BOM numbers) |
+| `templates/purlin_layout.py` | 1, 2, 3, 4 | Wire to config, add facing/plates/angle | Low (new features) |
+| `templates/purlin_drawing_v2.py` | 5 | Add facing, overlap detail | Low (visual only) |
+| `templates/rafter_drawing.py` | 1, 4 | P1/P2 plates, rafter length | Medium (dimensions) |
+| `tf_handlers.py` | 1, 2 | Config enrichment for new fields | Low (additive) |
+| `shop_drawings/config.py` | 1 | Parameterize Z-deduction in calc_rafter_length | Medium (formula change) |
+| `shop_drawings/purlin_gen.py` | 1, 4, 5 | Replace with shared piece-break engine | High (must match BOM) |
+| `shop_drawings/rafter_gen.py` | 4 | Angled purlin clip positions | Medium (geometry) |
+| `shop_drawings/cutlist_gen.py` | 5 | Piece-break data, angled adjustment | Low (additive) |
+| `shop_drawings/wo_fab_stickers.py` | 2 | Verify solar mode fields flow through | Low (verify only) |
+| `shop_drawings/shipping_gen.py` | 2 | Verify solar mode fields flow through | Low (verify only) |
+| `outputs/pdf_gen.py` | 5 | Add new field display | Low (additive) |
+| `outputs/excel_gen.py` | 5 | Add new field display | Low (additive) |
 
 ---
 
-## 7. Open Questions for Next Session
+## 8. Open Questions for Next Session
 
-1. **Database storage**: Are building records stored as JSON blobs or fixed columns? This determines whether we need a DB migration for solar fields.
+### Resolved by Audit
+1. ~~**Database storage**: Are building records stored as JSON blobs or fixed columns?~~ **RESOLVED**: JSON blobs in project version files. No DB migration needed.
+
+### Still Open
 2. **Panel spec library**: Should we build a saved panel spec library (dropdown of common panels like CS3K-P) so users don't re-enter dimensions every time?
-3. **Girt layout drawing**: Girts follow the same piece-break rules as purlins — should we extend the purlin layout drawing to include a girt layout view, or keep it separate?
+3. **Girt layout drawing**: Girts follow the same piece-break rules as purlins (PURLIN_RULES.md §9). Should we extend the purlin layout drawing to include a girt layout view, or keep it separate? The girt piece-break engine would be identical — only spacing differs (default 5' vs panel-dictated).
 4. **PDF export of comparison**: Should the 4-option cost comparison be exportable as a standalone PDF for customer quotes?
-5. **Multiple buildings with different modes**: Can one job have both a solar building and a standard building? If so, the solar toggle is per-building, not per-job.
-6. **Purlin weight lookup**: The BOM currently uses purlin weight per foot. Should cost comparison use the same weight-based pricing or switch to the new cost-per-foot input?
+5. **Multiple buildings with different modes**: Can one job have both a solar building and a standard building? If so, the solar toggle is per-building (it already is in BuildingConfig), but the SA estimator UI needs to handle mixed-mode jobs.
+6. **Purlin weight vs cost-per-foot**: The BOM currently uses `lbs_per_lft × coil_price_per_lb` for purlin cost. The cost comparison uses `linear_ft × cost_per_ft`. These are different pricing models. Should the comparison override the BOM cost, or be a separate advisory output?
 7. **Panel spec validation**: Should we validate that user-entered panel dimensions are reasonable (e.g., width 800-1200mm, length 1500-2400mm)?
+8. **C-purlin coil definition**: The COILS dict in `calc/bom.py` only has `z_purlin_20`. We need a C-purlin coil entry with its own width, gauge, and pricing. What are the C-purlin coil specs?
+9. **Endcap interaction with solar mode**: The endcap config (`PURLIN_DEFAULTS["endcap"]`) assumes 2 per building, U-channel profile, max 30'4". In solar mode, do endcaps change? Are they still needed on both ends?
+10. **Eave strut interaction**: The BOM includes eave struts (cee purlin at eave). In solar mode with Z-purlins overhanging the rafter, does the eave strut placement change?
+11. **Strap placement with solar panels**: Hurricane straps connect purlins to rafters. Solar bolt stacks add load. Does strap count or placement need to change for solar buildings?
 
 ---
 
 *End of integration plan.*
+*Updated: 2026-04-20 — Post-audit revision with breakage analysis, config conflicts, and full data flow trace.*
