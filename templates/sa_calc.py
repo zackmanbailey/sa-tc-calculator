@@ -812,6 +812,69 @@ function buildingFormHTML(b) {
           </div>
         </div>
 
+        <!-- Live Panel Diagram -->
+        <div id="panelDiagram_${b.id}" style="background:#fff;border:1px solid #E5E7EB;border-radius:6px;padding:8px;margin-bottom:10px;text-align:center">
+          ${(function(){
+            var w = b.solar_panel_width_mm || 992;
+            var l = b.solar_panel_length_mm || 2108;
+            var fe = b.solar_mount_hole_edge_mm || 20;
+            var ins = b.solar_mount_hole_inset_mm || 250;
+
+            /* Scale to fit: panel drawn with long side horizontal, max 380px wide */
+            var maxW = 380, maxH = 160;
+            var sc = Math.min(maxW / l, maxH / w);
+            var pw = Math.round(l * sc);   /* drawn width = panel length */
+            var ph = Math.round(w * sc);   /* drawn height = panel width */
+            var svgW = pw + 120;           /* padding for labels */
+            var svgH = ph + 100;
+            var ox = 60, oy = 40;          /* origin offset */
+
+            /* Bolt hole positions (scaled) */
+            var feS = Math.round(fe * sc);   /* from long edge (top/bottom) */
+            var insS = Math.round(ins * sc); /* from short edge (left/right) */
+
+            return '<svg width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '" style="max-width:100%">'
+              /* Panel rectangle */
+              + '<rect x="'+ox+'" y="'+oy+'" width="'+pw+'" height="'+ph+'" fill="#E0E7FF" stroke="#4F46E5" stroke-width="2" rx="2"/>'
+              + '<text x="'+(ox+pw/2)+'" y="'+(oy+ph/2+4)+'" text-anchor="middle" fill="#4F46E5" font-size="11" font-weight="600" opacity="0.4">SOLAR PANEL</text>'
+
+              /* Width dimension (right side, vertical) */
+              + '<line x1="'+(ox+pw+8)+'" y1="'+oy+'" x2="'+(ox+pw+8)+'" y2="'+(oy+ph)+'" stroke="#92400E" stroke-width="1.5"/>'
+              + '<line x1="'+(ox+pw+3)+'" y1="'+oy+'" x2="'+(ox+pw+13)+'" y2="'+oy+'" stroke="#92400E" stroke-width="1"/>'
+              + '<line x1="'+(ox+pw+3)+'" y1="'+(oy+ph)+'" x2="'+(ox+pw+13)+'" y2="'+(oy+ph)+'" stroke="#92400E" stroke-width="1"/>'
+              + '<text x="'+(ox+pw+16)+'" y="'+(oy+ph/2+4)+'" fill="#92400E" font-size="10" font-weight="700">' + w + 'mm</text>'
+              + '<text x="'+(ox+pw+16)+'" y="'+(oy+ph/2+16)+'" fill="#92400E" font-size="9">(width)</text>'
+
+              /* Length dimension (bottom, horizontal) */
+              + '<line x1="'+ox+'" y1="'+(oy+ph+8)+'" x2="'+(ox+pw)+'" y2="'+(oy+ph+8)+'" stroke="#92400E" stroke-width="1.5"/>'
+              + '<line x1="'+ox+'" y1="'+(oy+ph+3)+'" x2="'+ox+'" y2="'+(oy+ph+13)+'" stroke="#92400E" stroke-width="1"/>'
+              + '<line x1="'+(ox+pw)+'" y1="'+(oy+ph+3)+'" x2="'+(ox+pw)+'" y2="'+(oy+ph+13)+'" stroke="#92400E" stroke-width="1"/>'
+              + '<text x="'+(ox+pw/2)+'" y="'+(oy+ph+22)+'" text-anchor="middle" fill="#92400E" font-size="10" font-weight="700">' + l + 'mm (length)</text>'
+
+              /* 4 bolt holes */
+              + '<circle cx="'+(ox+insS)+'" cy="'+(oy+feS)+'" r="4" fill="#DC2626" stroke="#fff" stroke-width="1"/>'
+              + '<circle cx="'+(ox+pw-insS)+'" cy="'+(oy+feS)+'" r="4" fill="#DC2626" stroke="#fff" stroke-width="1"/>'
+              + '<circle cx="'+(ox+insS)+'" cy="'+(oy+ph-feS)+'" r="4" fill="#DC2626" stroke="#fff" stroke-width="1"/>'
+              + '<circle cx="'+(ox+pw-insS)+'" cy="'+(oy+ph-feS)+'" r="4" fill="#DC2626" stroke="#fff" stroke-width="1"/>'
+
+              /* Hole from edge dimension (top, from panel top edge to bolt) */
+              + '<line x1="'+(ox+insS)+'" y1="'+oy+'" x2="'+(ox+insS)+'" y2="'+(oy+feS)+'" stroke="#DC2626" stroke-width="1" stroke-dasharray="3,2"/>'
+              + '<text x="'+(ox+insS-3)+'" y="'+(oy-4)+'" text-anchor="middle" fill="#DC2626" font-size="9" font-weight="600">' + fe + 'mm</text>'
+              + '<text x="'+(ox+insS-3)+'" y="'+(oy-14)+'" text-anchor="middle" fill="#DC2626" font-size="8">(from edge)</text>'
+
+              /* Hole inset dimension (left, from panel left edge to bolt) */
+              + '<line x1="'+ox+'" y1="'+(oy+feS)+'" x2="'+(ox+insS)+'" y2="'+(oy+feS)+'" stroke="#16A34A" stroke-width="1" stroke-dasharray="3,2"/>'
+              + '<text x="'+(ox-4)+'" y="'+(oy+feS-4)+'" text-anchor="end" fill="#16A34A" font-size="9" font-weight="600">' + ins + 'mm</text>'
+              + '<text x="'+(ox-4)+'" y="'+(oy+feS+8)+'" text-anchor="end" fill="#16A34A" font-size="8">(inset)</text>'
+
+              /* Long edge / short edge labels */
+              + '<text x="'+(ox+pw/2)+'" y="'+(oy-4)+'" text-anchor="middle" fill="#6B7280" font-size="8" font-style="italic">long edge</text>'
+              + '<text x="'+(ox-4)+'" y="'+(oy+ph/2+4)+'" text-anchor="end" fill="#6B7280" font-size="8" font-style="italic" transform="rotate(-90,'+(ox-4)+','+(oy+ph/2)+')">short edge</text>'
+
+              + '</svg>';
+          })()}
+        </div>
+
         <!-- Orientation + Layout Mode -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="form-group">
