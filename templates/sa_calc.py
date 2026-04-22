@@ -903,16 +903,16 @@ function buildingFormHTML(b) {
         ${(b.solar_dim_mode||'panel_count')==='panel_count' ? `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
           <div class="form-group">
-            <label>Panels Across</label>
+            <label>Building Panel Width Count</label>
             <input type="number" value="${b.solar_panels_across||5}" min="1" max="100" step="1"
               onchange="updateBldg('${b.id}','solar_panels_across',parseInt(this.value));renderBuildingForms()"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Width direction</div>
+            <div style="font-size:10px;color:#888;margin-top:2px">Panels across building width</div>
           </div>
           <div class="form-group">
-            <label>Panels Along</label>
+            <label>Building Panel Length Count</label>
             <input type="number" value="${b.solar_panels_along||20}" min="1" max="500" step="1"
               onchange="updateBldg('${b.id}','solar_panels_along',parseInt(this.value));renderBuildingForms()"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">Length direction</div>
+            <div style="font-size:10px;color:#888;margin-top:2px">Panels along building length</div>
           </div>
           <div class="form-group">
             <label>Gap W (in)</label>
@@ -950,7 +950,7 @@ function buildingFormHTML(b) {
         </div>
         `}
 
-        <!-- Edge clearance + Install cost -->
+        <!-- Edge clearance -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="form-group">
             <label>Edge Clearance (in)</label>
@@ -958,12 +958,7 @@ function buildingFormHTML(b) {
               onchange="updateBldg('${b.id}','solar_edge_clearance_in',parseFloat(this.value));renderBuildingForms()"/>
             <div style="font-size:10px;color:#888;margin-top:2px">Clearance from panels to building edge</div>
           </div>
-          <div class="form-group">
-            <label>Install Cost ($/panel)</label>
-            <input type="number" value="${b.solar_install_per_panel||45}" min="0" max="200" step="1"
-              onchange="updateBldg('${b.id}','solar_install_per_panel',parseFloat(this.value))"/>
-            <div style="font-size:10px;color:#888;margin-top:2px">TC estimator install charge per panel</div>
-          </div>
+          <div class="form-group"></div>
         </div>
       </div>
       ` : ''}
