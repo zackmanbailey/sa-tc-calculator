@@ -275,14 +275,15 @@ def _calc_purlin_layout(
 ) -> tuple:
     """Calculate purlin spacing and positions for solar mounting.
 
-    Landscape: one purlin at each panel edge across the width.
-               N+1 purlin lines for N panels across.
-               Spacing = panel_width_mm (uniform).
+    Landscape: N+1 purlin lines for N panels across (shared purlins).
+               Purlins centered on the 1/4" gap between adjacent panels so
+               both panels' bolt holes land on the same 3.5" top flange.
+               Spacing ≈ panel_width_mm.
 
-    Portrait:  purlins at mounting-hole positions within each panel.
-               2 purlin lines per panel (at the two long-edge mount holes).
-               2N purlin lines for N panels across.
-               Spacing alternates: intra-panel and inter-panel.
+    Portrait:  2 purlin lines per panel, NO sharing between panels.
+               Purlin positions set by mount_hole_inset_mm (distance from
+               panel SHORT edge, default 250mm).
+               Intra-panel spacing = length_mm - 2 * mount_hole_inset_mm.
 
     Returns:
         (spacing_mm, n_purlin_lines, purlin_positions_mm)
@@ -297,82 +298,69 @@ def _calc_purlin_layout(
     positions = []
 
     if orientation == "landscape":
-        # N+1 purlin lines: one at each panel edge
+        # Landscape: panel width (992mm) goes across building width.
+        # Panel length (2108mm) goes along building length.
+        # N+1 shared purlin lines for N panels.
+        #
+        # Purlins are positioned so the 1/4" gap between adjacent panels
+        # is CENTERED on the purlin's 3.5" top flange. Each panel's bolt
+        # hole (mount_hole_from_edge_mm = 20mm inboard from its long edge)
+        # lands on its side of the shared flange.
+        #
+        # First purlin: at the left bolt hole of panel 1
+        #   = edge_mm + mount_hole_from_edge_mm
+        # Last purlin: at the right bolt hole of the last panel
+        #   = edge_mm + (N-1)*(width + gap) + width - mount_hole_from_edge_mm
+        # Interior purlins: centered on gap between panels i and i+1
+        #   = edge_mm + i*width + (i-1)*gap + width - from_edge + gap/2
+        #   ... simplifies to midpoint of gap
+
         n_purlin_lines = panels_across + 1
-        # First purlin at start of first panel (after edge clearance)
-        for i in range(n_purlin_lines):
-            pos = edge_mm + i * dim_across
-            if i > 0:
-                pos += i * gap_mm  # add accumulated gaps
-            # Correction: gap is between panels, so gap count = i for purlin i
-            # Actually let's recalculate cleanly
-            pass
-
-        # Recalculate positions cleanly
         positions = []
-        pos = edge_mm  # first purlin at left edge of first panel
-        positions.append(pos)
-        for i in range(panels_across):
-            pos += dim_across  # right edge of panel i
-            if i < panels_across - 1:
-                # There's a gap before the next panel, but purlin is at the
-                # right edge of this panel (= left edge of gap)
-                # Actually, purlin lines are AT the panel edges, and the gap
-                # is between. So next purlin = pos + gap_mm
-                pass
-            positions.append(pos)
-            if i < panels_across - 1:
-                pos += gap_mm  # skip the gap to reach next panel left edge
+        bolt_inboard = panel.mount_hole_from_edge_mm  # 20mm from long edge
 
-        spacing_mm = dim_across  # uniform spacing (the primary one)
+        for i in range(n_purlin_lines):
+            if i == 0:
+                # First purlin: at left bolt hole of first panel
+                pos = edge_mm + bolt_inboard
+            elif i == panels_across:
+                # Last purlin: at right bolt hole of last panel
+                panel_start = edge_mm + (panels_across - 1) * (dim_across + gap_mm)
+                pos = panel_start + dim_across - bolt_inboard
+            else:
+                # Interior purlin: centered on gap between panel i-1 and panel i
+                # Right edge of panel (i-1) = edge_mm + i * dim_across + (i-1) * gap_mm
+                right_edge = edge_mm + i * dim_across + (i - 1) * gap_mm
+                pos = right_edge + gap_mm / 2.0  # center of gap
+            positions.append(pos)
+
+        spacing_mm = dim_across  # primary spacing (approximate, uniform)
 
     else:  # portrait
-        # 2 purlin lines per panel, positioned at mounting holes
-        # Mounting holes are mount_hole_from_edge_mm from each long edge
-        # In portrait, the long edge runs along the building length,
-        # and the panel's length dimension goes across the building.
+        # Portrait: panel length (2108mm) goes across building width.
+        # Panel width (992mm) goes along building length.
+        # 2 purlin lines per panel, NO sharing between adjacent panels.
         #
-        # The two mounting rails are at:
-        #   mount_hole_from_edge_mm from left long edge
-        #   panel_width_mm - mount_hole_from_edge_mm from left long edge
-        # But in portrait, dim_across = panel.length_mm and the "long edge"
-        # is the width edge. The mounting holes are offset from the
-        # panel's width edges (the short dimension in portrait = panel.width_mm).
+        # Purlin positions are at mount_hole_inset_mm (250mm) from each
+        # SHORT edge of the panel. The short edges are the width edges
+        # (992mm), which in portrait orientation are at the left and right
+        # of each panel across the building width.
         #
-        # Actually, mount holes are always referenced to the physical panel:
-        #   - mount_hole_from_edge_mm: distance from panel LONG edge (length side)
-        #   - In portrait, panel long edges run along building length direction
-        #   - Across the building (portrait), the dimension is panel.length_mm
-        #   - The two purlin lines per panel are at:
-        #     panel_start + mount_hole_from_edge_mm  (near left long edge)
-        #     panel_start + (panel.width_mm - mount_hole_from_edge_mm)
-        #       ... but wait, in portrait the ACROSS dimension is length_mm,
-        #       and the purlin rails sit at the mount_hole_from_edge positions
-        #       measured from the long edges (which in portrait run along length).
-        #
-        # Let's be precise:
-        # Physical panel: width_mm (short side), length_mm (long side)
-        # Mounting holes: from_edge_mm from each LONG edge (length edge)
-        # Portrait orientation: length_mm goes across building width
-        #   The two long edges are at the "top" and "bottom" of the panel
-        #   as viewed across the building width.
-        #   Purlin rail 1: mount_hole_from_edge_mm from the "top" long edge
-        #   Purlin rail 2: mount_hole_from_edge_mm from the "bottom" long edge
-        #   Distance between rails = length_mm - 2 * mount_hole_from_edge_mm
+        # Intra-panel spacing = length_mm - 2 * mount_hole_inset_mm
+        #   e.g. 2108 - 2*250 = 1608mm
 
-        intra_panel_mm = panel.length_mm - 2 * panel.mount_hole_from_edge_mm
+        intra_panel_mm = panel.length_mm - 2 * panel.mount_hole_inset_mm
         n_purlin_lines = 2 * panels_across
 
         positions = []
-        pos = edge_mm + panel.mount_hole_from_edge_mm  # first mount hole
         for i in range(panels_across):
             panel_start = edge_mm + i * (panel.length_mm + gap_mm)
-            rail_1 = panel_start + panel.mount_hole_from_edge_mm
-            rail_2 = panel_start + panel.length_mm - panel.mount_hole_from_edge_mm
+            rail_1 = panel_start + panel.mount_hole_inset_mm
+            rail_2 = panel_start + panel.length_mm - panel.mount_hole_inset_mm
             positions.append(rail_1)
             positions.append(rail_2)
 
-        # Primary spacing = intra-panel distance (the more critical one)
+        # Primary spacing = intra-panel distance
         spacing_mm = intra_panel_mm
 
     return spacing_mm, n_purlin_lines, positions
@@ -413,67 +401,38 @@ def _validate_bolt_holes(
     bolt_across_positions = []  # position of bolt center across building width
 
     if orientation == "landscape":
-        # Bolt holes are at mount_hole_from_edge_mm from each panel LONG edge.
-        # In landscape, long edges run across the building (dim_across = width_mm).
-        # Wait — long edge = length_mm edge. In landscape:
-        #   across = width_mm, along = length_mm
-        #   The panel's long edges (length sides) run ALONG the building.
-        #   The panel's short edges (width sides) run ACROSS the building.
-        #   Mount holes are from the LONG edge, which runs along building length.
-        #   So across the building, bolt positions are at:
-        #     panel_left + mount_hole_from_edge_mm
-        #     panel_left + (width_mm - mount_hole_from_edge_mm)
-        #   These should align with the purlin lines at panel edges? No —
-        #   In landscape, purlins are at panel EDGES (left/right of each panel).
-        #   The bolts are inset from the long edges (top/bottom of panel).
-        #   The bolts attach to the purlins that run under the panel edges.
+        # Landscape: width_mm (992) across building, length_mm (2108) along.
+        # Bolt holes are mount_hole_from_edge_mm (20mm) inboard from each
+        # panel's long edge. The long edges run ALONG the building, so the
+        # bolt's across-building position is near the panel's left/right
+        # short edges — i.e., near the purlin positions.
         #
-        # Actually, the purlins run along the building LENGTH (perpendicular to
-        # rafters in a standard layout). In a solar carport the purlins run
-        # across the BUILDING WIDTH (parallel to rafters would be wrong).
-        #
-        # Standard carport: purlins span between rafters along building length.
-        # The "purlin lines" are positions across the building width.
-        # In landscape solar:
-        #   Purlin lines are at each panel width-edge across the building.
-        #   Bolts connect panel to purlin. The bolt across-position must be
-        #   AT the purlin line (on the flange). The bolt along-position is at
-        #   mount_hole_inset_mm from the panel short edge.
-        #
-        # So for landscape, bolt across-positions ARE the purlin positions,
-        # and the check is that the bolt is centered on the flange. Since
-        # the purlin IS placed at the panel edge, by definition the bolt is
-        # at mount_hole_from_edge_mm OFFSET from the purlin center.
+        # Purlins are now gap-centered (not at panel edges), so the bolt
+        # offset from purlin center is small. For interior shared purlins,
+        # the purlin sits at the gap center, and each panel's bolt is
+        # mount_hole_from_edge_mm from its respective edge.
 
         for i in range(panels_across):
             panel_left = edge_mm + i * (panel.width_mm + gap_mm)
-            # Left purlin is at panel_left (purlin center aligned with panel left edge)
-            # Bolt is at panel_left + mount_hole_from_edge_mm from the long edge
-            # But "from_edge" means from the long (length) edge, which in landscape
-            # runs along the building. The bolt's across-position is:
-            #   purlin_center ± some offset
-            # If purlin is at panel left edge and bolt is mount_hole_from_edge from
-            # the adjacent long edge, the bolt IS on the purlin.
-            # The offset from purlin center = mount_hole_from_edge_mm (bolt is inset
-            # from the panel edge by this amount, and the purlin IS at the panel edge).
             bolt_offset = panel.mount_hole_from_edge_mm
-            # Left edge bolts
+            # Left edge bolt (20mm inboard from panel left long edge)
             bolt_across_positions.append(
                 (panel_left + bolt_offset, i, "left"))
-            # Right edge bolts
+            # Right edge bolt (20mm inboard from panel right long edge)
             bolt_across_positions.append(
                 (panel_left + panel.width_mm - bolt_offset, i, "right"))
 
     else:  # portrait
-        # In portrait: across = length_mm, along = width_mm
-        # Purlin lines are at mounting hole positions.
-        # Bolts are ON the purlin lines, so offset = 0 by definition.
+        # Portrait: length_mm (2108) across building, width_mm (992) along.
+        # Bolt holes are at mount_hole_inset_mm (250mm) from each SHORT edge.
+        # These positions ARE the purlin line positions, so bolts land
+        # directly on purlin centers (offset ≈ 0).
         for i in range(panels_across):
             panel_left = edge_mm + i * (panel.length_mm + gap_mm)
             bolt_across_positions.append(
-                (panel_left + panel.mount_hole_from_edge_mm, i, "rail1"))
+                (panel_left + panel.mount_hole_inset_mm, i, "rail1"))
             bolt_across_positions.append(
-                (panel_left + panel.length_mm - panel.mount_hole_from_edge_mm,
+                (panel_left + panel.length_mm - panel.mount_hole_inset_mm,
                  i, "rail2"))
 
     # Now validate each bolt against the nearest purlin

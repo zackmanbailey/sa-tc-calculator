@@ -1,6 +1,6 @@
 # Purlin Rules Reference — TitanForge / Structures America
 
-> Living document. Last updated: 2026-04-20 (audit pass — fixed §8 numbering, §10.1 girt builder correction)
+> Living document. Last updated: 2026-04-22 (added §6.11 assembly chain, updated §6.5 purlin positioning, updated §8.1/8.2 physical descriptions)
 > Source: Design discussions between Zack (Titan Carports) and engineering team.
 
 ---
@@ -139,9 +139,9 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - Algorithm must validate that bolt holes fit on the purlin flange with minimum 0.5" clearance from flange edges.
 
 ### 6.5 Purlin Spacing in Solar Mode
-- Purlins spacing is DICTATED by the panels — the user does NOT input purlin spacing in solar mode.
-- Landscape: spacing = panel short-side width (e.g., 992mm ≈ 3'-3").
-- Portrait: spacing = mounting hole distance within each panel pair.
+- Purlin spacing is DICTATED by the panels — the user does NOT input purlin spacing in solar mode.
+- **Landscape**: N+1 purlin lines for N panels. Purlins are positioned so the 1/4" gap between adjacent panels is CENTERED on the purlin's 3.5" top flange. Both adjacent panels' bolt holes (each 20mm / `mount_hole_from_edge_mm` inboard from their long edge) land on the same shared flange. Spacing ≈ panel_width_mm (992mm), but purlin centers are at the midpoint of each panel gap, not at panel edges.
+- **Portrait**: 2 purlin lines per panel (no sharing). Purlin positions are at the mounting hole INSET positions (`mount_hole_inset_mm`, default 250mm) measured from each SHORT edge of the panel. Intra-panel spacing = `panel_length_mm - 2 × mount_hole_inset_mm` (e.g., 2108 - 500 = 1608mm). **CRITICAL**: portrait uses `mount_hole_inset_mm` (250mm, from short edge), NOT `mount_hole_from_edge_mm` (20mm, from long edge).
 
 ### 6.6 Solar Overhang Rules
 - **Front/back (eave sides, across width)**: panels CAN overhang both purlins and rafters.
@@ -169,6 +169,27 @@ Purlin groups for this example (C-purlin, 18' max bay):
 - However, this should be a user option — some edge cases may require decking under the solar array.
 - Default: decking OFF when solar mode is ON.
 - If the user enables decking in solar mode, standard decking rules apply (panels bear on purlins as normal).
+
+### 6.11 Solar Carport Assembly Chain (Physical Structure)
+The structural connection chain from ground to solar panel:
+
+1. **Column** (vertical, sits at CENTER of rafter) → supports rafter
+2. **Rafter** (horizontal/sloped rectangular beam) → spans building width
+3. **P1/P2 Clip** (flat plate, **welded** to rafter) → connects purlin to rafter
+   - P1 (interior): welded to TOP of rafter only
+   - P2 (endcap): welded to rafter END FACE — rafter terminates at P2
+4. **Z-Purlin** (web sits against clip, **tek screwed** through clip into web) → runs along building length
+   - Bottom flange rests on rafter top
+   - Top flange extends outward, providing the 3.5" panel mounting surface
+5. **Solar Panel** (sits on purlin top flange, **through-bolted** at mounting hole positions)
+   - Adjacent panels butt together with 1/4" gap CENTERED on the shared purlin's top flange
+   - Each panel's bolt hole is 20mm (`mount_hole_from_edge_mm`) inboard from its long edge
+
+Key details verified via 3D model review (2026-04-22):
+- Rafter is a rectangular/box section (NOT an I-beam)
+- Purlin top flanges overhang past the rafter (not the rafter extending past purlins)
+- Tek screw hex heads are visible on the P1/P2 plate face
+- P2 has 2 columns × 4 rows of tek screw holes in the portion above the rafter
 
 ---
 
@@ -215,8 +236,8 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ### 8.1 P1 Plates (Interior)
 - Used at every INTERIOR purlin-to-rafter connection (i.e., not the eave purlins).
-- Welded to the top of the rafter. Material: 10GA.
-- Purlin web bolts to the P1 plate.
+- **Physical description**: A flat vertical plate welded to the TOP of the rafter only. The Z-purlin's web sits against the plate. Tek screws (with hex heads) go through the P1 plate into the purlin web, locking the purlin to the rafter. The purlin's bottom flange rests on the rafter top flange. The purlin's top flange extends outward from the web, providing the mounting surface for solar panels or decking.
+- Material: 10GA.
 - Position on rafter depends on purlin facing direction (small gap / big gap pattern).
 - **Count per rafter (perpendicular purlins)**: `n_purlin_lines - 2` (the 2 eave purlins get P2 plates instead).
 - **Count per rafter (angled purlins)**: `n_purlin_lines` (all positions get P1, including the 2 eave positions, since P2 cannot be used at an angle). Plus 2 endcap plates per rafter.
@@ -225,6 +246,7 @@ Purlin groups for this example (C-purlin, 18' max bay):
 
 ### 8.2 P2 Plates (Eave)
 - Used only at the eave (first and last purlin on the rafter) for PERPENDICULAR purlins.
+- **Physical description**: A flat vertical plate welded to the rafter END FACE at the building end. The P2 extends from below the rafter up above it. The upper portion (above the rafter top) provides the surface for the purlin web to tek screw into. The rafter TERMINATES at the P2 plate — the rafter does not extend past it. The purlin's bottom flange rests on the rafter top, and the web sits against the P2's upper extension.
 - Material: 10GA (same as P1).
 - **Count per rafter (perpendicular)**: 2 (one at each eave end).
 - **Exception — rafter splice**: If the rafter is spliced (length > 53'), the splice plate occupies the connection point. No P2 plate at that position — the rafter splice plate takes priority.
