@@ -512,13 +512,13 @@ function drawTitleBlock(svg, opts) {
   svg.appendChild(markEl);
 
   // ── Col 4: Revision history table ──
-  svg.appendChild($e('rect', {x: c4, y: ty, width: 200, height: 16, fill: '#333', stroke: '#333'}));
+  svg.appendChild($e('rect', {x: c4, y: ty, width: 200, height: 16, fill: '#1E3A5F', stroke: '#1E3A5F'}));
   var hdrTexts = [
     $t(c4 + 8, ty + 12, 'DATE', 'note'),
     $t(c4 + 50, ty + 12, 'REV', 'note'),
     $t(c4 + 80, ty + 12, 'DESCRIPTION', 'note')
   ];
-  hdrTexts.forEach(function(el) { el.setAttribute('fill', '#FFF'); svg.appendChild(el); });
+  hdrTexts.forEach(function(el) { el.style.fill = '#FF0000'; svg.appendChild(el); });
 
   var hist = opts.revHistory || [];
   hist.forEach(function(h, i) {
@@ -529,9 +529,9 @@ function drawTitleBlock(svg, opts) {
   });
 
   // ── Col 5: Project notes / weld schedule ──
-  svg.appendChild($e('rect', {x: c5, y: ty, width: tw - (c5 - tx), height: 16, fill: '#333', stroke: '#333'}));
+  svg.appendChild($e('rect', {x: c5, y: ty, width: tw - (c5 - tx), height: 16, fill: '#1E3A5F', stroke: '#1E3A5F'}));
   var notesHdr = $t(c5 + (tw - (c5 - tx)) / 2, ty + 12, 'PROJECT NOTES', 'note', 'middle');
-  notesHdr.setAttribute('fill', '#FFF');
+  notesHdr.style.fill = '#FF0000';
   svg.appendChild(notesHdr);
 
   var notes = opts.projectNotes || [];

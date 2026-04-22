@@ -30,14 +30,15 @@ var GAUGE_LBS = {
   '14GA': { '8': 3.70, '10': 4.50, '12': 5.30 }
 };
 
-// ── Solar hole pattern specs ──
+// ── Solar panel mount specs (real values from panel datasheet) ──
+// Panel bolts through top flange at mount_hole_from_edge_mm (20mm) from
+// each panel edge.  mount_hole_inset_mm (250mm) from short edges sets
+// the purlin Y positions in portrait mode.
+// In this cross-section / elevation view we just show the bolt holes on
+// the top flange at the positions where panels attach.
 var SOLAR_SPEC = {
-  holeDia: 0.4375,         // 7/16" holes
-  holeSpacing: 24,         // 24" O.C. between attachment points
-  edgeDist: 3,             // 3" from purlin end
-  holesPerPoint: 2,        // 2 holes per attachment bracket
-  holePairGap: 2,          // 2" between paired holes
-  bracketWidth: 4          // 4" bracket footprint
+  holeDia: 0.34375,        // 11/32" clearance for M8 bolt (8mm + 0.7mm)
+  mountHoleFromEdgeMm: 20  // mm from panel long-edge to bolt center
 };
 
 // ── State ──
@@ -211,66 +212,74 @@ function draw() {
   // Bottom flange (extends LEFT from bottom of web)
   secG.appendChild($r(cx - zBF, zBot - zT, zBF, zT, 'cee'));
 
-  // Top lip — at right end of top flange, curls UP-RIGHT at ~45deg
+  // Lips — angled stiffeners at flange ends
+  // Top lip: at right end of top flange, angles DOWN-RIGHT
+  // Bottom lip: at left end of bottom flange, angles UP-LEFT
   var lipLen = zLip;
   var lip45 = lipLen * Math.cos(Math.PI/4);
   var lipNx = zT * Math.cos(Math.PI/4) / 2;
   var lipNy = zT * Math.sin(Math.PI/4) / 2;
 
+  // Top lip: from right end of top flange, angles DOWN and RIGHT
   var topLipX1 = cx + zTF;
   var topLipY1 = zTop;
   var topLipX2 = topLipX1 + lip45;
-  var topLipY2 = topLipY1 - lip45;
+  var topLipY2 = topLipY1 + lip45;
   var topLipPts = [
-    (topLipX1 - lipNy) + ',' + (topLipY1 - lipNx),
-    (topLipX2 - lipNy) + ',' + (topLipY2 - lipNx),
-    (topLipX2 + lipNy) + ',' + (topLipY2 + lipNx),
-    (topLipX1 + lipNy) + ',' + (topLipY1 + lipNx)
+    (topLipX1 - lipNy) + ',' + (topLipY1 + lipNx),
+    (topLipX2 - lipNy) + ',' + (topLipY2 + lipNx),
+    (topLipX2 + lipNy) + ',' + (topLipY2 - lipNx),
+    (topLipX1 + lipNy) + ',' + (topLipY1 - lipNx)
   ].join(' ');
   secG.appendChild($e('polygon', {points: topLipPts, class: 'cee'}));
 
-  // Bottom lip — at left end of bottom flange, curls DOWN-LEFT at ~45deg
+  // Bottom lip: from left end of bottom flange, angles UP and LEFT
   var botLipX1 = cx - zBF;
   var botLipY1 = zBot;
   var botLipX2 = botLipX1 - lip45;
-  var botLipY2 = botLipY1 + lip45;
+  var botLipY2 = botLipY1 - lip45;
+  // Normal perpendicular to UP-LEFT direction (-1,-1) is (+1,-1) and (-1,+1)
   var botLipPts = [
-    (botLipX1 + lipNy) + ',' + (botLipY1 + lipNx),
-    (botLipX2 + lipNy) + ',' + (botLipY2 + lipNx),
-    (botLipX2 - lipNy) + ',' + (botLipY2 - lipNx),
-    (botLipX1 - lipNy) + ',' + (botLipY1 - lipNx)
+    (botLipX1 + lipNy) + ',' + (botLipY1 - lipNx),
+    (botLipX2 + lipNy) + ',' + (botLipY2 - lipNx),
+    (botLipX2 - lipNy) + ',' + (botLipY2 + lipNx),
+    (botLipX1 - lipNy) + ',' + (botLipY1 + lipNx)
   ].join(' ');
   secG.appendChild($e('polygon', {points: botLipPts, class: 'cee'}));
 
   // Centerlines
-  secG.appendChild($l(cx, zTop - lip45 - 15, cx, zBot + lip45 + 15, 'center'));
+  secG.appendChild($l(cx, zTop - 15, cx, zBot + 15, 'center'));
   secG.appendChild($l(cx - zBF - 20, cy, cx + zTF + 20, cy, 'center'));
   svg.appendChild(secG);
 
-  // Bolt holes in web
-  var boltG = $g('hover-part', 'bolt-holes');
-  boltG.appendChild($c(cx, zTop + zD * 0.2, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zTop + zD * 0.4, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zBot - zD * 0.2, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zBot - zD * 0.4, 2.5, 'bolt'));
-  svg.appendChild(boltG);
-  svg.appendChild($t(cx + 12, zTop + zD * 0.3, '15/16" HOLES (TYP)', 'note'));
+  // ── Part labels ──
+  // Web label (left side of web)
+  svg.appendChild($t(cx - 18, cy + 3, 'WEB', 'lblb', 'middle'));
+  // Top flange label (above top flange)
+  svg.appendChild($t(cx + zTF/2, zTop - 8, 'TOP FLANGE', 'lblb', 'middle'));
+  // Bottom flange label (below bottom flange)
+  svg.appendChild($t(cx - zBF/2, zBot + 14, 'BOTTOM FLANGE', 'lblb', 'middle'));
+  // Top lip label (down-right from top flange end)
+  svg.appendChild($t(topLipX2 + 5, topLipY2 + 3, 'LIP', 'noteb'));
+  // Bottom lip label (up-left from bottom flange end)
+  svg.appendChild($t(botLipX2 - 18, botLipY2 + 3, 'LIP', 'noteb'));
 
   // Profile dimensions
-  dimV(svg, cx + zTF + 15, zTop, zBot, 20, p.depth + '"');
-  dimH(svg, cx, cx + zTF, zTop - 5, -16, sp.topFlange + '"');
-  dimH(svg, cx - zBF, cx, zBot + 5, 16, sp.botFlange + '"');
-  svg.appendChild($t(topLipX2 + 5, topLipY2 - 3, sp.lip + '"', 'note'));
-  svg.appendChild($t(botLipX2 - 25, botLipY2 + 12, sp.lip + '"', 'note'));
+  dimV(svg, cx + zTF + 15, zTop, zBot, 30, p.depth + '"');
+  dimH(svg, cx, cx + zTF, zTop - 5, -20, sp.topFlange + '"');
+  dimH(svg, cx - zBF, cx, zBot + 5, 20, sp.botFlange + '"');
+  // Lip dimension labels (top lip DOWN, bottom lip UP)
+  dimV(svg, topLipX2 + 3, topLipY1, topLipY2, 10, sp.lip + '"');
+  dimV(svg, botLipX2 - 3, botLipY2, botLipY1, -10, sp.lip + '"');
 
   // Gauge callout (left side)
-  svg.appendChild($t(cx - zBF - 40, cy, p.gauge, 'lblb', 'middle'));
-  svg.appendChild($t(cx - zBF - 40, cy + 10, '(' + fmtDec(p.thick, 3) + '")', 'note', 'middle'));
+  svg.appendChild($t(cx - zBF - 45, cy, p.gauge, 'lblb', 'middle'));
+  svg.appendChild($t(cx - zBF - 45, cy + 10, '(' + fmtDec(p.thick, 3) + '")', 'note', 'middle'));
 
   // Material callout (right side)
-  svg.appendChild($t(cx + zTF + 40, cy + 20, 'MATERIAL:', 'noteb'));
-  svg.appendChild($t(cx + zTF + 40, cy + 30, 'G90 GALVANIZED', 'note'));
-  svg.appendChild($t(cx + zTF + 40, cy + 40, 'STEEL', 'note'));
+  svg.appendChild($t(cx + zTF + 50, cy + 20, 'MATERIAL:', 'noteb'));
+  svg.appendChild($t(cx + zTF + 50, cy + 30, 'G90 GALVANIZED', 'note'));
+  svg.appendChild($t(cx + zTF + 50, cy + 40, 'STEEL', 'note'));
 
   // Solar holes on top flange (if enabled)
   if (p.solar) {
@@ -281,11 +290,11 @@ function draw() {
     solarG.appendChild($c(hx1, zTop + zT/2, 1.8, 'bolt'));
     solarG.appendChild($c(hx2, zTop + zT/2, 1.8, 'bolt'));
     svg.appendChild(solarG);
-    svg.appendChild($t(cx + zTF + 5, zTop - 10, 'SOLAR HOLES', 'warn-text'));
-    svg.appendChild($t(cx + zTF + 5, zTop - 3, '7/16" DIA (TYP)', 'note'));
+    svg.appendChild($t(cx + zTF + 5, zTop - 10, 'SOLAR MOUNT HOLES', 'warn-text'));
+    svg.appendChild($t(cx + zTF + 5, zTop - 3, '11/32" DIA (M8 CLR)', 'note'));
   }
 
-  svg.appendChild($t(200, zBot + lip45 + 30, 'SCALE: 1" = ' + fmtDec(1/zScale * 12, 1) + '"', 'note', 'middle'));
+  svg.appendChild($t(200, zBot + lipLen + 30, 'SCALE: 1" = ' + fmtDec(1/zScale * 12, 1) + '"', 'note', 'middle'));
 
   // ================================================================
   // ZONE 2: ELEVATION VIEW — RIGHT SIDE (x=420..1060, y=30..280)
@@ -293,116 +302,40 @@ function draw() {
   var evTitle = p.angled ? 'ELEVATION VIEW (' + p.angleDeg + '\u00B0 FROM AISLE)' : 'ELEVATION VIEW';
   svg.appendChild($t(730, 22, evTitle, 'ttl'));
 
+  // Elevation view: just the purlin — its length, flanges, depth. No rafters,
+  // no clips, no screws, no connection hardware. This is a purlin shop drawing.
   var evL = 440, evR = 1040;
-  var evY = 65;
-  var rafW = 20;
-  var evSpan = evR - evL - 2 * rafW;
+  var evY = 80;
+  var evSpan = evR - evL;
   var sc = evSpan / p.spanIn;
   var purlinH = p.depth * sc;
   if (purlinH < 16) purlinH = 16;
   var scaleFactor = purlinH / p.depth;
 
-  // Left rafter
-  var lgR = $g('hover-part', 'rafter-L');
-  lgR.appendChild($r(evL, evY - 10, rafW, purlinH + 20, 'gus'));
-  lgR.appendChild($t(evL + rafW/2, evY + purlinH + 22, 'RAFTER', 'note', 'middle'));
-  svg.appendChild(lgR);
-
-  // Right rafter
-  var rgR = $g('hover-part', 'rafter-R');
-  rgR.appendChild($r(evR - rafW, evY - 10, rafW, purlinH + 20, 'gus'));
-  rgR.appendChild($t(evR - rafW/2, evY + purlinH + 22, 'RAFTER', 'note', 'middle'));
-  svg.appendChild(rgR);
-
-  // Purlin body
-  var pL = evL + rafW;
-  var pR = evR - rafW;
-  var flangeW = sp.topFlange * scaleFactor;
-  if (flangeW < 6) flangeW = 6;
+  var pL = evL;
+  var pR = evR;
   var purG = $g('hover-part', 'purlin');
 
-  if (p.angled && p.angleFromPerp > 0) {
-    // Draw angled purlin: rotate the purlin rectangle around its center
-    var purlinCX = (pL + pR) / 2;
-    var purlinCY = evY + purlinH / 2;
-    var rotG = $e('g', {transform: 'rotate(' + (-p.angleFromPerp) + ' ' + purlinCX + ' ' + purlinCY + ')'});
-    rotG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
-    // Top flange hint
-    rotG.appendChild($r(pL - flangeW + 2, evY - 2, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-    // Bottom flange hint
-    rotG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-    // Centerline
-    rotG.appendChild($l(purlinCX, evY - 15, purlinCX, evY + purlinH + 15, 'center'));
-    purG.appendChild(rotG);
-
-    // Angle indicator arc: show deviation from perpendicular
-    var arcR = 30;
-    var arcCX = pL + 15;
-    var arcCY = evY + purlinH / 2;
-    // Reference line (perpendicular = horizontal)
-    purG.appendChild($l(arcCX, arcCY, arcCX + arcR + 10, arcCY, 'center'));
-    // Arc from 0 to -angleFromPerp
-    var startAngleRad = 0;
-    var endAngleRad = -p.angleFromPerp * Math.PI / 180;
-    var arcX1 = arcCX + arcR * Math.cos(startAngleRad);
-    var arcY1 = arcCY + arcR * Math.sin(startAngleRad);
-    var arcX2 = arcCX + arcR * Math.cos(endAngleRad);
-    var arcY2 = arcCY + arcR * Math.sin(endAngleRad);
-    var largeArc = (Math.abs(p.angleFromPerp) > 180) ? 1 : 0;
-    var sweep = (p.angleFromPerp > 0) ? 0 : 1;
-    var arcPath = 'M' + arcX1 + ' ' + arcY1 + ' A' + arcR + ' ' + arcR + ' 0 ' + largeArc + ' ' + sweep + ' ' + arcX2 + ' ' + arcY2;
-    var arcEl = $e('path', {d: arcPath, fill: 'none', stroke: '#E03131', 'stroke-width': '1.2'});
-    purG.appendChild(arcEl);
-    // Angle label
-    var labelAngle = -p.angleFromPerp / 2 * Math.PI / 180;
-    var labelX = arcCX + (arcR + 12) * Math.cos(labelAngle);
-    var labelY = arcCY + (arcR + 12) * Math.sin(labelAngle);
-    purG.appendChild($t(labelX, labelY, p.angleFromPerp + '\u00B0 from \u22A5', 'warn-text', 'middle'));
-  } else {
-    // Standard perpendicular purlin
-    purG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
-    // Top flange hint
-    purG.appendChild($r(pL - flangeW + 2, evY - 2, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-    // Bottom flange hint
-    purG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 2, 'cee'));
-    // Centerline
-    purG.appendChild($l((pL + pR)/2, evY - 15, (pL + pR)/2, evY + purlinH + 15, 'center'));
-  }
+  // Purlin web (main body)
+  purG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
+  // Top flange — full length
+  purG.appendChild($r(pL, evY - 3, pR - pL, 3, 'cee'));
+  // Bottom flange — full length
+  purG.appendChild($r(pL, evY + purlinH, pR - pL, 3, 'cee'));
+  // Centerline
+  purG.appendChild($l((pL + pR)/2, evY - 15, (pL + pR)/2, evY + purlinH + 15, 'center'));
   svg.appendChild(purG);
 
-  // End plates: P6 (angled) or P1 clips (standard)
-  if (p.angled) {
-    // P6 end plates at rafter connections
-    var plateG = $g('hover-part', 'p6-plates');
-    var plateW = 8, plateH = purlinH + 4;
-    // Left P6 plate
-    plateG.appendChild($e('rect', {
-      x: pL - 2, y: evY - 2, width: plateW, height: plateH,
-      fill: '#DD8833', 'fill-opacity': '0.4', stroke: '#DD8833', 'stroke-width': '1'
-    }));
-    // Right P6 plate
-    plateG.appendChild($e('rect', {
-      x: pR - plateW + 2, y: evY - 2, width: plateW, height: plateH,
-      fill: '#DD8833', 'fill-opacity': '0.4', stroke: '#DD8833', 'stroke-width': '1'
-    }));
-    svg.appendChild(plateG);
-    svg.appendChild($t(pL + 4, evY - 8, 'P6 PLATE (TYP)', 'noteb', 'middle'));
-    svg.appendChild($t(pL + 4, evY - 2, p.endPlateSize + ' 10GA', 'note', 'middle'));
-  } else {
-    // P1 clips (standard mode)
-    var clipG = $g('hover-part', 'p1-clips');
-    var clipH = 10, clipW = 6;
-    clipG.appendChild($r(pL - 2, evY - 1, clipW, clipH, 'clip-fill'));
-    clipG.appendChild($c(pL + 2, evY + 3, 1.2, 'bolt'));
-    clipG.appendChild($c(pL + 2, evY + clipH - 3, 1.2, 'bolt'));
-    clipG.appendChild($r(pR - clipW + 2, evY - 1, clipW, clipH, 'clip-fill'));
-    clipG.appendChild($c(pR - 2, evY + 3, 1.2, 'bolt'));
-    clipG.appendChild($c(pR - 2, evY + clipH - 3, 1.2, 'bolt'));
-    svg.appendChild(clipG);
-    svg.appendChild($t(pL + 2, evY - 8, 'P1 CLIP (TYP)', 'noteb', 'middle'));
-  }
+  // Depth dimension (right side)
+  dimV(svg, pR + 5, evY, evY + purlinH, 15, p.depth + '"');
 
-  // ── Splice zone callout (Z-purlins only) ──
+  // Length dimension (below)
+  dimH(svg, pL, pR, evY + purlinH + 8, 18, fmtFtIn(p.spanIn));
+
+  // Mark label centered on purlin
+  svg.appendChild($t((pL + pR)/2, evY + purlinH/2 + 3, p.mark, 'lblb', 'middle'));
+
+  // Splice zone callout (if applicable — still relevant to the purlin itself)
   if (p.needsSplice && p.splicePositionFt > 0) {
     var splG = $g('hover-part', 'splice-zone');
     var splPosIn = p.splicePositionFt * 12;
@@ -417,97 +350,20 @@ function draw() {
       stroke: '#FF6B35', 'stroke-width': '1.2',
       'stroke-dasharray': '4,2'
     }));
-
-    // Splice center line
     splG.appendChild($l(splX, evY - 12, splX, evY + purlinH + 12, 'cut-line'));
-
-    // Tek screw holes at splice (4 on each side of web)
-    var screwSpacing = purlinH / 5;
-    for (var si = 1; si <= 4; si++) {
-      var sy = evY + si * screwSpacing;
-      splG.appendChild($c(splX - 2, sy, 1.2, 'bolt'));
-      splG.appendChild($c(splX + 2, sy, 1.2, 'bolt'));
-    }
     svg.appendChild(splG);
 
-    // Splice dimension callout
+    // Splice dimension
     dimH(svg, pL, splX, evY + purlinH + 30, 14,
       fmtFtIn(splPosIn) + ' TO SPLICE');
 
-    // Splice label
     svg.appendChild($t(splX, evY - 16,
-      'SPLICE: ' + p.spliceOverlapIn + '" OVERLAP, (' + p.spliceTekScrews + ') #10 TEK',
+      'SPLICE: ' + p.spliceOverlapIn + '" OVERLAP',
       'warn-text', 'middle'));
   }
 
-  // ── Facing direction indicators (Z-purlins) ──
-  if (!p.angled) {
-    var facG = $g('hover-part', 'facing');
-    var facY = evY + purlinH + 48;
-    var facMid = (pL + pR) / 2;
-
-    if (p.facing === 'right' || p.isFirst) {
-      // Top flange points RIGHT — arrow pointing right
-      var arrX = facMid - 30;
-      facG.appendChild($l(arrX, facY, arrX + 60, facY, 'obj'));
-      facG.appendChild($l(arrX + 50, facY - 4, arrX + 60, facY, 'obj'));
-      facG.appendChild($l(arrX + 50, facY + 4, arrX + 60, facY, 'obj'));
-      svg.appendChild($t(facMid, facY - 7, 'FACING: TOP FLANGE \u2192 (EAVE RIGHT)', 'note', 'middle'));
-    } else if (p.facing === 'left' || p.isLast) {
-      // Top flange points LEFT — arrow pointing left
-      var arrX2 = facMid + 30;
-      facG.appendChild($l(arrX2, facY, arrX2 - 60, facY, 'obj'));
-      facG.appendChild($l(arrX2 - 50, facY - 4, arrX2 - 60, facY, 'obj'));
-      facG.appendChild($l(arrX2 - 50, facY + 4, arrX2 - 60, facY, 'obj'));
-      svg.appendChild($t(facMid, facY - 7, 'FACING: TOP FLANGE \u2190 (EAVE LEFT)', 'note', 'middle'));
-    } else {
-      // Middle purlins: alternating (show double-headed arrow)
-      facG.appendChild($l(facMid - 30, facY, facMid + 30, facY, 'obj'));
-      facG.appendChild($l(facMid + 20, facY - 4, facMid + 30, facY, 'obj'));
-      facG.appendChild($l(facMid + 20, facY + 4, facMid + 30, facY, 'obj'));
-      facG.appendChild($l(facMid - 20, facY - 4, facMid - 30, facY, 'obj'));
-      facG.appendChild($l(facMid - 20, facY + 4, facMid - 30, facY, 'obj'));
-      svg.appendChild($t(facMid, facY - 7, 'FACING: ALTERNATING (INTERIOR)', 'note', 'middle'));
-    }
-    svg.appendChild(facG);
-  }
-
-  // Solar holes on elevation view
-  if (p.solar) {
-    var solarEvG = $g('hover-part', 'solar-elev');
-    var solSpec = SOLAR_SPEC;
-    var startX = pL + solSpec.edgeDist * sc;
-    var endX = pR - solSpec.edgeDist * sc;
-    var solSpacing = solSpec.holeSpacing * sc;
-    var pairGap = solSpec.holePairGap * sc;
-    var holR = Math.max(1, solSpec.holeDia * sc / 2);
-
-    for (var sx = startX; sx <= endX; sx += solSpacing) {
-      solarEvG.appendChild($c(sx - pairGap/2, evY - 1, holR, 'bolt'));
-      solarEvG.appendChild($c(sx + pairGap/2, evY - 1, holR, 'bolt'));
-      // Small tick marks
-      solarEvG.appendChild($l(sx, evY - 4, sx, evY + 2, 'cut-line'));
-    }
-    svg.appendChild(solarEvG);
-    // Solar dimension callout
-    if (solSpacing > 20) {
-      dimH(svg, startX, startX + solSpacing, evY - 6, -12, solSpec.holeSpacing + '" O.C.');
-    }
-    svg.appendChild($t(pL + (pR - pL) * 0.5, evY - 18, 'SOLAR ATTACHMENT HOLES - 7/16" DIA @ ' + solSpec.holeSpacing + '" O.C.', 'warn-text', 'middle'));
-  }
-
-  // Span dimension
-  dimH(svg, pL, pR, evY + purlinH + 6, 18, fmtFtIn(p.spanIn));
-
-  // Section cut A-A indicator
-  var secX = (pL + pR) / 2;
-  svg.appendChild($l(secX - 6, evY - 20, secX - 6, evY + purlinH + 20, 'cut-line'));
-  svg.appendChild($l(secX + 6, evY - 20, secX + 6, evY + purlinH + 20, 'cut-line'));
-  svg.appendChild($t(secX - 6, evY - 23, 'A', 'lblb', 'middle'));
-  svg.appendChild($t(secX + 6, evY - 23, 'A', 'lblb', 'middle'));
-
   var elevScale = fmtScale(sc);
-  svg.appendChild($t(730, evY + purlinH + 42, 'SCALE: ' + elevScale, 'note', 'middle'));
+  svg.appendChild($t(730, evY + purlinH + 50, 'SCALE: ' + elevScale, 'note', 'middle'));
 
   // ================================================================
   // ZONE 3: PURLIN SCHEDULE TABLE (y=310..470)
@@ -520,10 +376,10 @@ function draw() {
   var tHdrs = ['MARK', 'QTY', 'DESCRIPTION', 'SIZE', 'GAUGE', 'WT/PC (LBS)', 'TOTAL (LBS)'];
 
   // Header row
-  svg.appendChild($e('rect', {x: tblX, y: tblY, width: tblW, height: 14, fill: '#333', stroke: '#333'}));
+  svg.appendChild($e('rect', {x: tblX, y: tblY, width: tblW, height: 14, fill: '#1E3A5F', stroke: '#1E3A5F'}));
   tHdrs.forEach(function(h, i) {
     var ht = $t(tblX + tCols[i] + 4, tblY + 11, h, 'note');
-    ht.setAttribute('fill', '#FFF');
+    ht.style.fill = '#FF0000';
     svg.appendChild(ht);
   });
 
@@ -614,30 +470,31 @@ function draw() {
     solG.appendChild($r(solX, solY, flangeLen, 10, 'cee'));
     svg.appendChild($t(solX + flangeLen/2, solY - 5, 'TOP FLANGE (PLAN VIEW)', 'note', 'middle'));
 
-    // Draw hole pairs
-    var numPairs = 5;
-    var pairSpacing = flangeLen / (numPairs + 1);
-    for (var hi = 1; hi <= numPairs; hi++) {
-      var hcx = solX + hi * pairSpacing;
-      solG.appendChild($c(hcx - 4, solY + 5, 3, 'bolt'));
-      solG.appendChild($c(hcx + 4, solY + 5, 3, 'bolt'));
+    // Draw single bolt holes at panel mount positions along top flange
+    // Real panels bolt through top flange — one bolt per panel rail attach point
+    var numHoles = 6;
+    var holeSpacing = flangeLen / (numHoles + 1);
+    for (var hi = 1; hi <= numHoles; hi++) {
+      var hcx = solX + hi * holeSpacing;
+      solG.appendChild($c(hcx, solY + 5, 3, 'bolt'));
     }
     svg.appendChild(solG);
 
     // Dimensions
-    dimH(svg, solX + pairSpacing - 4, solX + pairSpacing + 4, solY + 12, 12, SOLAR_SPEC.holePairGap + '"');
-    dimH(svg, solX + pairSpacing, solX + 2*pairSpacing, solY + 12, 24, SOLAR_SPEC.holeSpacing + '" O.C.');
-    dimH(svg, solX, solX + pairSpacing, solY + 12, 36, SOLAR_SPEC.edgeDist + '" EDGE');
+    dimH(svg, solX + holeSpacing, solX + 2*holeSpacing, solY + 12, 16,
+      'VARIES BY PANEL LAYOUT');
+    dimH(svg, solX, solX + holeSpacing, solY + 12, 30,
+      fmtDec(SOLAR_SPEC.mountHoleFromEdgeMm / 25.4, 2) + '" (~' + SOLAR_SPEC.mountHoleFromEdgeMm + 'mm) FROM PANEL EDGE');
 
     // Hole schedule
     var solNotes = [
-      'HOLE DIAMETER: 7/16" (0.4375")',
-      'HOLES PER ATTACHMENT: 2',
-      'HOLE PAIR SPACING: ' + SOLAR_SPEC.holePairGap + '" CENTER-TO-CENTER',
-      'ATTACHMENT SPACING: ' + SOLAR_SPEC.holeSpacing + '" O.C.',
-      'EDGE DISTANCE: ' + SOLAR_SPEC.edgeDist + '" MIN FROM PURLIN END',
+      'HOLE DIAMETER: 11/32" (0.344") — M8 BOLT CLEARANCE',
+      'HOLES: 1 PER PANEL MOUNT RAIL ATTACH POINT',
+      'HOLE POSITION: SET BY PANEL mount_hole_from_edge_mm (' + SOLAR_SPEC.mountHoleFromEdgeMm + 'mm)',
       'LOCATION: TOP FLANGE ONLY',
-      'PUNCHED BEFORE ROLL FORMING'
+      'PANEL BOLT THROUGH TOP FLANGE INTO MOUNT RAIL',
+      'HOLE SPACING VARIES BY PANEL ORIENTATION & COUNT',
+      'SEE SOLAR LAYOUT DRAWING FOR EXACT POSITIONS'
     ];
     solNotes.forEach(function(n, i) {
       svg.appendChild($t(solX + flangeLen + 40, solY - 5 + i * 10, n, 'note'));
@@ -648,16 +505,16 @@ function draw() {
     var fnotes = [
       '1. ALL PURLINS ROLL-FORMED IN-HOUSE FROM ' + sp.coilWidth + '" COIL',
       '2. MATERIAL: ' + p.gauge + ' G90 GALVANIZED STEEL',
-      '3. PURLINS ATTACHED TO RAFTERS VIA P1 CLIPS',
-      '4. P1 CLIPS SHOP-WELDED TO RAFTER (1/8" FILLET)',
-      '5. FIELD-ATTACHED WITH (2) #10 TEK SCREWS PER CLIP',
+      '3. P1 CLIP: FLAT PLATE WELDED TO RAFTER TOP (1/8" FILLET)',
+      '4. PURLIN WEB TEK-SCREWED TO P1 CLIP AT EACH RAFTER',
+      '5. (2) #10 TEK SCREWS THROUGH PURLIN WEB INTO P1 PLATE PER CONNECTION',
       '6. SAG RODS AT MID-SPAN FOR LATERAL BRACING',
       '7. Z-PURLIN SPLICE: 6" OVERLAP, BOXED BEAM',
       '8. SPLICE FASTENED WITH (8) #10 TEK SCREWS PER SIDE',
       '9. SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
       '10. DO NOT SCALE DRAWING',
       '11. TOL: LENGTH +/-1/16"',
-      '12. HOLES: 15/16" DIA STD (FOR CLIP BOLTS)'
+      '12. TOL: LENGTH +/-1/16", HOLES +/-1/32"'
     ];
     fnotes.forEach(function(n, i) {
       svg.appendChild($t(60, 518 + i * 11, n, 'note'));
@@ -684,14 +541,13 @@ function draw() {
       'MATERIAL: ' + p.gauge + ' G90 GALVANIZED STEEL',
       'COIL: ' + sp.coilWidth + '" ROLL-FORMED IN-HOUSE',
       'SURF PREP: G90 GALVANIZED (NO PAINT)',
-      'HOLES: 15/16" DIA STD',
       'FASTENERS: #10 TEK SCREWS (FIELD)',
-      'P1 CLIPS: SHOP WELD 1/8" FILLET (WPS-C)',
+      'P1 CLIP: FLAT PLATE WELDED TO RAFTER TOP (WPS-C)',
       'SAG RODS: CONTINUOUS, ANGLE-BRACKET ATTACH',
       'Z-SPLICE: 6" OVERLAP, BOXED BEAM, (8) TEK/SIDE',
       p.needsSplice ? 'SPLICE AT ' + fmtFtIn(p.splicePositionFt * 12) + ' FROM END' : '',
       'SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
-      p.solar ? 'SOLAR: HOLES PER SPEC (7/16" DIA)' : '',
+      p.solar ? 'SOLAR: M8 BOLT HOLES ON TOP FLANGE (11/32" DIA)' : '',
       p.angled ? 'ANGLED PURLINS: ' + p.angleDeg + '\u00B0 FROM AISLE' : '',
       p.angled ? 'END PLATES: ' + p.endPlateType + ' (' + p.endPlateSize + ' 10GA)' : '',
       'FAB: AISC 360-22 / AWS D1.1',
