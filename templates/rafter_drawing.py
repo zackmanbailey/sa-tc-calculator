@@ -256,49 +256,16 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   .label-interactive:hover { filter: drop-shadow(0 0 2px rgba(0,170,85,0.6)); }
   .label-interactive.selected { filter: drop-shadow(0 0 4px rgba(246,174,45,0.8)); }
 
-  /* View Tab Bar */
-  .view-tab-bar {
-    display: flex; align-items: center; gap: 0; padding: 0 20px;
-    background: #1E293B; border-bottom: 2px solid #334155;
-  }
-  .view-tab-bar button {
-    padding: 8px 22px; background: transparent; color: #94A3B8;
-    border: none; border-bottom: 3px solid transparent;
-    font-size: 0.85rem; font-weight: 600; cursor: pointer;
-    transition: all 0.2s; letter-spacing: 0.02em;
-  }
-  .view-tab-bar button:hover { color: #F1F5F9; background: #334155; }
-  .view-tab-bar button.active { color: #F6AE2D; border-bottom-color: #F6AE2D; background: #0F172A; }
-  .view-container { display: none; flex-direction: column; flex: 1; }
-  .view-container.active { display: flex; }
-  .purlin-controls {
-    display: flex; align-items: center; gap: 10px; padding: 6px 20px; flex-wrap: wrap;
-    background: #1E293B; border-bottom: 1px solid #334155;
-  }
-  .purlin-controls label { font-size: 0.75rem; color: #94A3B8; white-space: nowrap; }
-  .purlin-controls select, .purlin-controls input[type=number] {
-    background: #334155; color: #F1F5F9; border: 1px solid #475569;
-    border-radius: 5px; padding: 5px 8px; font-size: 0.8rem; width: 70px;
-  }
-  .purlin-footer {
-    display: flex; align-items: center; gap: 16px; padding: 6px 20px;
-    background: #1E293B; border-top: 1px solid #334155; flex-wrap: wrap;
-    font-size: 0.78rem; color: #94A3B8;
-  }
-  .purlin-footer .s { color: #F6AE2D; font-weight: 700; }
-
   @media print {
     @page { size: landscape; margin: 0.25in; }
     .top-bar, .foot, .tip, .bom, .modal-overlay, .weld-editor, .settings-panel,
-    .anno-count-badge, .piece-tabs, .view-tab-bar, .purlin-controls, .purlin-footer { display: none !important; }
+    .anno-count-badge, .piece-tabs { display: none !important; }
     html, body { margin: 0; padding: 0; background: #FFF; width: 100%; height: 100%; overflow: hidden; }
     .canvas-wrap { padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
                    width: 100%; height: 100%; }
     .drawing-sheet { box-shadow: none; width: 100%; height: auto; max-height: 100vh;
                      page-break-inside: avoid; break-inside: avoid; }
     .drawing-sheet svg { width: 100%; height: auto; max-height: 100vh; }
-    .view-container { display: none !important; }
-    .view-container.active { display: flex !important; }
   }
 </style>
 <script>window.RAFTER_CONFIG = {{RAFTER_CONFIG_JSON}};</script>
@@ -471,13 +438,6 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- VIEW TAB BAR -->
-<div class="view-tab-bar" id="viewTabBar">
-  <button class="active" data-view="rafter" onclick="switchView('rafter')">Rafter</button>
-  <button data-view="purlin" onclick="switchView('purlin')">Purlin Detail</button>
-  <button data-view="layout" onclick="switchView('layout')">Purlin Layout</button>
-</div>
-
 <!-- EXPORT LAYOUT MODAL -->
 <div class="export-modal" id="exportModal">
   <div class="export-modal-content">
@@ -506,8 +466,7 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- ═══ VIEW: RAFTER ═══ -->
-<div class="view-container active" id="viewRafter">
+<!-- DRAWING CANVAS -->
 <!-- PIECE SELECTOR TABS (visible only for spliced rafters) -->
 <div class="piece-tabs" id="pieceTabs" style="display:none;">
   <span class="piece-tabs-label">PIECES:</span>
@@ -536,101 +495,6 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
   <div>Back Wall: <span class="s" id="fBackWall">No</span></div>
   <div>P3 Count: <span class="s" id="fP3">1</span></div>
 </div>
-</div><!-- /viewRafter -->
-
-<!-- ═══ VIEW: PURLIN DETAIL ═══ -->
-<div class="view-container" id="viewPurlin">
-<div class="purlin-controls" id="purlinDetailControls">
-  <div id="purlinGroupTabBar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-  <button class="toggle-btn" id="btnPurlinSolar" onclick="purlin_toggleSolar()">Solar: OFF</button>
-  <button class="toggle-btn" id="btnPurlinAngled" onclick="purlin_toggleAngled()">Angled: OFF</button>
-  <span id="purlinAngledAngleInput" style="display:none;align-items:center;gap:4px;">
-    <label style="font-size:11px;">Angle(&deg;):</label>
-    <input type="number" id="inpPurlinAngleDeg" value="15" min="5" max="45" step="0.5" onchange="purlin_onAngleChange()">
-  </span>
-  <button class="toggle-btn" onclick="window.print()">Print</button>
-</div>
-<div class="canvas-wrap">
-  <div class="drawing-sheet">
-    <svg id="svgPurlin" viewBox="0 0 1100 850" xmlns="http://www.w3.org/2000/svg"></svg>
-  </div>
-</div>
-<div class="purlin-footer">
-  <div>Span: <span class="s" id="pfSpan">--</span></div>
-  <div>Depth: <span class="s" id="pfDepth">--</span></div>
-  <div>Gauge: <span class="s" id="pfGauge">--</span></div>
-  <div>Spacing: <span class="s" id="pfSpacing">--</span></div>
-  <div>Qty/Bay: <span class="s" id="pfQty">--</span></div>
-  <div>Total Wt: <span class="s" id="pfWt">--</span></div>
-</div>
-</div><!-- /viewPurlin -->
-
-<!-- ═══ VIEW: PURLIN LAYOUT ═══ -->
-<div class="view-container" id="viewLayout">
-<div class="purlin-controls" id="purlinLayoutControls">
-  <div class="ctrl-group">
-    <label>Mode:</label>
-    <select id="layoutInpMode" onchange="layout_setMode(this.value)">
-      <option value="standard">Standard</option>
-      <option value="solar">Solar</option>
-    </select>
-  </div>
-  <div class="ctrl-group">
-    <label>Type:</label>
-    <button class="toggle-btn ptype-btn-layout active" data-type="C" onclick="layout_setPurlinType('C')">C-Purlin</button>
-    <button class="toggle-btn ptype-btn-layout" data-type="Z" onclick="layout_setPurlinType('Z')">Z-Purlin</button>
-  </div>
-  <div class="ctrl-group" id="layoutOrientControls" style="display:none;">
-    <label>Orient:</label>
-    <button class="toggle-btn orient-btn-layout active" data-orient="landscape" onclick="layout_setOrientation('landscape')">Landscape</button>
-    <button class="toggle-btn orient-btn-layout" data-orient="portrait" onclick="layout_setOrientation('portrait')">Portrait</button>
-  </div>
-  <div class="ctrl-group" id="layoutStdControls">
-    <label>Length(ft):</label>
-    <input type="number" id="layoutInpBldgLen" value="60" min="10" max="300" style="width:60px;" onchange="layout_onControlChange()">
-    <label>Frames:</label>
-    <input type="number" id="layoutInpFrames" value="4" min="2" max="20" style="width:50px;" onchange="layout_onControlChange()">
-    <label>Width(ft):</label>
-    <input type="number" id="layoutInpBldgWidth" value="20" min="10" max="80" style="width:60px;" onchange="layout_onControlChange()">
-    <label>Spacing(ft):</label>
-    <input type="number" id="layoutInpSpacing" value="5" min="1" max="10" step="0.5" style="width:50px;" onchange="layout_onControlChange()">
-  </div>
-  <div class="ctrl-group">
-    <label>Max Len(ft):</label>
-    <input type="number" id="layoutInpMaxLen" value="45" min="10" max="53" style="width:55px;" onchange="layout_onControlChange()">
-  </div>
-  <div class="ctrl-group" id="layoutZExtGroup" style="display:none;">
-    <label>Z-Ext(ft):</label>
-    <input type="number" id="layoutInpZExt" value="4" min="1" max="8" style="width:50px;" onchange="layout_onControlChange()">
-  </div>
-  <div class="ctrl-group">
-    <button class="toggle-btn" id="layoutBtnOverhang" onclick="layout_toggleOverhang()">Overhang: OFF</button>
-  </div>
-  <div class="ctrl-group">
-    <label>$/ft C:</label>
-    <input type="number" id="layoutInpCostC" value="2.50" step="0.25" style="width:55px;" onchange="layout_onControlChange()">
-    <label>$/ft Z:</label>
-    <input type="number" id="layoutInpCostZ" value="3.00" step="0.25" style="width:55px;" onchange="layout_onControlChange()">
-  </div>
-  <div class="ctrl-group">
-    <button class="btn-gold" onclick="layout_runComparison()">Compare All</button>
-  </div>
-  <button class="toggle-btn" onclick="window.print()">Print</button>
-</div>
-<div class="canvas-wrap">
-  <div class="drawing-sheet">
-    <svg id="svgLayout" viewBox="0 0 1100 850" xmlns="http://www.w3.org/2000/svg"></svg>
-  </div>
-</div>
-<div class="purlin-footer">
-  <div>Mode: <span class="s" id="lfMode">standard</span></div>
-  <div>Type: <span class="s" id="lfType">C</span></div>
-  <div>Lines: <span class="s" id="lfLines">--</span></div>
-  <div>Pieces: <span class="s" id="lfPieces">--</span></div>
-  <div>Total LF: <span class="s" id="lfTotalLF">--</span></div>
-  <div>Est. Cost: <span class="s" id="lfCost">--</span></div>
-</div>
-</div><!-- /viewLayout -->
 
 <!-- BOM SIDE PANEL -->
 <div class="bom" id="bomPanel">
@@ -701,8 +565,6 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
 // TitanForge injects RAFTER_CONFIG with project data when serving this page.
 // If not present (standalone mode), defaults are used from the input fields.
 window.RAFTER_CONFIG = window.RAFTER_CONFIG || null;
-window.PURLIN_CONFIG = window.RAFTER_CONFIG;
-window.PURLIN_LAYOUT_CONFIG = window.RAFTER_CONFIG;
 
 function applyServerConfig() {
   var cfg = window.RAFTER_CONFIG;
@@ -867,70 +729,6 @@ function dimHRebar(svg, x1, x2, y, off, label) {
   svg.appendChild($l(x1-1.5,dy-1.5,x1+1.5,dy+1.5,'rebar-dim'));
   svg.appendChild($l(x2-1.5,dy-1.5,x2+1.5,dy+1.5,'rebar-dim'));
   svg.appendChild($t((x1+x2)/2, dy-3, label, 'rebar-dimtxt', 'middle'));
-}
-
-// Format decimal number
-function fmtDec(val, places) {
-  if (typeof places === 'undefined') places = 1;
-  return Number(val).toFixed(places);
-}
-
-// ── Standard Title Block for purlin views ──
-function purlinDrawTitleBlock(svg, opts) {
-  var ty = 680, th = 135, tx = 20, tw = 1060;
-  svg.appendChild($r(tx, ty, tw, th, 'obj thick'));
-  var c1 = tx, c2 = tx + 220, c3 = c2 + 240, c4 = c3 + 160, c5 = c4 + 200;
-  [c2, c3, c4, c5].forEach(function(cx) { svg.appendChild($l(cx, ty, cx, ty + th, 'obj med')); });
-  svg.appendChild($t(c1 + 110, ty + 16, 'Titan Carports', 'lblb', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 28, 'Quality Steel Structures', 'note', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 40, '710 Honea Egypt Rd', 'lbl', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 50, 'Conroe, TX 77385', 'lbl', 'middle'));
-  svg.appendChild($t(c1 + 110, ty + 60, '(303) 909-5698 | www.titancarports.com', 'note', 'middle'));
-  svg.appendChild($l(c1, ty + 68, c2, ty + 68, 'obj hair'));
-  svg.appendChild($t(c1 + 8, ty + 80, 'DESIGN/REVIEW AUTHORITY:', 'noteb'));
-  svg.appendChild($t(c1 + 8, ty + 92, 'PLEASE REVIEW THIS DRAWING CAREFULLY', 'note'));
-  var pRows = [
-    ['PROJECT:', opts.projName||''],['CUSTOMER:', opts.customer||''],['JOB:', opts.jobNum||''],
-    ['DWG #:', opts.drawingNum||''],['DATE:', new Date().toLocaleDateString()],
-    ['DRAWN:', opts.drawnBy||'AUTO'],['SHEET:', '1 OF 1'],['REV:', String(opts.revision||0)]
-  ];
-  pRows.forEach(function(pair, i) {
-    var py = ty + 12 + i * 13;
-    svg.appendChild($t(c2 + 6, py, pair[0], 'note'));
-    svg.appendChild($t(c2 + 55, py, pair[1], 'lbl'));
-    if (i < pRows.length - 1) svg.appendChild($l(c2, py + 3, c3, py + 3, 'dim'));
-  });
-  svg.appendChild($t(c3 + 80, ty + 45, opts.drawingTitle||'', 'ttl'));
-  var markEl = $e('text', {x: c3 + 80, y: ty + 85, class: 'ttl', 'text-anchor': 'middle', 'font-size': '28px'}, opts.partMark||'');
-  svg.appendChild(markEl);
-  svg.appendChild($e('rect', {x: c4, y: ty, width: 200, height: 16, fill: '#333', stroke: '#333'}));
-  var hdrTexts = [$t(c4+8,ty+12,'DATE','note'),$t(c4+50,ty+12,'REV','note'),$t(c4+80,ty+12,'DESCRIPTION','note')];
-  hdrTexts.forEach(function(el) { el.setAttribute('fill','#FFF'); svg.appendChild(el); });
-  svg.appendChild($e('rect', {x: c5, y: ty, width: tw-(c5-tx), height: 16, fill: '#333', stroke: '#333'}));
-  var notesHdr = $t(c5+(tw-(c5-tx))/2, ty+12, 'PROJECT NOTES', 'note', 'middle');
-  notesHdr.setAttribute('fill','#FFF'); svg.appendChild(notesHdr);
-  var notes = opts.projectNotes || [];
-  notes.forEach(function(n, i) { svg.appendChild($t(c5+6, ty+26+i*8, n, 'note')); });
-  if (opts.drawingTitle && opts.partMark) svg.appendChild($t(480, ty-8, opts.drawingTitle+' - '+opts.partMark, 'ttl'));
-}
-
-// ── Generic BOM updater (for purlin views — uses same bomTB if BOM panel is open) ──
-function purlinUpdateBOM(rows) {
-  var tb = document.getElementById('bomTB');
-  if (!tb) return;
-  tb.innerHTML = '';
-  var totalWt = 0;
-  rows.forEach(function(r) {
-    var tr = document.createElement('tr');
-    tr.innerHTML = '<td>'+(r.mk||'')+'</td><td>'+(r.qty||0)+'</td><td>'+(r.desc||'')+'</td><td>'+(r.size||'')+'</td><td>'+(r.mat||'')+'</td><td>'+(r.wt||0)+' lbs</td>';
-    tb.appendChild(tr);
-    totalWt += (r.wt||0);
-  });
-  var tr = document.createElement('tr');
-  tr.innerHTML = '<td colspan="5" style="text-align:right;font-weight:700;">TOTAL:</td><td style="font-weight:700;">'+totalWt+' lbs</td>';
-  tb.appendChild(tr);
-  var totalEl = document.getElementById('bomTotal');
-  if (totalEl) totalEl.textContent = totalWt + ' lbs';
 }
 
 // ═══════════════════════════════════════════════
@@ -2366,7 +2164,7 @@ function draw() {
   layoutEnd('section-aa', _lsSectionAA);
 
   var _lsDetail1 = layoutStart();
-  // DETAIL 1 — P1 CLIP (flat plate) — 6"×10", 10GA G90
+  // DETAIL 1 — P1 CLIP (flat plate welded to rafter top) — 6"×10", 10GA G90
   const d1X = 275, d1Y = zone3Top + 10;
   const d1Scale = 2.2;
   const d1W = 6 * d1Scale, d1H = 10 * d1Scale;
@@ -2423,7 +2221,7 @@ function draw() {
   dimH(svg, d1BeamX, d1BeamX + d1BeamW, d1BeamY + d1BeamH, 8, '8"');
   dimV(svg, d1BeamX + d1BeamW + 2, d1BeamY, d1BeamY + d1BeamH, 8, '14"');
   svg.appendChild(d1g);
-  svg.appendChild($t(d1X + d1W/2, d1Y - 12, 'DETAIL 1 — P1 CLIP (FLAT PLATE)', 'lblb', 'middle'));
+  svg.appendChild($t(d1X + d1W/2, d1Y - 12, 'DETAIL 1 \u2014 P1 CLIP (FLAT PLATE)', 'lblb', 'middle'));
   var d1NotesY = d1BeamY + d1BeamH + 12;
   svg.appendChild($t(d1X + d1W/2, d1NotesY, '10GA x 6" x 10" G90', 'note', 'middle'));
   svg.appendChild($t(d1X + d1W/2, d1NotesY + 8, '1/8" FILLET BOTH 6" EDGES (WPS-C)', 'note', 'middle'));
@@ -2489,7 +2287,7 @@ function draw() {
   // Notes below — with enough space
   var d2NotesY = d2Y + d2BeamH + d2BelowH + 22;
   svg.appendChild($t(d2X + d2W/2, d2NotesY, '1/4" DIA HOLES (x8)', 'note', 'middle'));
-  svg.appendChild($t(d2X + d2W/2, d2NotesY + 8, 'EAVE PURLIN ATTACH', 'note', 'middle'));
+  svg.appendChild($t(d2X + d2W/2, d2NotesY + 8, 'TEK SCREW PURLIN WEB ATTACH', 'note', 'middle'));
 
   weld(d2X + d2W, beamInD2Y + d2BeamH/2, d2X + d2W + 30, beamInD2Y - 5, '3/16', {allAround:true, wpsCode:'F', refDir:'right'}, 'dt2-cap-weld');
   } // end if p2Count > 0
@@ -2794,7 +2592,7 @@ function draw() {
    '  D: Rebar 5/16 stitch 3"@3\' O.C.',
    '  F: End cap/conn plate 3/16 all-around',
    'SHOP ASSY: 1)Rebar→CEE 2)Box weld 3)P2 caps 4)P3 plate 5)P1 clips',
-   'FIELD: Tek screw purlins to P1 clips',
+   'FIELD: Tek screw through purlin web into P1 clips',
    'DO NOT SCALE DRAWING',
    'PIECE MARK = ERECTION MARK',
    'TOL: LENGTH \u00B11/16" / HOLES \u00B11/32"'].forEach(function(n,i) {
@@ -3095,11 +2893,11 @@ function setupTips(p, d) {
 
   var parts = {
     'rafter': 'Box Beam - 2x CEE 14x4x10GA Gr.80 G90, Length: ' + fmtFtIn(d.cutLengthIn) + ', Weight: ' + Math.round(d.ceeWeight) + ' lbs',
-    'clips': 'P1 Clips - ' + d.p1Count + 'x flat plates, 10GA x 6"x10" G90, Shop weld WPS-C, 8 tek screw holes (2 col x 4 row)',
+    'clips': 'P1 Clips - ' + d.p1Count + 'x flat plates welded to rafter top, 10GA x 6"x10" G90, Shop weld WPS-C, 8 tek screw holes (2x4)',
     'endcaps': d.p6Count > 0 ? 'P6 End Plates - ' + d.p6Count + 'x, 10GA x 9"x15" G90, \u00BD" overhang, Weld all-around WPS-F' : 'P2 End Caps - ' + d.p2Count + 'x, 10GA x 9"x24" G90, 9.5" ext above, Weld all-around WPS-F',
     'connplate': 'P3 Connection Plate - ' + d.p3Count + 'x, 3/4"x14"x26" A572 Gr.50, Welded to bottom WPS-F',
     'secAA': 'Section A-A - Box beam cross-section, webs=sides, flanges=top/bottom, Stitch weld lips',
-    'detP1': 'P1 Clip Detail - 6"x10" flat plate, 1/8" fillet weld, typical installation',
+    'detP1': 'P1 Clip Detail - 6"x10" flat plate, 1/8" fillet weld to rafter top, tek screws through purlin web',
     'detP2': d.p6Count > 0 ? 'P6 End Plate Detail - 9"x15" plate, \u00BD" overhang all sides' : 'P2 End Cap Detail - 9"x24" plate, 9.5" above beam, eave purlin attachment',
     'detP3': 'P3 Connection Plate Detail - 3/4" thick, bolted to bottom, A325 bolts'
   };
@@ -4393,704 +4191,6 @@ async function syncRafterToProject() {
   var el = document.getElementById(id);
   if (el) el.addEventListener('change', scheduleRafterSyncBack);
 });
-
-// ═══════════════════════════════════════════════════════════════════
-// VIEW TAB SWITCHING
-// ═══════════════════════════════════════════════════════════════════
-var _purlinInitialized = false;
-var _layoutInitialized = false;
-
-function switchView(viewName) {
-  // Update tab buttons
-  var btns = document.querySelectorAll('.view-tab-bar button');
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].classList.toggle('active', btns[i].dataset.view === viewName);
-  }
-  // Show/hide view containers
-  var views = document.querySelectorAll('.view-container');
-  for (var i = 0; i < views.length; i++) {
-    views[i].classList.remove('active');
-  }
-  // Show/hide rafter-specific top-bar controls
-  var rafterControls = document.querySelector('.controls');
-  if (rafterControls) rafterControls.style.display = (viewName === 'rafter') ? 'flex' : 'none';
-
-  if (viewName === 'rafter') {
-    document.getElementById('viewRafter').classList.add('active');
-  } else if (viewName === 'purlin') {
-    document.getElementById('viewPurlin').classList.add('active');
-    if (!_purlinInitialized) {
-      _purlinInitialized = true;
-      purlin_applyConfig();
-      purlin_draw();
-    }
-  } else if (viewName === 'layout') {
-    document.getElementById('viewLayout').classList.add('active');
-    if (!_layoutInitialized) {
-      _layoutInitialized = true;
-      layout_applyConfig();
-      layout_draw();
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// PURLIN DETAIL VIEW — namespaced from purlin_drawing_v2.py
-// ═══════════════════════════════════════════════════════════════════
-var PURLIN_SPECS = {
-  '8':  { depth: 8,  topFlange: 2.75, botFlange: 2.75, lip: 0.625, coilWidth: 14.75 },
-  '10': { depth: 10, topFlange: 3.25, botFlange: 3.25, lip: 0.625, coilWidth: 17.875 },
-  '12': { depth: 12, topFlange: 3.5,  botFlange: 3.5,  lip: 0.75,  coilWidth: 20.125 }
-};
-var GAUGE_THICK = { '12GA': 0.105, '14GA': 0.075 };
-var GAUGE_LBS = {
-  '12GA': { '8': 5.20, '10': 6.30, '12': 7.43 },
-  '14GA': { '8': 3.70, '10': 4.50, '12': 5.30 }
-};
-var SOLAR_SPEC = {
-  holeDia: 0.4375, holeSpacing: 24, edgeDist: 3,
-  holesPerPoint: 2, holePairGap: 2, bracketWidth: 4
-};
-var purlin_activeGroupIdx = 0;
-var purlin_solarEnabled = false;
-var purlin_angledPurlins = false;
-var purlin_purlinAngleDeg = 90;
-
-function purlin_getGroups() {
-  var cfg = window.PURLIN_CONFIG || {};
-  var groups = cfg.purlin_groups || [];
-  if (groups.length === 0) {
-    groups = [{
-      group: 1, label: '12" Z-Purlin @ 25\'', type: 'standard',
-      depth: 12, gauge: '12GA', thickness: 0.105, span_ft: 25,
-      spacing_ft: 5, qty: 6, topFlange: 3.5, botFlange: 3.5,
-      lip: 0.75, coilWidth: 20.125, lbs_per_ft: 7.43, mark: 'Z12-12'
-    }];
-  }
-  return groups;
-}
-
-function purlin_buildGroupTabs() {
-  var groups = purlin_getGroups();
-  var container = document.getElementById('purlinGroupTabBar');
-  if (!container) return;
-  container.innerHTML = '';
-  groups.forEach(function(g, i) {
-    var btn = document.createElement('button');
-    btn.className = 'toggle-btn' + (i === purlin_activeGroupIdx ? ' active' : '');
-    btn.textContent = g.label || ('Group ' + g.group);
-    btn.onclick = function() {
-      purlin_activeGroupIdx = i;
-      purlin_buildGroupTabs();
-      purlin_draw();
-    };
-    container.appendChild(btn);
-  });
-}
-
-function purlin_getParams() {
-  var groups = purlin_getGroups();
-  var g = groups[purlin_activeGroupIdx] || groups[0];
-  var depth = g.depth || 12;
-  var gauge = g.gauge || '12GA';
-  var spec = PURLIN_SPECS[String(depth)] || PURLIN_SPECS['12'];
-  var thick = g.thickness || GAUGE_THICK[gauge] || 0.105;
-  var lbsLft = g.lbs_per_ft || (GAUGE_LBS[gauge] && GAUGE_LBS[gauge][String(depth)]) || 7.43;
-  var spanFt = g.span_ft || 25;
-  var spanIn = spanFt * 12;
-  var spacingFt = g.spacing_ft || 5;
-  var spacingIn = spacingFt * 12;
-  var qty = g.qty || 6;
-  var cutLen = spanIn;
-  var wtPiece = lbsLft * (cutLen / 12);
-  var mark = g.mark || ('Z' + depth + '-' + gauge.replace('GA',''));
-  var groupType = g.type || 'standard';
-  var angleFromPerp = purlin_angledPurlins ? (90 - purlin_purlinAngleDeg) : 0;
-  var cosAngle = Math.cos(angleFromPerp * Math.PI / 180);
-  var angledCutLen = purlin_angledPurlins ? (cutLen / cosAngle) : cutLen;
-  var angledWtPiece = lbsLft * (angledCutLen / 12);
-  var endPlateType = purlin_angledPurlins ? 'P6' : 'P2';
-  var endPlateSize = purlin_angledPurlins ? '9"x15"' : '9"x24"';
-  var needsSplice = g.needs_splice || false;
-  var splicePositionFt = g.splice_position_ft || 0;
-  var spliceOverlapIn = g.splice_overlap_in || 6;
-  var spliceTekScrews = g.splice_tek_screws || 8;
-  var facing = g.facing || 'alternating';
-  return {
-    depth: depth, gauge: gauge, thick: thick, spanFt: spanFt, spanIn: spanIn,
-    spacingFt: spacingFt, spacingIn: spacingIn, qty: qty,
-    spec: { topFlange: g.topFlange || spec.topFlange, botFlange: g.botFlange || spec.botFlange,
-            lip: g.lip || spec.lip, coilWidth: g.coilWidth || spec.coilWidth },
-    lbsLft: lbsLft, cutLen: angledCutLen, wtPiece: angledWtPiece, mark: mark,
-    groupType: groupType, material: 'G90', coating: 'G90',
-    solar: purlin_solarEnabled, angled: purlin_angledPurlins,
-    angleDeg: purlin_purlinAngleDeg, angleFromPerp: angleFromPerp,
-    endPlateType: endPlateType, endPlateSize: endPlateSize,
-    needsSplice: needsSplice, splicePositionFt: splicePositionFt,
-    spliceOverlapIn: spliceOverlapIn, spliceTekScrews: spliceTekScrews,
-    facing: facing, isFirst: g.is_first || false, isLast: g.is_last || false
-  };
-}
-
-function purlin_draw() {
-  var svg = document.getElementById('svgPurlin');
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  svg.setAttribute('viewBox', '0 0 1100 850');
-  var p = purlin_getParams();
-  var sp = p.spec;
-  var projName = (document.getElementById('setProjectName') || {}).value || 'PROJECT';
-  var customer = (document.getElementById('setCustomer') || {}).value || '';
-  var jobNum = (document.getElementById('setJobNumber') || {}).value || '';
-  var drawingNum = (document.getElementById('setDrawingNum') || {}).value || 'SD-001';
-  var drawnBy = (document.getElementById('setDrawnBy') || {}).value || 'AUTO';
-  var surfPrep = (document.getElementById('setSurfPrep') || {}).value || 'G90';
-
-  // ZONE 1: Z-PURLIN PROFILE (cross-section)
-  svg.appendChild($t(200, 22, 'SECTION A-A: Z-PURLIN PROFILE', 'ttl'));
-  var cx = 200, cy = 220, zScale = 7;
-  var zD = p.depth * zScale, zTF = sp.topFlange * zScale, zBF = sp.botFlange * zScale;
-  var zLip = sp.lip * zScale, zT = Math.max(p.thick * zScale, 1.5);
-  var zTop = cy - zD/2, zBot = cy + zD/2;
-  var secG = $g('', 'z-section');
-  secG.appendChild($r(cx - zT/2, zTop, zT, zD, 'cee'));
-  secG.appendChild($r(cx, zTop, zTF, zT, 'cee'));
-  secG.appendChild($r(cx - zBF, zBot - zT, zBF, zT, 'cee'));
-  var lipLen = zLip, lip45 = lipLen * Math.cos(Math.PI/4);
-  var lipNx = zT * Math.cos(Math.PI/4)/2, lipNy = zT * Math.sin(Math.PI/4)/2;
-  var topLipX1 = cx + zTF, topLipY1 = zTop;
-  var topLipX2 = topLipX1 + lip45, topLipY2 = topLipY1 - lip45;
-  secG.appendChild($e('polygon', {points: (topLipX1-lipNy)+','+(topLipY1-lipNx)+' '+(topLipX2-lipNy)+','+(topLipY2-lipNx)+' '+(topLipX2+lipNy)+','+(topLipY2+lipNx)+' '+(topLipX1+lipNy)+','+(topLipY1+lipNx), class: 'cee'}));
-  var botLipX1 = cx - zBF, botLipY1 = zBot;
-  var botLipX2 = botLipX1 - lip45, botLipY2 = botLipY1 + lip45;
-  secG.appendChild($e('polygon', {points: (botLipX1+lipNy)+','+(botLipY1+lipNx)+' '+(botLipX2+lipNy)+','+(botLipY2+lipNx)+' '+(botLipX2-lipNy)+','+(botLipY2-lipNx)+' '+(botLipX1-lipNy)+','+(botLipY1-lipNx), class: 'cee'}));
-  secG.appendChild($l(cx, zTop - lip45 - 15, cx, zBot + lip45 + 15, 'center'));
-  secG.appendChild($l(cx - zBF - 20, cy, cx + zTF + 20, cy, 'center'));
-  svg.appendChild(secG);
-  var boltG = $g('', 'bolt-holes');
-  boltG.appendChild($c(cx, zTop + zD*0.2, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zTop + zD*0.4, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zBot - zD*0.2, 2.5, 'bolt'));
-  boltG.appendChild($c(cx, zBot - zD*0.4, 2.5, 'bolt'));
-  svg.appendChild(boltG);
-  svg.appendChild($t(cx + 12, zTop + zD*0.3, '15/16" HOLES (TYP)', 'note'));
-  dimV(svg, cx + zTF + 15, zTop, zBot, 20, p.depth + '"');
-  dimH(svg, cx, cx + zTF, zTop - 5, -16, sp.topFlange + '"');
-  dimH(svg, cx - zBF, cx, zBot + 5, 16, sp.botFlange + '"');
-  svg.appendChild($t(cx - zBF - 40, cy, p.gauge, 'lblb', 'middle'));
-  svg.appendChild($t(cx - zBF - 40, cy + 10, '(' + fmtDec(p.thick, 3) + '")', 'note', 'middle'));
-  if (p.solar) {
-    var solarG = $g('', 'solar-holes');
-    solarG.appendChild($c(cx + zTF*0.4, zTop + zT/2, 1.8, 'bolt'));
-    solarG.appendChild($c(cx + zTF*0.6, zTop + zT/2, 1.8, 'bolt'));
-    svg.appendChild(solarG);
-    svg.appendChild($t(cx + zTF + 5, zTop - 10, 'SOLAR HOLES', 'warn-text'));
-  }
-
-  // ZONE 2: ELEVATION VIEW
-  var evTitle = p.angled ? 'ELEVATION VIEW (' + p.angleDeg + '\u00B0 FROM AISLE)' : 'ELEVATION VIEW';
-  svg.appendChild($t(730, 22, evTitle, 'ttl'));
-  var evL = 440, evR = 1040, evY = 65, rafW = 20;
-  var evSpan = evR - evL - 2*rafW;
-  var sc = evSpan / p.spanIn;
-  var purlinH = p.depth * sc;
-  if (purlinH < 16) purlinH = 16;
-  svg.appendChild($r(evL, evY - 10, rafW, purlinH + 20, 'gus'));
-  svg.appendChild($t(evL + rafW/2, evY + purlinH + 22, 'RAFTER', 'note', 'middle'));
-  svg.appendChild($r(evR - rafW, evY - 10, rafW, purlinH + 20, 'gus'));
-  svg.appendChild($t(evR - rafW/2, evY + purlinH + 22, 'RAFTER', 'note', 'middle'));
-  var pL = evL + rafW, pR = evR - rafW;
-  svg.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
-  svg.appendChild($l((pL+pR)/2, evY - 15, (pL+pR)/2, evY + purlinH + 15, 'center'));
-  dimH(svg, pL, pR, evY + purlinH + 6, 18, fmtFtIn(p.spanIn));
-
-  // ZONE 3: PURLIN SCHEDULE TABLE
-  svg.appendChild($t(300, 310, 'PURLIN SCHEDULE', 'ttl'));
-  var groups = purlin_getGroups();
-  var tblX = 40, tblY = 322, tblW = 620;
-  var tCols = [0, 80, 115, 250, 360, 440, 530];
-  var tHdrs = ['MARK', 'QTY', 'DESCRIPTION', 'SIZE', 'GAUGE', 'WT/PC (LBS)', 'TOTAL (LBS)'];
-  svg.appendChild($e('rect', {x: tblX, y: tblY, width: tblW, height: 14, fill: '#333', stroke: '#333'}));
-  tHdrs.forEach(function(h, i) {
-    var ht = $t(tblX + tCols[i] + 4, tblY + 11, h, 'note');
-    ht.setAttribute('fill', '#FFF'); svg.appendChild(ht);
-  });
-  var totalWt = 0;
-  groups.forEach(function(g, i) {
-    var ry = tblY + 14 + i * 14;
-    svg.appendChild($l(tblX, ry + 14, tblX + tblW, ry + 14, 'dim'));
-    var wtPc = g.lbs_per_ft * (g.span_ft || 25);
-    var wtTot = wtPc * (g.qty || 1);
-    totalWt += wtTot;
-    var desc = 'Z-PURLIN ' + g.depth + '"x' + (g.topFlange || 3.5) + '"';
-    var sizeStr = fmtFtIn((g.span_ft || 25) * 12) + ' LG';
-    if (i === purlin_activeGroupIdx) {
-      svg.appendChild($e('rect', {x: tblX + 1, y: ry + 1, width: tblW - 2, height: 13, fill: '#FFFDE7', stroke: 'none'}));
-    }
-    var vals = [g.mark || '', String(g.qty || 0), desc, sizeStr, g.gauge || '12GA', fmtDec(wtPc), fmtDec(wtTot)];
-    vals.forEach(function(v, ci) {
-      svg.appendChild($t(tblX + tCols[ci] + 4, ry + 11, v, i === purlin_activeGroupIdx ? 'lblb' : 'lbl'));
-    });
-  });
-  var totY = tblY + 14 + groups.length * 14;
-  svg.appendChild($l(tblX, totY, tblX + tblW, totY, 'obj med'));
-  svg.appendChild($t(tblX + tCols[5] + 4, totY + 12, 'TOTAL:', 'lblb'));
-  svg.appendChild($t(tblX + tCols[6] + 4, totY + 12, fmtDec(totalWt) + ' LBS', 'lblb'));
-  svg.appendChild($r(tblX, tblY, tblW, 14 + (groups.length + 1) * 14 + 4, 'obj med'));
-
-  // ZONE 3b: SPECS
-  var infoX = 700;
-  svg.appendChild($t(infoX + 100, 310, 'SPECIFICATIONS', 'ttl'));
-  var infoLines = [
-    ['MARK:', p.mark],['DEPTH:', p.depth + '"'],['GAUGE:', p.gauge + ' (' + fmtDec(p.thick, 3) + '")'],
-    ['MATERIAL:', 'G90 GALVANIZED'],['TOP FLANGE:', sp.topFlange + '"'],['BOT FLANGE:', sp.botFlange + '"'],
-    ['LIP:', sp.lip + '"'],['COIL WIDTH:', sp.coilWidth + '"'],
-    ['SPAN:', fmtFtIn(p.spanIn)],['SPACING:', fmtFtIn(p.spacingIn) + ' O.C.'],
-    ['WT/LFT:', fmtDec(p.lbsLft) + ' lbs/ft'],['WT/PIECE:', fmtDec(p.wtPiece) + ' lbs'],['QTY:', p.qty]
-  ];
-  infoLines.forEach(function(pair, i) {
-    svg.appendChild($t(infoX + 12, 325 + i * 13, pair[0], 'note'));
-    svg.appendChild($t(infoX + 80, 325 + i * 13, String(pair[1]), 'lbl'));
-  });
-
-  // ZONE 4: FABRICATION NOTES
-  svg.appendChild($t(300, 500, 'FABRICATION NOTES', 'ttl'));
-  var fnotes = [
-    '1. ALL PURLINS ROLL-FORMED IN-HOUSE FROM ' + sp.coilWidth + '" COIL',
-    '2. MATERIAL: ' + p.gauge + ' G90 GALVANIZED STEEL',
-    '3. PURLINS ATTACHED TO RAFTERS VIA P1 CLIPS (FLAT PLATE, WELDED TO RAFTER TOP)',
-    '4. P1 CLIPS SHOP-WELDED TO RAFTER (1/8" FILLET)',
-    '5. FIELD-ATTACHED: TEK SCREWS THROUGH PURLIN WEB INTO P1 PLATE',
-    '6. SAG RODS AT MID-SPAN FOR LATERAL BRACING',
-    '7. Z-PURLIN SPLICE: 6" OVERLAP, BOXED BEAM',
-    '8. SPLICE FASTENED WITH (8) #10 TEK SCREWS PER SIDE',
-    '9. SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
-    '10. DO NOT SCALE DRAWING',
-    '11. TOL: LENGTH +/-1/16"',
-    '12. HOLES: 15/16" DIA STD (FOR CLIP BOLTS)'
-  ];
-  fnotes.forEach(function(n, i) {
-    svg.appendChild($t(60, 518 + i * 11, n, 'note'));
-  });
-
-  // ZONE 5: TITLE BLOCK
-  var buildingId = (window.PURLIN_CONFIG && window.PURLIN_CONFIG.building_id) || '';
-  var titleSuffix = buildingId ? ' - ' + buildingId : '';
-  purlinDrawTitleBlock(svg, {
-    projName: projName, customer: customer, jobNum: jobNum, drawingNum: drawingNum,
-    drawnBy: drawnBy, surfPrep: surfPrep,
-    drawingTitle: 'PURLIN' + titleSuffix, partMark: p.mark,
-    revision: 0, revHistory: [],
-    projectNotes: [
-      'MATERIAL: ' + p.gauge + ' G90 GALVANIZED STEEL',
-      'COIL: ' + sp.coilWidth + '" ROLL-FORMED IN-HOUSE',
-      'FASTENERS: #10 TEK SCREWS (FIELD)',
-      'P1 CLIPS: SHOP WELD 1/8" FILLET (WPS-C)',
-      'SPACING: ' + fmtFtIn(p.spacingIn) + ' O.C.',
-      'DO NOT SCALE DRAWING'
-    ]
-  });
-
-  // Update footer stats
-  var el;
-  el = document.getElementById('pfSpan'); if (el) el.textContent = fmtFtIn(p.spanIn);
-  el = document.getElementById('pfDepth'); if (el) el.textContent = p.depth + '"';
-  el = document.getElementById('pfGauge'); if (el) el.textContent = p.gauge;
-  el = document.getElementById('pfSpacing'); if (el) el.textContent = fmtFtIn(p.spacingIn) + ' O.C.';
-  el = document.getElementById('pfQty'); if (el) el.textContent = p.qty;
-  el = document.getElementById('pfWt'); if (el) el.textContent = fmtDec(totalWt) + ' lbs';
-
-  // Update BOM
-  var bomRows = [];
-  groups.forEach(function(g) {
-    var wtPc = g.lbs_per_ft * (g.span_ft || 25);
-    bomRows.push({
-      mk: g.mark, qty: g.qty, desc: 'Z-Purlin ' + g.depth + '"',
-      size: fmtFtIn((g.span_ft || 25) * 12) + ' x ' + (g.gauge || '12GA'),
-      mat: 'G90', wt: Math.round(wtPc * g.qty)
-    });
-  });
-  purlinUpdateBOM(bomRows);
-}
-
-function purlin_toggleSolar() {
-  purlin_solarEnabled = !purlin_solarEnabled;
-  var btn = document.getElementById('btnPurlinSolar');
-  if (btn) { btn.classList.toggle('active', purlin_solarEnabled); btn.textContent = purlin_solarEnabled ? 'Solar: ON' : 'Solar: OFF'; }
-  purlin_draw();
-}
-
-function purlin_toggleAngled() {
-  purlin_angledPurlins = !purlin_angledPurlins;
-  var btn = document.getElementById('btnPurlinAngled');
-  if (btn) { btn.classList.toggle('active', purlin_angledPurlins); btn.textContent = purlin_angledPurlins ? 'Angled: ON' : 'Angled: OFF'; }
-  var angleInput = document.getElementById('purlinAngledAngleInput');
-  if (angleInput) angleInput.style.display = purlin_angledPurlins ? 'inline-flex' : 'none';
-  purlin_draw();
-}
-
-function purlin_onAngleChange() {
-  var el = document.getElementById('inpPurlinAngleDeg');
-  if (el) purlin_purlinAngleDeg = parseFloat(el.value) || 15;
-  purlin_draw();
-}
-
-function purlin_applyConfig() {
-  var cfg = window.PURLIN_CONFIG || {};
-  if (cfg.angled_purlins) purlin_angledPurlins = true;
-  if (cfg.purlin_angle_deg) purlin_purlinAngleDeg = cfg.purlin_angle_deg;
-  purlin_buildGroupTabs();
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// PURLIN LAYOUT VIEW — namespaced from purlin_layout.py
-// ═══════════════════════════════════════════════════════════════════
-var layout_mode = 'standard';
-var layout_purlinType = 'C';
-var layout_orientation = 'landscape';
-var layout_maxPurlinLenFt = 45;
-var layout_zExtensionFt = 4;
-var layout_overhangEnabled = false;
-var layout_rafterWidthIn = 8;
-var layout_endcapClearanceIn = 4;
-var layout_buildingLengthFt = 60;
-var layout_buildingWidthFt = 20;
-var layout_nFrames = 4;
-var layout_baySizes = [];
-var layout_purlinSpacingFt = 5;
-var layout_costPerFtC = 2.50;
-var layout_costPerFtZ = 3.00;
-var layout_comparisonResults = null;
-
-function layout_computeRafterPositions() {
-  var bays = layout_baySizes.length > 0 ? layout_baySizes : [];
-  if (bays.length === 0) {
-    var numBays = Math.max(layout_nFrames - 1, 1);
-    var bayLen = (layout_buildingLengthFt * 12) / numBays;
-    for (var i = 0; i < numBays; i++) bays.push(bayLen);
-  }
-  var positions = [0], pos = 0;
-  for (var i = 0; i < bays.length; i++) {
-    pos += (typeof bays[i] === 'number' ? bays[i] : bays[i] * 12);
-    positions.push(pos);
-  }
-  return positions;
-}
-
-function layout_computeLayout(buildingLengthIn, rafterPositions, type, maxLen, zExt) {
-  var maxLenIn = maxLen * 12;
-  var zExtIn = zExt * 12;
-  var numRafters = rafterPositions.length;
-  var pieces = [];
-  if (type === 'C') {
-    var idx = 0;
-    while (idx < numRafters - 1) {
-      var bestEnd = idx + 1;
-      for (var tryEnd = idx + 1; tryEnd < numRafters; tryEnd++) {
-        var startPos = rafterPositions[idx], endPos = rafterPositions[tryEnd];
-        var pieceLen = endPos - startPos;
-        var extra = 0;
-        if (idx === 0 && !layout_overhangEnabled) extra += layout_endcapClearanceIn + layout_rafterWidthIn / 2;
-        if (tryEnd === numRafters - 1 && !layout_overhangEnabled) extra += layout_endcapClearanceIn + layout_rafterWidthIn / 2;
-        if (pieceLen + extra <= maxLenIn && tryEnd - idx >= 1) bestEnd = tryEnd;
-        else break;
-      }
-      if (bestEnd - idx < 1) bestEnd = Math.min(idx + 1, numRafters - 1);
-      var startIn = rafterPositions[idx], endIn = rafterPositions[bestEnd], lenIn = endIn - startIn;
-      if (idx === 0 && !layout_overhangEnabled) { startIn -= (layout_endcapClearanceIn + layout_rafterWidthIn/2); lenIn += (layout_endcapClearanceIn + layout_rafterWidthIn/2); }
-      if (bestEnd === numRafters - 1 && !layout_overhangEnabled) { endIn += (layout_endcapClearanceIn + layout_rafterWidthIn/2); lenIn += (layout_endcapClearanceIn + layout_rafterWidthIn/2); }
-      pieces.push({ startIn: startIn, endIn: endIn, lengthIn: lenIn, group: pieces.length + 1, spansFrom: idx, spansTo: bestEnd });
-      idx = bestEnd;
-    }
-  } else {
-    var overlapIn = 6;
-    var idx = 0;
-    while (idx < numRafters - 1) {
-      var bestEnd = idx + 1;
-      for (var tryEnd = idx + 1; tryEnd < numRafters; tryEnd++) {
-        var startPos = rafterPositions[idx], endPos = rafterPositions[tryEnd];
-        var totalLen = endPos - startPos;
-        if (idx > 0) totalLen += zExtIn;
-        if (tryEnd < numRafters - 1) totalLen += zExtIn;
-        if (idx === 0 && !layout_overhangEnabled) totalLen += layout_endcapClearanceIn + layout_rafterWidthIn/2;
-        if (tryEnd === numRafters - 1 && !layout_overhangEnabled) totalLen += layout_endcapClearanceIn + layout_rafterWidthIn/2;
-        if (totalLen <= maxLenIn && tryEnd - idx >= 1) bestEnd = tryEnd;
-        else break;
-      }
-      if (bestEnd - idx < 1) bestEnd = Math.min(idx + 1, numRafters - 1);
-      var startIn = rafterPositions[idx], endIn = rafterPositions[bestEnd], lenIn = endIn - startIn;
-      var extStart = 0, extEnd = 0;
-      if (idx > 0) extStart = zExtIn;
-      else if (!layout_overhangEnabled) extStart = layout_endcapClearanceIn + layout_rafterWidthIn/2;
-      if (bestEnd < numRafters - 1) extEnd = zExtIn;
-      else if (!layout_overhangEnabled) extEnd = layout_endcapClearanceIn + layout_rafterWidthIn/2;
-      pieces.push({ startIn: startIn - extStart, endIn: endIn + extEnd, lengthIn: lenIn + extStart + extEnd, group: pieces.length + 1, spansFrom: idx, spansTo: bestEnd, extStart: extStart, extEnd: extEnd, overlapIn: overlapIn });
-      idx = bestEnd;
-    }
-  }
-  return pieces;
-}
-
-function layout_readControls() {
-  var el;
-  el = document.getElementById('layoutInpMode'); if (el) layout_mode = el.value;
-  el = document.getElementById('layoutInpMaxLen'); if (el) layout_maxPurlinLenFt = parseFloat(el.value) || 45;
-  if (layout_maxPurlinLenFt > 53) layout_maxPurlinLenFt = 53;
-  el = document.getElementById('layoutInpZExt'); if (el) layout_zExtensionFt = parseFloat(el.value) || 4;
-  el = document.getElementById('layoutInpBldgLen'); if (el) layout_buildingLengthFt = parseFloat(el.value) || 60;
-  el = document.getElementById('layoutInpFrames'); if (el) layout_nFrames = parseInt(el.value) || 4;
-  el = document.getElementById('layoutInpBldgWidth'); if (el) layout_buildingWidthFt = parseFloat(el.value) || 20;
-  el = document.getElementById('layoutInpSpacing'); if (el) layout_purlinSpacingFt = parseFloat(el.value) || 5;
-  el = document.getElementById('layoutInpCostC'); if (el) layout_costPerFtC = parseFloat(el.value) || 2.50;
-  el = document.getElementById('layoutInpCostZ'); if (el) layout_costPerFtZ = parseFloat(el.value) || 3.00;
-}
-
-function layout_draw() {
-  var svg = document.getElementById('svgLayout');
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  svg.setAttribute('viewBox', '0 0 1100 850');
-  layout_readControls();
-
-  var projName = (document.getElementById('setProjectName') || {}).value || 'PROJECT';
-  var customer = (document.getElementById('setCustomer') || {}).value || '';
-  var jobNum = (document.getElementById('setJobNumber') || {}).value || '';
-  var drawingNum = (document.getElementById('setDrawingNum') || {}).value || 'SD-001';
-  var drawnBy = (document.getElementById('setDrawnBy') || {}).value || 'AUTO';
-
-  var rafterPositions = layout_computeRafterPositions();
-  var bldgLenIn = rafterPositions[rafterPositions.length - 1];
-  var pieces = layout_computeLayout(bldgLenIn, rafterPositions, layout_purlinType, layout_maxPurlinLenFt, layout_zExtensionFt);
-  var totalBldgIn = bldgLenIn;
-  if (!layout_overhangEnabled) totalBldgIn = bldgLenIn + (layout_rafterWidthIn/2 + layout_endcapClearanceIn) * 2;
-  var numPurlinLines = Math.max(Math.floor(layout_buildingWidthFt * 12 / (layout_purlinSpacingFt * 12)) + 1, 2);
-
-  // ZONE 1: PLAN VIEW
-  svg.appendChild($t(550, 18, 'PURLIN LAYOUT - PLAN VIEW (' + layout_purlinType + '-PURLIN, ' + layout_mode.toUpperCase() + ')', 'ttl'));
-  var planL = 60, planR = 1040, planT = 35, planB = 330;
-  var planW = planR - planL, planH = planB - planT;
-  var sc = planW / totalBldgIn;
-  var offsetX = 0;
-  if (!layout_overhangEnabled) offsetX = (layout_endcapClearanceIn + layout_rafterWidthIn/2) * sc;
-
-  // Draw rafters
-  for (var i = 0; i < rafterPositions.length; i++) {
-    var rx = planL + offsetX + rafterPositions[i] * sc;
-    var rw = layout_rafterWidthIn * sc; if (rw < 3) rw = 3;
-    svg.appendChild($e('rect', { x: rx - rw/2, y: planT + 10, width: rw, height: planH - 40, fill: '#D0D0D0', stroke: '#999', 'stroke-width': '0.5' }));
-    if (i === 0 || i === rafterPositions.length - 1 || rafterPositions.length <= 8)
-      svg.appendChild($t(rx, planB - 15, 'R' + (i + 1), 'note', 'middle'));
-  }
-
-  // Draw purlin lines
-  var maxLines = Math.min(numPurlinLines, 8);
-  var lineSpacing = (planH - 80) / (maxLines + 1);
-  for (var line = 0; line < maxLines; line++) {
-    var ly = planT + 40 + (line + 1) * lineSpacing;
-    for (var pp = 0; pp < pieces.length; pp++) {
-      var piece = pieces[pp];
-      var px1 = planL + (piece.startIn + (layout_overhangEnabled ? 0 : (layout_endcapClearanceIn + layout_rafterWidthIn/2))) * sc;
-      var px2 = planL + (piece.endIn + (layout_overhangEnabled ? 0 : (layout_endcapClearanceIn + layout_rafterWidthIn/2))) * sc;
-      var fillColor = (layout_purlinType === 'C') ? '#4A90D9' : '#D9534F';
-      svg.appendChild($e('rect', { x: px1, y: ly - 2, width: px2 - px1, height: 4, fill: fillColor, stroke: '#333', 'stroke-width': '0.5', opacity: '0.8' }));
-      if (line === 0 && pieces.length <= 6) {
-        svg.appendChild($t((px1+px2)/2, ly - 8, fmtFtIn(piece.lengthIn), 'note', 'middle'));
-      }
-    }
-  }
-  dimH(svg, planL, planR, planB - 5, 12, fmtFtIn(totalBldgIn));
-
-  // ZONE 2: CROSS-SECTION
-  var secTitle = (layout_purlinType === 'Z') ? 'Z-PURLIN CROSS-SECTION' : 'C-PURLIN CROSS-SECTION';
-  svg.appendChild($t(180, 365, secTitle, 'ttl'));
-  var cx2 = 180, cy2 = 445, zScale2 = 5, depth2 = 8;
-  var zD2 = depth2 * zScale2, zTF2 = 2.75 * zScale2, zBF2 = 2.75 * zScale2, zT2 = 2;
-  var zTop2 = cy2 - zD2/2, zBot2 = cy2 + zD2/2;
-  svg.appendChild($r(cx2 - zT2/2, zTop2, zT2, zD2, 'cee'));
-  svg.appendChild($r(cx2, zTop2, zTF2, zT2, 'cee'));
-  if (layout_purlinType === 'Z') {
-    svg.appendChild($r(cx2 - zBF2, zBot2 - zT2, zBF2, zT2, 'cee'));
-  } else {
-    svg.appendChild($r(cx2, zBot2 - zT2, zBF2, zT2, 'cee'));
-  }
-  svg.appendChild($l(cx2, zTop2 - 15, cx2, zBot2 + 15, 'center'));
-  dimV(svg, cx2 + zTF2 + 10, zTop2, zBot2, 15, depth2 + '"');
-  svg.appendChild($t(cx2, zBot2 + 35, layout_purlinType + '-PURLIN', 'lblb', 'middle'));
-
-  // ZONE 3: SCHEDULE TABLE
-  svg.appendChild($t(720, 365, 'PURLIN SCHEDULE', 'ttl'));
-  var tblX2 = 500, tblY2 = 378, tblW2 = 560;
-  var tCols2 = [0, 50, 90, 200, 310, 410, 480];
-  var tHdrs2 = ['GRP', 'QTY', 'LENGTH', 'PIECES/LINE', 'TOTAL PCS', 'TOTAL LF', 'NOTES'];
-  svg.appendChild($e('rect', {x: tblX2, y: tblY2, width: tblW2, height: 14, fill: '#333', stroke: '#333'}));
-  for (var hi = 0; hi < tHdrs2.length; hi++) {
-    var ht2 = $t(tblX2 + tCols2[hi] + 4, tblY2 + 11, tHdrs2[hi], 'note');
-    ht2.setAttribute('fill', '#FFF'); svg.appendChild(ht2);
-  }
-  var lGroups = {};
-  for (var gi = 0; gi < pieces.length; gi++) {
-    var lenKey = Math.round(pieces[gi].lengthIn * 8) / 8;
-    if (!lGroups[lenKey]) lGroups[lenKey] = { lengthIn: pieces[gi].lengthIn, count: 0 };
-    lGroups[lenKey].count++;
-  }
-  var groupKeys = Object.keys(lGroups).sort(function(a,b) { return parseFloat(b) - parseFloat(a); });
-  var totalLF = 0, totalPcs = 0;
-  for (var gi2 = 0; gi2 < groupKeys.length && gi2 < 8; gi2++) {
-    var grp = lGroups[groupKeys[gi2]];
-    var ry = tblY2 + 14 + gi2 * 14;
-    svg.appendChild($l(tblX2, ry + 14, tblX2 + tblW2, ry + 14, 'dim'));
-    var qtyPerLine = grp.count, totalQty = qtyPerLine * numPurlinLines;
-    var lfPerPiece = grp.lengthIn / 12, grpTotalLF = lfPerPiece * totalQty;
-    totalLF += grpTotalLF; totalPcs += totalQty;
-    var vals2 = [String(gi2+1), String(numPurlinLines), fmtFtIn(grp.lengthIn), String(qtyPerLine), String(totalQty), fmtDec(grpTotalLF, 1), layout_purlinType === 'Z' ? 'SPLICE @ OVERLAP' : 'BUTT JOINT'];
-    for (var ci = 0; ci < vals2.length; ci++) svg.appendChild($t(tblX2 + tCols2[ci] + 4, ry + 11, vals2[ci], 'lbl'));
-  }
-  var totY2 = tblY2 + 14 + Math.min(groupKeys.length, 8) * 14;
-  svg.appendChild($l(tblX2, totY2, tblX2 + tblW2, totY2, 'obj med'));
-  svg.appendChild($t(tblX2 + tCols2[4] + 4, totY2 + 12, String(totalPcs), 'lblb'));
-  svg.appendChild($t(tblX2 + tCols2[5] + 4, totY2 + 12, fmtDec(totalLF, 1) + ' LF', 'lblb'));
-  svg.appendChild($r(tblX2, tblY2, tblW2, 14 + (Math.min(groupKeys.length, 8) + 1) * 14 + 4, 'obj med'));
-
-  // ZONE 4: COST COMPARISON
-  svg.appendChild($t(550, 535, 'COST COMPARISON', 'ttl'));
-  if (layout_comparisonResults) {
-    var cmpX = 80, cmpY = 548, cmpW = 940;
-    var cCols = [0, 240, 380, 520, 660, 800];
-    var cHdrs = ['OPTION', 'TOTAL LF', 'PIECES', 'COST', 'SAVINGS', 'STATUS'];
-    svg.appendChild($e('rect', {x: cmpX, y: cmpY, width: cmpW, height: 14, fill: '#333', stroke: '#333'}));
-    for (var ci2 = 0; ci2 < cHdrs.length; ci2++) {
-      var cht = $t(cmpX + cCols[ci2] + 4, cmpY + 11, cHdrs[ci2], 'note');
-      cht.setAttribute('fill', '#FFF'); svg.appendChild(cht);
-    }
-    var minCost = Infinity;
-    for (var ci3 = 0; ci3 < layout_comparisonResults.length; ci3++) {
-      if (layout_comparisonResults[ci3].cost < minCost) minCost = layout_comparisonResults[ci3].cost;
-    }
-    for (var ci4 = 0; ci4 < layout_comparisonResults.length; ci4++) {
-      var res = layout_comparisonResults[ci4];
-      var ry2 = cmpY + 14 + ci4 * 18;
-      if (res.recommended) svg.appendChild($e('rect', { x: cmpX+1, y: ry2-1, width: cmpW-2, height: 16, fill: '#D4EDDA', stroke: '#28A745', 'stroke-width': '0.5' }));
-      var savings = res.cost - minCost;
-      var cVals = [res.label, fmtDec(res.totalLF, 0)+' LF', String(res.pieces), '$'+fmtDec(res.cost, 0), savings > 0 ? '+$'+fmtDec(savings, 0) : '--', res.recommended ? 'RECOMMENDED' : ''];
-      for (var cv = 0; cv < cVals.length; cv++) svg.appendChild($t(cmpX + cCols[cv] + 4, ry2 + 11, cVals[cv], res.recommended ? 'lblb' : 'lbl'));
-    }
-    svg.appendChild($r(cmpX, cmpY, cmpW, 14 + layout_comparisonResults.length * 18 + 4, 'obj med'));
-  } else {
-    svg.appendChild($t(550, 570, 'Click "Compare All" to run 4-option cost analysis', 'note', 'middle'));
-    var currentCost = totalLF * (layout_purlinType === 'C' ? layout_costPerFtC : layout_costPerFtZ);
-    svg.appendChild($t(550, 610, 'CURRENT: ' + layout_purlinType + '-Purlin, ' + fmtDec(totalLF, 0) + ' LF, ' + totalPcs + ' pcs, $' + fmtDec(currentCost, 0), 'lblb', 'middle'));
-  }
-
-  // ZONE 5: TITLE BLOCK
-  var buildingId = (window.PURLIN_LAYOUT_CONFIG && window.PURLIN_LAYOUT_CONFIG.building_id) || '';
-  var titleSuffix = buildingId ? ' - ' + buildingId : '';
-  purlinDrawTitleBlock(svg, {
-    projName: projName, customer: customer, jobNum: jobNum, drawingNum: drawingNum,
-    drawnBy: drawnBy, drawingTitle: 'PURLIN LAYOUT' + titleSuffix,
-    partMark: layout_purlinType + '-PURLIN', revision: 0, revHistory: [],
-    projectNotes: [
-      'MODE: ' + layout_mode.toUpperCase(),
-      'PURLIN TYPE: ' + layout_purlinType + '-PURLIN',
-      'MAX LENGTH: ' + layout_maxPurlinLenFt + ' FT',
-      'BUILDING: ' + fmtFtIn(totalBldgIn) + ' LONG',
-      'FRAMES: ' + layout_nFrames,
-      'PURLIN LINES: ' + numPurlinLines,
-      'TOTAL PIECES: ' + totalPcs,
-      'TOTAL LF: ' + fmtDec(totalLF, 0),
-      'DO NOT SCALE DRAWING'
-    ]
-  });
-
-  // Update footer
-  var el;
-  el = document.getElementById('lfMode'); if (el) el.textContent = layout_mode;
-  el = document.getElementById('lfType'); if (el) el.textContent = layout_purlinType;
-  el = document.getElementById('lfPieces'); if (el) el.textContent = totalPcs;
-  el = document.getElementById('lfTotalLF'); if (el) el.textContent = fmtDec(totalLF, 0) + ' LF';
-  el = document.getElementById('lfLines'); if (el) el.textContent = numPurlinLines;
-  var currentCostCalc = totalLF * (layout_purlinType === 'C' ? layout_costPerFtC : layout_costPerFtZ);
-  el = document.getElementById('lfCost'); if (el) el.textContent = '$' + fmtDec(currentCostCalc, 0);
-}
-
-function layout_setMode(m) {
-  layout_mode = m;
-  var el = document.getElementById('layoutInpMode'); if (el) el.value = m;
-  var solarCtrls = document.getElementById('layoutOrientControls');
-  if (solarCtrls) solarCtrls.style.display = (m === 'solar') ? 'flex' : 'none';
-  layout_comparisonResults = null;
-  layout_draw();
-}
-
-function layout_setPurlinType(t) {
-  layout_purlinType = t;
-  var btns = document.querySelectorAll('.ptype-btn-layout');
-  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.type === t);
-  var zExtGroup = document.getElementById('layoutZExtGroup');
-  if (zExtGroup) zExtGroup.style.display = (t === 'Z') ? 'flex' : 'none';
-  layout_comparisonResults = null;
-  layout_draw();
-}
-
-function layout_setOrientation(o) {
-  layout_orientation = o;
-  var btns = document.querySelectorAll('.orient-btn-layout');
-  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.orient === o);
-  layout_comparisonResults = null;
-  layout_draw();
-}
-
-function layout_toggleOverhang() {
-  layout_overhangEnabled = !layout_overhangEnabled;
-  var btn = document.getElementById('layoutBtnOverhang');
-  if (btn) { btn.classList.toggle('active', layout_overhangEnabled); btn.textContent = layout_overhangEnabled ? 'Overhang: ON' : 'Overhang: OFF'; }
-  layout_comparisonResults = null;
-  layout_draw();
-}
-
-function layout_onControlChange() {
-  layout_readControls();
-  layout_comparisonResults = null;
-  layout_draw();
-}
-
-function layout_runComparison() {
-  var rafterPositions = layout_computeRafterPositions();
-  var bldgLen = rafterPositions[rafterPositions.length - 1];
-  var numLines = Math.max(Math.floor(layout_buildingWidthFt * 12 / (layout_purlinSpacingFt * 12)) + 1, 2);
-  var results = [];
-  var types = ['C', 'Z'];
-  var labels = ['C-Purlin', 'Z-Purlin'];
-  var costs = [layout_costPerFtC, layout_costPerFtZ];
-  for (var ti = 0; ti < types.length; ti++) {
-    var pcs = layout_computeLayout(bldgLen, rafterPositions, types[ti], layout_maxPurlinLenFt, layout_zExtensionFt);
-    var totalLf = 0;
-    for (var pi = 0; pi < pcs.length; pi++) totalLf += pcs[pi].lengthIn / 12;
-    results.push({
-      label: labels[ti], type: types[ti],
-      pieces: pcs.length * numLines, totalLF: totalLf * numLines,
-      cost: totalLf * numLines * costs[ti], perLine: pcs
-    });
-  }
-  var minCost = Infinity, minIdx = 0;
-  for (var ri = 0; ri < results.length; ri++) {
-    if (results[ri].cost < minCost) { minCost = results[ri].cost; minIdx = ri; }
-  }
-  results[minIdx].recommended = true;
-  layout_comparisonResults = results;
-  layout_draw();
-}
-
-function layout_applyConfig() {
-  var cfg = window.PURLIN_LAYOUT_CONFIG || {};
-  if (cfg.building_length_ft) { layout_buildingLengthFt = cfg.building_length_ft; var el = document.getElementById('layoutInpBldgLen'); if (el) el.value = layout_buildingLengthFt; }
-  if (cfg.building_width_ft || cfg.width_ft) { layout_buildingWidthFt = cfg.building_width_ft || cfg.width_ft; var el = document.getElementById('layoutInpBldgWidth'); if (el) el.value = layout_buildingWidthFt; }
-  if (cfg.n_frames) { layout_nFrames = cfg.n_frames; var el = document.getElementById('layoutInpFrames'); if (el) el.value = layout_nFrames; }
-  if (cfg.bay_sizes && cfg.bay_sizes.length > 0) layout_baySizes = cfg.bay_sizes;
-  if (cfg.purlin_type) {
-    layout_purlinType = cfg.purlin_type.toUpperCase().charAt(0) === 'Z' ? 'Z' : 'C';
-    layout_setPurlinType(layout_purlinType);
-  }
-  if (cfg.purlin_spacing_ft) { layout_purlinSpacingFt = cfg.purlin_spacing_ft; var el = document.getElementById('layoutInpSpacing'); if (el) el.value = layout_purlinSpacingFt; }
-}
-
 </script>
 </body>
 </html>
