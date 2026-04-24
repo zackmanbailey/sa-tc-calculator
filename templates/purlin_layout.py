@@ -1,30 +1,46 @@
 """
-TitanForge -- Interactive Purlin Layout Shop Drawing
-=====================================================
-Full building-length purlin layout showing piece breaks, bay sizes,
-and optional solar panel overlay. Supports C-purlin (butt-joint) and
-Z-purlin (overlap/splice) modes with cost comparison across 4 options.
+TitanForge -- Interactive Purlin Layout Shop Drawing (CAD-Quality)
+===================================================================
+Production-ready shop drawings for Z and C purlin layout.
+Single interactive SVG that scrolls continuously.
+At print time, JS splits into page-sized chunks with title blocks.
 
-Uses drawing_base.build_html_shell() for the outer wrapper.
+Drawing Set Contents:
+  1. Plan View — Full building plan with piece marks, splices, dimensions
+  2. Section A-A — Cross-section through typical bay
+  3. Detail Views — P1 clip, splice, P2 eave, solar mount
+  4. Drill Schedule — Fabrication-ready hole positions (solar only)
+  5. Purlin Schedule — Tabulated BOM on drawing
+  6. Hardware Schedule — All clips, screws, bolts
+  7. General Notes — Material specs, fabrication standards
+  8. Cost Comparison — 4-option analysis
+  9. Title Block — Enhanced with scales and tolerances
 """
 
 import templates.drawing_base as drawing_base
 
 # ===================================================================
-# Component-specific JavaScript: draw() and helpers
+# Component-specific JavaScript
 # ===================================================================
 
 PURLIN_LAYOUT_JS = r"""
-// ── State Variables ──
+// ══════════════════════════════════════════════════════════════
+// STATE VARIABLES
+// ══════════════════════════════════════════════════════════════
 var mode = 'standard';
 var purlinType = 'C';
 var orientation = 'landscape';
 var maxPurlinLenFt = 45;
-var zExtensionFt = 4;
+var zExtensionFt = 6;
 var overhangEnabled = false;
 var rafterWidthIn = 8;
 var endcapClearanceIn = 4;
-var slopeDefault = 5;
+var purlinDepthIn = 12;
+var purlinGauge = 12;
+var flangeWidthIn = 3.5;
+var lipLengthIn = 0.75;
+var webThicknessIn = 0.105;
+var wtPerFt = 7.43;
 
 // Solar panel spec
 var panelWidthMm = 992;
@@ -42,23 +58,216 @@ var costPerFtZ = 3.00;
 
 // Building / layout
 var buildingLengthFt = 60;
-var buildingWidthFt = 20;
+var buildingWidthFt = 40;
 var nFrames = 4;
 var baySizes = [];
 var purlinSpacingFt = 5;
 var overhangFt = 1;
+var showDetails = true;
+var showNotes = true;
 
 // Comparison results
 var comparisonResults = null;
 
-// ── MM to inches ──
+// ══════════════════════════════════════════════════════════════
+// SVG HELPERS
+// ══════════════════════════════════════════════════════════════
+var NS = 'http://www.w3.org/2000/svg';
+
+function $e(tag, a, txt) {
+  var e = document.createElementNS(NS, tag);
+  if (a) { for (var k in a) { if (a.hasOwnProperty(k)) e.setAttribute(k, a[k]); } }
+  if (txt !== undefined && txt !== null) e.textContent = txt;
+  return e;
+}
+function $g(cls, dp) {
+  var g = $e('g', {class: cls || ''});
+  if (dp) g.dataset.part = dp;
+  return g;
+}
+function $l(x1,y1,x2,y2,c) { return $e('line',{x1:x1,y1:y1,x2:x2,y2:y2,class:c||'obj-med'}); }
+function $r(x,y,w,h,c) { return $e('rect',{x:x,y:y,width:w,height:h,class:c||'obj-thick'}); }
+function $c(cx,cy,r,c) { return $e('circle',{cx:cx,cy:cy,r:r,class:c||'bolt'}); }
+function $t(x,y,s,c,a) { var t=$e('text',{x:x,y:y,class:c||'lbl'},s); if(a)t.setAttribute('text-anchor',a); return t; }
+function $p(d,c) { return $e('path',{d:d,class:c||'obj-med'}); }
+
+// ══════════════════════════════════════════════════════════════
+// FORMAT HELPERS
+// ══════════════════════════════════════════════════════════════
 function mmToIn(mm) { return mm / 25.4; }
 
-// ── Compute rafter positions from bay sizes ──
+function fmtFtIn(inches) {
+  if (inches < 0) inches = 0;
+  var ft = Math.floor(inches / 12);
+  var inc = inches - ft * 12;
+  var e8 = Math.round(inc * 8) / 8;
+  if (e8 >= 12) return (ft+1) + "'-0\"";
+  if (e8 === Math.floor(e8)) return ft + "'-" + Math.floor(e8) + "\"";
+  var w = Math.floor(e8);
+  var n = Math.round((e8 - w) * 8), dd = 8;
+  while (n%2===0 && dd>1) { n/=2; dd/=2; }
+  return w ? ft + "'-" + w + " " + n + "/" + dd + "\"" : ft + "'-" + n + "/" + dd + "\"";
+}
+
+function fmtDec(val, places) {
+  if (places === undefined) places = 2;
+  return Number(val).toFixed(places);
+}
+
+function fmtScale(pxPerRealIn) {
+  var paperInchPx = 100;
+  var realInPerPaperIn = paperInchPx / pxPerRealIn;
+  if (realInPerPaperIn < 12) return '1" = ' + Math.round(realInPerPaperIn) + '"';
+  var realFt = realInPerPaperIn / 12;
+  var rounded = Math.round(realFt * 4) / 4;
+  var ft = Math.floor(rounded);
+  var frac = rounded - ft;
+  if (frac < 0.1) return '1" = ' + ft + "'-0\"";
+  if (frac < 0.3) return '3/16" = 1\'-0"';
+  if (frac < 0.6) return '1/4" = 1\'-0"';
+  return '1/8" = 1\'-0"';
+}
+
+// ══════════════════════════════════════════════════════════════
+// ENGINEERING DRAWING HELPERS
+// ══════════════════════════════════════════════════════════════
+
+// Architectural tick dimension — horizontal
+function dimH(svg, x1, x2, y, off, label) {
+  var dy = y + off;
+  var gap = 2, ext = 2, tickL = 4;
+  // Extension lines
+  svg.appendChild($e('line',{x1:x1,y1:y+(off>0?gap:-gap),x2:x1,y2:dy+(off>0?ext:-ext),class:'dim-line'}));
+  svg.appendChild($e('line',{x1:x2,y1:y+(off>0?gap:-gap),x2:x2,y2:dy+(off>0?ext:-ext),class:'dim-line'}));
+  // Dimension line
+  svg.appendChild($e('line',{x1:x1,y1:dy,x2:x2,y2:dy,class:'dim-line'}));
+  // Architectural ticks (45° slash)
+  svg.appendChild($e('line',{x1:x1-tickL/2,y1:dy+tickL/2,x2:x1+tickL/2,y2:dy-tickL/2,stroke:'#333','stroke-width':'0.8',fill:'none'}));
+  svg.appendChild($e('line',{x1:x2-tickL/2,y1:dy+tickL/2,x2:x2+tickL/2,y2:dy-tickL/2,stroke:'#333','stroke-width':'0.8',fill:'none'}));
+  // Label
+  svg.appendChild($t((x1+x2)/2, dy-3, label, 'dim-txt', 'middle'));
+}
+
+// Architectural tick dimension — vertical
+function dimV(svg, x, y1, y2, off, label) {
+  var dx = x + off;
+  var gap = 2, ext = 2, tickL = 4;
+  svg.appendChild($e('line',{x1:x+(off>0?gap:-gap),y1:y1,x2:dx+(off>0?ext:-ext),y2:y1,class:'dim-line'}));
+  svg.appendChild($e('line',{x1:x+(off>0?gap:-gap),y1:y2,x2:dx+(off>0?ext:-ext),y2:y2,class:'dim-line'}));
+  svg.appendChild($e('line',{x1:dx,y1:y1,x2:dx,y2:y2,class:'dim-line'}));
+  svg.appendChild($e('line',{x1:dx-tickL/2,y1:y1+tickL/2,x2:dx+tickL/2,y2:y1-tickL/2,stroke:'#333','stroke-width':'0.8',fill:'none'}));
+  svg.appendChild($e('line',{x1:dx-tickL/2,y1:y2+tickL/2,x2:dx+tickL/2,y2:y2-tickL/2,stroke:'#333','stroke-width':'0.8',fill:'none'}));
+  var t = $t(dx+(off>0?5:-5), (y1+y2)/2+3, label, 'dim-txt', 'middle');
+  t.setAttribute('transform','rotate(-90,'+(dx+(off>0?5:-5))+','+((y1+y2)/2+3)+')');
+  svg.appendChild(t);
+}
+
+// View title with underline and scale
+function drawViewTitle(svg, x, y, title, scale) {
+  svg.appendChild($e('text',{x:x,y:y,class:'view-title','text-anchor':'middle'},title));
+  var tw = title.length * 7;
+  svg.appendChild($e('line',{x1:x-tw/2,y1:y+3,x2:x+tw/2,y2:y+3,stroke:'#1a1a1a','stroke-width':'0.8'}));
+  if (scale) {
+    svg.appendChild($e('text',{x:x,y:y+14,class:'view-scale','text-anchor':'middle'},'SCALE: '+scale));
+  }
+}
+
+// Detail callout bubble — circle with letter and optional leader
+function drawDetailBubble(svg, x, y, letter, leaderToX, leaderToY) {
+  var r = 10;
+  svg.appendChild($e('circle',{cx:x,cy:y,r:r,stroke:'#1a1a1a','stroke-width':'1.5',fill:'#fff'}));
+  svg.appendChild($e('text',{x:x,y:y+4,class:'detail-letter','text-anchor':'middle'},letter));
+  if (leaderToX !== undefined) {
+    // Leader line with arrowhead
+    var dx = leaderToX - x, dy2 = leaderToY - y;
+    var len = Math.sqrt(dx*dx + dy2*dy2);
+    var sx = x + dx/len * r, sy = y + dy2/len * r;
+    svg.appendChild($e('line',{x1:sx,y1:sy,x2:leaderToX,y2:leaderToY,stroke:'#1a1a1a','stroke-width':'0.8',fill:'none'}));
+    // Arrowhead
+    var angle = Math.atan2(dy2, dx);
+    var aLen = 5, aW = 2.5;
+    var ax = leaderToX, ay = leaderToY;
+    var p1x = ax - aLen*Math.cos(angle-0.3), p1y = ay - aLen*Math.sin(angle-0.3);
+    var p2x = ax - aLen*Math.cos(angle+0.3), p2y = ay - aLen*Math.sin(angle+0.3);
+    svg.appendChild($e('polygon',{points:ax+','+ay+' '+p1x+','+p1y+' '+p2x+','+p2y,fill:'#1a1a1a'}));
+  }
+}
+
+// Section cut indicator on plan view
+function drawSectionCut(svg, x1, y1, x2, y2, label) {
+  // Heavy dashed center line
+  svg.appendChild($e('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:'#1a1a1a','stroke-width':'1.5','stroke-dasharray':'12,3,3,3',fill:'none'}));
+  // End bars
+  var barLen = 8;
+  if (Math.abs(x2-x1) > Math.abs(y2-y1)) {
+    // Mostly horizontal — vertical end bars
+    svg.appendChild($e('line',{x1:x1,y1:y1-barLen,x2:x1,y2:y1+barLen,stroke:'#1a1a1a','stroke-width':'2.0'}));
+    svg.appendChild($e('line',{x1:x2,y1:y2-barLen,x2:x2,y2:y2+barLen,stroke:'#1a1a1a','stroke-width':'2.0'}));
+    // Arrows
+    svg.appendChild($e('polygon',{points:(x1)+','+(y1-barLen)+' '+(x1-3)+','+(y1-barLen+5)+' '+(x1+3)+','+(y1-barLen+5),fill:'#1a1a1a'}));
+    svg.appendChild($e('polygon',{points:(x2)+','+(y2-barLen)+' '+(x2-3)+','+(y2-barLen+5)+' '+(x2+3)+','+(y2-barLen+5),fill:'#1a1a1a'}));
+  } else {
+    // Mostly vertical — horizontal end bars
+    svg.appendChild($e('line',{x1:x1-barLen,y1:y1,x2:x1+barLen,y2:y1,stroke:'#1a1a1a','stroke-width':'2.0'}));
+    svg.appendChild($e('line',{x1:x2-barLen,y1:y2,x2:x2+barLen,y2:y2,stroke:'#1a1a1a','stroke-width':'2.0'}));
+  }
+  // Labels in circles
+  var lr = 8;
+  svg.appendChild($e('circle',{cx:x1-14,cy:y1,r:lr,stroke:'#1a1a1a','stroke-width':'1.2',fill:'#fff'}));
+  svg.appendChild($e('text',{x:x1-14,y:y1+4,class:'section-lbl','text-anchor':'middle'},label));
+  svg.appendChild($e('circle',{cx:x2+14,cy:y2,r:lr,stroke:'#1a1a1a','stroke-width':'1.2',fill:'#fff'}));
+  svg.appendChild($e('text',{x:x2+14,y:y2+4,class:'section-lbl','text-anchor':'middle'},label));
+}
+
+// Cross-hatching inside a rect
+function drawHatch(svg, x, y, w, h, angle, spacing) {
+  if (!angle) angle = 45;
+  if (!spacing) spacing = 3;
+  var clipId = 'hatch-' + Math.random().toString(36).substr(2,6);
+  var defs = svg.querySelector('defs');
+  if (!defs) { defs = $e('defs',{}); svg.insertBefore(defs, svg.firstChild); }
+  var cp = $e('clipPath',{id:clipId});
+  cp.appendChild($e('rect',{x:x,y:y,width:w,height:h}));
+  defs.appendChild(cp);
+  var g = $e('g',{'clip-path':'url(#'+clipId+')'});
+  var rad = angle * Math.PI / 180;
+  var step = spacing / Math.abs(Math.cos(rad));
+  var maxD = Math.max(w,h) * 2;
+  for (var i = -maxD; i < maxD; i += spacing) {
+    var lx1 = x + i, ly1 = y;
+    var lx2 = lx1 + h / Math.tan(rad), ly2 = y + h;
+    g.appendChild($e('line',{x1:lx1,y1:ly1,x2:lx2,y2:ly2,class:'hatch-line'}));
+  }
+  svg.appendChild(g);
+}
+
+// Tek screw symbol (X mark)
+function drawTekScrew(svg, cx, cy, size) {
+  if (!size) size = 3;
+  svg.appendChild($e('line',{x1:cx-size,y1:cy-size,x2:cx+size,y2:cy+size,stroke:'#0055AA','stroke-width':'1.2'}));
+  svg.appendChild($e('line',{x1:cx+size,y1:cy-size,x2:cx-size,y2:cy+size,stroke:'#0055AA','stroke-width':'1.2'}));
+}
+
+// Bolt symbol (circle with cross)
+function drawBolt(svg, cx, cy, r) {
+  if (!r) r = 3;
+  svg.appendChild($e('circle',{cx:cx,cy:cy,r:r,fill:'#fff',stroke:'#1a1a1a','stroke-width':'0.8'}));
+  svg.appendChild($e('line',{x1:cx-r*0.7,y1:cy,x2:cx+r*0.7,y2:cy,stroke:'#1a1a1a','stroke-width':'0.6'}));
+  svg.appendChild($e('line',{x1:cx,y1:cy-r*0.7,x2:cx,y2:cy+r*0.7,stroke:'#1a1a1a','stroke-width':'0.6'}));
+}
+
+// Group colors for piece marks
+var groupColors = ['#2563EB','#16A34A','#EA580C','#DC2626','#9333EA','#0891B2','#C2410C','#78716C'];
+var panelColors = ['#2563EB','#16A34A','#EA580C','#DC2626','#9333EA','#0891B2','#C2410C','#78716C',
+                   '#4338CA','#0D9488','#A16207','#E11D48','#7C3AED','#06B6D4','#D97706','#6B7280'];
+
+// ══════════════════════════════════════════════════════════════
+// COMPUTATION FUNCTIONS
+// ══════════════════════════════════════════════════════════════
+
 function computeRafterPositions() {
-  var bays = baySizes.length > 0 ? baySizes : [];
+  var bays = baySizes.length > 0 ? baySizes.slice() : [];
   if (bays.length === 0) {
-    // Equal bays
     var numBays = Math.max(nFrames - 1, 1);
     var bayLen = (buildingLengthFt * 12) / numBays;
     for (var i = 0; i < numBays; i++) bays.push(bayLen);
@@ -72,7 +281,6 @@ function computeRafterPositions() {
   return positions;
 }
 
-// ── Core Algorithm: computeLayout ──
 function computeLayout(buildingLengthIn, rafterPositions, type, maxLen, zExt) {
   var maxLenIn = maxLen * 12;
   var zExtIn = zExt * 12;
@@ -80,56 +288,29 @@ function computeLayout(buildingLengthIn, rafterPositions, type, maxLen, zExt) {
   var pieces = [];
 
   if (type === 'C') {
-    // C-purlin: butt-joint at rafter center
-    // Each piece sits 4" on the rafter (half of 8" rafter)
     var idx = 0;
     while (idx < numRafters - 1) {
-      // Try to span as many bays as possible up to max length
       var bestEnd = idx + 1;
       for (var tryEnd = idx + 1; tryEnd < numRafters; tryEnd++) {
         var startPos = rafterPositions[idx];
         var endPos = rafterPositions[tryEnd];
         var pieceLen = endPos - startPos;
-        // Add half-rafter on each end (4" each)
-        // But internal joints share: each piece gets 4" on each rafter
-        // For end pieces with no overhang: +4" endcap + 4" half-rafter
         var extra = 0;
         if (idx === 0 && !overhangEnabled) extra += endcapClearanceIn + rafterWidthIn / 2;
         if (tryEnd === numRafters - 1 && !overhangEnabled) extra += endcapClearanceIn + rafterWidthIn / 2;
-        if (pieceLen + extra <= maxLenIn && tryEnd - idx >= 1) {
-          bestEnd = tryEnd;
-        } else {
-          break;
-        }
+        if (pieceLen + extra <= maxLenIn && tryEnd - idx >= 1) bestEnd = tryEnd;
+        else break;
       }
-      // Ensure at least 2 rafters spanned
       if (bestEnd - idx < 1) bestEnd = Math.min(idx + 1, numRafters - 1);
-
       var startIn = rafterPositions[idx];
       var endIn = rafterPositions[bestEnd];
       var lenIn = endIn - startIn;
-      if (idx === 0 && !overhangEnabled) {
-        startIn -= (endcapClearanceIn + rafterWidthIn / 2);
-        lenIn += (endcapClearanceIn + rafterWidthIn / 2);
-      }
-      if (bestEnd === numRafters - 1 && !overhangEnabled) {
-        endIn += (endcapClearanceIn + rafterWidthIn / 2);
-        lenIn += (endcapClearanceIn + rafterWidthIn / 2);
-      }
-
-      pieces.push({
-        startIn: startIn,
-        endIn: endIn,
-        lengthIn: lenIn,
-        group: pieces.length + 1,
-        spansFrom: idx,
-        spansTo: bestEnd
-      });
+      if (idx === 0 && !overhangEnabled) { startIn -= (endcapClearanceIn + rafterWidthIn/2); lenIn += (endcapClearanceIn + rafterWidthIn/2); }
+      if (bestEnd === numRafters-1 && !overhangEnabled) { endIn += (endcapClearanceIn + rafterWidthIn/2); lenIn += (endcapClearanceIn + rafterWidthIn/2); }
+      pieces.push({ startIn:startIn, endIn:endIn, lengthIn:lenIn, group:pieces.length+1, spansFrom:idx, spansTo:bestEnd, extStart:0, extEnd:0 });
       idx = bestEnd;
     }
   } else {
-    // Z-purlin: overlap past rafter by extension distance
-    var overlapIn = 6; // 6" overlap where purlins meet
     var idx = 0;
     while (idx < numRafters - 1) {
       var bestEnd = idx + 1;
@@ -137,75 +318,42 @@ function computeLayout(buildingLengthIn, rafterPositions, type, maxLen, zExt) {
         var startPos = rafterPositions[idx];
         var endPos = rafterPositions[tryEnd];
         var pieceLen = endPos - startPos;
-        // Z-purlins extend past rafter by zExtension
         var totalLen = pieceLen;
-        if (idx > 0) totalLen += zExtIn; // extends past start rafter
-        if (tryEnd < numRafters - 1) totalLen += zExtIn; // extends past end rafter
-        if (idx === 0 && !overhangEnabled) totalLen += endcapClearanceIn + rafterWidthIn / 2;
-        if (tryEnd === numRafters - 1 && !overhangEnabled) totalLen += endcapClearanceIn + rafterWidthIn / 2;
-
-        if (totalLen <= maxLenIn && tryEnd - idx >= 1) {
-          bestEnd = tryEnd;
-        } else {
-          break;
-        }
+        if (idx > 0) totalLen += zExtIn;
+        if (tryEnd < numRafters - 1) totalLen += zExtIn;
+        if (idx === 0 && !overhangEnabled) totalLen += endcapClearanceIn + rafterWidthIn/2;
+        if (tryEnd === numRafters-1 && !overhangEnabled) totalLen += endcapClearanceIn + rafterWidthIn/2;
+        if (totalLen <= maxLenIn && tryEnd - idx >= 1) bestEnd = tryEnd;
+        else break;
       }
       if (bestEnd - idx < 1) bestEnd = Math.min(idx + 1, numRafters - 1);
-
       var startIn = rafterPositions[idx];
       var endIn = rafterPositions[bestEnd];
       var lenIn = endIn - startIn;
-
-      // Extensions
       var extStart = 0, extEnd = 0;
-      if (idx > 0) { extStart = zExtIn; }
-      else if (!overhangEnabled) { extStart = endcapClearanceIn + rafterWidthIn / 2; }
-
-      if (bestEnd < numRafters - 1) { extEnd = zExtIn; }
-      else if (!overhangEnabled) { extEnd = endcapClearanceIn + rafterWidthIn / 2; }
-
-      pieces.push({
-        startIn: startIn - extStart,
-        endIn: endIn + extEnd,
-        lengthIn: lenIn + extStart + extEnd,
-        group: pieces.length + 1,
-        spansFrom: idx,
-        spansTo: bestEnd,
-        extStart: extStart,
-        extEnd: extEnd,
-        overlapIn: overlapIn
-      });
+      if (idx > 0) extStart = zExtIn;
+      else if (!overhangEnabled) extStart = endcapClearanceIn + rafterWidthIn/2;
+      if (bestEnd < numRafters-1) extEnd = zExtIn;
+      else if (!overhangEnabled) extEnd = endcapClearanceIn + rafterWidthIn/2;
+      pieces.push({ startIn:startIn-extStart, endIn:endIn+extEnd, lengthIn:lenIn+extStart+extEnd, group:pieces.length+1, spansFrom:idx, spansTo:bestEnd, extStart:extStart, extEnd:extEnd });
       idx = bestEnd;
     }
   }
   return pieces;
 }
 
-// ── Solar building computation ──
 function computeSolarBuilding(panelW, panelL, orient, across, along, gapW, gapL) {
   var pWidthIn, pLengthIn;
-  if (orient === 'landscape') {
-    pWidthIn = mmToIn(panelW);   // short side across
-    pLengthIn = mmToIn(panelL);  // long side along building
-  } else {
-    pWidthIn = mmToIn(panelL);   // long side across
-    pLengthIn = mmToIn(panelW);  // short side along building
-  }
-
+  if (orient === 'landscape') { pWidthIn = mmToIn(panelW); pLengthIn = mmToIn(panelL); }
+  else { pWidthIn = mmToIn(panelL); pLengthIn = mmToIn(panelW); }
   var totalWidth = across * pWidthIn + (across - 1) * gapW + 2 * endcapClearanceIn;
   var totalLength = along * pLengthIn + (along - 1) * gapL + 2 * endcapClearanceIn;
-
-  // Purlin line positions (along width direction)
   var purlinLines = [];
   if (orient === 'landscape') {
-    // Panels share purlins: N panels across = N+1 purlin lines
-    for (var i = 0; i <= across; i++) {
-      purlinLines.push(endcapClearanceIn + i * (pWidthIn + gapW) - gapW / 2);
-    }
+    for (var i = 0; i <= across; i++) purlinLines.push(endcapClearanceIn + i * (pWidthIn + gapW) - gapW/2);
     purlinLines[0] = endcapClearanceIn;
-    purlinLines[purlinLines.length - 1] = totalWidth - endcapClearanceIn;
+    purlinLines[purlinLines.length-1] = totalWidth - endcapClearanceIn;
   } else {
-    // Each panel gets 2 purlins: 2N purlin lines
     for (var i = 0; i < across; i++) {
       var panelStart = endcapClearanceIn + i * (pWidthIn + gapW);
       var holeDistIn = mmToIn(mountHoleDistMm);
@@ -214,8 +362,6 @@ function computeSolarBuilding(panelW, panelL, orient, across, along, gapW, gapL)
       purlinLines.push(panelStart + pWidthIn - inset);
     }
   }
-
-  // Bolt hole positions along building length for each panel
   var boltPositions = [];
   var holeInsetIn = mmToIn(holeInsetMm);
   for (var j = 0; j < along; j++) {
@@ -223,632 +369,1170 @@ function computeSolarBuilding(panelW, panelL, orient, across, along, gapW, gapL)
     boltPositions.push(panelStartAlong + holeInsetIn);
     boltPositions.push(panelStartAlong + pLengthIn - holeInsetIn);
   }
-
-  return {
-    widthIn: totalWidth,
-    lengthIn: totalLength,
-    purlinLines: purlinLines,
-    boltPositions: boltPositions,
-    panelWidthIn: pWidthIn,
-    panelLengthIn: pLengthIn,
-    numPurlinLines: purlinLines.length
-  };
+  return { widthIn:totalWidth, lengthIn:totalLength, purlinLines:purlinLines, boltPositions:boltPositions,
+    panelWidthIn:pWidthIn, panelLengthIn:pLengthIn, numPurlinLines:purlinLines.length };
 }
 
-// ── Run 4-option comparison ──
+function computeDrillData(pieces, solarData, rafterPositions) {
+  if (!solarData || !solarData.boltPositions) return [];
+  var result = [];
+  for (var pi = 0; pi < pieces.length; pi++) {
+    var pc = pieces[pi];
+    var holes = [];
+    for (var hi = 0; hi < solarData.boltPositions.length; hi++) {
+      var absPos = solarData.boltPositions[hi];
+      if (absPos >= pc.startIn - 0.01 && absPos <= pc.endIn + 0.01)
+        holes.push({posFromLeft:absPos-pc.startIn, panelIdx:Math.floor(hi/2), posAbs:absPos, holeIdx:hi});
+    }
+    var rafters = [];
+    for (var ri = 0; ri < rafterPositions.length; ri++) {
+      if (rafterPositions[ri] >= pc.startIn - 0.01 && rafterPositions[ri] <= pc.endIn + 0.01)
+        rafters.push({posFromLeft:rafterPositions[ri]-pc.startIn, rIdx:ri});
+    }
+    result.push({piece:pc, pieceIdx:pi, holes:holes, rafters:rafters});
+  }
+  return result;
+}
+
 function runComparison() {
   var rafterPositions = computeRafterPositions();
-  var bldgLen = rafterPositions[rafterPositions.length - 1];
-  var numLines;
-
+  var bldgLen = rafterPositions[rafterPositions.length-1];
+  var numLines, numLinesP;
   if (mode === 'solar') {
     var solar = computeSolarBuilding(panelWidthMm, panelLengthMm, 'landscape', panelsAcross, panelsAlong, gapWidthIn, gapLengthIn);
     var solarP = computeSolarBuilding(panelWidthMm, panelLengthMm, 'portrait', panelsAcross, panelsAlong, gapWidthIn, gapLengthIn);
-    var linesLandscape = solar.numPurlinLines;
-    var linesPortrait = solarP.numPurlinLines;
+    numLines = solar.numPurlinLines; numLinesP = solarP.numPurlinLines;
   } else {
-    var numLines = Math.max(Math.floor(buildingWidthFt * 12 / (purlinSpacingFt * 12)) + 1, 2);
-    var linesLandscape = numLines;
-    var linesPortrait = numLines;
+    numLines = Math.max(Math.floor(buildingWidthFt*12/(purlinSpacingFt*12))+1, 2);
+    numLinesP = numLines;
   }
-
   var results = [];
-
-  // Landscape + C
-  var piecesLC = computeLayout(bldgLen, rafterPositions, 'C', maxPurlinLenFt, zExtensionFt);
-  var totalLfLC = 0;
-  for (var i = 0; i < piecesLC.length; i++) totalLfLC += piecesLC[i].lengthIn / 12;
-  results.push({
-    label: 'Landscape + C-Purlin',
-    orient: 'landscape', type: 'C',
-    pieces: piecesLC.length * linesLandscape,
-    totalLF: totalLfLC * linesLandscape,
-    cost: totalLfLC * linesLandscape * costPerFtC,
-    perLine: piecesLC
-  });
-
-  // Landscape + Z
-  var piecesLZ = computeLayout(bldgLen, rafterPositions, 'Z', maxPurlinLenFt, zExtensionFt);
-  var totalLfLZ = 0;
-  for (var i = 0; i < piecesLZ.length; i++) totalLfLZ += piecesLZ[i].lengthIn / 12;
-  results.push({
-    label: 'Landscape + Z-Purlin',
-    orient: 'landscape', type: 'Z',
-    pieces: piecesLZ.length * linesLandscape,
-    totalLF: totalLfLZ * linesLandscape,
-    cost: totalLfLZ * linesLandscape * costPerFtZ,
-    perLine: piecesLZ
-  });
-
-  // Portrait + C
-  var piecesPC = computeLayout(bldgLen, rafterPositions, 'C', maxPurlinLenFt, zExtensionFt);
-  var totalLfPC = 0;
-  for (var i = 0; i < piecesPC.length; i++) totalLfPC += piecesPC[i].lengthIn / 12;
-  results.push({
-    label: 'Portrait + C-Purlin',
-    orient: 'portrait', type: 'C',
-    pieces: piecesPC.length * linesPortrait,
-    totalLF: totalLfPC * linesPortrait,
-    cost: totalLfPC * linesPortrait * costPerFtC,
-    perLine: piecesPC
-  });
-
-  // Portrait + Z
-  var piecesPZ = computeLayout(bldgLen, rafterPositions, 'Z', maxPurlinLenFt, zExtensionFt);
-  var totalLfPZ = 0;
-  for (var i = 0; i < piecesPZ.length; i++) totalLfPZ += piecesPZ[i].lengthIn / 12;
-  results.push({
-    label: 'Portrait + Z-Purlin',
-    orient: 'portrait', type: 'Z',
-    pieces: piecesPZ.length * linesPortrait,
-    totalLF: totalLfPZ * linesPortrait,
-    cost: totalLfPZ * linesPortrait * costPerFtZ,
-    perLine: piecesPZ
-  });
-
-  // Find cheapest
-  var minCost = Infinity;
-  var minIdx = 0;
-  for (var i = 0; i < results.length; i++) {
-    if (results[i].cost < minCost) { minCost = results[i].cost; minIdx = i; }
+  var types = ['C','Z'], orients = ['landscape','portrait'];
+  var labels = ['Landscape + C-Purlin','Landscape + Z-Purlin','Portrait + C-Purlin','Portrait + Z-Purlin'];
+  var costs = [costPerFtC, costPerFtZ, costPerFtC, costPerFtZ];
+  var lines = [numLines, numLines, numLinesP, numLinesP];
+  for (var i = 0; i < 4; i++) {
+    var pcs = computeLayout(bldgLen, rafterPositions, types[i%2], maxPurlinLenFt, zExtensionFt);
+    var lf = 0; for (var j = 0; j < pcs.length; j++) lf += pcs[j].lengthIn/12;
+    results.push({label:labels[i],orient:orients[Math.floor(i/2)],type:types[i%2],pieces:pcs.length*lines[i],totalLF:lf*lines[i],cost:lf*lines[i]*costs[i],perLine:pcs});
   }
+  var minCost = Infinity, minIdx = 0;
+  for (var i = 0; i < results.length; i++) { if (results[i].cost < minCost) { minCost = results[i].cost; minIdx = i; } }
   results[minIdx].recommended = true;
-
   comparisonResults = results;
   draw();
 }
 
-// ── Read UI values ──
-function readControls() {
-  var el;
-  el = document.getElementById('inpMode');
-  if (el) mode = el.value;
-  el = document.getElementById('inpMaxLen');
-  if (el) maxPurlinLenFt = parseFloat(el.value) || 45;
-  if (maxPurlinLenFt > 53) maxPurlinLenFt = 53;
-  el = document.getElementById('inpZExt');
-  if (el) zExtensionFt = parseFloat(el.value) || 4;
-  el = document.getElementById('inpBldgLen');
-  if (el) buildingLengthFt = parseFloat(el.value) || 60;
-  el = document.getElementById('inpFrames');
-  if (el) nFrames = parseInt(el.value) || 4;
-  el = document.getElementById('inpBldgWidth');
-  if (el) buildingWidthFt = parseFloat(el.value) || 20;
-  el = document.getElementById('inpSpacing');
-  if (el) purlinSpacingFt = parseFloat(el.value) || 5;
-  el = document.getElementById('inpPanelW');
-  if (el) panelWidthMm = parseFloat(el.value) || 992;
-  el = document.getElementById('inpPanelL');
-  if (el) panelLengthMm = parseFloat(el.value) || 1675;
-  el = document.getElementById('inpPanelsAcross');
-  if (el) panelsAcross = parseInt(el.value) || 5;
-  el = document.getElementById('inpPanelsAlong');
-  if (el) panelsAlong = parseInt(el.value) || 20;
-  el = document.getElementById('inpMtgHole');
-  if (el) mountHoleDistMm = parseFloat(el.value) || 990;
-  el = document.getElementById('inpHoleInset');
-  if (el) holeInsetMm = parseFloat(el.value) || 200;
-  el = document.getElementById('inpGapW');
-  if (el) gapWidthIn = parseFloat(el.value) || 0.25;
-  el = document.getElementById('inpGapL');
-  if (el) gapLengthIn = parseFloat(el.value) || 0.25;
-  el = document.getElementById('inpCostC');
-  if (el) costPerFtC = parseFloat(el.value) || 2.50;
-  el = document.getElementById('inpCostZ');
-  if (el) costPerFtZ = parseFloat(el.value) || 3.00;
-}
+// ══════════════════════════════════════════════════════════════
+// DRAWING: PLAN VIEW
+// ══════════════════════════════════════════════════════════════
+function drawPlanView(svg, curY, data) {
+  var pieces = data.pieces, rafterPositions = data.rafterPositions, solarData = data.solarData;
+  var bldgLenIn = data.bldgLenIn, bldgWidthIn = data.bldgWidthIn;
+  var numPurlinLines = data.numPurlinLines, purlinPositionsIn = data.purlinPositionsIn;
 
-// ── UI toggle handlers ──
-function setMode(m) {
-  mode = m;
-  var el = document.getElementById('inpMode');
-  if (el) el.value = m;
-  updateModeVisibility();
-  comparisonResults = null;
-  draw();
-}
+  drawViewTitle(svg, 550, curY, 'PLAN VIEW \u2014 PURLIN LAYOUT (' + purlinType + '-PURLIN)', fmtScale(940/bldgLenIn));
+  curY += 22;
 
-function setPurlinType(t) {
-  purlinType = t;
-  var btns = document.querySelectorAll('.ptype-btn');
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].classList.toggle('active', btns[i].dataset.type === t);
+  var planL = 80, planR = 1000, planW = planR - planL;
+  var planH = Math.min(Math.max(numPurlinLines * 22, 180), 340);
+  var planT = curY, planB = curY + planH;
+  var scX = planW / bldgLenIn;
+  var scY = planH / bldgWidthIn;
+
+  // Building outline — thick border
+  svg.appendChild($e('rect',{x:planL,y:planT,width:planW,height:planH,fill:'#FAFAFA',stroke:'#1a1a1a','stroke-width':'2.0'}));
+
+  // Column/endwall labels
+  svg.appendChild($t(planL-4,planT+planH/2,'ENDWALL','note-sm','end'));
+  svg.appendChild($t(planR+4,planT+planH/2,'ENDWALL','note-sm','start'));
+  svg.appendChild($t(planL+planW/2,planT-6,'EAVE SIDE','note-sm','middle'));
+  svg.appendChild($t(planL+planW/2,planB+10,'EAVE SIDE','note-sm','middle'));
+
+  // Rafter lines — thick gray bands
+  for (var ri = 0; ri < rafterPositions.length; ri++) {
+    var rx = planL + rafterPositions[ri] * scX;
+    var rafVisW = Math.max(rafterWidthIn * scX, 4);
+    svg.appendChild($e('rect',{x:rx-rafVisW/2,y:planT,width:rafVisW,height:planH,fill:'#B0BEC5','fill-opacity':'0.5',stroke:'#546E7A','stroke-width':'0.8'}));
+    svg.appendChild($t(rx, planT-4, 'R'+(ri+1), 'callout-sm', 'middle'));
   }
-  var zExtGroup = document.getElementById('zExtGroup');
-  if (zExtGroup) zExtGroup.style.display = (t === 'Z') ? 'flex' : 'none';
-  comparisonResults = null;
-  draw();
-}
 
-function setOrientation(o) {
-  orientation = o;
-  var btns = document.querySelectorAll('.orient-btn');
-  for (var i = 0; i < btns.length; i++) {
-    btns[i].classList.toggle('active', btns[i].dataset.orient === o);
+  // Solar panel outlines (dashed rectangles)
+  if (mode === 'solar' && solarData) {
+    var pWidthIn = solarData.panelWidthIn, pLengthIn = solarData.panelLengthIn;
+    for (var pa = 0; pa < panelsAlong; pa++) {
+      for (var pw = 0; pw < panelsAcross; pw++) {
+        var pStartX = endcapClearanceIn + pa * (pLengthIn + gapLengthIn);
+        var pStartY;
+        if (orientation === 'landscape') {
+          pStartY = endcapClearanceIn + pw * (pWidthIn + gapWidthIn);
+        } else {
+          pStartY = endcapClearanceIn + pw * (pWidthIn + gapWidthIn);
+        }
+        var px = planL + pStartX * scX;
+        var py = planT + pStartY * scY;
+        var pw2 = pLengthIn * scX;
+        var ph2 = pWidthIn * scY;
+        if (px >= planL && px + pw2 <= planR && py >= planT && py + ph2 <= planB) {
+          svg.appendChild($e('rect',{x:px,y:py,width:pw2,height:ph2,fill:'none',stroke:'#0066CC','stroke-width':'0.3','stroke-dasharray':'4,2'}));
+        }
+      }
+    }
   }
-  comparisonResults = null;
-  draw();
-}
 
-function toggleOverhang() {
-  overhangEnabled = !overhangEnabled;
-  var btn = document.getElementById('btnOverhang');
-  if (btn) {
-    btn.classList.toggle('active', overhangEnabled);
-    btn.textContent = overhangEnabled ? 'Overhang: ON' : 'Overhang: OFF';
+  // Purlin lines with pieces — double lines showing web
+  for (var pli = 0; pli < purlinPositionsIn.length; pli++) {
+    var py = planT + purlinPositionsIn[pli] * scY;
+    if (py < planT || py > planB) continue;
+
+    // Purlin line label
+    svg.appendChild($t(planL-8, py+3, 'P'+(pli+1), 'callout-sm', 'end'));
+
+    // Facing arrow
+    var facing = (pli % 2 === 0) ? 'left' : 'right';
+    if (pli === purlinPositionsIn.length - 1) facing = 'right';
+    var arrowDir = (facing === 'right') ? 1 : -1;
+    var arrowX = planL + 15;
+    svg.appendChild($e('line',{x1:arrowX,y1:py,x2:arrowX+arrowDir*6,y2:py,stroke:'#C00','stroke-width':'1.0'}));
+    svg.appendChild($e('polygon',{points:(arrowX+arrowDir*6)+','+py+' '+(arrowX+arrowDir*3)+','+(py-2)+' '+(arrowX+arrowDir*3)+','+(py+2),fill:'#C00'}));
+
+    // Draw each piece as a colored bar
+    for (var pci = 0; pci < pieces.length; pci++) {
+      var pc = pieces[pci];
+      var pcStartX = planL + Math.max(pc.startIn, 0) * scX;
+      var pcEndX = planL + Math.min(pc.endIn, bldgLenIn) * scX;
+      var color = groupColors[pci % groupColors.length];
+
+      // Double line for web thickness
+      var webPx = Math.max(1.5, webThicknessIn * scY * 8);
+      svg.appendChild($e('rect',{x:pcStartX,y:py-webPx/2,width:pcEndX-pcStartX,height:webPx,fill:color,'fill-opacity':'0.25',stroke:color,'stroke-width':'1.5'}));
+
+      // Piece mark and length (on first purlin line only)
+      if (pli === 0) {
+        var midX = (pcStartX + pcEndX) / 2;
+        var mkTxt = $e('text',{x:midX,y:py-webPx/2-8,class:'piece-mark','text-anchor':'middle'},purlinType+'-'+(pci+1));
+        mkTxt.style.fill = color;
+        svg.appendChild(mkTxt);
+        var lenTxt = $e('text',{x:midX,y:py+webPx/2+10,class:'piece-len','text-anchor':'middle'},fmtFtIn(pc.lengthIn));
+        lenTxt.style.fill = color;
+        svg.appendChild(lenTxt);
+      }
+
+      // Splice indicators
+      if (purlinType === 'Z') {
+        if (pc.extStart > 0 && pc.spansFrom > 0) {
+          var spliceX = planL + rafterPositions[pc.spansFrom] * scX;
+          svg.appendChild($e('rect',{x:spliceX-pc.extStart*scX,y:py-4,width:pc.extStart*scX,height:8,fill:color,'fill-opacity':'0.15',stroke:color,'stroke-width':'0.4','stroke-dasharray':'3,2'}));
+        }
+        if (pc.extEnd > 0 && pc.spansTo < rafterPositions.length-1) {
+          var spliceX2 = planL + rafterPositions[pc.spansTo] * scX;
+          svg.appendChild($e('rect',{x:spliceX2,y:py-4,width:pc.extEnd*scX,height:8,fill:color,'fill-opacity':'0.15',stroke:color,'stroke-width':'0.4','stroke-dasharray':'3,2'}));
+        }
+      } else {
+        if (pci < pieces.length - 1) {
+          var jointX = planL + rafterPositions[pc.spansTo] * scX;
+          svg.appendChild($e('line',{x1:jointX,y1:py-6,x2:jointX,y2:py+6,stroke:'#C00','stroke-width':'1.5'}));
+        }
+      }
+    }
+
+    // Solar bolt holes
+    if (mode === 'solar' && solarData && solarData.boltPositions) {
+      for (var bhi = 0; bhi < solarData.boltPositions.length; bhi++) {
+        var bhX = planL + solarData.boltPositions[bhi] * scX;
+        if (bhX >= planL && bhX <= planR) {
+          svg.appendChild($e('circle',{cx:bhX,cy:py,r:1.5,fill:'#C00',stroke:'#900','stroke-width':'0.4'}));
+        }
+      }
+    }
   }
-  comparisonResults = null;
-  draw();
+
+  // Bay dimension chain — bottom
+  for (var bi = 0; bi < rafterPositions.length - 1; bi++) {
+    var bx1 = planL + rafterPositions[bi] * scX;
+    var bx2 = planL + rafterPositions[bi+1] * scX;
+    dimH(svg, bx1, bx2, planB, 16, fmtFtIn(rafterPositions[bi+1]-rafterPositions[bi]));
+  }
+  // Overall building length
+  dimH(svg, planL, planR, planB, 34, fmtFtIn(bldgLenIn));
+  svg.appendChild($t(planL+planW/2, planB+48, 'BUILDING LENGTH', 'note-sm', 'middle'));
+
+  // Purlin spacing dimensions — right side
+  if (purlinPositionsIn.length >= 2) {
+    var dimX = planR + 8;
+    for (var di = 0; di < Math.min(purlinPositionsIn.length-1, 3); di++) {
+      var yA = planT + purlinPositionsIn[di] * scY;
+      var yB = planT + purlinPositionsIn[di+1] * scY;
+      if (di === 0) {
+        dimV(svg, dimX, yA, yB, 18, fmtFtIn(purlinPositionsIn[di+1]-purlinPositionsIn[di]));
+        if (di === 0) svg.appendChild($t(dimX+30, (yA+yB)/2+3, 'TYP.', 'note-sm', 'start'));
+      }
+    }
+    // Overall width
+    var yFirst = planT + purlinPositionsIn[0] * scY;
+    var yLast = planT + purlinPositionsIn[purlinPositionsIn.length-1] * scY;
+    dimV(svg, dimX, yFirst, yLast, 38, fmtFtIn(bldgWidthIn));
+  }
+
+  // Section cut indicator — A-A through middle bay
+  if (rafterPositions.length >= 3) {
+    var midBay = Math.floor(rafterPositions.length / 2);
+    var cutX = planL + (rafterPositions[midBay-1] + rafterPositions[midBay]) / 2 * scX;
+    drawSectionCut(svg, cutX, planT - 2, cutX, planB + 2, 'A');
+  }
+
+  // Detail callout bubbles
+  if (showDetails && pieces.length > 0) {
+    // Detail A callout — P1 clip at a rafter/purlin intersection
+    if (rafterPositions.length >= 2 && purlinPositionsIn.length >= 2) {
+      var detAx = planL + rafterPositions[1] * scX;
+      var detAy = planT + purlinPositionsIn[1] * scY;
+      drawDetailBubble(svg, detAx+20, detAy-20, 'A', detAx, detAy);
+    }
+    // Detail B callout — splice zone
+    if (purlinType === 'Z' && pieces.length >= 2 && pieces[0].extEnd > 0) {
+      var splX = planL + rafterPositions[pieces[0].spansTo] * scX;
+      var splY = planT + purlinPositionsIn[0] * scY;
+      drawDetailBubble(svg, splX-20, splY-20, 'B', splX, splY);
+    } else if (purlinType === 'C' && pieces.length >= 2) {
+      var jntX = planL + rafterPositions[pieces[0].spansTo] * scX;
+      var jntY = planT + purlinPositionsIn[0] * scY;
+      drawDetailBubble(svg, jntX-20, jntY-20, 'B', jntX, jntY);
+    }
+  }
+
+  // Legend
+  curY = planB + 56;
+  svg.appendChild($t(planL, curY, 'PIECE LEGEND:', 'callout', 'start'));
+  for (var gi = 0; gi < pieces.length && gi < 8; gi++) {
+    var lx = planL + 100 + gi * 125;
+    var clr = groupColors[gi % groupColors.length];
+    svg.appendChild($e('rect',{x:lx,y:curY-6,width:18,height:4,fill:clr,rx:'1'}));
+    var lt = $t(lx+22, curY, purlinType+'-'+(gi+1)+' ('+fmtFtIn(pieces[gi].lengthIn)+')', 'note-sm', 'start');
+    lt.style.fill = clr;
+    svg.appendChild(lt);
+  }
+  curY += 12;
+  if (purlinType === 'Z') {
+    svg.appendChild($t(planL, curY, 'DASHED ZONES = Z-EXTENSION OVERLAP  |  \u25C0/\u25B6 = PURLIN FACING DIRECTION  |  \u25CF = BOLT HOLE (SOLAR)', 'note-sm', 'start'));
+  } else {
+    svg.appendChild($t(planL, curY, 'RED BARS = BUTT JOINT AT RAFTER  |  \u25C0/\u25B6 = PURLIN FACING DIRECTION  |  \u25CF = BOLT HOLE (SOLAR)', 'note-sm', 'start'));
+  }
+  curY += 6;
+  svg.appendChild($t(planL, curY+8, numPurlinLines+' PURLIN LINES  |  '+pieces.length+' PIECES PER LINE  |  '+purlinType+'-PURLIN '+purlinDepthIn+'" '+purlinGauge+'GA  |  '+(purlinType==='Z'?'OVERLAP SPLICE':'BUTT JOINT'), 'callout', 'start'));
+
+  return curY + 20;
 }
 
-function updateModeVisibility() {
-  var solarCtrls = document.getElementById('solarControls');
-  var stdCtrls = document.getElementById('stdControls');
-  var orientCtrls = document.getElementById('orientControls');
-  if (solarCtrls) solarCtrls.style.display = (mode === 'solar') ? 'flex' : 'none';
-  if (stdCtrls) stdCtrls.style.display = (mode === 'standard') ? 'flex' : 'none';
-  if (orientCtrls) orientCtrls.style.display = (mode === 'solar') ? 'flex' : 'none';
+// ══════════════════════════════════════════════════════════════
+// DRAWING: SECTION A-A — CROSS SECTION THROUGH TYPICAL BAY
+// ══════════════════════════════════════════════════════════════
+function drawCrossSection(svg, curY, data) {
+  var purlinPositionsIn = data.purlinPositionsIn;
+  var bldgWidthIn = data.bldgWidthIn;
+  var numPurlinLines = data.numPurlinLines;
+
+  // Section divider
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 18;
+
+  drawViewTitle(svg, 550, curY, 'SECTION A-A \u2014 TYPICAL BAY CROSS SECTION', fmtScale(secW/bldgWidthIn));
+  curY += 24;
+
+  // Scale: fit purlin positions into available width
+  var secL = 100, secR = 1000, secW = secR - secL;
+  var sc = secW / bldgWidthIn;
+  var maxPurlins = Math.min(numPurlinLines, 12);
+
+  // Rafter — rectangular box beam (NOT I-beam!)
+  var rafH = 18; // visual height of rafter
+  var rafW = secW;
+  var rafTop = curY + 60;
+  var rafBot = rafTop + rafH;
+
+  // Rafter outline with cross-hatching
+  svg.appendChild($e('rect',{x:secL,y:rafTop,width:rafW,height:rafH,fill:'#E8E8E8',stroke:'#1a1a1a','stroke-width':'2.0'}));
+  drawHatch(svg, secL, rafTop, rafW, rafH, 45, 4);
+  svg.appendChild($t(secL+rafW/2, rafTop+rafH/2+3, 'RAFTER (BOX BEAM)', 'callout', 'middle'));
+
+  // Column beneath rafter (centered)
+  var colW = 14, colH = 80;
+  var colX = secL + rafW/2 - colW/2;
+  svg.appendChild($e('rect',{x:colX,y:rafBot,width:colW,height:colH,fill:'#D0D0D0',stroke:'#1a1a1a','stroke-width':'1.5'}));
+  drawHatch(svg, colX, rafBot, colW, colH, -45, 4);
+  svg.appendChild($t(colX+colW/2, rafBot+colH+12, 'COLUMN', 'callout', 'middle'));
+
+  // Ground line
+  var groundY = rafBot + colH;
+  svg.appendChild($e('line',{x1:secL-20,y1:groundY,x2:secR+20,y2:groundY,stroke:'#1a1a1a','stroke-width':'1.0'}));
+  for (var hx = secL-20; hx < secR+20; hx += 8) {
+    svg.appendChild($e('line',{x1:hx,y1:groundY,x2:hx-4,y2:groundY+4,stroke:'#888','stroke-width':'0.5'}));
+  }
+
+  // Draw purlins on top of rafter
+  var purlinScale = 2.0;
+  var purlinVisH = purlinDepthIn * purlinScale;
+  var flangeVisW = flangeWidthIn * purlinScale;
+  var webVisT = Math.max(webThicknessIn * purlinScale * 10, 1.5);
+  var lipVisL = lipLengthIn * purlinScale;
+
+  for (var pi = 0; pi < maxPurlins; pi++) {
+    var posIn = purlinPositionsIn[pi];
+    if (posIn === undefined) continue;
+    var px = secL + posIn * sc;
+    if (px < secL - 10 || px > secR + 10) continue;
+
+    var facing = (pi % 2 === 0) ? 'left' : 'right';
+    if (pi === numPurlinLines - 1) facing = 'right';
+    var dir = (facing === 'left') ? -1 : 1;
+
+    // P1 clip plate (vertical rectangle on top of rafter)
+    var clipH = purlinVisH * 0.7;
+    var clipW = 2;
+    var clipX = px - clipW/2;
+    var clipY = rafTop - clipH;
+    svg.appendChild($e('rect',{x:clipX,y:clipY,width:clipW,height:clipH,fill:'#FFD700',stroke:'#1a1a1a','stroke-width':'0.8'}));
+
+    // Purlin — web against clip
+    var webTop = rafTop - purlinVisH;
+    var webBot = rafTop;
+
+    // Web (vertical bar)
+    svg.appendChild($e('rect',{x:px-webVisT/2,y:webTop,width:webVisT,height:purlinVisH,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.2'}));
+
+    if (purlinType === 'Z') {
+      // Z-purlin: top flange extends in dir, bottom flange extends in -dir
+      // Top flange
+      var tfX = (dir === 1) ? px : px - flangeVisW;
+      svg.appendChild($e('rect',{x:tfX,y:webTop-webVisT/2,width:flangeVisW,height:webVisT,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.0'}));
+      // Bottom flange
+      var bfX = (dir === 1) ? px - flangeVisW : px;
+      svg.appendChild($e('rect',{x:bfX,y:webBot-webVisT/2,width:flangeVisW,height:webVisT,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.0'}));
+      // Lips (45 degree)
+      var tipX = px + dir * flangeVisW;
+      svg.appendChild($e('line',{x1:tipX,y1:webTop,x2:tipX,y2:webTop+lipVisL,stroke:'#1a1a1a','stroke-width':'1.0'}));
+      var botTipX = px - dir * flangeVisW;
+      svg.appendChild($e('line',{x1:botTipX,y1:webBot,x2:botTipX,y2:webBot-lipVisL,stroke:'#1a1a1a','stroke-width':'1.0'}));
+    } else {
+      // C-purlin: both flanges extend in dir direction
+      var cTopX = (dir === 1) ? px : px - flangeVisW;
+      svg.appendChild($e('rect',{x:cTopX,y:webTop-webVisT/2,width:flangeVisW,height:webVisT,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.0'}));
+      var cBotX = (dir === 1) ? px : px - flangeVisW;
+      svg.appendChild($e('rect',{x:cBotX,y:webBot-webVisT/2,width:flangeVisW,height:webVisT,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.0'}));
+      // Lips (vertical, inward)
+      var cTipX = px + dir * flangeVisW;
+      svg.appendChild($e('line',{x1:cTipX,y1:webTop,x2:cTipX,y2:webTop+lipVisL,stroke:'#1a1a1a','stroke-width':'1.0'}));
+      svg.appendChild($e('line',{x1:cTipX,y1:webBot,x2:cTipX,y2:webBot-lipVisL,stroke:'#1a1a1a','stroke-width':'1.0'}));
+    }
+
+    // Tek screw symbols on clip
+    if (clipH > 8) {
+      drawTekScrew(svg, px, clipY + clipH * 0.3, 2);
+      drawTekScrew(svg, px, clipY + clipH * 0.7, 2);
+    }
+
+    // Purlin label
+    if (pi < 6 || pi === numPurlinLines-1 || pi % 2 === 0) {
+      svg.appendChild($t(px, webTop-6, 'P'+(pi+1), 'callout-sm', 'middle'));
+      // Facing arrow
+      svg.appendChild($t(px+dir*8, webTop-6, facing==='left'?'\u25C0':'\u25B6', 'note-sm', 'middle'));
+    }
+  }
+
+  // Solar panels on top of purlins (if solar mode)
+  if (mode === 'solar' && data.solarData) {
+    var panelY = rafTop - purlinVisH - 6;
+    for (var pw = 0; pw < panelsAcross; pw++) {
+      var pStartIn = endcapClearanceIn + pw * (data.solarData.panelWidthIn + gapWidthIn);
+      var pEndIn = pStartIn + data.solarData.panelWidthIn;
+      var px1 = secL + pStartIn * sc;
+      var px2 = secL + pEndIn * sc;
+      svg.appendChild($e('rect',{x:px1,y:panelY-3,width:px2-px1,height:3,fill:'#1565C0','fill-opacity':'0.3',stroke:'#1565C0','stroke-width':'0.8'}));
+      svg.appendChild($t((px1+px2)/2, panelY-6, 'PANEL '+(pw+1), 'note-sm', 'middle'));
+    }
+  }
+
+  // Dimensions
+  if (maxPurlins >= 2 && purlinPositionsIn.length >= 2) {
+    var dy1 = rafTop - purlinVisH - 20;
+    var p1x = secL + purlinPositionsIn[0] * sc;
+    var p2x = secL + purlinPositionsIn[1] * sc;
+    dimH(svg, p1x, p2x, dy1, -14, fmtFtIn(purlinPositionsIn[1]-purlinPositionsIn[0]));
+    svg.appendChild($t((p1x+p2x)/2, dy1-20, 'TYP. PURLIN SPACING', 'note-sm', 'middle'));
+  }
+  // Purlin depth dimension
+  if (maxPurlins >= 1) {
+    var pdx = secL + purlinPositionsIn[0] * sc - 20;
+    dimV(svg, pdx, rafTop - purlinVisH, rafTop, -14, purlinDepthIn+'"');
+  }
+  // Rafter depth
+  dimV(svg, secL - 18, rafTop, rafBot, -14, rafterWidthIn+'"');
+
+  // Overall width
+  if (purlinPositionsIn.length >= 2) {
+    var owP1 = secL + purlinPositionsIn[0] * sc;
+    var owPN = secL + purlinPositionsIn[purlinPositionsIn.length-1] * sc;
+    dimH(svg, owP1, owPN, rafBot + 8, 18, fmtFtIn(bldgWidthIn));
+    svg.appendChild($t((owP1+owPN)/2, rafBot+38, 'BUILDING WIDTH', 'note-sm', 'middle'));
+  }
+
+  return groundY + 20;
 }
 
-function onControlChange() {
-  readControls();
-  comparisonResults = null;
-  draw();
+// ══════════════════════════════════════════════════════════════
+// DRAWING: DETAIL VIEWS
+// ══════════════════════════════════════════════════════════════
+function drawDetailViews(svg, curY, data) {
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 18;
+  drawViewTitle(svg, 550, curY, 'CONNECTION DETAILS', 'FULL SCALE (APPROX.)');
+  curY += 22;
+
+  // Layout: 2 details per row, 2 rows
+  var detW = 460, detH = 200;
+  var col1X = 60, col2X = 570;
+
+  // ──── DETAIL A: P1 CLIP CONNECTION ────
+  drawDetailA(svg, col1X, curY, detW, detH);
+
+  // ──── DETAIL B: SPLICE DETAIL ────
+  drawDetailB(svg, col2X, curY, detW, detH);
+
+  curY += detH + 20;
+
+  // ──── DETAIL C: P2 EAVE CONNECTION ────
+  drawDetailC(svg, col1X, curY, detW, detH);
+
+  // ──── DETAIL D: SOLAR MOUNT (solar only) ────
+  if (mode === 'solar') {
+    drawDetailD(svg, col2X, curY, detW, detH);
+  }
+
+  curY += detH + 15;
+  return curY;
 }
 
-// ==============================================
+function drawDetailA(svg, x, y, w, h) {
+  // Detail A: Typical P1 Clip Connection
+  var g = $g('detail-view');
+  svg.appendChild(g);
+
+  // Border and title
+  g.appendChild($e('rect',{x:x,y:y,width:w,height:h,fill:'#FCFCFC',stroke:'#1a1a1a','stroke-width':'0.5','stroke-dasharray':'6,3'}));
+  g.appendChild($e('circle',{cx:x+16,cy:y+16,r:10,stroke:'#1a1a1a','stroke-width':'1.5',fill:'#fff'}));
+  g.appendChild($e('text',{x:x+16,y:y+20,class:'detail-letter','text-anchor':'middle'},'A'));
+  g.appendChild($e('text',{x:x+32,y:y+20,class:'callout','text-anchor':'start'},'TYPICAL P1 CLIP CONNECTION'));
+
+  var cx = x + w/2, cy = y + h/2 + 10;
+  var sc = 5; // scale multiplier
+
+  // Rafter box beam (cross-section, cut — hatched)
+  var rW = rafterWidthIn * sc, rH = 16;
+  var rX = cx - rW/2, rY = cy;
+  g.appendChild($e('rect',{x:rX,y:rY,width:rW,height:rH,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'2.0'}));
+  drawHatch(svg, rX, rY, rW, rH, 45, 4);
+  g.appendChild($e('text',{x:cx,y:rY+rH/2+3,class:'note-sm','text-anchor':'middle'},'RAFTER'));
+
+  // P1 clip plate — flat vertical plate on top of rafter
+  var clipW = 3, clipH = purlinDepthIn * sc * 0.65;
+  var clipX = cx - clipW/2, clipY = rY - clipH;
+  g.appendChild($e('rect',{x:clipX,y:clipY,width:clipW,height:clipH,fill:'#FFD700',stroke:'#1a1a1a','stroke-width':'1.2'}));
+  g.appendChild($e('text',{x:clipX-4,y:clipY+clipH/2+3,class:'note-sm','text-anchor':'end','transform':'rotate(-90,'+(clipX-4)+','+(clipY+clipH/2+3)+')'},'P1 CLIP (10GA)'));
+
+  // Purlin — web sits against clip
+  var webH = purlinDepthIn * sc;
+  var webT = Math.max(webThicknessIn * sc * 10, 2);
+  var webX = cx + clipW/2 + 1;
+  var webTop = rY - webH;
+  g.appendChild($e('rect',{x:webX,y:webTop,width:webT,height:webH,fill:'#D4E4F7',stroke:'#1a1a1a','stroke-width':'1.2'}));
+
+  // Top flange — extends outward from web
+  var fW = flangeWidthIn * sc;
+  g.appendChild($e('rect',{x:webX,y:webTop-webT/2,width:fW,height:webT,fill:'#D4E4F7',stroke:'#1a1a1a','stroke-width':'1.0'}));
+  // Bottom flange — rests on rafter top
+  g.appendChild($e('rect',{x:webX-fW,y:rY-webT/2,width:fW,height:webT,fill:'#D4E4F7',stroke:'#1a1a1a','stroke-width':'1.0'}));
+  // Lip at top flange end
+  g.appendChild($e('line',{x1:webX+fW,y1:webTop-webT/2,x2:webX+fW,y2:webTop+lipLengthIn*sc,stroke:'#1a1a1a','stroke-width':'1.0'}));
+
+  // Tek screw symbols — 8 total: 2 columns × 4 rows
+  var screwSpacingY = clipH / 5;
+  var screwCol1X = cx - 3, screwCol2X = cx + 4;
+  for (var si = 0; si < 4; si++) {
+    var screwY = clipY + screwSpacingY * (si + 1);
+    drawTekScrew(svg, screwCol1X, screwY, 2.5);
+    drawTekScrew(svg, screwCol2X, screwY, 2.5);
+  }
+
+  // Labels
+  g.appendChild($e('text',{x:webX+fW/2,y:webTop-8,class:'note-sm','text-anchor':'middle'},'TOP FLANGE'));
+  g.appendChild($e('text',{x:webX-fW/2,y:rY+12,class:'note-sm','text-anchor':'middle'},'BOTTOM FLANGE'));
+  g.appendChild($e('text',{x:webX+webT+6,y:webTop+webH/2,class:'note-sm','text-anchor':'start'},'WEB'));
+
+  // Dimensions
+  dimV(svg, webX+fW+8, webTop, rY, 10, purlinDepthIn+'"');
+  dimH(svg, webX, webX+fW, webTop-webT/2, -14, flangeWidthIn+'"');
+
+  // Note
+  g.appendChild($e('text',{x:x+w/2,y:y+h-8,class:'note-sm','text-anchor':'middle'},'8 \u00D7 #10 TEK SCREWS PER P1 CONNECTION'));
+}
+
+function drawDetailB(svg, x, y, w, h) {
+  var g = $g('detail-view');
+  svg.appendChild(g);
+
+  g.appendChild($e('rect',{x:x,y:y,width:w,height:h,fill:'#FCFCFC',stroke:'#1a1a1a','stroke-width':'0.5','stroke-dasharray':'6,3'}));
+  g.appendChild($e('circle',{cx:x+16,cy:y+16,r:10,stroke:'#1a1a1a','stroke-width':'1.5',fill:'#fff'}));
+  g.appendChild($e('text',{x:x+16,y:y+20,class:'detail-letter','text-anchor':'middle'},'B'));
+
+  if (purlinType === 'Z') {
+    // Z-Purlin Lap Splice
+    g.appendChild($e('text',{x:x+32,y:y+20,class:'callout','text-anchor':'start'},'Z-PURLIN LAP SPLICE AT RAFTER'));
+
+    var cx = x + w/2, cy = y + h/2 + 5;
+    var sc = 3;
+
+    // Rafter (plan view — seen from above)
+    var rW = rafterWidthIn * sc;
+    g.appendChild($e('rect',{x:cx-rW/2,y:cy-20,width:rW,height:40,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.5'}));
+    drawHatch(svg, cx-rW/2, cy-20, rW, 40, 45, 4);
+    g.appendChild($e('text',{x:cx,y:cy+3,class:'note-sm','text-anchor':'middle'},'RAFTER'));
+
+    // Left purlin extending right past rafter
+    var extIn = zExtensionFt * 12;
+    var extPx = Math.min(extIn * sc / 12, w * 0.25);
+    var purlinH = 8;
+    g.appendChild($e('rect',{x:cx-w*0.35,y:cy-purlinH-2,width:w*0.35+extPx,height:purlinH,fill:'#2563EB','fill-opacity':'0.2',stroke:'#2563EB','stroke-width':'1.2'}));
+    g.appendChild($e('text',{x:cx-w*0.2,y:cy-purlinH-6,class:'note-sm','text-anchor':'middle','fill':'#2563EB'},purlinType+'-1'));
+
+    // Right purlin extending left past rafter
+    g.appendChild($e('rect',{x:cx-extPx,y:cy+2,width:w*0.35+extPx,height:purlinH,fill:'#16A34A','fill-opacity':'0.2',stroke:'#16A34A','stroke-width':'1.2'}));
+    g.appendChild($e('text',{x:cx+w*0.15,y:cy+purlinH+12,class:'note-sm','text-anchor':'middle','fill':'#16A34A'},purlinType+'-2'));
+
+    // 6" overlap zone
+    var overlapPx = 6 * sc / 4;
+    svg.appendChild($e('rect',{x:cx+rW/2,y:cy-purlinH-2,width:overlapPx,height:purlinH+purlinH+4,fill:'#F59E0B','fill-opacity':'0.3',stroke:'#F59E0B','stroke-width':'0.8'}));
+    svg.appendChild($e('text',{x:cx+rW/2+overlapPx/2,y:cy-purlinH-6,class:'note-sm','text-anchor':'middle'},'6" LAP'));
+
+    // Tek screw locations in overlap
+    for (var si = 0; si < 4; si++) {
+      var sy = cy - purlinH + (purlinH+4) * (si+0.5) / 4;
+      drawTekScrew(svg, cx+rW/2+overlapPx*0.3, sy, 2.5);
+      drawTekScrew(svg, cx+rW/2+overlapPx*0.7, sy, 2.5);
+    }
+
+    // Dimensions
+    dimH(svg, cx+rW/2, cx+rW/2+extPx, cy+purlinH+20, 10, fmtFtIn(extIn));
+    svg.appendChild($t(cx+rW/2+extPx/2, cy+purlinH+38, 'Z-EXTENSION', 'note-sm', 'middle'));
+
+    g.appendChild($e('text',{x:x+w/2,y:y+h-8,class:'note-sm','text-anchor':'middle'},'8 \u00D7 #10 TEK SCREWS IN OVERLAP ZONE'));
+  } else {
+    // C-Purlin Butt Joint
+    g.appendChild($e('text',{x:x+32,y:y+20,class:'callout','text-anchor':'start'},'C-PURLIN BUTT JOINT AT RAFTER'));
+
+    var cx = x + w/2, cy = y + h/2 + 5;
+    var sc = 3;
+
+    // Rafter
+    var rW = rafterWidthIn * sc;
+    g.appendChild($e('rect',{x:cx-rW/2,y:cy-20,width:rW,height:40,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.5'}));
+    drawHatch(svg, cx-rW/2, cy-20, rW, 40, 45, 4);
+    g.appendChild($e('text',{x:cx,y:cy+3,class:'note-sm','text-anchor':'middle'},'RAFTER'));
+
+    // Left C-purlin — ends at rafter center, sits 4" on rafter
+    var purlinH = 8;
+    var bearIn = rafterWidthIn / 2; // 4" on 8" rafter
+    g.appendChild($e('rect',{x:cx-w*0.35,y:cy-purlinH-2,width:w*0.35,height:purlinH,fill:'#2563EB','fill-opacity':'0.2',stroke:'#2563EB','stroke-width':'1.2'}));
+    g.appendChild($e('text',{x:cx-w*0.2,y:cy-purlinH-6,class:'note-sm','text-anchor':'middle','fill':'#2563EB'},purlinType+'-1'));
+
+    // Right C-purlin
+    g.appendChild($e('rect',{x:cx,y:cy+2,width:w*0.35,height:purlinH,fill:'#16A34A','fill-opacity':'0.2',stroke:'#16A34A','stroke-width':'1.2'}));
+    g.appendChild($e('text',{x:cx+w*0.15,y:cy+purlinH+12,class:'note-sm','text-anchor':'middle','fill':'#16A34A'},purlinType+'-2'));
+
+    // Joint line at center
+    g.appendChild($e('line',{x1:cx,y1:cy-purlinH-6,x2:cx,y2:cy+purlinH+6,stroke:'#C00','stroke-width':'1.5','stroke-dasharray':'4,2'}));
+
+    // Bearing dimensions
+    dimH(svg, cx-rW/2, cx, cy+purlinH+20, 10, (rafterWidthIn/2)+'"');
+    dimH(svg, cx, cx+rW/2, cy+purlinH+20, 10, (rafterWidthIn/2)+'"');
+
+    g.appendChild($e('text',{x:x+w/2,y:y+h-8,class:'note-sm','text-anchor':'middle'},'EACH PURLIN BEARS '+(rafterWidthIn/2)+'" ON RAFTER \u2014 CONNECTION VIA P1 CLIP'));
+  }
+}
+
+function drawDetailC(svg, x, y, w, h) {
+  var g = $g('detail-view');
+  svg.appendChild(g);
+
+  g.appendChild($e('rect',{x:x,y:y,width:w,height:h,fill:'#FCFCFC',stroke:'#1a1a1a','stroke-width':'0.5','stroke-dasharray':'6,3'}));
+  g.appendChild($e('circle',{cx:x+16,cy:y+16,r:10,stroke:'#1a1a1a','stroke-width':'1.5',fill:'#fff'}));
+  g.appendChild($e('text',{x:x+16,y:y+20,class:'detail-letter','text-anchor':'middle'},'C'));
+  g.appendChild($e('text',{x:x+32,y:y+20,class:'callout','text-anchor':'start'},'P2 EAVE CONNECTION'));
+
+  var cx = x + w/2, cy = y + h/2 + 10;
+  var sc = 4;
+
+  // Rafter end (side view) — terminates at P2
+  var rW = 60, rH = rafterWidthIn * sc * 0.5;
+  g.appendChild($e('rect',{x:cx-rW,y:cy-rH/2,width:rW,height:rH,fill:'#E0E0E0',stroke:'#1a1a1a','stroke-width':'1.5'}));
+  drawHatch(svg, cx-rW, cy-rH/2, rW, rH, 45, 4);
+  g.appendChild($e('text',{x:cx-rW/2,y:cy+3,class:'note-sm','text-anchor':'middle'},'RAFTER'));
+
+  // P2 plate welded to rafter end face
+  var p2W = 3, p2H = rH + 20;
+  g.appendChild($e('rect',{x:cx,y:cy-p2H/2,width:p2W,height:p2H,fill:'#FFD700',stroke:'#1a1a1a','stroke-width':'1.5'}));
+  g.appendChild($e('text',{x:cx+p2W+4,y:cy-p2H/2+8,class:'note-sm','text-anchor':'start'},'P2 PLATE'));
+  g.appendChild($e('text',{x:cx+p2W+4,y:cy-p2H/2+18,class:'note-sm','text-anchor':'start'},'10GA \u00D7 9" \u00D7 24"'));
+
+  // Purlin on top — web against P2 upper portion
+  var purlinW = 50;
+  var webT = 2;
+  g.appendChild($e('rect',{x:cx+p2W+2,y:cy-rH/2-purlinDepthIn*sc*0.3,width:purlinW,height:webT,fill:'#D4E4F7',stroke:'#1a1a1a','stroke-width':'0.8'}));
+  g.appendChild($e('line',{x1:cx+p2W+2,y1:cy-rH/2-purlinDepthIn*sc*0.3,x2:cx+p2W+2,y2:cy-rH/2,stroke:'#1a1a1a','stroke-width':'1.0'}));
+  g.appendChild($e('text',{x:cx+p2W+30,y:cy-rH/2-purlinDepthIn*sc*0.3-4,class:'note-sm','text-anchor':'middle'},'PURLIN'));
+
+  // Tek screws through P2 into purlin
+  drawTekScrew(svg, cx+p2W/2, cy-rH/2-purlinDepthIn*sc*0.15, 3);
+  drawTekScrew(svg, cx+p2W/2, cy-rH/2+5, 3);
+
+  // Weld symbol at P2-to-rafter joint
+  g.appendChild($e('line',{x1:cx,y1:cy+rH/2+4,x2:cx-15,y2:cy+rH/2+15,stroke:'#0055AA','stroke-width':'0.8'}));
+  g.appendChild($e('line',{x1:cx-15,y1:cy+rH/2+15,x2:cx-35,y2:cy+rH/2+15,stroke:'#0055AA','stroke-width':'0.8'}));
+  g.appendChild($e('text',{x:cx-36,y:cy+rH/2+19,class:'note-sm','text-anchor':'end','fill':'#0055AA'},'WELD'));
+
+  // Dimensions
+  dimV(svg, cx+p2W+purlinW+10, cy-p2H/2, cy+p2H/2, 10, '24"');
+
+  g.appendChild($e('text',{x:x+w/2,y:y+h-8,class:'note-sm','text-anchor':'middle'},'RAFTER TERMINATES AT P2 \u2014 8 BOLT HOLES FOR PURLIN ATTACHMENT'));
+}
+
+function drawDetailD(svg, x, y, w, h) {
+  var g = $g('detail-view');
+  svg.appendChild(g);
+
+  g.appendChild($e('rect',{x:x,y:y,width:w,height:h,fill:'#FCFCFC',stroke:'#1a1a1a','stroke-width':'0.5','stroke-dasharray':'6,3'}));
+  g.appendChild($e('circle',{cx:x+16,cy:y+16,r:10,stroke:'#1a1a1a','stroke-width':'1.5',fill:'#fff'}));
+  g.appendChild($e('text',{x:x+16,y:y+20,class:'detail-letter','text-anchor':'middle'},'D'));
+  g.appendChild($e('text',{x:x+32,y:y+20,class:'callout','text-anchor':'start'},'SOLAR PANEL MOUNTING \u2014 TOP FLANGE'));
+
+  var cx = x + w/2, cy = y + h/2 + 10;
+
+  // Purlin top flange (plan view — looking down)
+  var flangeVisW = 200, flangeVisH = 20;
+  var fX = cx - flangeVisW/2, fY = cy - flangeVisH/2;
+  g.appendChild($e('rect',{x:fX,y:fY,width:flangeVisW,height:flangeVisH,fill:'#D4E4F7',stroke:'#1a1a1a','stroke-width':'1.5'}));
+  g.appendChild($e('text',{x:cx,y:fY-6,class:'note-sm','text-anchor':'middle'},'PURLIN TOP FLANGE (PLAN VIEW)'));
+
+  // Web centerline
+  g.appendChild($e('line',{x1:fX,y1:cy,x2:fX+flangeVisW,y2:cy,class:'center-line'}));
+  g.appendChild($e('text',{x:fX-4,y:cy+3,class:'note-sm','text-anchor':'end'},'\u2104 WEB'));
+
+  // Bolt holes
+  var holeDistIn = mmToIn(mountHoleDistMm);
+  var flangeIn = flangeWidthIn;
+  var holeScale = flangeVisH / flangeIn;
+  if (orientation === 'landscape') {
+    // 2 holes per panel, centered on flange
+    var holeEdge = mmToIn(mountHoleDistMm - panelWidthMm) / 2;
+    var h1y = cy - holeDistIn/2 * holeScale;
+    var h2y = cy + holeDistIn/2 * holeScale;
+    // Just show representative bolt holes
+    drawBolt(svg, cx-40, cy, 5);
+    drawBolt(svg, cx+40, cy, 5);
+    dimH(svg, cx-40, cx+40, cy-flangeVisH/2, -14, fmtDec(holeDistIn,1)+'"');
+  } else {
+    drawBolt(svg, cx, cy, 5);
+  }
+
+  // Panel edge indicator
+  g.appendChild($e('line',{x1:fX-20,y1:fY-20,x2:fX+flangeVisW+20,y2:fY-20,stroke:'#0066CC','stroke-width':'0.5','stroke-dasharray':'6,3'}));
+  g.appendChild($e('text',{x:cx,y:fY-24,class:'note-sm','text-anchor':'middle','fill':'#0066CC'},'PANEL EDGE'));
+
+  // Bolt stack callout
+  var bsx = cx + 80, bsy = cy + 30;
+  g.appendChild($e('line',{x1:cx+40,y1:cy,x2:bsx,y2:bsy,stroke:'#444','stroke-width':'0.5'}));
+  var stackItems = ['SS BOLT','FLAT WASHER','STAR WASHER','LOCK WASHER','NUT'];
+  for (var si = 0; si < stackItems.length; si++) {
+    g.appendChild($e('text',{x:bsx+4,y:bsy+si*9,class:'note-sm','text-anchor':'start'},stackItems[si]));
+  }
+
+  g.appendChild($e('text',{x:x+w/2,y:y+h-18,class:'note-sm','text-anchor':'middle'},'4 BOLT STACKS PER PANEL  |  HOLE DIA: 7/16"'));
+  g.appendChild($e('text',{x:x+w/2,y:y+h-8,class:'note-sm','text-anchor':'middle'},'MIN 0.5" CLEARANCE FROM BOLT CENTER TO FLANGE EDGE'));
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING: DRILL SCHEDULE
+// ══════════════════════════════════════════════════════════════
+function drawDrillSchedule(svg, curY, data) {
+  var pieces = data.pieces, solarData = data.solarData, rafterPositions = data.rafterPositions;
+
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 18;
+  drawViewTitle(svg, 550, curY, 'DRILL SCHEDULE \u2014 HOLE POSITIONS PER PIECE', 'N.T.S.');
+  curY += 14;
+  svg.appendChild($t(550, curY+4, 'HOLE DIA: 7/16"  |  '+orientation.toUpperCase()+' PANELS  |  ALL DIMS FROM LEFT END OF PIECE', 'note-sm', 'middle'));
+  curY += 16;
+
+  var drillData = computeDrillData(pieces, solarData, rafterPositions);
+  var rulerX = 60, rulerW = 980;
+
+  for (var di = 0; di < drillData.length; di++) {
+    if (di > 0) svg.appendChild($e('line',{x1:rulerX,y1:curY-2,x2:rulerX+rulerW,y2:curY-2,class:'dim-line'}));
+    curY = drawDrillRuler(svg, drillData[di], rulerX, curY, rulerW);
+    curY += 8;
+  }
+
+  // Legend
+  curY += 4;
+  svg.appendChild($t(60, curY, 'LEGEND:', 'callout', 'start'));
+  svg.appendChild($e('rect',{x:110,y:curY-6,width:12,height:8,fill:'#546E7A','fill-opacity':'0.35',stroke:'none'}));
+  svg.appendChild($t(126, curY, '= RAFTER LOCATION', 'note-sm', 'start'));
+  if (purlinType === 'Z') {
+    svg.appendChild($e('rect',{x:250,y:curY-6,width:12,height:8,fill:'#FFE082','fill-opacity':'0.45',stroke:'#F9A825','stroke-width':'0.5'}));
+    svg.appendChild($t(266, curY, '= Z-EXTENSION ZONE', 'note-sm', 'start'));
+  }
+  svg.appendChild($e('circle',{cx:406,cy:curY-2,r:4,fill:'#2563EB',stroke:'#333','stroke-width':'0.5'}));
+  svg.appendChild($t(414, curY, '= BOLT HOLE (COLOR = PANEL #)', 'note-sm', 'start'));
+  curY += 14;
+
+  return curY;
+}
+
+function drawDrillRuler(svg, drillItem, x, y, w) {
+  var pc = drillItem.piece;
+  var color = groupColors[drillItem.pieceIdx % groupColors.length];
+
+  // Header
+  svg.appendChild($e('text',{x:x,y:y,class:'callout','text-anchor':'start','fill':color},purlinType+'-'+(drillItem.pieceIdx+1)));
+  svg.appendChild($t(x+55, y, 'LENGTH: '+fmtFtIn(pc.lengthIn)+'  |  '+drillItem.holes.length+' HOLES', 'note-sm', 'start'));
+
+  // Piece rectangle (proper proportions)
+  var barY = y + 10, barH = 16;
+  var rulerScale = w / pc.lengthIn;
+
+  svg.appendChild($e('rect',{x:x,y:barY,width:w,height:barH,fill:'#FAFAFA',stroke:color,'stroke-width':'1.5',rx:'1'}));
+
+  // Z-extension zones
+  if (purlinType === 'Z' && pc.extStart > 0) {
+    var extEndX = x + pc.extStart * rulerScale;
+    svg.appendChild($e('rect',{x:x,y:barY,width:extEndX-x,height:barH,fill:'#FFE082','fill-opacity':'0.45',stroke:'#F9A825','stroke-width':'0.5'}));
+  }
+  if (purlinType === 'Z' && pc.extEnd > 0) {
+    var extStartX = x + (pc.lengthIn - pc.extEnd) * rulerScale;
+    svg.appendChild($e('rect',{x:extStartX,y:barY,width:x+w-extStartX,height:barH,fill:'#FFE082','fill-opacity':'0.45',stroke:'#F9A825','stroke-width':'0.5'}));
+  }
+
+  // Rafter locations
+  for (var ri = 0; ri < drillItem.rafters.length; ri++) {
+    var rData = drillItem.rafters[ri];
+    var rx = x + rData.posFromLeft * rulerScale;
+    var rafBandW = Math.max(rafterWidthIn * rulerScale, 3);
+    svg.appendChild($e('rect',{x:rx-rafBandW/2,y:barY,width:rafBandW,height:barH,fill:'#546E7A','fill-opacity':'0.35',stroke:'none'}));
+    svg.appendChild($e('line',{x1:rx,y1:barY-2,x2:rx,y2:barY,class:'dim-line'}));
+    svg.appendChild($t(rx, barY-4, 'R'+(rData.rIdx+1), 'note-sm', 'middle'));
+  }
+
+  // Bolt holes with running dimensions
+  var lastLabelX = -999;
+  for (var hi = 0; hi < drillItem.holes.length; hi++) {
+    var hole = drillItem.holes[hi];
+    var hx = x + hole.posFromLeft * rulerScale;
+    var pColor = panelColors[hole.panelIdx % panelColors.length];
+    svg.appendChild($e('circle',{cx:hx,cy:barY+barH/2,r:3.5,fill:pColor,stroke:'#333','stroke-width':'0.6'}));
+
+    // Running dimension from left end
+    var stagger = (hi % 2 === 0) ? barH + 10 : barH + 20;
+    if (hx - lastLabelX > 28 || hi === 0) {
+      svg.appendChild($e('line',{x1:hx,y1:barY+barH,x2:hx,y2:barY+stagger-2,class:'dim-line'}));
+      var distTxt = $e('text',{x:hx,y:barY+stagger+2,class:'dim-txt-sm','text-anchor':'middle'},fmtDec(hole.posFromLeft,2)+'"');
+      svg.appendChild(distTxt);
+      lastLabelX = hx;
+    }
+  }
+
+  // End dimensions
+  svg.appendChild($t(x, barY+barH+10, '0"', 'dim-txt-sm', 'middle'));
+  svg.appendChild($t(x+w, barY+barH+10, fmtFtIn(pc.lengthIn), 'dim-txt-sm', 'middle'));
+
+  return barY + barH + 30;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING: PURLIN SCHEDULE TABLE
+// ══════════════════════════════════════════════════════════════
+function drawPurlinSchedule(svg, curY, data) {
+  var pieces = data.pieces, numPurlinLines = data.numPurlinLines;
+
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 18;
+  drawViewTitle(svg, 550, curY, 'PURLIN SCHEDULE', null);
+  curY += 14;
+
+  // Group pieces by length
+  var groups = {};
+  for (var i = 0; i < pieces.length; i++) {
+    var lenKey = Math.round(pieces[i].lengthIn * 8) / 8;
+    if (!groups[lenKey]) groups[lenKey] = {lengthIn:pieces[i].lengthIn, count:0};
+    groups[lenKey].count++;
+  }
+  var groupKeys = Object.keys(groups).sort(function(a,b){return parseFloat(b)-parseFloat(a);});
+
+  var tblX = 60, tblW = 980;
+  var tCols = [0,80,150,290,430,570,700,830];
+  var tColW = [80,70,140,140,140,130,130,150];
+  var tHdrs = ['MARK','QTY','LENGTH','SIZE','MATERIAL','GAUGE','WT/PC','TOTAL WT'];
+
+  // Header row
+  svg.appendChild($e('rect',{x:tblX,y:curY,width:tblW,height:18,fill:'#1E3A5F',stroke:'#1E3A5F'}));
+  for (var i = 0; i < tHdrs.length; i++) {
+    var ht = $e('text',{x:tblX+tCols[i]+tColW[i]/2,y:curY+13,class:'tbl-hdr','text-anchor':'middle'},tHdrs[i]);
+    svg.appendChild(ht);
+  }
+  curY += 18;
+
+  var totalLF = 0, totalPcs = 0, totalWt = 0;
+  for (var gi = 0; gi < groupKeys.length && gi < 10; gi++) {
+    var grp = groups[groupKeys[gi]];
+    var totalQty = grp.count * numPurlinLines;
+    var lfPerPc = grp.lengthIn / 12;
+    var wtPerPc = Math.round(lfPerPc * wtPerFt * 10) / 10;
+    var grpTotalWt = Math.round(wtPerPc * totalQty);
+    totalLF += lfPerPc * totalQty;
+    totalPcs += totalQty;
+    totalWt += grpTotalWt;
+
+    if (gi % 2 === 0) svg.appendChild($e('rect',{x:tblX,y:curY,width:tblW,height:16,fill:'#F5F5F5',stroke:'none'}));
+    svg.appendChild($e('line',{x1:tblX,y1:curY+16,x2:tblX+tblW,y2:curY+16,class:'dim-line'}));
+
+    var vals = [
+      purlinType+'-'+(gi+1),
+      String(totalQty),
+      fmtFtIn(grp.lengthIn),
+      purlinType+'-PURLIN '+purlinDepthIn+'"',
+      'A653 G55 G90',
+      purlinGauge+'GA (0.105")',
+      fmtDec(wtPerPc,1)+' lbs',
+      fmtDec(grpTotalWt,0)+' lbs'
+    ];
+    for (var ci = 0; ci < vals.length; ci++) {
+      svg.appendChild($t(tblX+tCols[ci]+tColW[ci]/2, curY+12, vals[ci], 'tbl-cell', 'middle'));
+    }
+    curY += 16;
+  }
+
+  // Total row
+  svg.appendChild($e('rect',{x:tblX,y:curY,width:tblW,height:18,fill:'#E8E8E8',stroke:'none'}));
+  svg.appendChild($e('line',{x1:tblX,y1:curY,x2:tblX+tblW,y2:curY,stroke:'#1a1a1a','stroke-width':'1.5'}));
+  svg.appendChild($t(tblX+tCols[0]+tColW[0]/2, curY+13, 'TOTALS', 'tbl-total', 'middle'));
+  svg.appendChild($t(tblX+tCols[1]+tColW[1]/2, curY+13, String(totalPcs), 'tbl-total', 'middle'));
+  svg.appendChild($t(tblX+tCols[2]+tColW[2]/2, curY+13, fmtDec(totalLF,0)+' LF', 'tbl-total', 'middle'));
+  svg.appendChild($t(tblX+tCols[7]+tColW[7]/2, curY+13, fmtDec(totalWt,0)+' lbs', 'tbl-total', 'middle'));
+  curY += 18;
+
+  // Table border and column lines
+  var tblH = curY - (curY - 18 - groupKeys.length * 16 - 18) + 4;
+  var tblTop = curY - tblH;
+  svg.appendChild($e('rect',{x:tblX,y:tblTop,width:tblW,height:tblH,fill:'none',stroke:'#1a1a1a','stroke-width':'1.0'}));
+  for (var ci = 1; ci < tCols.length; ci++) {
+    svg.appendChild($e('line',{x1:tblX+tCols[ci],y1:tblTop,x2:tblX+tCols[ci],y2:tblTop+tblH,class:'dim-line'}));
+  }
+
+  // Store for footer
+  data.totalLF = totalLF;
+  data.totalPcs = totalPcs;
+  data.totalWt = totalWt;
+  data.groupKeys = groupKeys;
+  data.groups = groups;
+
+  return curY + 8;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING: HARDWARE SCHEDULE
+// ══════════════════════════════════════════════════════════════
+function drawHardwareSchedule(svg, curY, data) {
+  var numPurlinLines = data.numPurlinLines;
+  var nRafters = data.rafterPositions.length;
+
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 12;
+  drawViewTitle(svg, 550, curY, 'HARDWARE SCHEDULE', null);
+  curY += 14;
+
+  var tblX = 120, tblW = 860;
+  var hCols = [0,200,300,460,700];
+  var hColW = [200,100,160,240,160];
+  var hHdrs = ['ITEM','QTY','SIZE','MATERIAL','NOTES'];
+
+  svg.appendChild($e('rect',{x:tblX,y:curY,width:tblW,height:18,fill:'#1E3A5F',stroke:'#1E3A5F'}));
+  for (var i = 0; i < hHdrs.length; i++) {
+    svg.appendChild($e('text',{x:tblX+hCols[i]+hColW[i]/2,y:curY+13,class:'tbl-hdr','text-anchor':'middle'},hHdrs[i]));
+  }
+  curY += 18;
+
+  // P1 clips — interior purlin-to-rafter connections
+  var p1Qty = Math.max(numPurlinLines - 2, 0) * nRafters;
+  var p2Qty = 2 * nRafters;  // eave purlins
+  var tekScrewsPerP1 = 8;
+  var p1TekScrews = p1Qty * tekScrewsPerP1;
+  // Z-splice tek screws (each splice uses 8 tek screws)
+  var splicesPerLine = data.pieces.length > 1 ? data.pieces.length - 1 : 0;
+  var spliceTekScrews = purlinType === 'Z' ? splicesPerLine * numPurlinLines * 8 : 0;
+  var totalTekScrews = p1TekScrews + spliceTekScrews;
+  // P2 uses bolts, not tek screws
+  var p2BoltsPerPlate = 8;
+  var totalP2Bolts = p2Qty * p2BoltsPerPlate;
+  var endcapQty = 2;
+
+  var items = [
+    ['P1 CLIP PLATE (INTERIOR)', String(p1Qty), '10GA', 'A653 G55 G90', (numPurlinLines-2)+'/RAFTER'],
+    ['P2 CLIP PLATE (EAVE)', String(p2Qty), '10GA \u00D7 9" \u00D7 24"', 'A653 G55 G90', '2/RAFTER'],
+    ['#10 TEK SCREWS (P1+SPLICE)', String(totalTekScrews), '#10 \u00D7 3/4" HEX', 'ZINC PLATED', tekScrewsPerP1+'/P1, 8/SPLICE'],
+    ['1/2" BOLTS (P2)', String(totalP2Bolts), '1/2" \u00D7 1-1/2" HEX', 'GRADE 5 ZINC', p2BoltsPerPlate+'/P2 PLATE'],
+    ['U-CHANNEL ENDCAP', String(endcapQty), purlinDepthIn+'" \u00D7 BLDG WIDTH', purlinGauge+'GA G90', '1 EACH END']
+  ];
+
+  if (mode === 'solar') {
+    var totalPanels = panelsAcross * panelsAlong;
+    var boltStacks = 4 * totalPanels;
+    items.push(['SOLAR BOLT STACK', String(boltStacks), '3/8" SS', 'STAINLESS STEEL', '4/PANEL']);
+    items.push(['SOLAR PANEL', String(totalPanels)+' (BY OWNER)', panelWidthMm+' \u00D7 '+panelLengthMm+' mm', 'CUSTOMER SUPPLIED', 'NOT IN COST']);
+  }
+
+  for (var i = 0; i < items.length; i++) {
+    if (i % 2 === 0) svg.appendChild($e('rect',{x:tblX,y:curY,width:tblW,height:16,fill:'#F5F5F5',stroke:'none'}));
+    svg.appendChild($e('line',{x1:tblX,y1:curY+16,x2:tblX+tblW,y2:curY+16,class:'dim-line'}));
+    for (var ci = 0; ci < items[i].length; ci++) {
+      svg.appendChild($t(tblX+hCols[ci]+hColW[ci]/2, curY+12, items[i][ci], 'tbl-cell', 'middle'));
+    }
+    curY += 16;
+  }
+
+  svg.appendChild($e('rect',{x:tblX,y:curY-items.length*16-18,width:tblW,height:items.length*16+18,fill:'none',stroke:'#1a1a1a','stroke-width':'1.0'}));
+  for (var ci = 1; ci < hCols.length; ci++) {
+    svg.appendChild($e('line',{x1:tblX+hCols[ci],y1:curY-items.length*16-18,x2:tblX+hCols[ci],y2:curY,class:'dim-line'}));
+  }
+
+  return curY + 8;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING: GENERAL NOTES
+// ══════════════════════════════════════════════════════════════
+function drawGeneralNotes(svg, curY) {
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 12;
+  drawViewTitle(svg, 550, curY, 'GENERAL NOTES', null);
+  curY += 18;
+
+  var notes = [
+    '1.  ALL MATERIAL: ASTM A653, GRADE 55, G90 GALVANIZED UNLESS OTHERWISE NOTED.',
+    '2.  PURLIN COIL: 20.125" WIDE, '+purlinGauge+'GA (0.105"), 7.43 LBS/FT.',
+    '3.  ALL BOLT HOLES FOR 1/2" BOLTS: 9/16" DIA. SOLAR MOUNTING HOLES: 7/16" DIA.',
+    '4.  TEK SCREWS: #10 \u00D7 3/4" HEX HEAD, ZINC PLATED. 8 PER P1/P2 CONNECTION.',
+    '5.  FABRICATION TOLERANCE: LENGTH \u00B11/16", HOLE LOCATION \u00B11/32".',
+    '6.  INSTALL PURLINS WITH FLANGES FACING AS SHOWN ON PLAN VIEW.',
+    '7.  ' + (purlinType === 'Z' ? 'Z-PURLIN SPLICE: '+zExtensionFt+'\' EXTENSION, 6" MINIMUM LAP, 8 TEK SCREWS PER SPLICE.' : 'C-PURLIN JOINT: BUTT JOINT AT RAFTER CENTER. EACH PURLIN BEARS '+(rafterWidthIn/2)+'" ON RAFTER.'),
+    '8.  DO NOT SCALE THIS DRAWING \u2014 USE FIGURED DIMENSIONS ONLY.',
+    '9.  ALL WORK SHALL CONFORM TO AISI S100-16 AND ASCE 7-22.',
+    '10. CONTRACTOR SHALL VERIFY ALL FIELD DIMENSIONS PRIOR TO FABRICATION.'
+  ];
+
+  var noteX = 80;
+  for (var i = 0; i < notes.length; i++) {
+    svg.appendChild($t(noteX, curY, notes[i], 'gen-note', 'start'));
+    curY += 12;
+  }
+
+  // DO NOT SCALE watermark
+  curY += 4;
+  var wm = $e('text',{x:550,y:curY,class:'watermark','text-anchor':'middle',fill:'#C00','fill-opacity':'0.15','font-size':'28px','font-weight':'700'},'DO NOT SCALE \u2014 USE FIGURED DIMENSIONS');
+  svg.appendChild(wm);
+  curY += 20;
+
+  return curY;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DRAWING: COST COMPARISON
+// ══════════════════════════════════════════════════════════════
+function drawCostComparison(svg, curY, data) {
+  if (!comparisonResults) {
+    svg.appendChild($t(550, curY+8, 'Click "Compare All" to run 4-option cost analysis (Landscape/Portrait \u00D7 C/Z)', 'note-sm', 'middle'));
+    var currentCost = (data.totalLF || 0) * (purlinType === 'C' ? costPerFtC : costPerFtZ);
+    svg.appendChild($t(550, curY+22, 'CURRENT: '+purlinType+'-Purlin, '+fmtDec(data.totalLF||0,0)+' LF, '+(data.totalPcs||0)+' pcs, $'+fmtDec(currentCost,0), 'callout', 'middle'));
+    return curY + 36;
+  }
+
+  svg.appendChild($e('line',{x1:40,y1:curY,x2:1060,y2:curY,stroke:'#1a1a1a','stroke-width':'0.5'}));
+  curY += 12;
+  drawViewTitle(svg, 550, curY, 'COST COMPARISON', null);
+  curY += 14;
+
+  var cmpX = 60, cmpW = 980;
+  var cCols = [0,240,400,540,680,820];
+  var cColW = [240,160,140,140,140,140];
+  var cHdrs = ['OPTION','TOTAL LF','PIECES','COST','SAVINGS','STATUS'];
+
+  svg.appendChild($e('rect',{x:cmpX,y:curY,width:cmpW,height:18,fill:'#1E3A5F'}));
+  for (var i = 0; i < cHdrs.length; i++) {
+    svg.appendChild($e('text',{x:cmpX+cCols[i]+cColW[i]/2,y:curY+13,class:'tbl-hdr','text-anchor':'middle'},cHdrs[i]));
+  }
+  curY += 18;
+
+  var minCost = Infinity;
+  for (var i = 0; i < comparisonResults.length; i++) if (comparisonResults[i].cost < minCost) minCost = comparisonResults[i].cost;
+
+  for (var i = 0; i < comparisonResults.length; i++) {
+    var res = comparisonResults[i];
+    if (res.recommended) svg.appendChild($e('rect',{x:cmpX+1,y:curY,width:cmpW-2,height:16,fill:'#D4EDDA',stroke:'#28A745','stroke-width':'0.5'}));
+    svg.appendChild($e('line',{x1:cmpX,y1:curY+16,x2:cmpX+cmpW,y2:curY+16,class:'dim-line'}));
+    var savings = res.cost - minCost;
+    var cVals = [res.label, fmtDec(res.totalLF,0)+' LF', String(res.pieces), '$'+fmtDec(res.cost,0), savings>0?'+$'+fmtDec(savings,0):'--', res.recommended?'\u2605 RECOMMENDED':''];
+    for (var ci = 0; ci < cVals.length; ci++) {
+      var cls = res.recommended ? 'tbl-total' : 'tbl-cell';
+      svg.appendChild($t(cmpX+cCols[ci]+cColW[ci]/2, curY+12, cVals[ci], cls, 'middle'));
+    }
+    curY += 16;
+  }
+
+  svg.appendChild($e('rect',{x:cmpX,y:curY-comparisonResults.length*16-18,width:cmpW,height:comparisonResults.length*16+18,fill:'none',stroke:'#1a1a1a','stroke-width':'1.0'}));
+
+  return curY + 8;
+}
+
+// ══════════════════════════════════════════════════════════════
 // MAIN DRAW FUNCTION
-// ==============================================
+// ══════════════════════════════════════════════════════════════
 function draw() {
   var svg = document.getElementById('svg');
   while (svg.firstChild) svg.removeChild(svg.firstChild);
-  svg.setAttribute('viewBox', '0 0 1100 850');
-
   readControls();
+  updateModeVisibility();
 
   var projName = document.getElementById('setProjectName').value || 'PROJECT';
   var customer = document.getElementById('setCustomer').value || '';
   var jobNum = document.getElementById('setJobNumber').value || '';
   var drawingNum = document.getElementById('setDrawingNum').value || 'SD-001';
   var drawnBy = document.getElementById('setDrawnBy').value || 'AUTO';
-  var surfPrep = document.getElementById('setSurfPrep').value || 'G90';
 
-  // Compute layout
+  // Compute shared data
   var rafterPositions = computeRafterPositions();
-  var bldgLenIn = rafterPositions[rafterPositions.length - 1];
+  var bldgLenIn = rafterPositions[rafterPositions.length-1];
+  var bldgWidthIn = buildingWidthFt * 12;
   var pieces = computeLayout(bldgLenIn, rafterPositions, purlinType, maxPurlinLenFt, zExtensionFt);
-
-  // Solar data
   var solarData = null;
-  if (mode === 'solar') {
-    solarData = computeSolarBuilding(panelWidthMm, panelLengthMm, orientation, panelsAcross, panelsAlong, gapWidthIn, gapLengthIn);
-  }
-
-  // Overall building length including endcaps
-  var totalBldgIn = bldgLenIn;
-  if (!overhangEnabled) {
-    totalBldgIn = bldgLenIn + (rafterWidthIn / 2 + endcapClearanceIn) * 2;
-  }
-
-  // ================================================================
-  // ZONE 1: TOP-DOWN PLAN VIEW (x=40..1060, y=20..350)
-  // ================================================================
-  svg.appendChild($t(550, 18, 'PURLIN LAYOUT - PLAN VIEW (' + purlinType + '-PURLIN, ' + mode.toUpperCase() + ')', 'ttl'));
-
-  var planL = 60, planR = 1040;
-  var planT = 35, planB = 330;
-  var planW = planR - planL;
-  var planH = planB - planT;
-
-  // Scale factor: building length maps to planW
-  var sc = planW / totalBldgIn;
-
-  // Offset for endcap clearance
-  var offsetX = 0;
-  if (!overhangEnabled) {
-    offsetX = (endcapClearanceIn + rafterWidthIn / 2) * sc;
-  }
-
-  // Draw rafters as vertical gray bars
-  var rafG = $g('', 'rafters');
-  for (var i = 0; i < rafterPositions.length; i++) {
-    var rx = planL + offsetX + rafterPositions[i] * sc;
-    var rw = rafterWidthIn * sc;
-    if (rw < 3) rw = 3;
-    rafG.appendChild($e('rect', {
-      x: rx - rw / 2, y: planT + 10, width: rw, height: planH - 40,
-      fill: '#D0D0D0', stroke: '#999', 'stroke-width': '0.5'
-    }));
-    // Rafter label
-    if (i === 0 || i === rafterPositions.length - 1 || rafterPositions.length <= 8) {
-      svg.appendChild($t(rx, planB - 15, 'R' + (i + 1), 'note', 'middle'));
-    }
-  }
-  svg.appendChild(rafG);
-
-  // Number of purlin lines to show
+  if (mode === 'solar') solarData = computeSolarBuilding(panelWidthMm, panelLengthMm, orientation, panelsAcross, panelsAlong, gapWidthIn, gapLengthIn);
   var numPurlinLines;
+  if (mode === 'solar' && solarData) numPurlinLines = solarData.numPurlinLines;
+  else numPurlinLines = Math.max(Math.floor(bldgWidthIn/(purlinSpacingFt*12))+1, 2);
+
+  // Compute purlin positions in inches from eave
+  var purlinPositionsIn = [];
   if (mode === 'solar' && solarData) {
-    numPurlinLines = solarData.numPurlinLines;
+    purlinPositionsIn = solarData.purlinLines;
   } else {
-    numPurlinLines = Math.max(Math.floor(buildingWidthFt * 12 / (purlinSpacingFt * 12)) + 1, 2);
+    for (var i = 0; i < numPurlinLines; i++) purlinPositionsIn.push(i * purlinSpacingFt * 12);
   }
-  var maxLines = Math.min(numPurlinLines, 8); // Show max 8 lines for readability
-  var lineSpacing = (planH - 80) / (maxLines + 1);
 
-  // Draw purlin lines
-  var purG = $g('hover-part', 'purlins');
-  for (var line = 0; line < maxLines; line++) {
-    var ly = planT + 40 + (line + 1) * lineSpacing;
+  var data = {
+    pieces:pieces, rafterPositions:rafterPositions, solarData:solarData,
+    bldgLenIn:bldgLenIn, bldgWidthIn:bldgWidthIn, numPurlinLines:numPurlinLines,
+    purlinPositionsIn:purlinPositionsIn
+  };
 
-    // Z-purlin facing: groups of 2 (right, left, right, left)
-    var facing = (Math.floor(line / 2) % 2 === 0) ? 1 : -1;
-    if (line % 2 === 1) facing = -facing;
+  // Drawing border — proper engineering drawing border
+  // (dynamically sized after all content is drawn, but place margin guides now)
 
-    for (var p = 0; p < pieces.length; p++) {
-      var piece = pieces[p];
-      var px1 = planL + offsetX + (piece.startIn + (overhangEnabled ? 0 : (endcapClearanceIn + rafterWidthIn / 2))) * sc;
-      var px2 = planL + offsetX + (piece.endIn + (overhangEnabled ? 0 : (endcapClearanceIn + rafterWidthIn / 2))) * sc;
+  var curY = 30;
 
-      // Adjust for actual piece positions
-      px1 = planL + (piece.startIn + (overhangEnabled ? 0 : (endcapClearanceIn + rafterWidthIn / 2))) * sc;
-      px2 = planL + (piece.endIn + (overhangEnabled ? 0 : (endcapClearanceIn + rafterWidthIn / 2))) * sc;
+  // ── ZONE 1: PLAN VIEW ──
+  curY = drawPlanView(svg, curY, data);
+  curY += 10;
 
-      var barH = 4;
-      var fillColor = (purlinType === 'C') ? '#4A90D9' : '#D9534F';
-      purG.appendChild($e('rect', {
-        x: px1, y: ly - barH / 2, width: px2 - px1, height: barH,
-        fill: fillColor, stroke: '#333', 'stroke-width': '0.5', opacity: '0.8'
-      }));
+  // ── ZONE 2: CROSS SECTION ──
+  curY = drawCrossSection(svg, curY, data);
+  curY += 10;
 
-      // Piece break marker
-      if (p < pieces.length - 1) {
-        var breakX = px2;
-        purG.appendChild($e('line', {
-          x1: breakX, y1: ly - 6, x2: breakX, y2: ly + 6,
-          stroke: '#CC0000', 'stroke-width': '1'
-        }));
-
-        // Z-purlin overlap indicator
-        if (purlinType === 'Z' && piece.extEnd > 0) {
-          var overlapW = piece.overlapIn * sc;
-          purG.appendChild($e('rect', {
-            x: breakX - overlapW / 2, y: ly - barH / 2 - 1,
-            width: overlapW, height: barH + 2,
-            fill: '#FF6600', stroke: 'none', opacity: '0.4'
-          }));
-        }
-      }
-
-      // Piece length label (only on first line)
-      if (line === 0 && pieces.length <= 6) {
-        var midX = (px1 + px2) / 2;
-        svg.appendChild($t(midX, ly - 8, fmtFtIn(piece.lengthIn), 'note', 'middle'));
-      }
-    }
+  // ── ZONE 3: DETAIL VIEWS ──
+  if (showDetails) {
+    curY = drawDetailViews(svg, curY, data);
+    curY += 5;
   }
-  svg.appendChild(purG);
 
-  // Solar panel overlay
+  // ── ZONE 4: DRILL SCHEDULE (solar only) ──
   if (mode === 'solar' && solarData) {
-    var solG = $g('', 'solar-panels');
-    var panelScY = (planH - 80) / (solarData.widthIn);
-    var panelScX = planW / solarData.lengthIn;
-    var useSc = Math.min(panelScX, panelScY, sc);
-
-    for (var pa = 0; pa < panelsAlong; pa++) {
-      for (var pw = 0; pw < panelsAcross; pw++) {
-        var pxStart = endcapClearanceIn + pa * (solarData.panelLengthIn + gapLengthIn);
-        var pyStart = endcapClearanceIn + pw * (solarData.panelWidthIn + gapWidthIn);
-
-        var drawX = planL + pxStart * sc;
-        var drawY = planT + 40 + pyStart * panelScY;
-        var drawW = solarData.panelLengthIn * sc;
-        var drawH = solarData.panelWidthIn * panelScY;
-
-        // Only draw if it fits in the view
-        if (drawX + drawW <= planR && drawY + drawH <= planB - 20) {
-          solG.appendChild($e('rect', {
-            x: drawX, y: drawY, width: drawW, height: drawH,
-            fill: '#4DABF7', 'fill-opacity': '0.15',
-            stroke: '#4DABF7', 'stroke-width': '0.5'
-          }));
-
-          // Bolt holes (4 per panel)
-          var hInset = mmToIn(holeInsetMm) * sc;
-          var hDist = mmToIn(mountHoleDistMm) * panelScY;
-          var holeR = 1.5;
-          var holes = [
-            [drawX + hInset, drawY + (drawH - hDist) / 2],
-            [drawX + hInset, drawY + (drawH + hDist) / 2],
-            [drawX + drawW - hInset, drawY + (drawH - hDist) / 2],
-            [drawX + drawW - hInset, drawY + (drawH + hDist) / 2]
-          ];
-          for (var h = 0; h < holes.length; h++) {
-            if (holes[h][0] > planL && holes[h][0] < planR && holes[h][1] > planT && holes[h][1] < planB) {
-              solG.appendChild($e('circle', {
-                cx: holes[h][0], cy: holes[h][1], r: holeR,
-                fill: 'none', stroke: '#E03131', 'stroke-width': '0.6'
-              }));
-            }
-          }
-        }
-      }
-    }
-    svg.appendChild(solG);
+    curY = drawDrillSchedule(svg, curY, data);
+    curY += 5;
   }
 
-  // Dimension lines
-  // Overall building length
-  dimH(svg, planL, planR, planB - 5, 12, fmtFtIn(totalBldgIn));
+  // ── ZONE 5: PURLIN SCHEDULE ──
+  curY = drawPurlinSchedule(svg, curY, data);
+  curY += 5;
 
-  // Bay sizes (between rafters)
-  if (rafterPositions.length <= 8) {
-    for (var i = 0; i < rafterPositions.length - 1; i++) {
-      var x1 = planL + offsetX + rafterPositions[i] * sc;
-      var x2 = planL + offsetX + rafterPositions[i + 1] * sc;
-      var bayIn = rafterPositions[i + 1] - rafterPositions[i];
-      dimH(svg, x1, x2, planT + 5, -12, fmtFtIn(bayIn));
-    }
+  // ── ZONE 6: HARDWARE SCHEDULE ──
+  curY = drawHardwareSchedule(svg, curY, data);
+  curY += 5;
+
+  // ── ZONE 7: GENERAL NOTES ──
+  if (showNotes) {
+    curY = drawGeneralNotes(svg, curY);
+    curY += 5;
   }
 
-  // ================================================================
-  // ZONE 2: PURLIN CROSS-SECTION (y=370..520)
-  // ================================================================
-  var secTitle = (purlinType === 'Z') ? 'Z-PURLIN CROSS-SECTION' : 'C-PURLIN CROSS-SECTION';
-  svg.appendChild($t(180, 365, secTitle, 'ttl'));
+  // ── ZONE 8: COST COMPARISON ──
+  curY = drawCostComparison(svg, curY, data);
+  curY += 10;
 
-  var cx = 180, cy = 445;
-  var zScale = 5;
-  var depth = 8; // default purlin depth
-  var topFlange = 2.75, botFlange = 2.75, lip = 0.625;
-
-  var zD = depth * zScale;
-  var zTF = topFlange * zScale;
-  var zBF = botFlange * zScale;
-  var zLip = lip * zScale;
-  var zT = 2;
-
-  var zTop = cy - zD / 2;
-  var zBot = cy + zD / 2;
-
-  var secG = $g('hover-part', 'purlin-section');
-
-  if (purlinType === 'Z') {
-    // Z-purlin: top flange right, bottom flange left
-    // Web
-    secG.appendChild($r(cx - zT / 2, zTop, zT, zD, 'cee'));
-    // Top flange (right)
-    secG.appendChild($r(cx, zTop, zTF, zT, 'cee'));
-    // Bottom flange (left)
-    secG.appendChild($r(cx - zBF, zBot - zT, zBF, zT, 'cee'));
-    // Lips at 45 degrees
-    var lipLen = zLip;
-    var lip45 = lipLen * Math.cos(Math.PI / 4);
-    // Top lip (up-right from right end of top flange)
-    var tlx = cx + zTF;
-    secG.appendChild($l(tlx, zTop, tlx + lip45, zTop - lip45, 'obj med'));
-    // Bottom lip (down-left from left end of bottom flange)
-    var blx = cx - zBF;
-    secG.appendChild($l(blx, zBot, blx - lip45, zBot + lip45, 'obj med'));
-  } else {
-    // C-purlin: both flanges right, lips inward
-    // Web
-    secG.appendChild($r(cx - zT / 2, zTop, zT, zD, 'cee'));
-    // Top flange (right)
-    secG.appendChild($r(cx, zTop, zTF, zT, 'cee'));
-    // Bottom flange (right)
-    secG.appendChild($r(cx, zBot - zT, zBF, zT, 'cee'));
-    // Top lip (downward from right end of top flange)
-    var tlx = cx + zTF;
-    secG.appendChild($l(tlx, zTop, tlx, zTop + zLip, 'obj med'));
-    // Bottom lip (upward from right end of bottom flange)
-    secG.appendChild($l(tlx, zBot, tlx, zBot - zLip, 'obj med'));
-  }
-
-  // Centerlines
-  secG.appendChild($l(cx, zTop - 15, cx, zBot + 15, 'center'));
-  secG.appendChild($l(cx - zBF - 10, cy, cx + zTF + 10, cy, 'center'));
-  svg.appendChild(secG);
-
-  // Dimensions
-  dimV(svg, cx + zTF + 10, zTop, zBot, 15, depth + '"');
-  dimH(svg, cx, cx + zTF, zTop - 3, -12, topFlange + '"');
-  if (purlinType === 'Z') {
-    dimH(svg, cx - zBF, cx, zBot + 3, 12, botFlange + '"');
-  } else {
-    dimH(svg, cx, cx + zBF, zBot + 3, 12, botFlange + '"');
-  }
-
-  // Type label
-  svg.appendChild($t(cx, zBot + 35, purlinType + '-PURLIN', 'lblb', 'middle'));
-  svg.appendChild($t(cx, zBot + 45, depth + '" DEPTH', 'note', 'middle'));
-
-  // ================================================================
-  // ZONE 3: CUT LIST / PURLIN SCHEDULE (y=370..520, right side)
-  // ================================================================
-  svg.appendChild($t(720, 365, 'PURLIN SCHEDULE', 'ttl'));
-
-  var tblX = 500, tblY = 378, tblW = 560;
-  var tCols = [0, 50, 90, 200, 310, 410, 480];
-  var tHdrs = ['GRP', 'QTY', 'LENGTH', 'PIECES/LINE', 'TOTAL PCS', 'TOTAL LF', 'NOTES'];
-
-  // Header row
-  svg.appendChild($e('rect', {x: tblX, y: tblY, width: tblW, height: 14, fill: '#333', stroke: '#333'}));
-  for (var i = 0; i < tHdrs.length; i++) {
-    var ht = $t(tblX + tCols[i] + 4, tblY + 11, tHdrs[i], 'note');
-    ht.setAttribute('fill', '#FFF');
-    svg.appendChild(ht);
-  }
-
-  // Group pieces by length
-  var groups = {};
-  for (var i = 0; i < pieces.length; i++) {
-    var lenKey = Math.round(pieces[i].lengthIn * 8) / 8; // round to 1/8"
-    if (!groups[lenKey]) groups[lenKey] = { lengthIn: pieces[i].lengthIn, count: 0 };
-    groups[lenKey].count++;
-  }
-
-  var groupKeys = Object.keys(groups).sort(function(a, b) { return parseFloat(b) - parseFloat(a); });
-  var totalLF = 0;
-  var totalPcs = 0;
-  var numLines = mode === 'solar' ? (solarData ? solarData.numPurlinLines : numPurlinLines) : numPurlinLines;
-
-  for (var gi = 0; gi < groupKeys.length && gi < 8; gi++) {
-    var grp = groups[groupKeys[gi]];
-    var ry = tblY + 14 + gi * 14;
-    svg.appendChild($l(tblX, ry + 14, tblX + tblW, ry + 14, 'dim'));
-
-    var qtyPerLine = grp.count;
-    var totalQty = qtyPerLine * numLines;
-    var lfPerPiece = grp.lengthIn / 12;
-    var grpTotalLF = lfPerPiece * totalQty;
-    totalLF += grpTotalLF;
-    totalPcs += totalQty;
-
-    var noteStr = purlinType === 'Z' ? 'SPLICE @ OVERLAP' : 'BUTT JOINT';
-
-    var vals = [
-      String(gi + 1),
-      String(numLines),
-      fmtFtIn(grp.lengthIn),
-      String(qtyPerLine),
-      String(totalQty),
-      fmtDec(grpTotalLF, 1),
-      noteStr
-    ];
-    for (var ci = 0; ci < vals.length; ci++) {
-      svg.appendChild($t(tblX + tCols[ci] + 4, ry + 11, vals[ci], 'lbl'));
-    }
-  }
-
-  // Total row
-  var totY = tblY + 14 + Math.min(groupKeys.length, 8) * 14;
-  svg.appendChild($l(tblX, totY, tblX + tblW, totY, 'obj med'));
-  svg.appendChild($t(tblX + tCols[3] + 4, totY + 12, 'TOTALS:', 'lblb'));
-  svg.appendChild($t(tblX + tCols[4] + 4, totY + 12, String(totalPcs), 'lblb'));
-  svg.appendChild($t(tblX + tCols[5] + 4, totY + 12, fmtDec(totalLF, 1) + ' LF', 'lblb'));
-
-  var tblH = 14 + (Math.min(groupKeys.length, 8) + 1) * 14 + 4;
-  svg.appendChild($r(tblX, tblY, tblW, tblH, 'obj med'));
-
-  // ================================================================
-  // ZONE 4: COST COMPARISON TABLE (y=530..660)
-  // ================================================================
-  svg.appendChild($t(550, 535, 'COST COMPARISON', 'ttl'));
-
-  if (comparisonResults) {
-    var cmpX = 80, cmpY = 548, cmpW = 940;
-    var cCols = [0, 240, 380, 520, 660, 800];
-    var cHdrs = ['OPTION', 'TOTAL LF', 'PIECES', 'COST', 'SAVINGS', 'STATUS'];
-
-    // Header
-    svg.appendChild($e('rect', {x: cmpX, y: cmpY, width: cmpW, height: 14, fill: '#333', stroke: '#333'}));
-    for (var i = 0; i < cHdrs.length; i++) {
-      var ht = $t(cmpX + cCols[i] + 4, cmpY + 11, cHdrs[i], 'note');
-      ht.setAttribute('fill', '#FFF');
-      svg.appendChild(ht);
-    }
-
-    var minCost = Infinity;
-    for (var i = 0; i < comparisonResults.length; i++) {
-      if (comparisonResults[i].cost < minCost) minCost = comparisonResults[i].cost;
-    }
-
-    for (var i = 0; i < comparisonResults.length; i++) {
-      var res = comparisonResults[i];
-      var ry = cmpY + 14 + i * 18;
-
-      // Highlight recommended
-      if (res.recommended) {
-        svg.appendChild($e('rect', {
-          x: cmpX + 1, y: ry - 1, width: cmpW - 2, height: 16,
-          fill: '#D4EDDA', stroke: '#28A745', 'stroke-width': '0.5'
-        }));
-      }
-
-      svg.appendChild($l(cmpX, ry + 16, cmpX + cmpW, ry + 16, 'dim'));
-
-      var savings = res.cost - minCost;
-      var savingsStr = savings > 0 ? '+$' + fmtDec(savings, 0) : '--';
-      var statusStr = res.recommended ? 'RECOMMENDED' : '';
-
-      var cVals = [
-        res.label,
-        fmtDec(res.totalLF, 0) + ' LF',
-        String(res.pieces),
-        '$' + fmtDec(res.cost, 0),
-        savingsStr,
-        statusStr
-      ];
-      for (var ci = 0; ci < cVals.length; ci++) {
-        var cls = res.recommended ? 'lblb' : 'lbl';
-        if (ci === 5 && res.recommended) cls = 'warn-text';
-        svg.appendChild($t(cmpX + cCols[ci] + 4, ry + 11, cVals[ci], cls));
-      }
-    }
-
-    var cmpH = 14 + comparisonResults.length * 18 + 4;
-    svg.appendChild($r(cmpX, cmpY, cmpW, cmpH, 'obj med'));
-  } else {
-    svg.appendChild($t(550, 570, 'Click "Compare All" to run 4-option cost analysis', 'note', 'middle'));
-    svg.appendChild($t(550, 585, '(Landscape+C, Landscape+Z, Portrait+C, Portrait+Z)', 'note', 'middle'));
-
-    // Show current option summary
-    var currentCost = totalLF * (purlinType === 'C' ? costPerFtC : costPerFtZ);
-    svg.appendChild($t(550, 610, 'CURRENT: ' + purlinType + '-Purlin, ' + orientation + ', ' + fmtDec(totalLF, 0) + ' LF, ' + totalPcs + ' pcs, $' + fmtDec(currentCost, 0), 'lblb', 'middle'));
-  }
-
-  // ================================================================
-  // ZONE 5: TITLE BLOCK (y=680..815)
-  // ================================================================
+  // ── ZONE 9: TITLE BLOCK ──
+  var titleBlockY = Math.max(curY + 10, 680);
+  var tbShift = titleBlockY - 680;
   var buildingId = (window.PURLIN_LAYOUT_CONFIG && window.PURLIN_LAYOUT_CONFIG.building_id) || '';
   var titleSuffix = buildingId ? ' - ' + buildingId : '';
-  drawTitleBlock(svg, {
-    projName: projName,
-    customer: customer,
-    jobNum: jobNum,
-    drawingNum: drawingNum,
-    drawnBy: drawnBy,
-    surfPrep: surfPrep,
-    drawingTitle: 'PURLIN LAYOUT' + titleSuffix,
-    partMark: purlinType + '-PURLIN',
-    revision: 0,
-    revHistory: [],
-    projectNotes: [
-      'MODE: ' + mode.toUpperCase(),
-      'PURLIN TYPE: ' + purlinType + '-PURLIN',
-      'MAX LENGTH: ' + maxPurlinLenFt + ' FT',
-      purlinType === 'Z' ? 'Z-EXTENSION: ' + zExtensionFt + ' FT' : '',
-      'BUILDING: ' + fmtFtIn(totalBldgIn) + ' LONG',
-      'FRAMES: ' + nFrames,
-      'PURLIN LINES: ' + numLines,
-      'TOTAL PIECES: ' + totalPcs,
-      'TOTAL LF: ' + fmtDec(totalLF, 0),
-      'OVERHANG: ' + (overhangEnabled ? 'YES' : 'NO'),
-      'DO NOT SCALE DRAWING'
-    ].filter(Boolean)
-  });
+
+  if (tbShift > 0) {
+    var tempG = document.createElementNS(NS, 'g');
+    tempG.setAttribute('transform', 'translate(0,' + tbShift + ')');
+    svg.appendChild(tempG);
+    var childCountBefore = svg.childNodes.length - 1;
+    drawTitleBlock(svg, {
+      projName:projName, customer:customer, jobNum:jobNum,
+      drawingNum:drawingNum, drawnBy:drawnBy,
+      drawingTitle:'PURLIN LAYOUT'+titleSuffix, partMark:purlinType+'-PURLIN',
+      revision:0, revHistory:[],
+      projectNotes:[
+        'MODE: '+mode.toUpperCase(),
+        'PURLIN: '+purlinType+' '+purlinDepthIn+'" '+purlinGauge+'GA',
+        'MATERIAL: ASTM A653 G55 G90',
+        'WEIGHT: 7.43 LBS/FT',
+        'MAX LENGTH: '+maxPurlinLenFt+' FT',
+        purlinType==='Z'?'Z-EXT: '+zExtensionFt+' FT':'',
+        'BLDG: '+fmtFtIn(bldgLenIn)+' x '+fmtFtIn(bldgWidthIn),
+        'FRAMES: '+nFrames+' | LINES: '+numPurlinLines,
+        'TOLERANCE: \u00B11/16" LENGTH',
+        'DO NOT SCALE DRAWING'
+      ].filter(Boolean)
+    });
+    while (svg.childNodes.length > childCountBefore + 1) {
+      var lastChild = svg.lastChild;
+      if (lastChild === tempG) break;
+      tempG.appendChild(lastChild);
+    }
+  } else {
+    drawTitleBlock(svg, {
+      projName:projName, customer:customer, jobNum:jobNum,
+      drawingNum:drawingNum, drawnBy:drawnBy,
+      drawingTitle:'PURLIN LAYOUT'+titleSuffix, partMark:purlinType+'-PURLIN',
+      revision:0, revHistory:[],
+      projectNotes:['MODE: '+mode.toUpperCase(),'PURLIN: '+purlinType+' '+purlinDepthIn+'"','DO NOT SCALE DRAWING']
+    });
+  }
+
+  var totalHeight = titleBlockY + 135 + 20;
+  svg.setAttribute('viewBox', '0 0 1100 ' + totalHeight);
+
+  // Drawing border — engineering drawing convention (thick outer, thin inner)
+  svg.insertBefore($e('rect',{x:12,y:12,width:1076,height:totalHeight-24,fill:'none',stroke:'#1a1a1a','stroke-width':'2.0'}), svg.firstChild);
+  svg.insertBefore($e('rect',{x:16,y:16,width:1068,height:totalHeight-32,fill:'none',stroke:'#1a1a1a','stroke-width':'0.5'}), svg.firstChild.nextSibling);
 
   // ── Update footer stats ──
   var fMode = document.getElementById('fMode');
@@ -859,87 +1543,262 @@ function draw() {
   var fCost = document.getElementById('fCost');
   if (fMode) fMode.textContent = mode;
   if (fType) fType.textContent = purlinType;
-  if (fPieces) fPieces.textContent = totalPcs;
-  if (fTotalLF) fTotalLF.textContent = fmtDec(totalLF, 0) + ' LF';
-  if (fLines) fLines.textContent = numLines;
-  var currentCostCalc = totalLF * (purlinType === 'C' ? costPerFtC : costPerFtZ);
-  if (fCost) fCost.textContent = '$' + fmtDec(currentCostCalc, 0);
+  if (fPieces) fPieces.textContent = data.totalPcs || 0;
+  if (fTotalLF) fTotalLF.textContent = fmtDec(data.totalLF||0,0) + ' LF';
+  if (fLines) fLines.textContent = numPurlinLines;
+  var currentCostCalc = (data.totalLF||0) * (purlinType === 'C' ? costPerFtC : costPerFtZ);
+  if (fCost) fCost.textContent = '$' + fmtDec(currentCostCalc,0);
 
-  // ── Update BOM ──
+  // ── Update BOM side panel ──
   var bomRows = [];
-  for (var gi2 = 0; gi2 < groupKeys.length; gi2++) {
-    var grp2 = groups[groupKeys[gi2]];
-    bomRows.push({
-      mk: purlinType + '-' + (gi2 + 1),
-      qty: grp2.count * numLines,
-      desc: purlinType + '-Purlin ' + depth + '"',
-      size: fmtFtIn(grp2.lengthIn),
-      mat: 'G90',
-      wt: Math.round(grp2.lengthIn / 12 * 3.5 * grp2.count * numLines)
-    });
+  if (data.groupKeys) {
+    for (var gi = 0; gi < data.groupKeys.length; gi++) {
+      var grp = data.groups[data.groupKeys[gi]];
+      bomRows.push({
+        mk:purlinType+'-'+(gi+1), qty:grp.count*numPurlinLines,
+        desc:purlinType+'-Purlin '+purlinDepthIn+'"', size:fmtFtIn(grp.lengthIn),
+        mat:'A653 G90', wt:Math.round(grp.lengthIn/12*wtPerFt*grp.count*numPurlinLines)
+      });
+    }
   }
   updateBOM(bomRows);
 }
 
-// ── Apply server config ──
+// ══════════════════════════════════════════════════════════════
+// UI HANDLERS
+// ══════════════════════════════════════════════════════════════
+function readControls() {
+  var el;
+  el = document.getElementById('inpMaxLen'); if (el) { maxPurlinLenFt = parseFloat(el.value)||45; if(maxPurlinLenFt>53)maxPurlinLenFt=53; }
+  el = document.getElementById('inpZExt'); if (el) zExtensionFt = parseFloat(el.value)||6;
+  el = document.getElementById('inpBldgLen'); if (el) buildingLengthFt = parseFloat(el.value)||60;
+  el = document.getElementById('inpFrames'); if (el) nFrames = parseInt(el.value)||4;
+  el = document.getElementById('inpBldgWidth'); if (el) buildingWidthFt = parseFloat(el.value)||40;
+  el = document.getElementById('inpSpacing'); if (el) purlinSpacingFt = parseFloat(el.value)||5;
+  el = document.getElementById('inpPanelW'); if (el) panelWidthMm = parseFloat(el.value)||992;
+  el = document.getElementById('inpPanelL'); if (el) panelLengthMm = parseFloat(el.value)||1675;
+  el = document.getElementById('inpPanelsAcross'); if (el) panelsAcross = parseInt(el.value)||5;
+  el = document.getElementById('inpPanelsAlong'); if (el) panelsAlong = parseInt(el.value)||20;
+  el = document.getElementById('inpMtgHole'); if (el) mountHoleDistMm = parseFloat(el.value)||990;
+  el = document.getElementById('inpHoleInset'); if (el) holeInsetMm = parseFloat(el.value)||200;
+  el = document.getElementById('inpGapW'); if (el) gapWidthIn = parseFloat(el.value)||0.25;
+  el = document.getElementById('inpGapL'); if (el) gapLengthIn = parseFloat(el.value)||0.25;
+  el = document.getElementById('inpCostC'); if (el) costPerFtC = parseFloat(el.value)||2.50;
+  el = document.getElementById('inpCostZ'); if (el) costPerFtZ = parseFloat(el.value)||3.00;
+  el = document.getElementById('inpPurlinDepth'); if (el) purlinDepthIn = parseFloat(el.value)||12;
+  el = document.getElementById('inpPurlinGauge'); if (el) purlinGauge = parseInt(el.value)||12;
+  el = document.getElementById('inpEndcap'); if (el) endcapClearanceIn = parseFloat(el.value)||4;
+  el = document.getElementById('inpRafterWidth'); if (el) rafterWidthIn = parseFloat(el.value)||8;
+}
+
+function setMode(m) {
+  mode = m;
+  var btns = document.querySelectorAll('.mode-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.mode === m);
+  updateModeVisibility(); comparisonResults = null; draw();
+}
+
+function setPurlinType(t) {
+  purlinType = t;
+  var btns = document.querySelectorAll('.ptype-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.type === t);
+  var zExtGroup = document.getElementById('zExtGroup');
+  if (zExtGroup) zExtGroup.style.display = (t === 'Z') ? 'flex' : 'none';
+  comparisonResults = null; draw();
+}
+
+function setOrientation(o) {
+  orientation = o;
+  var btns = document.querySelectorAll('.orient-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].dataset.orient === o);
+  comparisonResults = null; draw();
+}
+
+function toggleOverhang() {
+  overhangEnabled = !overhangEnabled;
+  var btn = document.getElementById('btnOverhang');
+  if (btn) { btn.classList.toggle('active', overhangEnabled); btn.textContent = overhangEnabled ? 'Overhang: ON' : 'Overhang: OFF'; }
+  comparisonResults = null; draw();
+}
+
+function toggleDetails() {
+  showDetails = !showDetails;
+  var btn = document.getElementById('btnDetails');
+  if (btn) { btn.classList.toggle('active', showDetails); btn.textContent = showDetails ? 'Details: ON' : 'Details: OFF'; }
+  draw();
+}
+
+function toggleNotes() {
+  showNotes = !showNotes;
+  var btn = document.getElementById('btnNotes');
+  if (btn) { btn.classList.toggle('active', showNotes); btn.textContent = showNotes ? 'Notes: ON' : 'Notes: OFF'; }
+  draw();
+}
+
+function updateModeVisibility() {
+  var sc = document.getElementById('solarControls');
+  var st = document.getElementById('stdControls');
+  var oc = document.getElementById('orientControls');
+  if (sc) sc.style.display = (mode === 'solar') ? 'flex' : 'none';
+  if (st) st.style.display = (mode === 'standard') ? 'flex' : 'none';
+  if (oc) oc.style.display = (mode === 'solar') ? 'flex' : 'none';
+}
+
+function onControlChange() { readControls(); comparisonResults = null; draw(); }
+
+// ══════════════════════════════════════════════════════════════
+// CONFIG APPLICATION
+// ══════════════════════════════════════════════════════════════
 function applyComponentConfig(cfg) {
-  if (cfg.building_length_ft) {
-    buildingLengthFt = cfg.building_length_ft;
-    var el = document.getElementById('inpBldgLen');
-    if (el) el.value = buildingLengthFt;
-  }
-  if (cfg.building_width_ft) {
-    buildingWidthFt = cfg.building_width_ft;
-    var el = document.getElementById('inpBldgWidth');
-    if (el) el.value = buildingWidthFt;
-  }
-  if (cfg.n_frames) {
-    nFrames = cfg.n_frames;
-    var el = document.getElementById('inpFrames');
-    if (el) el.value = nFrames;
-  }
-  if (cfg.bay_sizes && cfg.bay_sizes.length > 0) {
-    baySizes = cfg.bay_sizes;
-  }
-  if (cfg.purlin_type) {
-    purlinType = cfg.purlin_type.toUpperCase().charAt(0) === 'Z' ? 'Z' : 'C';
-    setPurlinType(purlinType);
-  }
-  if (cfg.purlin_spacing_ft) {
-    purlinSpacingFt = cfg.purlin_spacing_ft;
-    var el = document.getElementById('inpSpacing');
-    if (el) el.value = purlinSpacingFt;
-  }
-  if (cfg.overhang_ft && cfg.overhang_ft > 0) {
-    overhangEnabled = true;
-    overhangFt = cfg.overhang_ft;
-    var btn = document.getElementById('btnOverhang');
-    if (btn) { btn.classList.add('active'); btn.textContent = 'Overhang: ON'; }
-  }
-  if (cfg.max_purlin_length_ft) {
-    maxPurlinLenFt = cfg.max_purlin_length_ft;
-    var el = document.getElementById('inpMaxLen');
-    if (el) el.value = maxPurlinLenFt;
-  }
-  if (cfg.solar_mode) {
-    mode = 'solar';
-    setMode('solar');
-  }
+  if (cfg.building_length_ft) { buildingLengthFt=cfg.building_length_ft; var el=document.getElementById('inpBldgLen'); if(el)el.value=buildingLengthFt; }
+  if (cfg.building_width_ft) { buildingWidthFt=cfg.building_width_ft; var el=document.getElementById('inpBldgWidth'); if(el)el.value=buildingWidthFt; }
+  if (cfg.n_frames || cfg.num_bays) { nFrames=cfg.n_frames||(cfg.num_bays+1); var el=document.getElementById('inpFrames'); if(el)el.value=nFrames; }
+  if (cfg.bay_sizes && cfg.bay_sizes.length > 0) baySizes = cfg.bay_sizes;
+  if (cfg.purlin_type) { purlinType = cfg.purlin_type.toUpperCase().charAt(0)==='Z'?'Z':'C'; setPurlinType(purlinType); }
+  if (cfg.purlin_spacing_ft) { purlinSpacingFt=cfg.purlin_spacing_ft; var el=document.getElementById('inpSpacing'); if(el)el.value=purlinSpacingFt; }
+  if (cfg.overhang_ft && cfg.overhang_ft > 0) { overhangEnabled=true; overhangFt=cfg.overhang_ft; var btn=document.getElementById('btnOverhang'); if(btn){btn.classList.add('active');btn.textContent='Overhang: ON';} }
+  if (cfg.max_purlin_length_ft) { maxPurlinLenFt=cfg.max_purlin_length_ft; var el=document.getElementById('inpMaxLen'); if(el)el.value=maxPurlinLenFt; }
+  if (cfg.solar_mode || cfg.is_solar || cfg.mode === 'solar') mode = 'solar';
+  if (cfg.solar_orientation) { orientation=cfg.solar_orientation; var ob=document.querySelectorAll('.orient-btn'); for(var i=0;i<ob.length;i++)ob[i].classList.toggle('active',ob[i].dataset.orient===orientation); }
+  if (cfg.solar_panel_width_mm) { panelWidthMm=cfg.solar_panel_width_mm; var el=document.getElementById('inpPanelW'); if(el)el.value=panelWidthMm; }
+  if (cfg.solar_panel_length_mm) { panelLengthMm=cfg.solar_panel_length_mm; var el=document.getElementById('inpPanelL'); if(el)el.value=panelLengthMm; }
+  if (cfg.solar_mount_hole_edge_mm) { mountHoleDistMm=cfg.solar_mount_hole_edge_mm; var el=document.getElementById('inpMtgHole'); if(el)el.value=mountHoleDistMm; }
+  if (cfg.solar_mount_hole_inset_mm) { holeInsetMm=cfg.solar_mount_hole_inset_mm; var el=document.getElementById('inpHoleInset'); if(el)el.value=holeInsetMm; }
+  if (cfg.solar_panels_across) { panelsAcross=cfg.solar_panels_across; var el=document.getElementById('inpPanelsAcross'); if(el)el.value=panelsAcross; }
+  if (cfg.solar_panels_along) { panelsAlong=cfg.solar_panels_along; var el=document.getElementById('inpPanelsAlong'); if(el)el.value=panelsAlong; }
+  if (cfg.solar_gap_width_in!=null) { gapWidthIn=cfg.solar_gap_width_in; var el=document.getElementById('inpGapW'); if(el)el.value=gapWidthIn; }
+  if (cfg.solar_gap_length_in!=null) { gapLengthIn=cfg.solar_gap_length_in; var el=document.getElementById('inpGapL'); if(el)el.value=gapLengthIn; }
+  if (cfg.project_name) { var el=document.getElementById('setProjectName'); if(el)el.value=cfg.project_name; }
+  if (cfg.customer_name) { var el=document.getElementById('setCustomer'); if(el)el.value=cfg.customer_name; }
+  if (cfg.job_code) { var el=document.getElementById('setJobNumber'); if(el)el.value=cfg.job_code; }
+  if (cfg.purlin_depth_in) { purlinDepthIn=cfg.purlin_depth_in; var el=document.getElementById('inpPurlinDepth'); if(el)el.value=purlinDepthIn; }
+  if (cfg.purlin_gauge) { purlinGauge=cfg.purlin_gauge; var el=document.getElementById('inpPurlinGauge'); if(el)el.value=purlinGauge; }
+  if (cfg.rafter_depth_in) { rafterWidthIn=cfg.rafter_depth_in; var el=document.getElementById('inpRafterWidth'); if(el)el.value=rafterWidthIn; }
+  if (cfg.z_extension_ft) { zExtensionFt=cfg.z_extension_ft; var el=document.getElementById('inpZExt'); if(el)el.value=zExtensionFt; }
+  if (mode === 'solar') setMode('solar');
   updateModeVisibility();
 }
+
+// ══════════════════════════════════════════════════════════════
+// ZOOM & PAN
+// ══════════════════════════════════════════════════════════════
+(function() {
+  var svgEl=null, viewBox={x:0,y:0,w:1100,h:1600}, isPanning=false, startPt={x:0,y:0}, startVB={x:0,y:0};
+  function initZoomPan() {
+    svgEl = document.getElementById('svg');
+    if (!svgEl) return;
+    var vb = svgEl.getAttribute('viewBox');
+    if (vb) { var p = vb.split(/[\s,]+/).map(Number); viewBox.x=p[0]; viewBox.y=p[1]; viewBox.w=p[2]; viewBox.h=p[3]; }
+    svgEl.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      var r=svgEl.getBoundingClientRect(), mx=(e.clientX-r.left)/r.width, my=(e.clientY-r.top)/r.height;
+      var vmx=viewBox.x+mx*viewBox.w, vmy=viewBox.y+my*viewBox.h;
+      var s=e.deltaY>0?1.15:0.87;
+      viewBox.w=Math.min(Math.max(viewBox.w*s,150),6000);
+      viewBox.h=Math.min(Math.max(viewBox.h*s,150),6000);
+      viewBox.x=vmx-mx*viewBox.w; viewBox.y=vmy-my*viewBox.h;
+      svgEl.setAttribute('viewBox',viewBox.x+' '+viewBox.y+' '+viewBox.w+' '+viewBox.h);
+    },{passive:false});
+    svgEl.addEventListener('mousedown',function(e){if(e.button!==0)return;isPanning=true;startPt.x=e.clientX;startPt.y=e.clientY;startVB.x=viewBox.x;startVB.y=viewBox.y;svgEl.style.cursor='grabbing';e.preventDefault();});
+    window.addEventListener('mousemove',function(e){if(!isPanning)return;var r=svgEl.getBoundingClientRect();viewBox.x=startVB.x-(e.clientX-startPt.x)/r.width*viewBox.w;viewBox.y=startVB.y-(e.clientY-startPt.y)/r.height*viewBox.h;svgEl.setAttribute('viewBox',viewBox.x+' '+viewBox.y+' '+viewBox.w+' '+viewBox.h);});
+    window.addEventListener('mouseup',function(){if(isPanning){isPanning=false;if(svgEl)svgEl.style.cursor='grab';}});
+    svgEl.style.cursor='grab';
+  }
+  window.resetZoom=function(){if(!svgEl)return;var vb=svgEl.getAttribute('viewBox');if(vb){var p=vb.split(/[\s,]+/).map(Number);viewBox={x:0,y:0,w:p[2]||1100,h:p[3]||1600};}svgEl.setAttribute('viewBox','0 0 '+viewBox.w+' '+viewBox.h);};
+  var origDraw=window.draw;
+  window.draw=function(){origDraw();if(svgEl){var vb=svgEl.getAttribute('viewBox');if(vb){var p=vb.split(/[\s,]+/).map(Number);viewBox={x:p[0],y:p[1],w:p[2],h:p[3]};}}};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initZoomPan);
+  else setTimeout(initZoomPan,100);
+})();
+
+// ══════════════════════════════════════════════════════════════
+// MULTI-PAGE PRINT
+// ══════════════════════════════════════════════════════════════
+window.printMultiPage = function() {
+  var svg = document.getElementById('svg');
+  var vb = svg.getAttribute('viewBox').split(/[\s,]+/).map(Number);
+  var totalH = vb[3], pageH = 850, titleBlockH = 155;
+  var contentH = pageH - titleBlockH;
+  var numPages = Math.max(Math.ceil((totalH - titleBlockH) / contentH), 1);
+  var printDiv = document.createElement('div');
+  printDiv.id = 'print-pages';
+  printDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:99999;background:#FFF;';
+  var projName = document.getElementById('setProjectName').value||'PROJECT';
+  var customer = document.getElementById('setCustomer').value||'';
+  var jobNum = document.getElementById('setJobNumber').value||'';
+  var drawingNum = document.getElementById('setDrawingNum').value||'SD-001';
+  var drawnBy = document.getElementById('setDrawnBy').value||'AUTO';
+  var buildingId = (window.PURLIN_LAYOUT_CONFIG&&window.PURLIN_LAYOUT_CONFIG.building_id)||'';
+  var titleSuffix = buildingId ? ' - '+buildingId : '';
+  for (var p = 0; p < numPages; p++) {
+    var pageDiv = document.createElement('div');
+    pageDiv.className = 'print-page';
+    pageDiv.style.pageBreakAfter = (p<numPages-1)?'always':'auto';
+    var pageSvg = svg.cloneNode(true);
+    pageSvg.removeAttribute('id');
+    pageSvg.setAttribute('viewBox','0 '+(p*contentH)+' 1100 '+pageH);
+    pageSvg.style.width='100%';
+    var tbCoverY = p*contentH + contentH;
+    pageSvg.appendChild($e('rect',{x:'0',y:String(tbCoverY),width:'1100',height:String(titleBlockH),fill:'#FFFFFF'}));
+    var tbG = document.createElementNS(NS,'g');
+    tbG.setAttribute('transform','translate(0,'+(tbCoverY-680)+')');
+    var beforeCount = pageSvg.childNodes.length;
+    drawTitleBlock(pageSvg,{projName:projName,customer:customer,jobNum:jobNum,drawingNum:drawingNum,drawnBy:drawnBy,drawingTitle:'PURLIN LAYOUT'+titleSuffix,partMark:purlinType+'-PURLIN',revision:0,revHistory:[],projectNotes:['SHEET '+(p+1)+' OF '+numPages]});
+    while(pageSvg.childNodes.length>beforeCount)tbG.appendChild(pageSvg.childNodes[beforeCount]);
+    pageSvg.appendChild(tbG);
+    pageDiv.appendChild(pageSvg);
+    printDiv.appendChild(pageDiv);
+  }
+  document.body.appendChild(printDiv);
+  var mc=document.querySelector('.canvas-wrap'),tb=document.querySelector('.top-bar'),ft=document.querySelector('.foot');
+  if(mc)mc.style.display='none';if(tb)tb.style.display='none';if(ft)ft.style.display='none';
+  window.print();
+  setTimeout(function(){if(mc)mc.style.display='';if(tb)tb.style.display='';if(ft)ft.style.display='';if(printDiv.parentNode)printDiv.parentNode.removeChild(printDiv);},500);
+};
+
+(function(){var s=document.createElement('style');s.textContent='@media print{.top-bar,.foot,.controls,.bom,#bomPanel,#settingsPanel,.tip{display:none!important}.canvas-wrap{overflow:visible!important;padding:0!important}.print-page{page-break-after:always}.print-page:last-child{page-break-after:avoid}svg{width:100%!important;height:auto!important}body{margin:0;padding:0}}';document.head.appendChild(s);})();
+"""
+
+# ===================================================================
+# Extra CSS classes for CAD-quality drawing conventions
+# ===================================================================
+
+PURLIN_LAYOUT_EXTRA_CSS = r"""
+  /* ── CAD Drawing Convention Classes ── */
+  .obj-thick { stroke: #1a1a1a; stroke-width: 2.5; fill: none; }
+  .obj-med { stroke: #1a1a1a; stroke-width: 1.2; fill: none; }
+  .obj-thin { stroke: #1a1a1a; stroke-width: 0.6; fill: none; }
+  .dim-line { stroke: #444; stroke-width: 0.35; fill: none; }
+  .dim-txt { font: 700 8px 'Courier New', monospace; fill: #333; text-anchor: middle; }
+  .dim-txt-sm { font: 700 6px 'Courier New', monospace; fill: #444; }
+  .hidden-line { stroke: #666; stroke-width: 0.6; stroke-dasharray: 6,3; fill: none; }
+  .center-line { stroke: #888; stroke-width: 0.35; stroke-dasharray: 16,3,3,3; fill: none; }
+  .hatch-line { stroke: #999; stroke-width: 0.25; fill: none; }
+  .view-title { font: 700 14px Arial, sans-serif; fill: #1a1a1a; }
+  .view-scale { font: 400 9px Arial, sans-serif; fill: #444; }
+  .detail-letter { font: 700 12px Arial, sans-serif; fill: #1a1a1a; }
+  .section-lbl { font: 700 10px Arial, sans-serif; fill: #1a1a1a; }
+  .callout { font: 700 8px Arial, sans-serif; fill: #1a1a1a; }
+  .callout-sm { font: 700 7px Arial, sans-serif; fill: #333; }
+  .note-sm { font: 400 6.5px Arial, sans-serif; fill: #555; }
+  .gen-note { font: 400 7.5px Arial, sans-serif; fill: #333; }
+  .piece-mark { font: 700 8px Arial, sans-serif; }
+  .piece-len { font: 400 6.5px 'Courier New', monospace; }
+  .tbl-hdr { font: 700 7px Arial, sans-serif; fill: #fff; }
+  .tbl-cell { font: 400 7px Arial, sans-serif; fill: #333; }
+  .tbl-total { font: 700 7.5px Arial, sans-serif; fill: #1a1a1a; }
+  .watermark { font: 700 28px Arial, sans-serif; fill: #C00; fill-opacity: 0.12; }
 """
 
 # ===================================================================
 # Controls HTML
 # ===================================================================
 
-PURLIN_LAYOUT_CONTROLS = """
+PURLIN_LAYOUT_CONTROLS = r"""
     <div class="ctrl-group">
       <label>Mode:</label>
-      <select id="inpMode" onchange="setMode(this.value)">
-        <option value="standard">Standard</option>
-        <option value="solar">Solar</option>
-      </select>
+      <button class="toggle-btn mode-btn active" data-mode="standard" onclick="setMode('standard')" style="background:#2563EB;color:#fff;font-weight:700;">Standard</button>
+      <button class="toggle-btn mode-btn" data-mode="solar" onclick="setMode('solar')" style="background:#D97706;color:#fff;font-weight:700;">Solar</button>
     </div>
     <div class="ctrl-group">
       <label>Type:</label>
@@ -957,7 +1816,7 @@ PURLIN_LAYOUT_CONTROLS = """
       <label>Frames:</label>
       <input type="number" id="inpFrames" value="4" min="2" max="20" onchange="onControlChange()">
       <label>Width(ft):</label>
-      <input type="number" id="inpBldgWidth" value="20" min="10" max="80" onchange="onControlChange()">
+      <input type="number" id="inpBldgWidth" value="40" min="10" max="120" onchange="onControlChange()">
       <label>Spacing(ft):</label>
       <input type="number" id="inpSpacing" value="5" min="1" max="10" step="0.5" onchange="onControlChange()">
     </div>
@@ -967,17 +1826,23 @@ PURLIN_LAYOUT_CONTROLS = """
       <label>Panel L(mm):</label>
       <input type="number" id="inpPanelL" value="1675" style="width:60px;" onchange="onControlChange()">
       <label>Mtg Hole(mm):</label>
-      <input type="number" id="inpMtgHole" value="990" style="width:60px;" onchange="onControlChange()" title="Mounting hole distance from panel edge">
+      <input type="number" id="inpMtgHole" value="990" style="width:60px;" onchange="onControlChange()">
       <label>Hole Inset(mm):</label>
-      <input type="number" id="inpHoleInset" value="200" style="width:60px;" onchange="onControlChange()" title="Hole inset from panel short edge">
+      <input type="number" id="inpHoleInset" value="200" style="width:60px;" onchange="onControlChange()">
       <label>Across:</label>
       <input type="number" id="inpPanelsAcross" value="5" style="width:45px;" onchange="onControlChange()">
       <label>Along:</label>
       <input type="number" id="inpPanelsAlong" value="20" style="width:45px;" onchange="onControlChange()">
       <label>Gap W(in):</label>
-      <input type="number" id="inpGapW" value="0.25" step="0.125" style="width:50px;" onchange="onControlChange()" title="Gap between panels across width">
+      <input type="number" id="inpGapW" value="0.25" step="0.125" style="width:50px;" onchange="onControlChange()">
       <label>Gap L(in):</label>
-      <input type="number" id="inpGapL" value="0.25" step="0.125" style="width:50px;" onchange="onControlChange()" title="Gap between panels along length">
+      <input type="number" id="inpGapL" value="0.25" step="0.125" style="width:50px;" onchange="onControlChange()">
+    </div>
+    <div class="ctrl-group">
+      <label>Depth(in):</label>
+      <input type="number" id="inpPurlinDepth" value="12" min="4" max="14" step="0.5" style="width:45px;" onchange="onControlChange()">
+      <label>Gauge:</label>
+      <input type="number" id="inpPurlinGauge" value="12" min="10" max="18" style="width:40px;" onchange="onControlChange()">
     </div>
     <div class="ctrl-group">
       <label>Max Len(ft):</label>
@@ -985,10 +1850,18 @@ PURLIN_LAYOUT_CONTROLS = """
     </div>
     <div class="ctrl-group" id="zExtGroup" style="display:none;">
       <label>Z-Ext(ft):</label>
-      <input type="number" id="inpZExt" value="4" min="1" max="8" onchange="onControlChange()">
+      <input type="number" id="inpZExt" value="6" min="1" max="8" onchange="onControlChange()">
+    </div>
+    <div class="ctrl-group">
+      <label>Raf W(in):</label>
+      <input type="number" id="inpRafterWidth" value="8" min="4" max="24" step="0.5" style="width:45px;" onchange="onControlChange()">
+      <label>Endcap(in):</label>
+      <input type="number" id="inpEndcap" value="4" min="0" max="12" step="0.5" style="width:45px;" onchange="onControlChange()">
     </div>
     <div class="ctrl-group">
       <button class="toggle-btn" id="btnOverhang" onclick="toggleOverhang()">Overhang: OFF</button>
+      <button class="toggle-btn active" id="btnDetails" onclick="toggleDetails()">Details: ON</button>
+      <button class="toggle-btn active" id="btnNotes" onclick="toggleNotes()">Notes: ON</button>
     </div>
     <div class="ctrl-group">
       <label>$/ft C:</label>
@@ -999,14 +1872,15 @@ PURLIN_LAYOUT_CONTROLS = """
     <div class="ctrl-group">
       <button class="btn-gold" onclick="runComparison()">Compare All</button>
     </div>
-    <button class="toggle-btn" onclick="window.print()">Print</button>
+    <button class="toggle-btn" onclick="printMultiPage()" title="Print with title block on every page">Print</button>
+    <button class="toggle-btn" onclick="resetZoom()">Reset Zoom</button>
 """
 
 # ===================================================================
 # Footer HTML
 # ===================================================================
 
-PURLIN_LAYOUT_FOOTER = """
+PURLIN_LAYOUT_FOOTER = r"""
   <div>Mode: <span class="s" id="fMode">standard</span></div>
   <div>Type: <span class="s" id="fType">C</span></div>
   <div>Lines: <span class="s" id="fLines">--</span></div>
@@ -1016,14 +1890,17 @@ PURLIN_LAYOUT_FOOTER = """
 """
 
 # ===================================================================
-# Assemble final HTML via drawing_base
+# Assemble full HTML using drawing_base
 # ===================================================================
 
 PURLIN_LAYOUT_HTML = drawing_base.build_html_shell(
-    title="Purlin Layout",
-    drawing_type="purlin_layout",
-    config_var="PURLIN_LAYOUT_CONFIG",
+    title='Purlin Layout',
+    drawing_type='purlin_layout',
+    config_var='PURLIN_LAYOUT_CONFIG',
     controls_html=PURLIN_LAYOUT_CONTROLS,
     footer_html=PURLIN_LAYOUT_FOOTER,
     drawing_js=PURLIN_LAYOUT_JS,
 )
+
+# Inject extra CSS into the HTML (before </style>)
+PURLIN_LAYOUT_HTML = PURLIN_LAYOUT_HTML.replace('</style>', PURLIN_LAYOUT_EXTRA_CSS + '\n</style>')
