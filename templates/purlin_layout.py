@@ -70,9 +70,9 @@ var showNotes = true;
 var comparisonResults = null;
 
 // ══════════════════════════════════════════════════════════════
-// SVG HELPERS
+// SVG HELPERS (override drawing_base versions with ES5-compatible equivalents)
+// NS is already declared as const in drawing_base — do NOT redeclare
 // ══════════════════════════════════════════════════════════════
-var NS = 'http://www.w3.org/2000/svg';
 
 function $e(tag, a, txt) {
   var e = document.createElementNS(NS, tag);
