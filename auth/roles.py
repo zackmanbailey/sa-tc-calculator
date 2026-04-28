@@ -349,6 +349,7 @@ SIDEBAR_SECTIONS = [
         {"id": "prod_reports",  "label": "Production Reports","url": "/reports/production"},
         {"id": "exec_reports",  "label": "Executive Summary", "url": "/reports/executive"},
         {"id": "doc_mgmt",     "label": "Documents",          "url": "/documents"},
+        {"id": "feature_reqs", "label": "Feature Requests",  "url": "/feature-requests"},
     ]},
     # ── Minimal sidebars for restricted roles ───
     {"id": "my_station",     "label": "My Station",      "icon": "cpu",       "children": [
