@@ -1,6 +1,6 @@
 # Purlin Rules Reference — TitanForge / Structures America
 
-> Living document. Last updated: 2026-04-22 (added §6.11 assembly chain, updated §6.5 purlin positioning, updated §8.1/8.2 physical descriptions)
+> Living document. Last updated: 2026-04-26 (§2.3 production-ready Z-purlin splice algorithm, §8.5 updated splice rules)
 > Source: Design discussions between Zack (Titan Carports) and engineering team.
 
 ---
@@ -35,12 +35,33 @@
 - **No-overhang end pieces**: extend 4" past the outside face of the end rafter for the endcap, plus 4" for the half-rafter = 8" total past rafter center.
 - **Overhang end pieces**: extend past the end rafter by the overhang distance (typically 1 parking space width).
 
-### 2.3 Z-Purlin Piece Lengths
-- Pieces extend past the rafter by the Z-extension distance (default 6', configurable).
-- Where two Z-purlins meet, they overlap by 6".
-- Splice holes go through both purlins in the overlap zone — must be shown on shop drawing.
-- **No-overhang end pieces**: extend 4" past the outside face of the end rafter for endcap, plus 4" for the half-rafter = 8" total past rafter center. Purlins CANNOT go more than 8" past the center of the end rafter when overhang is off.
-- **Overhang end pieces**: extend up to 1 parking space width past the end rafter (user-configurable).
+### 2.3 Z-Purlin Piece Lengths — Production-Ready Splice Algorithm
+
+**Core Rules (fixed for all projects):**
+- Splice type: Always 6" lap (overlap).
+- End condition: Each end of the building must have a splice that straddles the first two rafters + 6 ft overhang past the end rafter.
+- Interior splices: Allowed to skip one full bay; purlins may overhang rafters.
+- Maximum piece length: 40 ft (use 39'6" as practical max for clean 6" laps).
+- Goal: Use the fewest pieces possible while obeying the above.
+
+**Formulas (B = bay width in feet):**
+| Group Type    | Formula      | B=20 ft  | B=18 ft    |
+|---------------|-------------|----------|------------|
+| End Groups    | 1.8125 × B | 36'3"    | 32'7½"     |
+| Max Long Run  | 39'6"       | 39'6"    | 39'6"      |
+| Short Splice  | 0.425 × B  | 8'6"     | 7'8"       |
+
+**Algorithm Steps:**
+1. Gather inputs: building length L, bay width B = building_length / num_bays.
+2. Calculate end group length = 1.8125 × B.
+3. Build the sequence: End Group → (Long Run + Short Splice pairs as needed) → End Group.
+4. Maximize piece lengths (up to 39'6") to minimize total piece count.
+5. Verify: Total Material = L + (0.5 ft × number_of_splices).
+
+**No-overhang end pieces**: extend 4" past the outside face of the end rafter for endcap, plus 4" for the half-rafter = 8" total past rafter center. Purlins CANNOT go more than 8" past the center of the end rafter when overhang is off.
+**Overhang end pieces**: extend up to 1 parking space width past the end rafter (user-configurable).
+
+**Example**: 126ft building, B=18ft, 8 rafters → 4 groups: End(32'8") + Long(39'6") + Adjusted(23'3") + End(32'8") = 128ft material, 126ft coverage, 3 splices.
 
 ### 2.4 Building Length Calculation (No Overhang)
 Total building length = rafter-center-to-rafter-center span + (half-rafter + endcap) × 2
@@ -263,7 +284,7 @@ Key details verified via 3D model review (2026-04-22):
 - **Rafter end cap plate** (angled purlins only): 10GA, 9" × 15" flat
 
 ### 8.5 Purlin Splice Connection (at Rafter)
-- **Z-Purlins**: The splice IS the overlap. Two Z-purlins extend past the rafter and overlap by 6". The overlapping sections are fastened together with 8 × #10 tek screws total. No separate splice piece needed — it's just the two Z-purlins lapping over each other on top of the rafter (boxed beam).
+- **Z-Purlins**: The splice IS the 6" lap overlap. Two Z-purlins overlap by 6" on top of the rafter, creating a boxed beam section. The overlapping sections are fastened together with 8 × #10 tek screws total. No separate splice piece needed. End groups straddle the first two rafters + 6ft overhang past the end rafter. Interior splices may skip one full bay. See §2.3 for the production-ready splice algorithm with formulas (End Group = 1.8125 × B, Short Splice = 0.425 × B, Max Piece = 39'6").
 - **C-Purlins**: C-purlins butt-joint at the rafter center (4" on each side). The connection is through the P1 plate — no overlap, no separate splice piece.
 - The engineering drawing (Purlin Splice Option 1) shows a splice detail used in lieu of 4/S3.1 for special cases where a purlin sits on top of a continuous purlin — this is at the contractor's discretion and uses 2 purlins of the same depth and gauge with 8 #10 screws.
 
