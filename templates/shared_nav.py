@@ -1260,6 +1260,10 @@ NAV_HTML = r"""
                 <span class="tf-nav-icon">&#128274;</span>
                 <span class="tf-nav-label">User Management</span>
             </a>
+            <a href="/feature-requests" class="tf-nav-item {{ACTIVE_feature-requests}}">
+                <span class="tf-nav-icon">&#128161;</span>
+                <span class="tf-nav-label">Feature Requests</span>
+            </a>
         </div>
     </nav>
 
@@ -2309,6 +2313,54 @@ window.TFWalkthrough = (function() {
         isActive: function() { return isActive; }
     };
 })();
+
+// ── Feature Request Submission ──────────────────────────────────
+function tfSubmitFeedback() {
+    var title = document.getElementById('frTitle').value.trim();
+    var category = document.getElementById('frCategory').value;
+    var priority = document.getElementById('frPriority').value;
+    var desc = document.getElementById('frDesc').value.trim();
+    var msgEl = document.getElementById('frMsg');
+
+    if (!title) {
+        msgEl.style.display = 'block';
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = 'Please enter a title.';
+        return;
+    }
+
+    msgEl.style.display = 'block';
+    msgEl.style.color = '#94a3b8';
+    msgEl.textContent = 'Submitting...';
+
+    fetch('/api/feature-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title, category: category, priority: priority, description: desc })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            msgEl.style.color = '#22c55e';
+            msgEl.textContent = 'Submitted! Thank you for your feedback.';
+            document.getElementById('frTitle').value = '';
+            document.getElementById('frDesc').value = '';
+            document.getElementById('frCategory').value = 'Feature Request';
+            document.getElementById('frPriority').value = 'medium';
+            setTimeout(function() {
+                document.getElementById('tfFeedbackModal').style.display = 'none';
+                msgEl.style.display = 'none';
+            }, 1500);
+        } else {
+            msgEl.style.color = '#ef4444';
+            msgEl.textContent = data.error || 'Failed to submit.';
+        }
+    })
+    .catch(function() {
+        msgEl.style.color = '#ef4444';
+        msgEl.textContent = 'Network error. Please try again.';
+    });
+}
 """
 
 
@@ -2733,6 +2785,72 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
             <span><kbd>Esc</kbd> Close</span>
         </div>
     </div>
+</div>
+
+<!-- Feature Request / Feedback Button -->
+<button id="tfFeedbackBtn" onclick="document.getElementById('tfFeedbackModal').style.display='flex'"
+    style="position:fixed;bottom:16px;left:16px;z-index:9998;width:36px;height:36px;border-radius:50%;
+           background:#334155;border:1px solid #475569;color:#94a3b8;font-size:16px;cursor:pointer;
+           display:flex;align-items:center;justify-content:center;transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.3);"
+    onmouseover="this.style.background='#3b82f6';this.style.color='#fff';this.style.borderColor='#3b82f6'"
+    onmouseout="this.style.background='#334155';this.style.color='#94a3b8';this.style.borderColor='#475569'"
+    title="Submit Feedback">&#128161;</button>
+
+<!-- Feature Request Modal -->
+<div id="tfFeedbackModal" style="display:none;position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.6);
+     align-items:center;justify-content:center;" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;width:420px;max-width:92vw;
+              box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#e2e8f0;overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;">
+      <h3 style="margin:0;font-size:15px;font-weight:600;">Submit Feedback</h3>
+      <button onclick="document.getElementById('tfFeedbackModal').style.display='none'"
+              style="background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="padding:20px;">
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;font-weight:600;">Title *</label>
+        <input id="frTitle" type="text" placeholder="Brief summary..."
+               style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;
+                      color:#e2e8f0;font-size:13px;box-sizing:border-box;" />
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;font-weight:600;">Category</label>
+          <select id="frCategory" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;
+                  border-radius:6px;color:#e2e8f0;font-size:13px;">
+            <option value="Feature Request">Feature Request</option>
+            <option value="Bug">Bug</option>
+            <option value="Improvement">Improvement</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;font-weight:600;">Priority</label>
+          <select id="frPriority" style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;
+                  border-radius:6px;color:#e2e8f0;font-size:13px;">
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;font-weight:600;">Description</label>
+        <textarea id="frDesc" rows="4" placeholder="Describe what you'd like to see..."
+                  style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;
+                         color:#e2e8f0;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="document.getElementById('tfFeedbackModal').style.display='none'"
+                style="padding:8px 16px;background:transparent;border:1px solid #475569;border-radius:6px;
+                       color:#94a3b8;font-size:13px;cursor:pointer;">Cancel</button>
+        <button onclick="tfSubmitFeedback()"
+                style="padding:8px 16px;background:#3b82f6;border:none;border-radius:6px;
+                       color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Submit</button>
+      </div>
+      <div id="frMsg" style="margin-top:10px;font-size:12px;text-align:center;display:none;"></div>
+    </div>
+  </div>
 </div>
 """
     return sidebar

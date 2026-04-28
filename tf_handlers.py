@@ -20641,6 +20641,251 @@ class CoilCostSummaryHandler(BaseHandler):
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
+# ── Feature Request System ────────────────────────────────────────────
+
+class FeatureRequestSubmitHandler(BaseHandler):
+    """POST /api/feature-request — Any authenticated user can submit a feature request."""
+
+    def post(self):
+        try:
+            user = self.get_current_user()
+            if not user:
+                self.set_status(401)
+                self.write(json_encode({"ok": False, "error": "Not authenticated"}))
+                return
+
+            body = json.loads(self.request.body)
+            title = (body.get("title") or "").strip()
+            category = body.get("category", "Other")
+            description = (body.get("description") or "").strip()
+            priority = body.get("priority", "medium")
+
+            if not title:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Title is required"}))
+                return
+
+            if category not in ("Bug", "Feature Request", "Improvement", "Other"):
+                category = "Other"
+            if priority not in ("low", "medium", "high"):
+                priority = "medium"
+
+            fr_dir = os.path.join(DATA_DIR, "feature_requests")
+            os.makedirs(fr_dir, exist_ok=True)
+
+            ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+            fr_id = f"FR-{ts}"
+            record = {
+                "id": fr_id,
+                "title": title,
+                "category": category,
+                "description": description,
+                "priority": priority,
+                "submitted_by": user,
+                "submitted_at": datetime.datetime.now().isoformat(),
+                "status": "new",
+                "admin_notes": "",
+            }
+
+            with open(os.path.join(fr_dir, f"{fr_id}.json"), "w") as f:
+                json.dump(record, f, indent=2)
+
+            self.write(json_encode({"ok": True, "id": fr_id}))
+        except Exception as e:
+            logger.error(f"FeatureRequestSubmitHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class FeatureRequestListHandler(BaseHandler):
+    """GET /api/feature-requests — List all feature requests (admin/owner only).
+       POST /api/feature-requests — Update status/notes on a feature request.
+    """
+    required_roles = ["admin", "owner"]
+
+    def get(self):
+        try:
+            fr_dir = os.path.join(DATA_DIR, "feature_requests")
+            os.makedirs(fr_dir, exist_ok=True)
+            items = []
+            for fname in os.listdir(fr_dir):
+                if fname.endswith(".json"):
+                    with open(os.path.join(fr_dir, fname)) as f:
+                        items.append(json.load(f))
+            items.sort(key=lambda x: x.get("submitted_at", ""), reverse=True)
+            self.write(json_encode({"ok": True, "items": items}))
+        except Exception as e:
+            logger.error(f"FeatureRequestListHandler GET error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json.loads(self.request.body)
+            fr_id = body.get("id", "")
+            new_status = body.get("status", "")
+            admin_notes = body.get("admin_notes", "")
+
+            if not fr_id:
+                self.set_status(400)
+                self.write(json_encode({"ok": False, "error": "Missing id"}))
+                return
+
+            fr_dir = os.path.join(DATA_DIR, "feature_requests")
+            fpath = os.path.join(fr_dir, f"{fr_id}.json")
+            if not os.path.isfile(fpath):
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Not found"}))
+                return
+
+            with open(fpath) as f:
+                record = json.load(f)
+
+            if new_status and new_status in ("new", "reviewed", "planned", "done"):
+                record["status"] = new_status
+            if admin_notes is not None:
+                record["admin_notes"] = admin_notes
+
+            with open(fpath, "w") as f:
+                json.dump(record, f, indent=2)
+
+            self.write(json_encode({"ok": True}))
+        except Exception as e:
+            logger.error(f"FeatureRequestListHandler POST error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class FeatureRequestAdminPageHandler(BaseHandler):
+    """GET /feature-requests — Admin page to view and manage all feature requests."""
+    required_roles = ["admin", "owner"]
+
+    def get(self):
+        try:
+            html = r"""<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Feature Requests — TitanForge</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:'Inter','Segoe UI',sans-serif}
+.fr-wrap{padding:24px 32px;max-width:1400px;margin:0 auto}
+h1{font-size:24px;font-weight:700;margin-bottom:16px}
+.fr-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+.fr-tab{padding:8px 18px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#94a3b8;cursor:pointer;font-size:13px;transition:all .2s}
+.fr-tab:hover{border-color:#3b82f6;color:#e2e8f0}
+.fr-tab.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
+.fr-table{width:100%;border-collapse:collapse;font-size:13px}
+.fr-table th{text-align:left;padding:10px 12px;background:#1e293b;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155;position:sticky;top:0;z-index:2}
+.fr-table td{padding:10px 12px;border-bottom:1px solid #1e293b;vertical-align:top}
+.fr-table tr:hover td{background:#1e293b}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;text-transform:uppercase}
+.badge-high{background:#7f1d1d;color:#fca5a5}
+.badge-medium{background:#78350f;color:#fcd34d}
+.badge-low{background:#14532d;color:#86efac}
+.badge-bug{background:#7f1d1d;color:#fca5a5}
+.badge-feature{background:#1e3a5f;color:#93c5fd}
+.badge-improvement{background:#365314;color:#bef264}
+.badge-other{background:#334155;color:#cbd5e1}
+select.fr-sel{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:12px}
+textarea.fr-notes{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:12px;width:100%;min-height:50px;resize:vertical}
+button.fr-save{padding:4px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;transition:background .2s}
+button.fr-save:hover{background:#2563eb}
+.fr-empty{text-align:center;padding:60px 20px;color:#64748b;font-size:15px}
+.fr-count{font-size:13px;color:#64748b;margin-bottom:12px}
+</style>
+</head><body>
+<div class="fr-wrap">
+<h1>Feature Requests</h1>
+<div class="fr-tabs">
+  <div class="fr-tab active" data-filter="all">All</div>
+  <div class="fr-tab" data-filter="new">New</div>
+  <div class="fr-tab" data-filter="reviewed">Reviewed</div>
+  <div class="fr-tab" data-filter="planned">Planned</div>
+  <div class="fr-tab" data-filter="done">Done</div>
+</div>
+<div class="fr-count" id="frCount"></div>
+<div id="frBody"><div class="fr-empty">Loading...</div></div>
+</div>
+<script>
+let allItems=[];
+let activeFilter='all';
+
+function catBadge(c){
+  const m={'Bug':'bug','Feature Request':'feature','Improvement':'improvement'};
+  return '<span class="badge badge-'+(m[c]||'other')+'">'+c+'</span>';
+}
+function priBadge(p){
+  return '<span class="badge badge-'+p+'">'+p+'</span>';
+}
+
+function render(){
+  const items=activeFilter==='all'?allItems:allItems.filter(i=>i.status===activeFilter);
+  document.getElementById('frCount').textContent=items.length+' request'+(items.length!==1?'s':'');
+  if(!items.length){document.getElementById('frBody').innerHTML='<div class="fr-empty">No feature requests found.</div>';return;}
+  let h='<table class="fr-table"><thead><tr><th>Title</th><th>Category</th><th>Priority</th><th>Submitted By</th><th>Date</th><th>Status</th><th style="min-width:180px">Admin Notes</th><th></th></tr></thead><tbody>';
+  items.forEach(r=>{
+    const d=r.submitted_at?new Date(r.submitted_at).toLocaleDateString():'';
+    h+='<tr data-id="'+r.id+'">';
+    h+='<td style="font-weight:600;max-width:200px">'+esc(r.title)+'<div style="font-size:11px;color:#64748b;margin-top:4px;white-space:pre-wrap">'+esc(r.description||'')+'</div></td>';
+    h+='<td>'+catBadge(r.category)+'</td>';
+    h+='<td>'+priBadge(r.priority)+'</td>';
+    h+='<td>'+esc(r.submitted_by||'')+'</td>';
+    h+='<td style="white-space:nowrap">'+d+'</td>';
+    h+='<td><select class="fr-sel" data-field="status">';
+    ['new','reviewed','planned','done'].forEach(s=>{
+      h+='<option value="'+s+'"'+(r.status===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';
+    });
+    h+='</select></td>';
+    h+='<td><textarea class="fr-notes" data-field="admin_notes">'+esc(r.admin_notes||'')+'</textarea></td>';
+    h+='<td><button class="fr-save" onclick="saveRow(this)">Save</button></td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table>';
+  document.getElementById('frBody').innerHTML=h;
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function saveRow(btn){
+  const tr=btn.closest('tr');
+  const id=tr.getAttribute('data-id');
+  const status=tr.querySelector('[data-field="status"]').value;
+  const notes=tr.querySelector('[data-field="admin_notes"]').value;
+  btn.textContent='Saving...';btn.disabled=true;
+  fetch('/api/feature-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status,admin_notes:notes})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){btn.textContent='Saved!';setTimeout(()=>{btn.textContent='Save';btn.disabled=false;loadAll();},800);}
+    else{btn.textContent='Error';btn.disabled=false;}
+  }).catch(()=>{btn.textContent='Error';btn.disabled=false;});
+}
+
+function loadAll(){
+  fetch('/api/feature-requests').then(r=>r.json()).then(d=>{
+    allItems=d.items||[];render();
+  }).catch(()=>{document.getElementById('frBody').innerHTML='<div class="fr-empty">Failed to load.</div>';});
+}
+
+document.querySelector('.fr-tabs').addEventListener('click',e=>{
+  if(!e.target.classList.contains('fr-tab'))return;
+  document.querySelectorAll('.fr-tab').forEach(t=>t.classList.remove('active'));
+  e.target.classList.add('active');
+  activeFilter=e.target.getAttribute('data-filter');
+  render();
+});
+
+loadAll();
+</script>
+</body></html>"""
+            self.render_with_nav(html, active_page="feature-requests",
+                                breadcrumbs=[("Dashboard", "/"), ("Feature Requests", "")])
+        except Exception as e:
+            logger.error(f"FeatureRequestAdminPageHandler error: {e}", exc_info=True)
+            self.set_status(500)
+            self.write(f"<h2>Error</h2><p>{e}</p>")
+
+
 def get_routes():
     """Return list of (pattern, handler) tuples for tornado.web.Application."""
     static_path = os.path.join(BASE_DIR, "static")
@@ -21180,6 +21425,11 @@ def get_routes():
         (r"/api/operator/queue",                 OperatorQueueHandler),
         (r"/api/admin/test-email",               AdminTestEmailHandler),
         (r"/api/project/sync-from-drawing",      ProjectSyncFromDrawingHandler),
+
+        # ── Feature Requests ──────────────────────────────────
+        (r"/feature-requests",                   FeatureRequestAdminPageHandler),
+        (r"/api/feature-request",                FeatureRequestSubmitHandler),
+        (r"/api/feature-requests",               FeatureRequestListHandler),
 
         (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": static_path}),
     ]
