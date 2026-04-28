@@ -2314,6 +2314,32 @@ window.TFWalkthrough = (function() {
     };
 })();
 
+// ── Feature Request Badge (admin only) ──────────────────────────
+(function() {
+    var badge = document.getElementById('frBadge');
+    if (!badge) return; // not admin, link not rendered
+    fetch('/api/feature-requests')
+    .then(function(r) { if (!r.ok) throw ''; return r.json(); })
+    .then(function(d) {
+        if (!d.ok || !d.requests) return;
+        var newCount = d.requests.filter(function(r) { return r.status === 'new'; }).length;
+        if (newCount > 0) {
+            badge.textContent = newCount;
+            badge.style.display = 'inline-block';
+            // Also pulse the group header if collapsed
+            var grp = document.querySelector('[data-group="admin"]');
+            if (grp && !grp.classList.contains('expanded')) {
+                grp.style.position = 'relative';
+                var dot = document.createElement('span');
+                dot.style.cssText = 'position:absolute;top:8px;right:28px;width:8px;height:8px;background:#ef4444;border-radius:50%;';
+                dot.id = 'frGroupDot';
+                if (!document.getElementById('frGroupDot')) grp.appendChild(dot);
+            }
+        }
+    })
+    .catch(function() {});
+})();
+
 // ── Feature Request Submission ──────────────────────────────────
 function tfSubmitFeedback() {
     var title = document.getElementById('frTitle').value.trim();
@@ -2582,11 +2608,15 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
             for child in children:
                 child_url = child.get("url", "#")
                 child_label = child.get("label", "")
+                child_id = child.get("id", "")
                 is_active = _is_nav_active(child_url, active_page, request_path)
                 active_cls = " active" if is_active else ""
-                nav_items_html += f'              <a href="{child_url}" class="tf-nav-item{active_cls}">\n'
+                id_attr = f' id="nav-{child_id}"' if child_id else ""
+                nav_items_html += f'              <a href="{child_url}" class="tf-nav-item{active_cls}"{id_attr}>\n'
                 nav_items_html += f'                  <span class="tf-nav-icon">{icon_html}</span>\n'
                 nav_items_html += f'                  <span class="tf-nav-label" data-i18n="{child_label}">{child_label}</span>\n'
+                if child_id == "feature_reqs":
+                    nav_items_html += f'                  <span id="frBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:auto;"></span>\n'
                 nav_items_html += f'              </a>\n'
             nav_items_html += f'            </div>\n'
         elif url:
