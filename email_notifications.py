@@ -78,6 +78,27 @@ NOTIFICATION_TYPES = {
         "icon": "&#128666;",  # delivery truck
         "color": "#2980B9",
     },
+    "wo_status_change": {
+        "label": "WO Status Change",
+        "description": "Work order status changed",
+        "default_roles": ["admin", "estimator", "shop"],
+        "icon": "&#128260;",  # arrows
+        "color": "#8E44AD",
+    },
+    "qc_critical_fail": {
+        "label": "QC Critical Failure",
+        "description": "Critical item failed QC inspection",
+        "default_roles": ["admin", "qc_manager", "estimator"],
+        "icon": "&#128680;",  # rotating light
+        "color": "#E74C3C",
+    },
+    "wo_revision": {
+        "label": "WO Revision",
+        "description": "Work order revised — change order applied",
+        "default_roles": ["admin", "estimator", "shop"],
+        "icon": "&#128221;",  # memo
+        "color": "#F39C12",
+    },
 }
 
 

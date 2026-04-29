@@ -86,7 +86,7 @@ function getParams() {
 function draw() {
   var svg = document.getElementById('svg');
   while (svg.firstChild) svg.removeChild(svg.firstChild);
-  svg.setAttribute('viewBox', '0 0 1100 850');
+  svg.setAttribute('viewBox', '0 0 1100 940');
 
   var p = getParams();
   var sp = p.spec;
@@ -101,11 +101,11 @@ function draw() {
 
   // ════════════════════════════════════════════════════════════════════
   // ZONE 1: ELEVATION VIEW (y=25 to y=220)
-  // Side view of Z-purlin spanning between rafters
+  // Side view of Z-purlin spanning between rafters — CAD-quality
   // ════════════════════════════════════════════════════════════════════
   svg.appendChild($t(350, 22, 'ELEVATION VIEW', 'ttl'));
 
-  // Rafter outlines at each end (cross-section rectangles)
+  // Layout dimensions
   var evL = 60, evR = 650;    // left/right extent of elevation
   var evY = 65;                // top of purlin in elevation
   var rafW = 30;               // rafter width seen in side view
@@ -115,59 +115,104 @@ function draw() {
   if (purlinH < 20) purlinH = 20;  // min visual height
   var scaleFactor = purlinH / p.depth;  // actual px/in for vertical
 
-  // Left rafter
+  // ── Rafters (cross-section blocks at each end) ──
   var lgR = $g('hover-part', 'rafter-L');
+  // Rafter body with hatching (cut surface indicator)
   lgR.appendChild($r(evL, evY - 15, rafW, purlinH + 30, 'gus'));
+  // Cross-hatch lines inside rafter (indicates cut section)
+  for (var hi = 0; hi < 5; hi++) {
+    var hy = evY - 10 + hi * (purlinH + 20) / 5;
+    lgR.appendChild($l(evL + 2, hy, evL + rafW - 2, hy + 8, 'dim'));
+  }
   lgR.appendChild($t(evL + rafW/2, evY + purlinH + 28, 'RAFTER', 'note', 'middle'));
   svg.appendChild(lgR);
 
-  // Right rafter
   var rgR = $g('hover-part', 'rafter-R');
   rgR.appendChild($r(evR - rafW, evY - 15, rafW, purlinH + 30, 'gus'));
+  for (var hi = 0; hi < 5; hi++) {
+    var hy = evY - 10 + hi * (purlinH + 20) / 5;
+    rgR.appendChild($l(evR - rafW + 2, hy, evR - 2, hy + 8, 'dim'));
+  }
   rgR.appendChild($t(evR - rafW/2, evY + purlinH + 28, 'RAFTER', 'note', 'middle'));
   svg.appendChild(rgR);
 
-  // Purlin body (Z-shape seen from side = rectangle with offset flanges)
+  // ── Purlin body (side view showing Z-shape profile) ──
   var pL = evL + rafW;       // purlin left edge
   var pR = evR - rafW;       // purlin right edge
-  var flangeOff = 4;         // visual offset to show Z-shape top/bottom flange difference
   var purG = $g('hover-part', 'purlin');
 
-  // Web (main rectangular body)
-  purG.appendChild($r(pL, evY, pR - pL, purlinH, 'cee'));
+  // Web (thick object line)
+  purG.appendChild($r(pL, evY, pR - pL, purlinH, 'obj thick'));
 
   // Top flange extends to left (Z-shape characteristic)
   var flangeW = sp.topFlange * scaleFactor;
   if (flangeW < 8) flangeW = 8;
   purG.appendChild($r(pL - flangeW + 2, evY - 3, flangeW + (pR - pL) * 0.02, 3, 'cee'));
 
-  // Bottom flange extends to right (Z-shape characteristic - opposite direction)
+  // Bottom flange extends to right (Z-shape characteristic)
   purG.appendChild($r(pR - (pR - pL) * 0.02, evY + purlinH, flangeW + (pR - pL) * 0.02, 3, 'cee'));
 
-  // Centerline
+  // Centerline (long-short-long dash pattern)
   purG.appendChild($l((pL + pR)/2, evY - 20, (pL + pR)/2, evY + purlinH + 20, 'center'));
   svg.appendChild(purG);
 
-  // P1 Clip connections at each end
+  // ── P1 Clip connections at each end (detailed) ──
   var clipG = $g('hover-part', 'p1-clips');
-  var clipH = 14;
+  var clipH = Math.max(14, purlinH * 0.6);
   var clipW = 8;
 
-  // Left P1 clip
+  // Left P1 clip — vertical leg + horizontal seat
   clipG.appendChild($r(pL - 2, evY - 2, clipW, clipH, 'clip-fill'));
+  clipG.appendChild($r(pL - 2, evY + clipH - 4, clipW + 4, 4, 'clip-fill'));  // seat
   clipG.appendChild($c(pL + 2, evY + 4, 1.5, 'bolt'));
-  clipG.appendChild($c(pL + 2, evY + clipH - 5, 1.5, 'bolt'));
+  clipG.appendChild($c(pL + 2, evY + clipH - 8, 1.5, 'bolt'));
+  // Weld tick mark at clip base
+  clipG.appendChild($l(pL - 2, evY + clipH - 2, pL - 6, evY + clipH + 3, 'weld-ref'));
 
   // Right P1 clip
   clipG.appendChild($r(pR - clipW + 2, evY - 2, clipW, clipH, 'clip-fill'));
+  clipG.appendChild($r(pR - clipW - 2, evY + clipH - 4, clipW + 4, 4, 'clip-fill'));
   clipG.appendChild($c(pR - 2, evY + 4, 1.5, 'bolt'));
-  clipG.appendChild($c(pR - 2, evY + clipH - 5, 1.5, 'bolt'));
+  clipG.appendChild($c(pR - 2, evY + clipH - 8, 1.5, 'bolt'));
+  clipG.appendChild($l(pR + 2, evY + clipH - 2, pR + 6, evY + clipH + 3, 'weld-ref'));
   svg.appendChild(clipG);
 
-  // P1 clip labels
   svg.appendChild($t(pL + 2, evY - 10, 'P1 CLIP (TYP)', 'noteb', 'middle'));
 
-  // Section cut indicator A-A (through center)
+  // ── Sag rod location indicator(s) along span ──
+  // Sag rods at mid-span (or 1/3 points if span > 30ft)
+  var sagG = $g('hover-part', 'sag-rods');
+  var numSagPts = p.spanFt > 30 ? 2 : 1;
+  for (var si = 0; si < numSagPts; si++) {
+    var sagFrac = numSagPts === 1 ? 0.5 : (si + 1) / (numSagPts + 1);
+    var sagX = pL + (pR - pL) * sagFrac;
+    // Triangle pointer indicating sag rod location
+    sagG.appendChild($l(sagX, evY + purlinH + 2, sagX, evY + purlinH + 14, 'obj med'));
+    sagG.appendChild($l(sagX - 3, evY + purlinH + 14, sagX + 3, evY + purlinH + 14, 'obj med'));
+    sagG.appendChild($t(sagX, evY + purlinH + 23, 'SR', 'noteb', 'middle'));
+  }
+  // Sag rod dimension from end
+  if (numSagPts === 1) {
+    dimH(svg, pL, pL + (pR - pL) * 0.5, evY - 15, -14, fmtFtIn(p.spanIn / 2));
+  }
+  svg.appendChild(sagG);
+
+  // ── Splice location indicator (if span exceeds typical stock length) ──
+  var maxStockFt = 53;  // max single-piece purlin length
+  if (p.spanFt > maxStockFt) {
+    var splG = $g('hover-part', 'splice-loc');
+    var splX = pL + (pR - pL) * 0.5;  // splice at midpoint
+    // Dashed vertical line at splice
+    splG.appendChild($l(splX - 12, evY - 5, splX - 12, evY + purlinH + 5, 'hidden'));
+    splG.appendChild($l(splX + 12, evY - 5, splX + 12, evY + purlinH + 5, 'hidden'));
+    // Lap overlap hatching
+    splG.appendChild($e('rect', {x: splX - 12, y: evY, width: 24, height: purlinH,
+      fill: '#F6AE2D', 'fill-opacity': '0.12', stroke: 'none'}));
+    splG.appendChild($t(splX, evY - 8, 'LAP SPLICE', 'noteb', 'middle'));
+    svg.appendChild(splG);
+  }
+
+  // ── Section cut indicator A-A (through center) ──
   var secX = (pL + pR) / 2;
   svg.appendChild($l(secX - 8, evY - 25, secX - 8, evY + purlinH + 25, 'cut-line'));
   svg.appendChild($l(secX + 8, evY - 25, secX + 8, evY + purlinH + 25, 'cut-line'));
@@ -175,15 +220,12 @@ function draw() {
   svg.appendChild($t(secX + 8, evY - 28, 'A', 'lblb', 'middle'));
 
   // ── Elevation dimensions ──
-  // Total span
-  dimH(svg, pL, pR, evY + purlinH + 8, 20, fmtFtIn(p.spanIn));
-
-  // Depth dimension (left side)
+  dimH(svg, pL, pR, evY + purlinH + 30, 20, fmtFtIn(p.spanIn));
   dimV(svg, pL - flangeW - 5, evY, evY + purlinH, -18, p.depth + '"');
 
   // Scale note
   var elevScale = fmtScale(sc);
-  svg.appendChild($t(350, evY + purlinH + 52, 'SCALE: ' + elevScale, 'note', 'middle'));
+  svg.appendChild($t(350, evY + purlinH + 64, 'SCALE: ' + elevScale, 'note', 'middle'));
 
   // ════════════════════════════════════════════════════════════════════
   // ZONE 1b: ADDITIONAL ELEVATION INFO (right side, y=25 to y=220)
@@ -543,7 +585,50 @@ function draw() {
   });
 
   // ════════════════════════════════════════════════════════════════════
-  // ZONE 5: TITLE BLOCK (y=680 to y=815)
+  // ZONE 4b: DRILL SCHEDULE (y=620 to y=680)
+  // Fabrication-ready hole pattern table
+  // ════════════════════════════════════════════════════════════════════
+  var dsY = 625;
+  svg.appendChild($t(noteX + 100, dsY - 5, 'DRILL SCHEDULE', 'ttl'));
+
+  var dsX = noteX, dsW = 340;
+  var dsCols = [0, 55, 110, 180, 260];
+  var dsHdrs = ['MARK', 'HOLE DIA', 'QTY/PC', 'LOCATION', 'NOTES'];
+
+  // Header row
+  svg.appendChild($e('rect', {x: dsX, y: dsY, width: dsW, height: 14, fill: '#333', stroke: '#333'}));
+  dsHdrs.forEach(function(h, i) {
+    var ht = $t(dsX + dsCols[i] + 4, dsY + 11, h, 'note');
+    ht.setAttribute('fill', '#FFF');
+    svg.appendChild(ht);
+  });
+
+  // Drill schedule rows
+  var dsRows = [
+    { mk: p.mark, dia: '15/16"', qtyPc: '4', loc: 'WEB — CLIP BOLT', note: 'STD' },
+    { mk: p.mark, dia: '9/16"', qtyPc: '2', loc: 'WEB — SAG ROD', note: 'MID-SPAN' }
+  ];
+
+  // Add splice holes if span requires splice
+  if (p.spanFt > 53) {
+    dsRows.push({ mk: p.mark, dia: '15/16"', qtyPc: '8', loc: 'FLANGES — SPLICE', note: 'LAP ZONE' });
+  }
+
+  dsRows.forEach(function(row, i) {
+    var ry = dsY + 14 + i * 14;
+    svg.appendChild($l(dsX, ry + 14, dsX + dsW, ry + 14, 'dim'));
+    var vals = [row.mk, row.dia, row.qtyPc, row.loc, row.note];
+    vals.forEach(function(v, ci) {
+      svg.appendChild($t(dsX + dsCols[ci] + 4, ry + 11, v, 'lbl'));
+    });
+  });
+
+  // Outer box for drill schedule
+  var dsH = 14 + (dsRows.length + 1) * 14;
+  svg.appendChild($r(dsX, dsY, dsW, dsH, 'obj med'));
+
+  // ════════════════════════════════════════════════════════════════════
+  // ZONE 5: TITLE BLOCK (y=770 to y=905)
   // ════════════════════════════════════════════════════════════════════
   drawTitleBlock(svg, {
     projName: projName,
