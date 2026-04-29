@@ -29,35 +29,56 @@ from typing import List, Optional, Dict
 STATUS_QUEUED = "queued"
 STATUS_APPROVED = "approved"
 STATUS_STICKERS_PRINTED = "stickers_printed"
-STATUS_IN_PROGRESS = "in_progress"
+STATUS_IN_FABRICATION = "in_fabrication"     # renamed from in_progress
+STATUS_IN_PROGRESS = "in_progress"            # keep as alias
+STATUS_QC_IN_PROCESS = "qc_in_process"       # NEW
+STATUS_QC_FINAL = "qc_final"                 # NEW
+STATUS_QC_APPROVED_WO = "qc_approved_wo"     # NEW — WO-level QC approved
+STATUS_NCR_HOLD = "ncr_hold"                 # renamed from qc_hold
+STATUS_QC_HOLD = "qc_hold"                   # keep as alias
+STATUS_READY_TO_SHIP = "ready_to_ship"       # NEW WO-level status
 STATUS_COMPLETE = "complete"
 STATUS_ON_HOLD = "on_hold"
-STATUS_QC_HOLD = "qc_hold"
 STATUS_SHIPPED_WO = "shipped"
 
 VALID_STATUSES = [
     STATUS_QUEUED, STATUS_APPROVED, STATUS_STICKERS_PRINTED,
-    STATUS_IN_PROGRESS, STATUS_QC_HOLD, STATUS_COMPLETE,
+    STATUS_IN_FABRICATION, STATUS_IN_PROGRESS,
+    STATUS_QC_IN_PROCESS, STATUS_QC_FINAL, STATUS_QC_APPROVED_WO,
+    STATUS_NCR_HOLD, STATUS_QC_HOLD,
+    STATUS_READY_TO_SHIP, STATUS_COMPLETE,
     STATUS_SHIPPED_WO, STATUS_ON_HOLD,
 ]
 
 STATUS_FLOW = {
     STATUS_QUEUED: [STATUS_APPROVED, STATUS_ON_HOLD],
-    STATUS_APPROVED: [STATUS_STICKERS_PRINTED, STATUS_ON_HOLD],
-    STATUS_STICKERS_PRINTED: [STATUS_IN_PROGRESS],
-    STATUS_IN_PROGRESS: [STATUS_COMPLETE, STATUS_QC_HOLD, STATUS_ON_HOLD],
-    STATUS_QC_HOLD: [STATUS_IN_PROGRESS, STATUS_ON_HOLD],
-    STATUS_COMPLETE: [STATUS_SHIPPED_WO],
+    STATUS_APPROVED: [STATUS_STICKERS_PRINTED, STATUS_IN_FABRICATION, STATUS_ON_HOLD],  # stickers optional
+    STATUS_STICKERS_PRINTED: [STATUS_IN_FABRICATION],
+    STATUS_IN_FABRICATION: [STATUS_QC_IN_PROCESS, STATUS_QC_FINAL, STATUS_COMPLETE, STATUS_NCR_HOLD, STATUS_ON_HOLD],
+    STATUS_IN_PROGRESS: [STATUS_QC_IN_PROCESS, STATUS_QC_FINAL, STATUS_COMPLETE, STATUS_NCR_HOLD, STATUS_ON_HOLD],  # alias
+    STATUS_QC_IN_PROCESS: [STATUS_QC_FINAL, STATUS_IN_FABRICATION, STATUS_NCR_HOLD],
+    STATUS_QC_FINAL: [STATUS_QC_APPROVED_WO, STATUS_NCR_HOLD, STATUS_IN_FABRICATION],
+    STATUS_QC_APPROVED_WO: [STATUS_READY_TO_SHIP],
+    STATUS_NCR_HOLD: [STATUS_IN_FABRICATION, STATUS_QC_IN_PROCESS, STATUS_ON_HOLD],
+    STATUS_QC_HOLD: [STATUS_IN_FABRICATION, STATUS_QC_IN_PROCESS, STATUS_ON_HOLD],  # alias
+    STATUS_READY_TO_SHIP: [STATUS_SHIPPED_WO],
+    STATUS_COMPLETE: [STATUS_READY_TO_SHIP, STATUS_SHIPPED_WO],
     STATUS_SHIPPED_WO: [],
-    STATUS_ON_HOLD: [STATUS_QUEUED, STATUS_APPROVED, STATUS_IN_PROGRESS],
+    STATUS_ON_HOLD: [STATUS_QUEUED, STATUS_APPROVED, STATUS_IN_FABRICATION],
 }
 
 STATUS_LABELS = {
     STATUS_QUEUED: "Queued",
     STATUS_APPROVED: "Approved",
     STATUS_STICKERS_PRINTED: "Stickers Printed",
+    STATUS_IN_FABRICATION: "In Fabrication",
     STATUS_IN_PROGRESS: "In Progress",
+    STATUS_QC_IN_PROCESS: "QC In-Process",
+    STATUS_QC_FINAL: "QC Final",
+    STATUS_QC_APPROVED_WO: "QC Approved",
+    STATUS_NCR_HOLD: "NCR Hold",
     STATUS_QC_HOLD: "QC Hold",
+    STATUS_READY_TO_SHIP: "Ready to Ship",
     STATUS_COMPLETE: "Complete",
     STATUS_SHIPPED_WO: "Shipped",
     STATUS_ON_HOLD: "On Hold",
@@ -67,8 +88,14 @@ STATUS_COLORS = {
     STATUS_QUEUED: "#64748B",
     STATUS_APPROVED: "#3B82F6",
     STATUS_STICKERS_PRINTED: "#8B5CF6",
+    STATUS_IN_FABRICATION: "#F59E0B",
     STATUS_IN_PROGRESS: "#F59E0B",
+    STATUS_QC_IN_PROCESS: "#8B5CF6",
+    STATUS_QC_FINAL: "#7C3AED",
+    STATUS_QC_APPROVED_WO: "#10B981",
+    STATUS_NCR_HOLD: "#DC2626",
     STATUS_QC_HOLD: "#F97316",
+    STATUS_READY_TO_SHIP: "#14B8A6",
     STATUS_COMPLETE: "#10B981",
     STATUS_SHIPPED_WO: "#6366F1",
     STATUS_ON_HOLD: "#DC2626",
@@ -135,6 +162,8 @@ _ALL_VALID_ITEM_STATUSES = set(VALID_STATUSES) | {
     STATUS_FABRICATED, STATUS_QC_PENDING, STATUS_QC_APPROVED,
     STATUS_QC_REJECTED, STATUS_READY_TO_SHIP, STATUS_SHIPPED,
     STATUS_DELIVERED, STATUS_INSTALLED,
+    STATUS_IN_FABRICATION, STATUS_QC_IN_PROCESS, STATUS_QC_FINAL,
+    STATUS_QC_APPROVED_WO, STATUS_NCR_HOLD,
 }
 
 
@@ -168,6 +197,36 @@ except ImportError:
         "REBAR":    {"label": "Rebar Station"},
         "CLEANING": {"label": "Cleaning Station"},
     }
+
+# ── QC Checklist Templates (per component type) ──
+QC_CHECKLIST_TEMPLATES = {
+    "column": [
+        {"id": "dim_check", "label": "Verify dimensions per shop drawing", "category": "dimensional"},
+        {"id": "weld_visual", "label": "Visual weld inspection (AWS D1.1)", "category": "welding"},
+        {"id": "base_plate", "label": "Base plate attachment and hole pattern", "category": "dimensional"},
+        {"id": "straightness", "label": "Check straightness (L/1000 tolerance)", "category": "dimensional"},
+        {"id": "surface_prep", "label": "Surface preparation / galvanizing", "category": "finish"},
+    ],
+    "rafter": [
+        {"id": "dim_check", "label": "Verify dimensions per shop drawing", "category": "dimensional"},
+        {"id": "weld_visual", "label": "Visual weld inspection (AWS D1.1)", "category": "welding"},
+        {"id": "splice_holes", "label": "Splice bolt hole pattern and alignment", "category": "dimensional"},
+        {"id": "camber", "label": "Check camber and sweep", "category": "dimensional"},
+        {"id": "clip_attach", "label": "Clip attachment locations and welds", "category": "welding"},
+        {"id": "mark_verify", "label": "Verify ship mark and orientation", "category": "identification"},
+    ],
+    "purlin": [
+        {"id": "dim_check", "label": "Verify length and profile dimensions", "category": "dimensional"},
+        {"id": "hole_pattern", "label": "Bolt hole pattern per drawing", "category": "dimensional"},
+        {"id": "gauge_verify", "label": "Verify material gauge", "category": "material"},
+        {"id": "mark_verify", "label": "Verify ship mark", "category": "identification"},
+    ],
+    "default": [
+        {"id": "dim_check", "label": "Verify dimensions per shop drawing", "category": "dimensional"},
+        {"id": "mark_verify", "label": "Verify ship mark and quantity", "category": "identification"},
+        {"id": "surface_check", "label": "Surface condition check", "category": "finish"},
+    ],
+}
 
 
 # ─────────────────────────────────────────────
@@ -220,6 +279,23 @@ class WorkOrderItem:
     unit_cost: float = 0.0              # Per-unit cost for purchased items
     supplier: str = ""                  # Supplier/vendor name
     sku: str = ""                       # Supplier part number / SKU
+    # ── AISC Traceability ──
+    heat_number: str = ""           # Heat number from coil/MTR
+    mtr_link: str = ""              # Path to Mill Test Report PDF
+    coil_tag: str = ""              # Coil tag ID used for this item
+    # ── AISC QC Enhancement ──
+    is_critical: bool = False       # Critical items (columns, rafters) hold entire WO on QC fail
+    qc_checklist: list = field(default_factory=list)   # In-process QC checkpoints [{id, label, result, inspector, timestamp, photo}]
+    qc_final_status: str = ""       # "passed", "failed", "" — final QC after all checklist items
+    qc_final_inspector: str = ""
+    qc_final_at: str = ""
+    ncr_id: str = ""                # Link to NCR if QC failed
+    # ── Welding / Bolting Documentation ──
+    welder_ids: list = field(default_factory=list)      # List of welder IDs who worked on this
+    wps_reference: str = ""         # Welding Procedure Specification reference
+    calibration_id: str = ""        # Calibration record for tools used
+    # ── Audit Trail ──
+    audit_log: list = field(default_factory=list)       # [{user, action, timestamp, details, before, after}]
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -271,6 +347,16 @@ class WorkOrder:
     # ── Allocation tracking ──
     allocation_ids: list = field(default_factory=list)  # Inventory allocation IDs
     material_status: str = ""      # "allocated", "partial", "awaiting_material", ""
+    # ── Paperless Mode ──
+    paperless_mode: bool = False    # If True, skip stickers_printed step
+    # ── Revision Handling ──
+    revision_number: int = 1        # WO version number
+    revision_reason: str = ""       # Why this revision was created
+    parent_wo_id: str = ""          # Previous version's WO ID
+    revision_history: list = field(default_factory=list)  # [{revision, wo_id, reason, created_at, created_by}]
+    # ── QC Summary ──
+    qc_in_process_complete: bool = False   # All in-process checks done
+    qc_final_complete: bool = False        # All final QC done
 
     def to_dict(self) -> dict:
         d = {
@@ -301,6 +387,13 @@ class WorkOrder:
             "end_time": self.end_time,
             "allocation_ids": self.allocation_ids,
             "material_status": self.material_status,
+            "paperless_mode": self.paperless_mode,
+            "revision_number": self.revision_number,
+            "revision_reason": self.revision_reason,
+            "parent_wo_id": self.parent_wo_id,
+            "revision_history": self.revision_history,
+            "qc_in_process_complete": self.qc_in_process_complete,
+            "qc_final_complete": self.qc_final_complete,
             "items": [item.to_dict() for item in self.items],
         }
         return d
@@ -385,6 +478,13 @@ class WorkOrder:
             "purchased_cost": round(sum(getattr(i, "unit_cost", 0) * i.quantity
                                         for i in self.items
                                         if getattr(i, "item_category", "fabricated") == "purchased"), 2),
+            "qc_failed": sum(1 for i in self.items if getattr(i, "qc_status", "pending") == "failed"),
+            "ncr_count": sum(1 for i in self.items if getattr(i, "ncr_id", "")),
+            "critical_items": sum(1 for i in self.items if getattr(i, "is_critical", False)),
+            "critical_passed": sum(1 for i in self.items if getattr(i, "is_critical", False) and getattr(i, "qc_status", "pending") == "passed"),
+            "paperless_mode": self.paperless_mode,
+            "revision_number": self.revision_number,
+            "material_traced": sum(1 for i in self.items if getattr(i, "heat_number", "")),
         }
 
 
@@ -569,6 +669,83 @@ def find_work_order_by_item(base_dir: str, job_code: str, item_id: str):
 
 
 # ─────────────────────────────────────────────
+# QC / NCR / AUDIT HELPERS
+# ─────────────────────────────────────────────
+
+def add_audit_entry(item, user: str, action: str, details: str = "", before: str = "", after: str = ""):
+    """Add an immutable audit log entry to a WO item."""
+    entry = {
+        "user": user,
+        "action": action,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "details": details,
+        "before": before,
+        "after": after,
+    }
+    if isinstance(item, WorkOrderItem):
+        if not hasattr(item, 'audit_log') or not isinstance(item.audit_log, list):
+            item.audit_log = []
+        item.audit_log.append(entry)
+    elif isinstance(item, dict):
+        if "audit_log" not in item or not isinstance(item.get("audit_log"), list):
+            item["audit_log"] = []
+        item["audit_log"].append(entry)
+    return entry
+
+
+def get_qc_checklist_template(component_type: str) -> list:
+    """Get the QC checklist template for a component type."""
+    import copy
+    template = QC_CHECKLIST_TEMPLATES.get(component_type.lower(), QC_CHECKLIST_TEMPLATES["default"])
+    return copy.deepcopy(template)
+
+
+def check_wo_qc_status(wo: WorkOrder) -> str:
+    """Evaluate overall WO QC status based on per-item QC.
+    Returns suggested WO status based on item QC states."""
+    fab_items = [i for i in wo.items if getattr(i, "item_category", "fabricated") == "fabricated"]
+    if not fab_items:
+        return wo.status
+
+    all_passed = all(getattr(i, "qc_status", "pending") == "passed" for i in fab_items)
+    any_critical_failed = any(
+        getattr(i, "is_critical", False) and getattr(i, "qc_status", "pending") == "failed"
+        for i in fab_items
+    )
+    any_failed = any(getattr(i, "qc_status", "pending") == "failed" for i in fab_items)
+
+    if any_critical_failed:
+        return STATUS_NCR_HOLD
+    if all_passed:
+        return STATUS_READY_TO_SHIP
+    return wo.status
+
+
+def create_ncr(wo_id: str, item_id: str, description: str, inspector: str,
+               photos: list = None, severity: str = "minor") -> dict:
+    """Create a Nonconformance Report linked to a WO item."""
+    return {
+        "ncr_id": f"NCR-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}",
+        "wo_id": wo_id,
+        "item_id": item_id,
+        "description": description,
+        "severity": severity,  # "minor", "major", "critical"
+        "reported_by": inspector,
+        "reported_at": datetime.datetime.now().isoformat(),
+        "photos": photos or [],
+        "root_cause": "",
+        "corrective_action": "",
+        "disposition": "",  # "use_as_is", "rework", "reject", "repair"
+        "disposition_by": "",
+        "disposition_at": "",
+        "status": "open",  # "open", "in_review", "resolved", "closed"
+        "resolved_by": "",
+        "resolved_at": "",
+        "linked_items": [item_id],
+    }
+
+
+# ─────────────────────────────────────────────
 # WORK ORDER CREATION
 # ─────────────────────────────────────────────
 
@@ -579,7 +756,8 @@ def create_work_order(job_code: str, revision: str, created_by: str,
                       delivery_date: str = "", ship_to: str = "",
                       total_weight_lbs: float = 0.0, total_sell: float = 0.0,
                       building_specs: str = "",
-                      machine_id: str = "", operator: str = "") -> WorkOrder:
+                      machine_id: str = "", operator: str = "",
+                      paperless_mode: bool = False) -> WorkOrder:
     """Create a work order from shop drawing generation results.
 
     Args:
@@ -613,6 +791,7 @@ def create_work_order(job_code: str, revision: str, created_by: str,
         building_specs=building_specs,
         machine_id=machine_id,
         operator=operator,
+        paperless_mode=paperless_mode,
     )
 
     n_frames = config_dict.get("n_frames", 1)
@@ -883,6 +1062,13 @@ def create_work_order(job_code: str, revision: str, created_by: str,
             sku="TRIM-PKG",
         ))
 
+    # ── Set is_critical for columns and rafters; initialize QC checklists ──
+    for item in wo.items:
+        ctype = (item.component_type or "").lower()
+        if ctype in ("column", "rafter"):
+            item.is_critical = True
+        item.qc_checklist = get_qc_checklist_template(ctype)
+
     # ── Populate estimated_minutes from fab step templates ──
     try:
         from shop_drawings.fab_steps import get_steps_for_item
@@ -1029,7 +1215,9 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
                 "item": item.to_dict()}
 
     # Must be in approved or stickers_printed state at minimum
-    if wo.status not in [STATUS_APPROVED, STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS]:
+    ready_statuses = [STATUS_APPROVED, STATUS_STICKERS_PRINTED,
+                      STATUS_IN_PROGRESS, STATUS_IN_FABRICATION]
+    if wo.status not in ready_statuses:
         return {"ok": False, "error": f"Work order not ready (status: {wo.status})"}
 
     # ── RULE: Rafters must be completed before columns can start ──
@@ -1042,9 +1230,12 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
     item.started_by = scanned_by
     item.started_at = now
 
+    # Add audit entry
+    add_audit_entry(item, scanned_by, "scan_start", "QR scan start")
+
     # If this is the first item started, update WO status
-    if wo.status != STATUS_IN_PROGRESS:
-        wo.status = STATUS_IN_PROGRESS
+    if wo.status not in (STATUS_IN_PROGRESS, STATUS_IN_FABRICATION):
+        wo.status = STATUS_IN_FABRICATION
 
     save_work_order(base_dir, wo)
 
@@ -1102,6 +1293,10 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
     except Exception:
         item.duration_minutes = 0.0
 
+    # Add audit entry
+    add_audit_entry(item, scanned_by, "scan_finish",
+                    f"Fabrication complete ({item.duration_minutes:.1f} min)")
+
     # ── QC HOLD POINT: Auto-advance to qc_pending for QC inspection gate ──
     # Columns and rafters (primary structural members) require mandatory QC
     # before they can be approved for shipping.
@@ -1111,11 +1306,11 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
         # Note: item.status stays as STATUS_COMPLETE (fabrication complete)
         # The qc_hold flag signals the UI to show the QC gate
 
-    # Check if all fabricated items are complete → mark WO complete
-    # (Purchased items are tracked separately via pick_status, not fab status)
+    # Check if all fabricated items are complete → advance WO to QC stage
     fab_items = [i for i in wo.items if getattr(i, "item_category", "fabricated") == "fabricated"]
     if fab_items and all(i.status == STATUS_COMPLETE for i in fab_items):
-        wo.status = STATUS_COMPLETE
+        # All items fabricated — move WO to QC in-process
+        wo.status = STATUS_QC_IN_PROCESS
 
     save_work_order(base_dir, wo)
 

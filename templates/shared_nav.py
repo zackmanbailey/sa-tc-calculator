@@ -2314,30 +2314,63 @@ window.TFWalkthrough = (function() {
     };
 })();
 
-// ── Feature Request Badge (admin only) ──────────────────────────
+// ── Admin Badges (pending users + feature requests) ─────────────
 (function() {
-    var badge = document.getElementById('frBadge');
-    if (!badge) return; // not admin, link not rendered
-    fetch('/api/feature-requests')
-    .then(function(r) { if (!r.ok) throw ''; return r.json(); })
-    .then(function(d) {
-        if (!d.ok || !d.requests) return;
-        var newCount = d.requests.filter(function(r) { return r.status === 'new'; }).length;
-        if (newCount > 0) {
-            badge.textContent = newCount;
-            badge.style.display = 'inline-block';
-            // Also pulse the group header if collapsed
-            var grp = document.querySelector('[data-group="admin"]');
-            if (grp && !grp.classList.contains('expanded')) {
-                grp.style.position = 'relative';
-                var dot = document.createElement('span');
-                dot.style.cssText = 'position:absolute;top:8px;right:28px;width:8px;height:8px;background:#ef4444;border-radius:50%;';
-                dot.id = 'frGroupDot';
-                if (!document.getElementById('frGroupDot')) grp.appendChild(dot);
-            }
+    var frBadge = document.getElementById('frBadge');
+    var puBadge = document.getElementById('pendingUsersBadge');
+    if (!frBadge && !puBadge) return; // not admin, links not rendered
+
+    var adminDotNeeded = false;
+    var done = 0, total = 0;
+
+    function maybeAddGroupDot() {
+        done++;
+        if (done < total) return;
+        if (!adminDotNeeded) return;
+        var grp = document.querySelector('[data-group="admin"]');
+        if (grp && !grp.classList.contains('expanded') && !document.getElementById('adminGroupDot')) {
+            grp.style.position = 'relative';
+            var dot = document.createElement('span');
+            dot.style.cssText = 'position:absolute;top:8px;right:28px;width:8px;height:8px;background:#ef4444;border-radius:50%;';
+            dot.id = 'adminGroupDot';
+            grp.appendChild(dot);
         }
-    })
-    .catch(function() {});
+    }
+
+    // Pending user registrations
+    if (puBadge) {
+        total++;
+        fetch('/auth/pending-users')
+        .then(function(r) { if (!r.ok) throw ''; return r.json(); })
+        .then(function(d) {
+            if (d.ok && d.pending && d.pending.length > 0) {
+                puBadge.textContent = d.pending.length;
+                puBadge.style.display = 'inline-block';
+                adminDotNeeded = true;
+            }
+            maybeAddGroupDot();
+        })
+        .catch(function() { maybeAddGroupDot(); });
+    }
+
+    // Feature requests
+    if (frBadge) {
+        total++;
+        fetch('/api/feature-requests')
+        .then(function(r) { if (!r.ok) throw ''; return r.json(); })
+        .then(function(d) {
+            if (d.ok && d.requests) {
+                var newCount = d.requests.filter(function(r) { return r.status === 'new'; }).length;
+                if (newCount > 0) {
+                    frBadge.textContent = newCount;
+                    frBadge.style.display = 'inline-block';
+                    adminDotNeeded = true;
+                }
+            }
+            maybeAddGroupDot();
+        })
+        .catch(function() { maybeAddGroupDot(); });
+    }
 })();
 
 // ── Feature Request Submission ──────────────────────────────────
@@ -2617,6 +2650,8 @@ def _build_role_sidebar(active_page, job_code, user_name, user_role, user_roles,
                 nav_items_html += f'                  <span class="tf-nav-label" data-i18n="{child_label}">{child_label}</span>\n'
                 if child_id == "feature_reqs":
                     nav_items_html += f'                  <span id="frBadge" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:auto;"></span>\n'
+                if child_id == "user_mgmt":
+                    nav_items_html += f'                  <span id="pendingUsersBadge" style="display:none;background:#f59e0b;color:#000;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:auto;"></span>\n'
                 nav_items_html += f'              </a>\n'
             nav_items_html += f'            </div>\n'
         elif url:

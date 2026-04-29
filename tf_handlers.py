@@ -7974,7 +7974,9 @@ try:
         WorkOrder, WorkOrderItem, STATUS_QUEUED, STATUS_APPROVED,
         STATUS_STICKERS_PRINTED, STATUS_IN_PROGRESS, STATUS_COMPLETE,
         STATUS_ON_HOLD, STATUS_QC_HOLD, STATUS_SHIPPED_WO,
-        STATUS_FLOW, STATUS_LABELS, VALID_STATUSES,
+        STATUS_IN_FABRICATION, STATUS_QC_IN_PROCESS, STATUS_QC_FINAL,
+        STATUS_QC_APPROVED_WO, STATUS_NCR_HOLD, STATUS_READY_TO_SHIP,
+        STATUS_FLOW, STATUS_LABELS, STATUS_COLORS, VALID_STATUSES,
         VALID_PRIORITIES, PRIORITY_ORDER,
         estimate_fabrication_hours,
         create_work_order, save_work_order, load_work_order,
@@ -7987,6 +7989,8 @@ try:
         init_fab_checklist, check_fab_step,
         LOADING_FLOW, LOADING_LABELS,
         transition_item_status,
+        QC_CHECKLIST_TEMPLATES, add_audit_entry,
+        get_qc_checklist_template, check_wo_qc_status, create_ncr,
     )
     from shop_drawings.wo_stickers import (
         generate_wo_sticker_pdf, generate_wo_sticker_zpl,
@@ -10313,8 +10317,26 @@ class WorkOrderStatusHandler(BaseHandler):
             wo.status = new_status
 
             # Status-specific side effects
-            if new_status == STATUS_IN_PROGRESS:
-                wo.start_time = now
+            if new_status in (STATUS_IN_PROGRESS, STATUS_IN_FABRICATION):
+                if not wo.start_time:
+                    wo.start_time = now
+            elif new_status == STATUS_QC_IN_PROCESS:
+                # Check if all items have in-process QC done
+                wo.qc_in_process_complete = all(
+                    getattr(i, "qc_checklist", []) and all(
+                        c.get("result") in ("pass", "n/a") for c in getattr(i, "qc_checklist", [])
+                    )
+                    for i in wo.items
+                    if getattr(i, "item_category", "fabricated") == "fabricated"
+                )
+            elif new_status == STATUS_QC_FINAL:
+                pass  # Will be set when all final QC is done
+            elif new_status == STATUS_QC_APPROVED_WO:
+                wo.qc_final_complete = True
+            elif new_status == STATUS_NCR_HOLD:
+                wo.notes = f"[NCR HOLD at {now}] " + wo.notes
+            elif new_status == STATUS_READY_TO_SHIP:
+                pass  # Ready for shipping crew
             elif new_status == STATUS_COMPLETE:
                 wo.end_time = now
                 # Calculate actual hours
@@ -10421,25 +10443,50 @@ class WorkOrderTransitionHandler(BaseHandler):
                 return
 
             # Set QC fields for QC transitions
+            now_ts = datetime.datetime.now().isoformat()
             if new_status == "qc_approved":
                 item.qc_status = "passed"
                 item.qc_inspector = user
-                item.qc_inspected_at = datetime.datetime.now().isoformat()
+                item.qc_inspected_at = now_ts
+                item.qc_final_status = "passed"
+                item.qc_final_inspector = user
+                item.qc_final_at = now_ts
                 if notes:
                     item.qc_notes = notes
+                add_audit_entry(item, user, "qc_approved", notes or "QC approved")
             elif new_status == "qc_rejected":
                 item.qc_status = "failed"
                 item.qc_inspector = user
-                item.qc_inspected_at = datetime.datetime.now().isoformat()
+                item.qc_inspected_at = now_ts
+                item.qc_final_status = "failed"
+                item.qc_final_inspector = user
+                item.qc_final_at = now_ts
                 if notes:
                     item.qc_notes = notes
+                add_audit_entry(item, user, "qc_rejected", notes or "QC rejected")
+                # Auto-create NCR on rejection
+                severity = "critical" if getattr(item, "is_critical", False) else "minor"
+                ncr = create_ncr(wo.work_order_id, item_id,
+                                 notes or "QC inspection rejected",
+                                 user, severity=severity)
+                item.ncr_id = ncr["ncr_id"]
+                safe_jc = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+                ncr_dir = os.path.join(SHOP_DRAWINGS_DIR, safe_jc, "ncrs")
+                os.makedirs(ncr_dir, exist_ok=True)
+                with open(os.path.join(ncr_dir, f"{ncr['ncr_id']}.json"), "w") as f:
+                    json.dump(ncr, f, indent=2)
             elif new_status == "qc_pending":
                 item.qc_status = "pending"
+                add_audit_entry(item, user, "qc_reset", "QC status reset to pending")
             elif new_status in ("shipped", "delivered"):
                 if new_status == "shipped":
                     item.loading_status = "shipped"
                 elif new_status == "delivered":
                     item.loading_status = "delivered"
+                add_audit_entry(item, user, f"loading_{new_status}", notes or "")
+            else:
+                add_audit_entry(item, user, f"status_{new_status}",
+                                notes or f"Transitioned to {new_status}")
 
             if notes and new_status not in ("qc_approved", "qc_rejected"):
                 item.notes = (item.notes + "\n" + notes).strip()
@@ -10594,8 +10641,13 @@ class WorkOrderItemEditHandler(BaseHandler):
             editable = [
                 "assigned_to", "machine", "notes", "description",
                 "quantity", "truck_number",
+                # AISC traceability fields
+                "heat_number", "mtr_link", "coil_tag",
+                # Welding / bolting documentation
+                "wps_reference", "calibration_id",
             ]
             changes = {}
+            user = body.get("user", self.get_current_user() or "system")
             for fld in editable:
                 if fld in body:
                     old_val = getattr(item, fld, "")
@@ -10604,9 +10656,24 @@ class WorkOrderItemEditHandler(BaseHandler):
                         setattr(item, fld, new_val)
                         changes[fld] = {"old": old_val, "new": new_val}
 
+            # Handle welder_ids as a list append/replace
+            if "welder_ids" in body:
+                new_ids = body["welder_ids"]
+                if isinstance(new_ids, list):
+                    old_ids = list(getattr(item, "welder_ids", []))
+                    item.welder_ids = new_ids
+                    if old_ids != new_ids:
+                        changes["welder_ids"] = {"old": old_ids, "new": new_ids}
+
             if not changes:
                 self.write(json_encode({"ok": True, "message": "No changes", "item": item.to_dict()}))
                 return
+
+            # Add audit entry for traceability
+            if HAS_SHOP_DRAWINGS:
+                for fld, chg in changes.items():
+                    add_audit_entry(item, user, f"edit_{fld}",
+                                    f"Changed {fld}", str(chg["old"]), str(chg["new"]))
 
             save_work_order(SHOP_DRAWINGS_DIR, wo)
             self.set_header("Content-Type", "application/json")
@@ -10653,7 +10720,14 @@ class WorkOrderChecklistHandler(BaseHandler):
 
 
 class WorkOrderQCHandler(BaseHandler):
-    """POST /api/work-orders/qc — QC inspection pass/fail for a work order item."""
+    """POST /api/work-orders/qc — QC inspection pass/fail for a work order item.
+
+    Enhanced to support:
+    - Per-item QC with is_critical flag enforcement
+    - Auto-NCR creation on QC failure
+    - QC final status tracking
+    - Audit trail entries
+    """
     required_roles = ["admin", "estimator", "shop"]
 
     def post(self):
@@ -10664,32 +10738,74 @@ class WorkOrderQCHandler(BaseHandler):
             qc_status = body.get("qc_status", "").strip()
             inspector = body.get("inspector", self.get_current_user() or "qc")
             qc_notes = body.get("qc_notes", "").strip()
+            is_final = body.get("is_final", False)  # True = final QC, False = in-process
 
             if not job_code or not item_id or not qc_status:
                 self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or qc_status"}))
                 return
 
             # ── Inspector Qualification Validation ──
-            # For QC hold point releases (passed/failed on structural members),
-            # validate the inspector holds a current CWI/SCWI cert.
             try:
                 from shop_drawings.qa_system import validate_inspector_for_scope
                 val = validate_inspector_for_scope(SHOP_DRAWINGS_DIR, inspector, "qc_hold_release")
                 if not val.get("ok") and val.get("error"):
-                    # Still allow the inspection but attach a warning
-                    pass  # warning attached below in result
+                    pass  # warning attached below
             except Exception:
                 val = {"ok": True, "reason": "validation_unavailable"}
 
             result = qc_inspect_item(SHOP_DRAWINGS_DIR, job_code, item_id,
                                       inspector, qc_status, qc_notes)
-            # Attach inspector qualification info to result
+
             if result.get("ok"):
                 result["inspector_qualified"] = val.get("ok", False)
                 if not val.get("ok") and val.get("error"):
                     result["inspector_warning"] = val.get("error", "")
+
+                # ── Enhanced: Set final QC fields if this is a final inspection ──
+                wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+                if wo and item:
+                    if is_final:
+                        item.qc_final_status = qc_status
+                        item.qc_final_inspector = inspector
+                        item.qc_final_at = datetime.datetime.now().isoformat()
+
+                    # Add audit trail entry
+                    add_audit_entry(item, inspector,
+                                    f"qc_{'final' if is_final else 'inprocess'}_{qc_status}",
+                                    qc_notes)
+
+                    # ── Auto-NCR on failure ──
+                    ncr_data = None
+                    if qc_status == "failed":
+                        severity = "critical" if getattr(item, "is_critical", False) else "minor"
+                        ncr_data = create_ncr(wo.work_order_id, item_id,
+                                              qc_notes or f"QC {('final' if is_final else 'in-process')} inspection failed",
+                                              inspector, severity=severity)
+                        item.ncr_id = ncr_data["ncr_id"]
+                        # Save NCR to disk
+                        ncr_dir = os.path.join(SHOP_DRAWINGS_DIR, re.sub(r"[^a-zA-Z0-9_-]", "_", job_code), "ncrs")
+                        os.makedirs(ncr_dir, exist_ok=True)
+                        ncr_path = os.path.join(ncr_dir, f"{ncr_data['ncr_id']}.json")
+                        with open(ncr_path, "w") as f:
+                            json.dump(ncr_data, f, indent=2)
+                        result["ncr"] = ncr_data
+
+                        # If critical item failed, suggest WO status change to NCR hold
+                        if getattr(item, "is_critical", False):
+                            result["critical_failure"] = True
+                            result["suggested_wo_status"] = STATUS_NCR_HOLD
+
+                    # ── Check overall WO QC status ──
+                    suggested = check_wo_qc_status(wo)
+                    result["wo_qc_suggestion"] = suggested
+
+                    save_work_order(SHOP_DRAWINGS_DIR, wo)
+
             if result.get("ok"):
-                self._log("qc_inspection", "work_order_item", item_id, {"job_code": job_code, "qc_status": qc_status, "inspector": inspector})
+                self._log("qc_inspection", "work_order_item", item_id, {
+                    "job_code": job_code, "qc_status": qc_status,
+                    "inspector": inspector, "is_final": is_final,
+                })
 
             self.set_header("Content-Type", "application/json")
             self.write(json_encode(result))
@@ -10777,6 +10893,516 @@ class WorkOrderQCPhotoServeHandler(BaseHandler):
         self.set_header("Content-Type", ct)
         with open(photo_path, "rb") as f:
             self.write(f.read())
+
+
+class WorkOrderQCChecklistHandler(BaseHandler):
+    """GET/POST /api/work-orders/qc-checklist — Per-item QC checklist operations.
+
+    GET: Returns the QC checklist for a specific WO item
+    POST: Updates a QC checklist item (pass/fail/n_a for a specific check)
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            item_id = self.get_argument("item_id", "")
+            if not job_code or not item_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or item_id"}))
+                return
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+            checklist = getattr(item, "qc_checklist", [])
+            # If checklist empty, initialize from template
+            if not checklist:
+                ctype = (item.component_type or "").lower()
+                checklist = get_qc_checklist_template(ctype)
+                item.qc_checklist = checklist
+                save_work_order(SHOP_DRAWINGS_DIR, wo)
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "item_id": item_id,
+                "component_type": item.component_type,
+                "is_critical": getattr(item, "is_critical", False),
+                "checklist": checklist,
+                "qc_final_status": getattr(item, "qc_final_status", ""),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            item_id = body.get("item_id", "").strip()
+            check_id = body.get("check_id", "").strip()
+            result_val = body.get("result", "").strip()  # "pass", "fail", "n/a"
+            inspector = body.get("inspector", self.get_current_user() or "qc")
+            notes = body.get("notes", "")
+            photo = body.get("photo", "")
+
+            if not job_code or not item_id or not check_id or not result_val:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, check_id, or result"}))
+                return
+            if result_val not in ("pass", "fail", "n/a"):
+                self.write(json_encode({"ok": False, "error": "result must be 'pass', 'fail', or 'n/a'"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Item not found"}))
+                return
+
+            checklist = getattr(item, "qc_checklist", [])
+            if not checklist:
+                ctype = (item.component_type or "").lower()
+                checklist = get_qc_checklist_template(ctype)
+                item.qc_checklist = checklist
+
+            # Find and update the check
+            found = False
+            for check in item.qc_checklist:
+                if check.get("id") == check_id:
+                    check["result"] = result_val
+                    check["inspector"] = inspector
+                    check["timestamp"] = datetime.datetime.now().isoformat()
+                    if notes:
+                        check["notes"] = notes
+                    if photo:
+                        check["photo"] = photo
+                    found = True
+                    break
+
+            if not found:
+                self.write(json_encode({"ok": False, "error": f"Check '{check_id}' not found in checklist"}))
+                return
+
+            # Add audit entry
+            add_audit_entry(item, inspector, f"qc_check_{result_val}",
+                            f"QC check '{check_id}': {result_val}", "", result_val)
+
+            # Check if all checklist items are done
+            all_done = all(c.get("result") in ("pass", "n/a") for c in item.qc_checklist)
+            any_failed = any(c.get("result") == "fail" for c in item.qc_checklist)
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "check_id": check_id,
+                "result": result_val,
+                "checklist": item.qc_checklist,
+                "all_passed": all_done and not any_failed,
+                "any_failed": any_failed,
+                "is_critical": getattr(item, "is_critical", False),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderNCRHandler(BaseHandler):
+    """GET/POST /api/work-orders/ncr — NCR management.
+
+    GET: List NCRs for a job or specific WO
+    POST: Create or update an NCR
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            wo_id = self.get_argument("wo_id", "")
+            ncr_id = self.get_argument("ncr_id", "")
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            safe_jc = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            ncr_dir = os.path.join(SHOP_DRAWINGS_DIR, safe_jc, "ncrs")
+            ncrs = []
+
+            if ncr_id:
+                # Return a specific NCR
+                ncr_path = os.path.join(ncr_dir, f"{ncr_id}.json")
+                if os.path.isfile(ncr_path):
+                    with open(ncr_path) as f:
+                        ncrs = [json.load(f)]
+            elif os.path.isdir(ncr_dir):
+                for fname in sorted(os.listdir(ncr_dir), reverse=True):
+                    if not fname.endswith(".json"):
+                        continue
+                    try:
+                        with open(os.path.join(ncr_dir, fname)) as f:
+                            ncr = json.load(f)
+                        if wo_id and ncr.get("wo_id") != wo_id:
+                            continue
+                        ncrs.append(ncr)
+                    except Exception:
+                        continue
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "ncrs": ncrs,
+                "total": len(ncrs),
+                "open": sum(1 for n in ncrs if n.get("status") in ("open", "in_review")),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            action = body.get("action", "create").strip()
+
+            if not job_code:
+                self.write(json_encode({"ok": False, "error": "Missing job_code"}))
+                return
+
+            safe_jc = re.sub(r"[^a-zA-Z0-9_-]", "_", job_code)
+            ncr_dir = os.path.join(SHOP_DRAWINGS_DIR, safe_jc, "ncrs")
+            os.makedirs(ncr_dir, exist_ok=True)
+
+            if action == "create":
+                wo_id = body.get("wo_id", "")
+                item_id = body.get("item_id", "")
+                description = body.get("description", "")
+                inspector = body.get("inspector", self.get_current_user() or "qc")
+                severity = body.get("severity", "minor")
+                photos = body.get("photos", [])
+
+                ncr = create_ncr(wo_id, item_id, description, inspector, photos, severity)
+
+                # Link to WO item
+                if item_id and wo_id:
+                    wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+                    if wo and item:
+                        item.ncr_id = ncr["ncr_id"]
+                        item.qc_status = "failed"
+                        add_audit_entry(item, inspector, "ncr_created",
+                                        f"NCR {ncr['ncr_id']} created: {description}")
+                        save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+                ncr_path = os.path.join(ncr_dir, f"{ncr['ncr_id']}.json")
+                with open(ncr_path, "w") as f:
+                    json.dump(ncr, f, indent=2)
+
+                self._log("ncr_created", "ncr", ncr["ncr_id"], {
+                    "job_code": job_code, "wo_id": wo_id,
+                    "item_id": item_id, "severity": severity,
+                })
+
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": True, "ncr": ncr}))
+
+            elif action == "update":
+                ncr_id = body.get("ncr_id", "").strip()
+                if not ncr_id:
+                    self.write(json_encode({"ok": False, "error": "Missing ncr_id"}))
+                    return
+
+                ncr_path = os.path.join(ncr_dir, f"{ncr_id}.json")
+                if not os.path.isfile(ncr_path):
+                    self.set_status(404)
+                    self.write(json_encode({"ok": False, "error": "NCR not found"}))
+                    return
+
+                with open(ncr_path) as f:
+                    ncr = json.load(f)
+
+                # Updatable fields
+                for fld in ["root_cause", "corrective_action", "disposition",
+                            "disposition_by", "status"]:
+                    if fld in body:
+                        ncr[fld] = body[fld]
+
+                now = datetime.datetime.now().isoformat()
+                user = body.get("user", self.get_current_user() or "system")
+
+                if body.get("disposition"):
+                    ncr["disposition_by"] = user
+                    ncr["disposition_at"] = now
+                if body.get("status") == "resolved":
+                    ncr["resolved_by"] = user
+                    ncr["resolved_at"] = now
+
+                with open(ncr_path, "w") as f:
+                    json.dump(ncr, f, indent=2)
+
+                self._log("ncr_updated", "ncr", ncr_id, {
+                    "job_code": job_code, "status": ncr.get("status"),
+                    "by": user,
+                })
+
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": True, "ncr": ncr}))
+            else:
+                self.write(json_encode({"ok": False, "error": f"Unknown action: {action}"}))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderAuditLogHandler(BaseHandler):
+    """GET /api/work-orders/audit-log — Retrieve audit trail for a WO or item.
+
+    Returns immutable audit log entries with user, action, timestamp, details.
+    """
+    required_roles = ["admin", "estimator"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            wo_id = self.get_argument("wo_id", "")
+            item_id = self.get_argument("item_id", "")
+
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            audit_entries = []
+            for item in wo.items:
+                if item_id and item.item_id != item_id:
+                    continue
+                item_log = getattr(item, "audit_log", [])
+                for entry in item_log:
+                    entry_copy = dict(entry)
+                    entry_copy["item_id"] = item.item_id
+                    entry_copy["ship_mark"] = item.ship_mark
+                    entry_copy["component_type"] = item.component_type
+                    audit_entries.append(entry_copy)
+
+            # Sort by timestamp descending
+            audit_entries.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "wo_id": wo_id,
+                "entries": audit_entries,
+                "total": len(audit_entries),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderTraceabilityHandler(BaseHandler):
+    """GET/POST /api/work-orders/traceability — Heat number / MTR traceability.
+
+    GET: Get traceability info for all items in a WO
+    POST: Bulk-update heat numbers and MTR links for items
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            wo_id = self.get_argument("wo_id", "")
+            if not job_code or not wo_id:
+                self.write(json_encode({"ok": False, "error": "Missing job_code or wo_id"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            items = []
+            for item in wo.items:
+                items.append({
+                    "item_id": item.item_id,
+                    "ship_mark": item.ship_mark,
+                    "component_type": item.component_type,
+                    "heat_number": getattr(item, "heat_number", ""),
+                    "mtr_link": getattr(item, "mtr_link", ""),
+                    "coil_tag": getattr(item, "coil_tag", ""),
+                    "is_critical": getattr(item, "is_critical", False),
+                    "welder_ids": getattr(item, "welder_ids", []),
+                    "wps_reference": getattr(item, "wps_reference", ""),
+                    "calibration_id": getattr(item, "calibration_id", ""),
+                })
+
+            traced = sum(1 for i in items if i["heat_number"])
+            total_fab = sum(1 for i in items if i["component_type"] not in ("trim",))
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "wo_id": wo_id,
+                "items": items,
+                "traced": traced,
+                "total": total_fab,
+                "pct_traced": round(100 * traced / max(total_fab, 1), 1),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            updates = body.get("updates", [])  # [{item_id, heat_number, mtr_link, coil_tag}]
+            user = body.get("user", self.get_current_user() or "system")
+
+            if not job_code or not wo_id or not updates:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, wo_id, or updates"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            item_map = {i.item_id: i for i in wo.items}
+            results = []
+            for upd in updates:
+                iid = upd.get("item_id", "")
+                item = item_map.get(iid)
+                if not item:
+                    results.append({"item_id": iid, "ok": False, "error": "Item not found"})
+                    continue
+                changes = []
+                for fld in ("heat_number", "mtr_link", "coil_tag"):
+                    if fld in upd:
+                        old = getattr(item, fld, "")
+                        new = upd[fld]
+                        if old != new:
+                            setattr(item, fld, new)
+                            changes.append(fld)
+                            add_audit_entry(item, user, f"set_{fld}",
+                                            f"Set {fld}", old, new)
+                results.append({"item_id": iid, "ok": True, "changed": changes})
+
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "results": results,
+                "updated": sum(1 for r in results if r.get("ok")),
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderRevisionHandler(BaseHandler):
+    """POST /api/work-orders/revision — Create a new revision of a work order.
+
+    Creates a copy of the current WO with incremented revision_number,
+    links to parent, and records the reason for change.
+    """
+    required_roles = ["admin", "estimator"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            reason = body.get("reason", "").strip()
+            user = body.get("user", self.get_current_user() or "system")
+
+            if not job_code or not wo_id or not reason:
+                self.write(json_encode({"ok": False, "error": "Missing job_code, wo_id, or reason"}))
+                return
+
+            wo = load_work_order(SHOP_DRAWINGS_DIR, job_code, wo_id)
+            if wo is None:
+                self.set_status(404)
+                self.write(json_encode({"ok": False, "error": "Work order not found"}))
+                return
+
+            now = datetime.datetime.now().isoformat()
+            old_rev = wo.revision_number
+
+            # Create new WO as a copy
+            import copy
+            new_wo = copy.deepcopy(wo)
+            new_wo.work_order_id = f"WO-{job_code}-{wo.revision}-{uuid.uuid4().hex[:6].upper()}"
+            new_wo.revision_number = old_rev + 1
+            new_wo.revision_reason = reason
+            new_wo.parent_wo_id = wo_id
+            new_wo.created_at = now
+            new_wo.created_by = user
+            new_wo.status = STATUS_QUEUED
+            new_wo.approved_at = ""
+            new_wo.approved_by = ""
+            new_wo.start_time = ""
+            new_wo.end_time = ""
+            new_wo.actual_hours = 0.0
+
+            # Record in revision history
+            rev_entry = {
+                "revision": old_rev + 1,
+                "wo_id": new_wo.work_order_id,
+                "reason": reason,
+                "created_at": now,
+                "created_by": user,
+                "parent_wo_id": wo_id,
+            }
+            new_wo.revision_history = list(wo.revision_history or [])
+            new_wo.revision_history.append(rev_entry)
+
+            # Update item IDs to reflect new WO
+            for item in new_wo.items:
+                old_item_id = item.item_id
+                item.item_id = item.item_id.replace(wo_id, new_wo.work_order_id)
+                # Reset fabrication status
+                item.status = STATUS_QUEUED
+                item.started_by = ""
+                item.started_at = ""
+                item.finished_by = ""
+                item.finished_at = ""
+                item.duration_minutes = 0.0
+                item.qc_status = "pending"
+                item.qc_final_status = ""
+                item.ncr_id = ""
+                item.audit_log = []
+                add_audit_entry(item, user, "revision_created",
+                                f"Revision {old_rev + 1} from {wo_id}: {reason}")
+
+            save_work_order(SHOP_DRAWINGS_DIR, new_wo)
+
+            # Mark old WO as superseded
+            wo.notes = f"[SUPERSEDED by Rev {old_rev + 1} at {now}] " + wo.notes
+            save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+            self._log("wo_revision", "work_order", new_wo.work_order_id, {
+                "job_code": job_code, "from_rev": old_rev,
+                "to_rev": old_rev + 1, "reason": reason, "by": user,
+            })
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "new_wo": new_wo.summary(),
+                "revision_number": new_wo.revision_number,
+                "parent_wo_id": wo_id,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
 
 
 class PurchasedItemsAPIHandler(BaseHandler):
@@ -19085,23 +19711,20 @@ class WorkOrderStatusConfigHandler(BaseHandler):
     def get(self):
         try:
             self.set_header("Content-Type", "application/json")
-            config = {
-                "statuses": [
-                    {"id": "draft", "label": "Draft", "color": "#64748B"},
-                    {"id": "approved", "label": "Approved", "color": "#3B82F6"},
-                    {"id": "in_progress", "label": "In Progress", "color": "#F59E0B"},
-                    {"id": "qc_hold", "label": "QC Hold", "color": "#EF4444"},
-                    {"id": "completed", "label": "Completed", "color": "#10B981"},
-                    {"id": "shipped", "label": "Shipped", "color": "#8B5CF6"},
-                ],
-                "transitions": {
-                    "draft": ["approved"],
-                    "approved": ["in_progress", "draft"],
-                    "in_progress": ["qc_hold", "completed"],
-                    "qc_hold": ["in_progress", "completed"],
-                    "completed": ["shipped"],
-                },
-            }
+            if HAS_SHOP_DRAWINGS:
+                statuses = [
+                    {"id": sid, "label": STATUS_LABELS.get(sid, sid), "color": STATUS_COLORS.get(sid, "#64748B")}
+                    for sid in [
+                        STATUS_QUEUED, STATUS_APPROVED, STATUS_STICKERS_PRINTED,
+                        STATUS_IN_FABRICATION, STATUS_QC_IN_PROCESS, STATUS_QC_FINAL,
+                        STATUS_QC_APPROVED_WO, STATUS_NCR_HOLD, STATUS_READY_TO_SHIP,
+                        STATUS_COMPLETE, STATUS_SHIPPED_WO, STATUS_ON_HOLD,
+                    ]
+                ]
+                transitions = {k: v for k, v in STATUS_FLOW.items()}
+                config = {"statuses": statuses, "transitions": transitions}
+            else:
+                config = {"statuses": [], "transitions": {}}
             self.write(json_encode({"ok": True, "config": config}))
         except Exception as e:
             logger.error(f"WorkOrderStatusConfigHandler error: {e}", exc_info=True)
@@ -21052,6 +21675,11 @@ def get_routes():
         (r"/api/qc/item-inspect",                WorkOrderQCHandler),  # Alias for hold point UI
         (r"/api/work-orders/qc-photo",           WorkOrderQCPhotoHandler),
         (r"/api/work-orders/qc-photo/file",      WorkOrderQCPhotoServeHandler),
+        (r"/api/work-orders/qc-checklist",       WorkOrderQCChecklistHandler),
+        (r"/api/work-orders/ncr",                WorkOrderNCRHandler),
+        (r"/api/work-orders/audit-log",          WorkOrderAuditLogHandler),
+        (r"/api/work-orders/traceability",       WorkOrderTraceabilityHandler),
+        (r"/api/work-orders/revision",           WorkOrderRevisionHandler),
         (r"/api/work-orders/purchased",          PurchasedItemsAPIHandler),
         (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
         (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),
