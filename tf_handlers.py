@@ -1599,6 +1599,69 @@ class DashboardStatsAPIHandler(BaseHandler):
             result["active_work_orders"] = active_work_orders[:10]
             result["work_order_items"] = work_order_items[:20]
 
+            # ── WO Overhaul Metrics (NCR count, QC progress, traceability, critical items) ──
+            wo_ncr_count = 0
+            wo_qc_checklist_total = 0
+            wo_qc_checklist_done = 0
+            wo_traced_items = 0
+            wo_total_fab_items = 0
+            wo_critical_items = 0
+            wo_critical_passed = 0
+            wo_in_ncr_hold = 0
+            try:
+                from shop_drawings.work_orders import load_work_order
+                for ws in (active_work_orders or []):
+                    jc = ws.get("job_code", "")
+                    wid = ws.get("work_order_id", "")
+                    if not jc or not wid:
+                        continue
+                    wo_obj = load_work_order(SHOP_DRAWINGS_DIR, jc, wid)
+                    if wo_obj is None:
+                        continue
+                    if wo_obj.status == "ncr_hold":
+                        wo_in_ncr_hold += 1
+                    for itm in wo_obj.items:
+                        if getattr(itm, "item_category", "fabricated") != "fabricated":
+                            continue
+                        wo_total_fab_items += 1
+                        # NCR count
+                        ncr_id = getattr(itm, "ncr_id", "")
+                        if ncr_id:
+                            wo_ncr_count += 1
+                        # QC checklist progress
+                        cl = getattr(itm, "qc_checklist", [])
+                        wo_qc_checklist_total += len(cl)
+                        wo_qc_checklist_done += sum(1 for c in cl if c.get("result") in ("pass", "n/a"))
+                        # Traceability
+                        hn = getattr(itm, "heat_number", "")
+                        if hn:
+                            wo_traced_items += 1
+                        # Critical items
+                        if getattr(itm, "is_critical", False):
+                            wo_critical_items += 1
+                            if getattr(itm, "qc_final_status", "") == "passed":
+                                wo_critical_passed += 1
+            except Exception:
+                pass
+
+            result["wo_ncr_count"] = wo_ncr_count
+            result["wo_in_ncr_hold"] = wo_in_ncr_hold
+            result["wo_qc_checklist_progress"] = {
+                "total": wo_qc_checklist_total,
+                "done": wo_qc_checklist_done,
+                "pct": round(wo_qc_checklist_done / wo_qc_checklist_total * 100, 1) if wo_qc_checklist_total > 0 else 0,
+            }
+            result["wo_traceability"] = {
+                "traced": wo_traced_items,
+                "total": wo_total_fab_items,
+                "pct": round(wo_traced_items / wo_total_fab_items * 100, 1) if wo_total_fab_items > 0 else 0,
+            }
+            result["wo_critical_items"] = {
+                "total": wo_critical_items,
+                "passed": wo_critical_passed,
+                "pct": round(wo_critical_passed / wo_critical_items * 100, 1) if wo_critical_items > 0 else 0,
+            }
+
             # ── Pending QC items & NCRs ──
             pending_qc = 0
             qc_items = []
@@ -10382,6 +10445,20 @@ class WorkOrderStatusHandler(BaseHandler):
                 "by": user,
             })
 
+            # ── Email notification for WO status change ──
+            try:
+                send_notification("wo_status_change", context_data={
+                    "job_code": job_code,
+                    "wo_id": wo_id,
+                    "from_status": STATUS_LABELS.get(old_status, old_status),
+                    "to_status": STATUS_LABELS.get(new_status, new_status),
+                    "changed_by": user,
+                    "timestamp": now,
+                    "subject": f"WO {wo_id} status: {STATUS_LABELS.get(new_status, new_status)}",
+                })
+            except Exception:
+                pass
+
             # Broadcast via WebSocket
             try:
                 LiveUpdateWebSocket.broadcast({
@@ -10441,6 +10518,31 @@ class WorkOrderTransitionHandler(BaseHandler):
                 self.set_status(400)
                 self.write(json_encode({"ok": False, "error": f"Invalid status: '{new_status}'"}))
                 return
+
+            # ── BLOCK unqualified inspectors on critical QC transitions ──
+            if new_status in ("qc_approved", "qc_rejected") and getattr(item, "is_critical", False):
+                try:
+                    from shop_drawings.qa_system import validate_inspector_for_scope
+                    val = validate_inspector_for_scope(SHOP_DRAWINGS_DIR, user, "qc_hold_release")
+                    if not val.get("ok"):
+                        # Roll back the transition
+                        transition_item_status(item, old_status)
+                        required = val.get("required_certs", ["CWI", "SCWI"])
+                        self.set_header("Content-Type", "application/json")
+                        self.write(json_encode({
+                            "ok": False,
+                            "error": (
+                                f"Inspector '{user}' is not qualified to {new_status.replace('_', ' ')} "
+                                f"critical item '{item_id}'. "
+                                f"Required certification: {', '.join(required)}. "
+                                f"Reason: {val.get('error', 'missing or expired qualification')}"
+                            ),
+                            "blocked": True,
+                            "required_certs": required,
+                        }))
+                        return
+                except ImportError:
+                    pass  # If qa_system unavailable, allow transition
 
             # Set QC fields for QC transitions
             now_ts = datetime.datetime.now().isoformat()
@@ -10748,10 +10850,26 @@ class WorkOrderQCHandler(BaseHandler):
             try:
                 from shop_drawings.qa_system import validate_inspector_for_scope
                 val = validate_inspector_for_scope(SHOP_DRAWINGS_DIR, inspector, "qc_hold_release")
-                if not val.get("ok") and val.get("error"):
-                    pass  # warning attached below
             except Exception:
                 val = {"ok": True, "reason": "validation_unavailable"}
+
+            # ── BLOCK unqualified inspectors on critical items ──
+            wo_pre, item_pre = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo_pre and item_pre and getattr(item_pre, "is_critical", False):
+                if not val.get("ok"):
+                    required = val.get("required_certs", ["CWI", "SCWI"])
+                    self.set_header("Content-Type", "application/json")
+                    self.write(json_encode({
+                        "ok": False,
+                        "error": (
+                            f"Inspector '{inspector}' is not qualified for QC on critical item '{item_id}'. "
+                            f"Required certification: {', '.join(required)}. "
+                            f"Reason: {val.get('error', 'missing or expired qualification')}"
+                        ),
+                        "blocked": True,
+                        "required_certs": required,
+                    }))
+                    return
 
             result = qc_inspect_item(SHOP_DRAWINGS_DIR, job_code, item_id,
                                       inspector, qc_status, qc_notes)
@@ -10794,6 +10912,22 @@ class WorkOrderQCHandler(BaseHandler):
                         if getattr(item, "is_critical", False):
                             result["critical_failure"] = True
                             result["suggested_wo_status"] = STATUS_NCR_HOLD
+                            # ── Notify on critical QC failure ──
+                            try:
+                                send_notification("qc_critical_fail", context_data={
+                                    "job_code": job_code,
+                                    "wo_id": wo.work_order_id,
+                                    "item_id": item_id,
+                                    "component_type": getattr(item, "component_type", ""),
+                                    "ship_mark": getattr(item, "ship_mark", ""),
+                                    "inspector": inspector,
+                                    "ncr_id": ncr_data.get("ncr_id", "") if ncr_data else "",
+                                    "severity": severity,
+                                    "is_final": is_final,
+                                    "subject": f"CRITICAL QC Fail: {getattr(item, 'ship_mark', item_id)} on WO {wo.work_order_id}",
+                                })
+                            except Exception:
+                                pass
 
                     # ── Check overall WO QC status ──
                     suggested = check_wo_qc_status(wo)
@@ -10959,6 +11093,36 @@ class WorkOrderQCChecklistHandler(BaseHandler):
                 self.write(json_encode({"ok": False, "error": "Item not found"}))
                 return
 
+            # ── BLOCK unqualified inspectors on critical component checklists ──
+            if getattr(item, "is_critical", False):
+                try:
+                    from shop_drawings.qa_system import validate_inspector_for_scope
+                    # Determine scope from check_id prefix
+                    if "weld" in check_id.lower():
+                        scope = "visual_weld"
+                    elif "dimension" in check_id.lower() or "measure" in check_id.lower():
+                        scope = "dimensional"
+                    else:
+                        scope = "qc_hold_release"
+                    val = validate_inspector_for_scope(SHOP_DRAWINGS_DIR, inspector, scope)
+                    if not val.get("ok"):
+                        required = val.get("required_certs", ["CWI", "SCWI"])
+                        self.set_header("Content-Type", "application/json")
+                        self.write(json_encode({
+                            "ok": False,
+                            "error": (
+                                f"Inspector '{inspector}' is not qualified for '{scope}' checks "
+                                f"on critical item '{item_id}'. "
+                                f"Required certification: {', '.join(required)}. "
+                                f"Reason: {val.get('error', 'missing or expired qualification')}"
+                            ),
+                            "blocked": True,
+                            "required_certs": required,
+                        }))
+                        return
+                except ImportError:
+                    pass  # If qa_system unavailable, allow
+
             checklist = getattr(item, "qc_checklist", [])
             if not checklist:
                 ctype = (item.component_type or "").lower()
@@ -11005,6 +11169,173 @@ class WorkOrderQCChecklistHandler(BaseHandler):
             }))
         except Exception as e:
             self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderMaterialReceiptHandler(BaseHandler):
+    """POST /api/work-orders/material-receipt — Record material receipt inspection.
+
+    Covers:
+    1. Material receipt inspection (verify heat number matches MTR)
+    2. Lost ID procedure (when heat number is lost, issue new internal ID)
+    """
+    required_roles = ["admin", "estimator", "shop"]
+
+    def post(self):
+        try:
+            body = json_decode(self.request.body)
+            job_code = body.get("job_code", "").strip()
+            wo_id = body.get("wo_id", "").strip()
+            item_id = body.get("item_id", "").strip()
+            action = body.get("action", "").strip()  # "inspect" or "lost_id"
+            inspector = body.get("inspector", self.get_current_user() or "receiving")
+
+            if not job_code or not item_id or not action:
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "Missing job_code, item_id, or action"}))
+                return
+
+            if action not in ("inspect", "lost_id"):
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "action must be 'inspect' or 'lost_id'"}))
+                return
+
+            wo, item = find_work_order_by_item(SHOP_DRAWINGS_DIR, job_code, item_id)
+            if wo is None or item is None:
+                self.set_status(404)
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({"ok": False, "error": "Work order item not found"}))
+                return
+
+            now_ts = datetime.datetime.now().isoformat()
+
+            if action == "inspect":
+                heat_number = body.get("heat_number", "").strip()
+                mtr_link = body.get("mtr_link", "").strip()
+                coil_tag = body.get("coil_tag", "").strip()
+                condition = body.get("condition", "good").strip()
+                notes = body.get("notes", "").strip()
+
+                if condition not in ("good", "damaged", "rejected"):
+                    self.set_header("Content-Type", "application/json")
+                    self.write(json_encode({"ok": False, "error": "condition must be 'good', 'damaged', or 'rejected'"}))
+                    return
+
+                # Update item fields
+                if heat_number:
+                    item.heat_number = heat_number
+                if mtr_link:
+                    item.mtr_link = mtr_link
+                if coil_tag:
+                    item.coil_tag = coil_tag
+                item.material_condition = condition
+                item.material_inspected_by = inspector
+                item.material_inspected_at = now_ts
+
+                # Add audit trail
+                details = f"Material receipt inspection: condition={condition}"
+                if heat_number:
+                    details += f", heat={heat_number}"
+                if coil_tag:
+                    details += f", coil_tag={coil_tag}"
+                if notes:
+                    details += f", notes: {notes}"
+                add_audit_entry(item, inspector, "material_receipt_inspect", details)
+
+                if condition == "rejected":
+                    item.material_condition = "rejected"
+                    add_audit_entry(item, inspector, "material_rejected",
+                                    notes or "Material rejected at receiving inspection")
+
+                save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+                self._log("material_receipt", "work_order_item", item_id, {
+                    "job_code": job_code, "action": "inspect",
+                    "condition": condition, "inspector": inspector,
+                })
+
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({
+                    "ok": True,
+                    "action": "inspect",
+                    "item_id": item_id,
+                    "condition": condition,
+                    "heat_number": heat_number,
+                    "mtr_link": mtr_link,
+                    "coil_tag": coil_tag,
+                    "inspector": inspector,
+                    "inspected_at": now_ts,
+                }))
+
+            elif action == "lost_id":
+                original_heat = body.get("original_heat_number", "").strip()
+                new_internal_id = body.get("new_internal_id", "").strip()
+                reason = body.get("reason", "").strip()
+                notes = body.get("notes", "").strip()
+
+                if not reason:
+                    self.set_header("Content-Type", "application/json")
+                    self.write(json_encode({"ok": False, "error": "reason is required for lost ID procedure"}))
+                    return
+
+                # Auto-generate internal ID if not provided
+                if not new_internal_id:
+                    date_str = datetime.datetime.now().strftime("%Y%m%d")
+                    # Generate sequence number based on existing LIDs in this WO
+                    seq = 1
+                    for it in wo.items:
+                        lid = getattr(it, "lost_id_number", "")
+                        if lid and lid.startswith(f"LID-{date_str}-"):
+                            try:
+                                s = int(lid.split("-")[-1])
+                                if s >= seq:
+                                    seq = s + 1
+                            except ValueError:
+                                pass
+                    new_internal_id = f"LID-{date_str}-{seq:03d}"
+
+                # Record original heat number if known
+                if original_heat:
+                    item.original_heat_number = original_heat
+                item.heat_number = new_internal_id
+                item.lost_id_number = new_internal_id
+                item.lost_id_reason = reason
+                item.lost_id_issued_by = inspector
+                item.lost_id_issued_at = now_ts
+                item.lost_id_flagged = True
+
+                # Audit trail
+                details = f"Lost ID procedure: new ID={new_internal_id}, reason={reason}"
+                if original_heat:
+                    details += f", original heat={original_heat}"
+                if notes:
+                    details += f", notes: {notes}"
+                add_audit_entry(item, inspector, "lost_id_issued", details,
+                                original_heat or "(unknown)", new_internal_id)
+
+                save_work_order(SHOP_DRAWINGS_DIR, wo)
+
+                self._log("material_receipt", "work_order_item", item_id, {
+                    "job_code": job_code, "action": "lost_id",
+                    "new_internal_id": new_internal_id, "inspector": inspector,
+                })
+
+                self.set_header("Content-Type", "application/json")
+                self.write(json_encode({
+                    "ok": True,
+                    "action": "lost_id",
+                    "item_id": item_id,
+                    "new_internal_id": new_internal_id,
+                    "original_heat_number": original_heat,
+                    "reason": reason,
+                    "inspector": inspector,
+                    "issued_at": now_ts,
+                    "flagged": True,
+                }))
+
+        except Exception as e:
+            self.set_status(500)
+            self.set_header("Content-Type", "application/json")
             self.write(json_encode({"ok": False, "error": str(e)}))
 
 
@@ -11101,6 +11432,21 @@ class WorkOrderNCRHandler(BaseHandler):
                     "job_code": job_code, "wo_id": wo_id,
                     "item_id": item_id, "severity": severity,
                 })
+
+                # ── Email notification for NCR creation ──
+                try:
+                    send_notification("ncr_created", context_data={
+                        "job_code": job_code,
+                        "wo_id": wo_id,
+                        "item_id": item_id,
+                        "ncr_id": ncr["ncr_id"],
+                        "severity": severity,
+                        "description": description[:200],
+                        "inspector": inspector,
+                        "subject": f"NCR {ncr['ncr_id']} ({severity.upper()}) opened on {job_code}",
+                    })
+                except Exception:
+                    pass
 
                 self.set_header("Content-Type", "application/json")
                 self.write(json_encode({"ok": True, "ncr": ncr}))
@@ -11393,12 +11739,139 @@ class WorkOrderRevisionHandler(BaseHandler):
                 "to_rev": old_rev + 1, "reason": reason, "by": user,
             })
 
+            # ── Email notification for WO revision ──
+            try:
+                send_notification("wo_revision", context_data={
+                    "job_code": job_code,
+                    "old_wo_id": wo_id,
+                    "new_wo_id": new_wo.work_order_id,
+                    "from_rev": old_rev,
+                    "to_rev": old_rev + 1,
+                    "reason": reason,
+                    "created_by": user,
+                    "subject": f"WO Revision {old_rev + 1} created for {job_code}: {reason[:80]}",
+                })
+            except Exception:
+                pass
+
             self.set_header("Content-Type", "application/json")
             self.write(json_encode({
                 "ok": True,
                 "new_wo": new_wo.summary(),
                 "revision_number": new_wo.revision_number,
                 "parent_wo_id": wo_id,
+            }))
+        except Exception as e:
+            self.set_status(500)
+            self.write(json_encode({"ok": False, "error": str(e)}))
+
+
+class WorkOrderLaborReportHandler(BaseHandler):
+    """GET /api/work-orders/labor-report — Aggregated fabrication labor data.
+
+    Returns actual vs estimated hours, per-operator efficiency, per-machine utilization,
+    and per-component-type averages across all work orders for a job or all jobs.
+    """
+    required_roles = ["admin", "estimator", "project_manager", "general_manager"]
+
+    def get(self):
+        try:
+            job_code = self.get_argument("job_code", "")
+            from shop_drawings.work_orders import list_all_work_orders, load_work_order
+
+            # Gather WOs — single job or all
+            wo_summaries = []
+            if job_code:
+                wo_summaries = list_work_orders(SHOP_DRAWINGS_DIR, job_code)
+            else:
+                wo_summaries = list_all_work_orders(SHOP_DRAWINGS_DIR)
+
+            total_estimated = 0.0
+            total_actual = 0.0
+            operator_stats = {}   # operator -> {items, total_minutes, components}
+            machine_stats = {}    # machine -> {items, total_minutes}
+            component_stats = {}  # component_type -> {count, total_est, total_actual, total_minutes}
+            wo_count = 0
+            completed_count = 0
+
+            for ws in wo_summaries:
+                jc = ws.get("job_code", job_code)
+                wid = ws.get("work_order_id", "")
+                if not jc or not wid:
+                    continue
+                wo = load_work_order(SHOP_DRAWINGS_DIR, jc, wid)
+                if wo is None:
+                    continue
+                wo_count += 1
+                if wo.status in ("complete", "completed", "shipped"):
+                    completed_count += 1
+                total_estimated += wo.estimated_hours or 0
+                total_actual += wo.actual_hours or 0
+
+                for item in wo.items:
+                    ctype = (item.component_type or "other").lower()
+                    dur = getattr(item, "duration_minutes", 0) or 0
+                    est_min = getattr(item, "estimated_minutes", 0) or 0
+                    est_h = est_min / 60.0 if est_min else 0
+                    act_h = dur / 60.0 if dur else 0
+
+                    # Component stats
+                    if ctype not in component_stats:
+                        component_stats[ctype] = {"count": 0, "total_est_hours": 0, "total_actual_hours": 0, "total_minutes": 0}
+                    component_stats[ctype]["count"] += 1
+                    component_stats[ctype]["total_est_hours"] += est_h
+                    component_stats[ctype]["total_actual_hours"] += act_h
+                    component_stats[ctype]["total_minutes"] += dur
+
+                    # Operator stats
+                    op = getattr(item, "started_by", "") or getattr(item, "assigned_to", "") or ""
+                    if op:
+                        if op not in operator_stats:
+                            operator_stats[op] = {"items_completed": 0, "total_minutes": 0, "components": {}}
+                        if getattr(item, "finished_at", ""):
+                            operator_stats[op]["items_completed"] += 1
+                        operator_stats[op]["total_minutes"] += dur
+                        operator_stats[op]["components"][ctype] = operator_stats[op]["components"].get(ctype, 0) + 1
+
+                    # Machine stats
+                    mach = getattr(item, "machine", "") or ""
+                    if mach:
+                        if mach not in machine_stats:
+                            machine_stats[mach] = {"items": 0, "total_minutes": 0}
+                        machine_stats[mach]["items"] += 1
+                        machine_stats[mach]["total_minutes"] += dur
+
+            # Compute averages for components
+            for ctype, cs in component_stats.items():
+                if cs["count"] > 0:
+                    cs["avg_minutes"] = round(cs["total_minutes"] / cs["count"], 1)
+                    cs["avg_est_hours"] = round(cs["total_est_hours"] / cs["count"], 2)
+                else:
+                    cs["avg_minutes"] = 0
+                    cs["avg_est_hours"] = 0
+
+            # Compute efficiency for operators
+            for op, os_data in operator_stats.items():
+                if os_data["total_minutes"] > 0 and os_data["items_completed"] > 0:
+                    os_data["avg_minutes_per_item"] = round(os_data["total_minutes"] / os_data["items_completed"], 1)
+                else:
+                    os_data["avg_minutes_per_item"] = 0
+
+            efficiency_pct = round((total_estimated / total_actual * 100), 1) if total_actual > 0 else 0
+
+            self.set_header("Content-Type", "application/json")
+            self.write(json_encode({
+                "ok": True,
+                "summary": {
+                    "total_work_orders": wo_count,
+                    "completed_work_orders": completed_count,
+                    "total_estimated_hours": round(total_estimated, 2),
+                    "total_actual_hours": round(total_actual, 2),
+                    "efficiency_pct": efficiency_pct,
+                },
+                "by_operator": operator_stats,
+                "by_machine": machine_stats,
+                "by_component_type": component_stats,
             }))
         except Exception as e:
             self.set_status(500)
@@ -21677,9 +22150,11 @@ def get_routes():
         (r"/api/work-orders/qc-photo/file",      WorkOrderQCPhotoServeHandler),
         (r"/api/work-orders/qc-checklist",       WorkOrderQCChecklistHandler),
         (r"/api/work-orders/ncr",                WorkOrderNCRHandler),
+        (r"/api/work-orders/material-receipt",   WorkOrderMaterialReceiptHandler),
         (r"/api/work-orders/audit-log",          WorkOrderAuditLogHandler),
         (r"/api/work-orders/traceability",       WorkOrderTraceabilityHandler),
         (r"/api/work-orders/revision",           WorkOrderRevisionHandler),
+        (r"/api/work-orders/labor-report",       WorkOrderLaborReportHandler),
         (r"/api/work-orders/purchased",          PurchasedItemsAPIHandler),
         (r"/api/work-orders/loading",            WorkOrderLoadingHandler),
         (r"/api/work-orders/stickers/pdf",       WorkOrderStickerPDFHandler),

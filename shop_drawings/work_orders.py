@@ -423,7 +423,7 @@ class WorkOrder:
     def in_progress_items(self) -> int:
         return sum(1 for i in self.items
                    if getattr(i, "item_category", "fabricated") == "fabricated"
-                   and i.status == STATUS_IN_PROGRESS)
+                   and i.status in (STATUS_IN_PROGRESS, STATUS_IN_FABRICATION))
 
     @property
     def progress_pct(self) -> float:
@@ -1208,7 +1208,7 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
         return {"ok": False, "error": "Item already complete",
                 "item": item.to_dict()}
 
-    if item.status == STATUS_IN_PROGRESS:
+    if item.status in (STATUS_IN_PROGRESS, STATUS_IN_FABRICATION):
         return {"ok": False, "error": "Item already in progress",
                 "started_by": item.started_by,
                 "started_at": item.started_at,
@@ -1226,7 +1226,7 @@ def qr_scan_start(base_dir: str, job_code: str, item_id: str,
         return rafter_check
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    item.status = STATUS_IN_PROGRESS
+    item.status = STATUS_IN_FABRICATION
     item.started_by = scanned_by
     item.started_at = now
 
@@ -1263,7 +1263,7 @@ def qr_scan_finish(base_dir: str, job_code: str, item_id: str,
         return {"ok": False, "error": "Item already complete",
                 "item": item.to_dict()}
 
-    if item.status != STATUS_IN_PROGRESS:
+    if item.status not in (STATUS_IN_PROGRESS, STATUS_IN_FABRICATION):
         return {"ok": False, "error": "Item not started yet — scan Start first",
                 "item": item.to_dict()}
 
