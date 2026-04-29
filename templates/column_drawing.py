@@ -210,7 +210,12 @@ COLUMN_DRAWING_HTML = r"""
   <div style="display: flex; align-items: center; gap: 12px;">
     <a href="/shop-drawings/{{JOB_CODE}}" class="back-link">← Back to Shop Drawings</a>
     <h1>TitanForge — Column Shop Drawing</h1>
-    <span class="job-code-label" id="jobCodeDisplay">Job: {{JOB_CODE}}</span>
+    <span class="job-code-label" id="jobCodeDisplay" title="Click to edit job code" style="cursor:pointer;" onclick="document.getElementById('colJobEditWrap').style.display=this.style.display='none'?'':'inline-flex'; document.getElementById('colJobEditWrap').style.display='inline-flex'; this.style.display='none'; var inp=document.getElementById('colJobInput'); inp.value=this.textContent.replace('Job: ',''); inp.focus();">Job: {{JOB_CODE}}</span>
+    <span id="colJobEditWrap" style="display:none;align-items:center;gap:4px;">
+      <input type="text" id="colJobInput" style="background:#334155;color:#F6AE2D;border:1px solid #F6AE2D;border-radius:4px;padding:2px 8px;font-size:0.8rem;font-weight:700;width:120px;" onkeydown="if(event.key==='Enter'){applyColJobEdit();}">
+      <button onclick="applyColJobEdit()" style="background:#059669;color:#FFF;border:none;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;">OK</button>
+      <button onclick="cancelColJobEdit()" style="background:#475569;color:#94A3B8;border:none;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;">Cancel</button>
+    </span>
   </div>
   <div class="controls">
     <div class="ctrl-group">
@@ -2642,10 +2647,32 @@ function applyConfigToDrawing(config) {
 // ═══════════════════════════════════════════════
 // SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
 // ═══════════════════════════════════════════════
+function applyColJobEdit() {
+  var newCode = (document.getElementById('colJobInput').value || '').trim();
+  if (!newCode) { cancelColJobEdit(); return; }
+  var lbl = document.getElementById('jobCodeDisplay');
+  lbl.textContent = 'Job: ' + newCode;
+  lbl.style.display = '';
+  document.getElementById('colJobEditWrap').style.display = 'none';
+  var el = document.getElementById('inJobNo');
+  if (el) el.value = newCode;
+  if (window.COLUMN_CONFIG) window.COLUMN_CONFIG.job_code = newCode;
+  var backLink = document.querySelector('a.back-link[href*="/shop-drawings/"]');
+  if (backLink) backLink.href = '/shop-drawings/' + newCode;
+  draw();
+}
+function cancelColJobEdit() {
+  document.getElementById('jobCodeDisplay').style.display = '';
+  document.getElementById('colJobEditWrap').style.display = 'none';
+}
+
 function savePdfToProject() {
   var btn = document.getElementById('btnSavePdf');
   var status = document.getElementById('savePdfStatus');
-  var jobCode = (window.COLUMN_CONFIG && window.COLUMN_CONFIG.job_code) || '{{JOB_CODE}}';
+  // Use editable field first, then config, then template fallback
+  var jobCode = (document.getElementById('inJobNo') || {}).value
+    || (window.COLUMN_CONFIG && window.COLUMN_CONFIG.job_code)
+    || '{{JOB_CODE}}';
   if (!jobCode || jobCode === 'null') {
     alert('No project job code \u2014 open this drawing from a project to save.');
     return;

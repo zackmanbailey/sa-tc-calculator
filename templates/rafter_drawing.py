@@ -332,7 +332,12 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
     <a class="back-link" href="/shop-drawings/{{JOB_CODE}}" title="Back to Shop Drawings">&#8592; Shop Drawings</a>
     <a class="back-link" href="/project/{{JOB_CODE}}" title="Back to Project" style="background:#1E40AF;color:#DBEAFE;border-color:#3B82F6;">&#128204; Project</a>
     <h1>Rafter Shop Drawing</h1>
-    <span class="job-code-label" id="jobLabel">RAFTER</span>
+    <span class="job-code-label" id="jobLabel" title="Click to edit job code" style="cursor:pointer;" onclick="document.getElementById('jobCodeEditWrap').style.display=this.style.display='none'?'':'inline-flex'; document.getElementById('jobCodeEditWrap').style.display='inline-flex'; this.style.display='none'; document.getElementById('jobCodeInput').focus();">RAFTER</span>
+    <span id="jobCodeEditWrap" style="display:none;align-items:center;gap:4px;">
+      <input type="text" id="jobCodeInput" style="background:#334155;color:#F6AE2D;border:1px solid #F6AE2D;border-radius:4px;padding:2px 8px;font-size:0.8rem;font-weight:700;width:120px;" onkeydown="if(event.key==='Enter'){applyJobCodeEdit();}">
+      <button onclick="applyJobCodeEdit()" style="background:#059669;color:#FFF;border:none;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;">OK</button>
+      <button onclick="cancelJobCodeEdit()" style="background:#475569;color:#94A3B8;border:none;border-radius:4px;padding:2px 8px;font-size:0.7rem;cursor:pointer;">Cancel</button>
+    </span>
   </div>
   <div class="controls">
     <div class="ctrl-group">
@@ -387,6 +392,10 @@ RAFTER_DRAWING_HTML = r"""<!DOCTYPE html>
     <div class="ctrl-group">
       <label>Column Pos (ft):</label>
       <input type="text" id="inputColumnPositions" value="" style="width:160px;" placeholder="auto-filled or type positions" title="Comma-separated column positions in feet from left end.">
+    </div>
+    <div class="ctrl-group">
+      <label>Max Length (ft):</label>
+      <input type="number" id="inputMaxRafterLength" value="53" min="20" max="200" step="1" title="Maximum rafter piece length before splice is required (default 53 ft)">
     </div>
     <div class="ctrl-group" id="spliceGroup" style="display:none;">
       <label>Splice (ft from L):</label>
@@ -604,6 +613,10 @@ function applyServerConfig() {
   if (cfg.splice_location_ft) {
     var el = document.getElementById('inputSpliceLocation');
     if (el) el.value = cfg.splice_location_ft;
+  }
+  if (cfg.max_rafter_length_ft) {
+    var el = document.getElementById('inputMaxRafterLength');
+    if (el) el.value = cfg.max_rafter_length_ft;
   }
   // Project info
   if (cfg.project_name) {
@@ -934,6 +947,7 @@ function getParams() {
     endGapFt: parseFloat(document.getElementById('inputEndGap').value) || 5,
     p3CountOverride: p3CountOverride,
     spliceLocationFt: spliceLocationFt,
+    maxRafterLengthFt: parseFloat(document.getElementById('inputMaxRafterLength').value) || 53,
     userColumnPositionsFt: userColumnPositionsFt,
   };
 }
@@ -1048,8 +1062,9 @@ function calc(p) {
   }
 
   // ── Splice logic ──
-  var needsSplice = totalCutLengthFt > 53;
-  var spliceCount = totalCutLengthFt > 106 ? 2 : (needsSplice ? 1 : 0);
+  var maxLen = p.maxRafterLengthFt || 53;
+  var needsSplice = totalCutLengthFt > maxLen;
+  var spliceCount = totalCutLengthFt > (maxLen * 2) ? 2 : (needsSplice ? 1 : 0);
   var pieceCount = spliceCount + 1;
 
   // Splice positions (inches from left end)
@@ -3786,7 +3801,8 @@ function updatePieceTabs() {
   var infoSpan = document.getElementById('spliceInfo');
 
   // Show/hide splice input
-  if (d.totalCutLengthFt > 53) {
+  var maxLen = parseFloat(document.getElementById('inputMaxRafterLength').value) || 53;
+  if (d.totalCutLengthFt > maxLen) {
     spliceGroup.style.display = '';
     // Default splice location to midpoint if not set
     var spliceInput = document.getElementById('inputSpliceLocation');
@@ -3943,7 +3959,7 @@ function toggleColumnEditMode() {
 // ═══════════════════════════════════════════════
 // INPUT LISTENERS
 // ═══════════════════════════════════════════════
-['inputWidth','inputSpacing','inputOverhang','inputPurlinType','inputBackWall','inputSpliceLocation','inputRebarSize','inputMaxStick','inputEndGap','inputAngledPurlins','inputPurlinAngle'].forEach(function(id) {
+['inputWidth','inputSpacing','inputOverhang','inputPurlinType','inputBackWall','inputSpliceLocation','inputMaxRafterLength','inputRebarSize','inputMaxStick','inputEndGap','inputAngledPurlins','inputPurlinAngle'].forEach(function(id) {
   var el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('change', function() {
@@ -4052,56 +4068,126 @@ document.getElementById('btnNonReinforced').addEventListener('click', function()
 });
 
 // ═══════════════════════════════════════════════
+// JOB CODE INLINE EDIT
+// ═══════════════════════════════════════════════
+function applyJobCodeEdit() {
+  var newCode = (document.getElementById('jobCodeInput').value || '').trim();
+  if (!newCode) { cancelJobCodeEdit(); return; }
+  // Update the label, settings panel field, and config
+  var lbl = document.getElementById('jobLabel');
+  lbl.textContent = newCode;
+  lbl.style.display = '';
+  document.getElementById('jobCodeEditWrap').style.display = 'none';
+  var setField = document.getElementById('setJobNumber');
+  if (setField) setField.value = newCode;
+  if (window.RAFTER_CONFIG) window.RAFTER_CONFIG.job_code = newCode;
+  // Update back link
+  var backLink = document.querySelector('a.back-link[href*="/shop-drawings/"]');
+  if (backLink) backLink.href = '/shop-drawings/' + newCode;
+  var projLink = document.querySelector('a.back-link[href*="/project/"]');
+  if (projLink) projLink.href = '/project/' + newCode;
+  draw();
+}
+function cancelJobCodeEdit() {
+  document.getElementById('jobLabel').style.display = '';
+  document.getElementById('jobCodeEditWrap').style.display = 'none';
+}
+// Sync settings panel job code to top bar label
+document.getElementById('setJobNumber').addEventListener('change', function() {
+  var lbl = document.getElementById('jobLabel');
+  if (lbl && this.value) lbl.textContent = this.value;
+});
+// Pre-fill inline editor from current label when shown
+document.getElementById('jobLabel').addEventListener('click', function() {
+  document.getElementById('jobCodeInput').value = this.textContent;
+});
+
+// ═══════════════════════════════════════════════
 // SAVE PDF TO PROJECT (via jsPDF + svg2pdf.js)
 // ═══════════════════════════════════════════════
 async function savePdfToProject() {
   var btn = document.getElementById('btnSavePdf');
   var status = document.getElementById('savePdfStatus');
-  var jobCode = (window.RAFTER_CONFIG && window.RAFTER_CONFIG.job_code) || '{{JOB_CODE}}';
+  // Use editable job code field first, then config, then template fallback
+  var jobCode = (document.getElementById('setJobNumber') || {}).value
+    || (window.RAFTER_CONFIG && window.RAFTER_CONFIG.job_code)
+    || '{{JOB_CODE}}';
   if (!jobCode || jobCode === 'null') {
     alert('No project job code — open this drawing from a project to save.');
     return;
   }
   btn.disabled = true;
-  btn.textContent = 'Generating...';
   status.textContent = '';
 
   try {
     var svgEl = document.getElementById('svg');
     var container = svgEl.parentElement;
-
-    // Save current viewBox (user may have zoomed/panned) and reset to full drawing
-    var curVB = svgEl.getAttribute('viewBox');
     var origW = 1100, origH = 850;
-    svgEl.setAttribute('viewBox', '0 0 ' + origW + ' ' + origH);
 
-    // Use html2canvas to capture the SVG with all CSS styles intact.
-    // svg2pdf produces black backgrounds because it loses CSS context;
-    // html2canvas renders the live DOM exactly as the browser displays it.
-    var canvas = await html2canvas(container, {
-      backgroundColor: '#FFFFFF',
-      scale: 2,
-      useCORS: true,
-      logging: false
-    });
+    // Determine how many pieces we have
+    var p = getParams();
+    var d = calc(p);
+    var totalPieces = d.pieceCount || 1;
+    var savedActivePiece = activePiece;
 
-    // Restore user's zoom/pan state
+    btn.textContent = 'Generating page 1/' + totalPieces + '...';
+
+    // Save current viewBox (user may have zoomed/panned)
+    var curVB = svgEl.getAttribute('viewBox');
+
+    var pdf = null;
+
+    // Iterate through ALL pieces, rendering each as a page
+    for (var pi = 0; pi < totalPieces; pi++) {
+      btn.textContent = 'Generating page ' + (pi + 1) + '/' + totalPieces + '...';
+
+      // Switch to this piece and redraw
+      activePiece = pi;
+      updatePieceTabs();
+      draw();
+
+      // Small delay to let the DOM settle after redraw
+      await new Promise(function(r) { setTimeout(r, 100); });
+
+      // Reset viewBox to full drawing for capture
+      svgEl.setAttribute('viewBox', '0 0 ' + origW + ' ' + origH);
+
+      // Capture with html2canvas
+      var canvas = await html2canvas(container, {
+        backgroundColor: '#FFFFFF',
+        scale: 2,
+        useCORS: true,
+        logging: false
+      });
+
+      var cW = canvas.width;
+      var cH = canvas.height;
+      var pdfW = origW;
+      var pdfH = origW * (cH / cW);
+
+      if (pi === 0) {
+        // Create PDF with first page
+        pdf = new jspdf.jsPDF({
+          orientation: pdfW >= pdfH ? 'landscape' : 'portrait',
+          unit: 'pt',
+          format: [pdfW, pdfH]
+        });
+      } else {
+        // Add new page for subsequent pieces
+        pdf.addPage([pdfW, pdfH], pdfW >= pdfH ? 'landscape' : 'portrait');
+      }
+
+      var imgData = canvas.toDataURL('image/jpeg', 0.95);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+    }
+
+    // Restore original piece selection and viewBox
+    activePiece = savedActivePiece;
+    updatePieceTabs();
+    draw();
     if (curVB) svgEl.setAttribute('viewBox', curVB);
 
-    // Use canvas aspect ratio for the PDF page so nothing gets cropped
-    var cW = canvas.width;
-    var cH = canvas.height;
-    var pdfW = origW;
-    var pdfH = origW * (cH / cW);
-
-    var pdf = new jspdf.jsPDF({
-      orientation: pdfW >= pdfH ? 'landscape' : 'portrait',
-      unit: 'pt',
-      format: [pdfW, pdfH]
-    });
-
-    var imgData = canvas.toDataURL('image/jpeg', 0.95);
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+    btn.textContent = 'Uploading...';
 
     var pdfData = pdf.output('arraybuffer');
     var blob = new Blob([pdfData], { type: 'application/pdf' });
@@ -4124,7 +4210,8 @@ async function savePdfToProject() {
     if (data.ok) {
       btn.textContent = 'Saved!';
       btn.style.background = '#059669';
-      status.textContent = 'PDF saved to project';
+      var pagesMsg = totalPieces > 1 ? ' (' + totalPieces + ' pages)' : '';
+      status.textContent = 'PDF saved to project' + pagesMsg;
       status.style.color = '#10B981';
       setTimeout(function() {
         btn.textContent = 'Save PDF to Project';
@@ -4176,6 +4263,7 @@ async function syncRafterToProject() {
       clear_height_ft: parseFloat((document.getElementById('inputClearHeight') || {}).value) || 14,
       building_width_ft: parseFloat((document.getElementById('inputWidth') || {}).value) || 40,
       footing_depth_ft: parseFloat((document.getElementById('inputFootingDepth') || {}).value) || 10,
+      max_rafter_length_ft: parseFloat((document.getElementById('inputMaxRafterLength') || {}).value) || 53,
     }
   };
   try {
@@ -4187,7 +4275,7 @@ async function syncRafterToProject() {
     console.log('[SyncBack] Rafter drawing changes synced');
   } catch(e) { console.warn('[SyncBack] Failed:', e); }
 }
-['inputClearHeight','inputWidth','inputFootingDepth'].forEach(function(id) {
+['inputClearHeight','inputWidth','inputFootingDepth','inputMaxRafterLength'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) el.addEventListener('change', scheduleRafterSyncBack);
 });
