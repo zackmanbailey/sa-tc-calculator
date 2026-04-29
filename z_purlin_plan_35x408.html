@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Z-Purlin Plan View — 35' × 408' Carport</title>
+<style>
+body { margin:0; padding:10px; background:#f5f5f5; font-family:Arial,sans-serif; }
+.wrap { overflow:auto; max-width:100%; background:#fff; border:1px solid #ccc; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap"></div>
+<script>
+(function(){
+// === BUILDING PARAMETERS ===
+var S = 3.186;       // px per foot (true 1:1)
+var BL = 408;        // building length
+var BW = 35;         // building width
+var NP = 8;          // purlin lines
+var PS = 5;          // purlin spacing O.C.
+var OX = 55, OY = 80; // drawing offset
+var LAP = 0.5;       // 6" lap in feet
+var SPLICE_OFFSET = 6; // feet from rafter
+
+// Rafter positions
+var R = [12, 48, 84, 120, 156, 192, 216, 252, 288, 324, 360, 396];
+
+// === ALTERNATING SPLICE ALGORITHM ===
+// Walk R2 through R11, alternating: BEFORE (−6), AFTER (+6), BEFORE, AFTER...
+var spliceCenters = [];
+for (var i = 1; i < R.length - 1; i++) { // R2=index1 through R11=index10
+  var spliceNum = i; // 1-based splice number
+  if (spliceNum % 2 === 1) {
+    // Odd splice: 6' BEFORE rafter
+    spliceCenters.push(R[i] - SPLICE_OFFSET);
+  } else {
+    // Even splice: 6' AFTER rafter
+    spliceCenters.push(R[i] + SPLICE_OFFSET);
+  }
+}
+
+// === BUILD PIECES from splice centers ===
+// Each piece: [physicalStart, physicalEnd] with 6" overlaps at splices
+var pieces = [];
+var pos = 0; // building start
+for (var i = 0; i <= spliceCenters.length; i++) {
+  var pStart, pEnd;
+  if (i === 0) {
+    // First piece: building start to first splice + half lap
+    pStart = 0;
+    pEnd = spliceCenters[0] + LAP / 2;
+  } else if (i === spliceCenters.length) {
+    // Last piece: last splice - half lap to building end
+    pStart = spliceCenters[spliceCenters.length - 1] - LAP / 2;
+    pEnd = BL;
+  } else {
+    // Interior piece: splice[i-1] - half lap to splice[i] + half lap
+    pStart = spliceCenters[i - 1] - LAP / 2;
+    pEnd = spliceCenters[i] + LAP / 2;
+  }
+  var len = pEnd - pStart;
+  pieces.push({ start: pStart, end: pEnd, len: len });
+}
+
+// Classify pieces and assign colors
+// Colors matching user's reference
+var YELLOW = '#E0B800';  // end pieces
+var BLUE = '#1A55C4';    // long interior pieces (48'6")
+var CYAN = '#0099CC';    // short interior pieces (24'6")
+var TEAL = '#009966';    // bridge piece (36'6")
+var RED = '#CC0000';     // rafters
+var PURPLE = '#6633AA';  // building outline / endcaps
+var GREEN = '#22AA44';   // P1/P2 clips
+var DARK = '#333333';    // columns
+var MAROON = '#880055';  // P3 plates
+var ORANGE = '#FF6600';  // splice marks
+
+// Group pieces by length for BOM and color assignment
+var grp = {};
+pieces.forEach(function(p) {
+  var key = p.len.toFixed(4);
+  if (!grp[key]) grp[key] = { len: p.len, count: 0, indices: [] };
+  grp[key].count++;
+  grp[key].indices.push(pieces.indexOf(p));
+});
+
+// Assign colors based on position: ends=yellow, long=blue, short=cyan, bridge=teal
+function pieceColor(idx) {
+  if (idx === 0 || idx === pieces.length - 1) return YELLOW; // end pieces
+  var p = pieces[idx];
+  var len = p.len;
+  // Bridge piece is the one crossing the short bay (between R6=192 and R7=216)
+  if (p.start < 192 && p.end > 216) return TEAL; // bridge across short bay
+  if (len > 40) return BLUE;   // long pieces (~48'6")
+  return CYAN;                  // short pieces (~24'6")
+}
+
+// Purlin Y positions
+var purlinY = [];
+for (var i = 0; i < NP; i++) purlinY.push(i * PS);
+
+// Sag rod positions (every 12' that isn't a rafter)
+var SR = [];
+for (var x = 12; x <= 396; x += 12) { if (R.indexOf(x) < 0) SR.push(x); }
+
+// === BUILD SVG ===
+var svgW = Math.ceil(BL * S + OX * 2 + 60);
+var svgH = Math.ceil(BW * S + OY * 2 + 140);
+var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+
+function bx(ft) { return OX + ft * S; }
+function by(ft) { return OY + ft * S; }
+function px(ft) { return ft * S; }
+function fmtLen(ft) {
+  var feet = Math.floor(ft);
+  var inches = Math.round((ft - feet) * 12);
+  if (inches === 12) { feet++; inches = 0; }
+  if (inches === 0) return feet + "'";
+  return feet + "'" + inches + '"';
+}
+
+// Background
+s += '<rect x="0" y="0" width="' + svgW + '" height="' + svgH + '" fill="#FFFFFF"/>';
+
+// Title
+s += '<text x="' + (svgW / 2) + '" y="18" text-anchor="middle" font-size="13" font-weight="bold" fill="#222" font-family="Arial,sans-serif">Z-PURLIN PLAN VIEW — 35\' × 408\' CARPORT</text>';
+s += '<text x="' + (svgW / 2) + '" y="33" text-anchor="middle" font-size="9" fill="#666" font-family="Arial,sans-serif">12\' Parking Stalls | 36\' Max Bays | 12" 12GA G90 Z-Purlins | 5\' O.C. | Alternating Lapped Splices</text>';
+
+// === OVERALL DIMENSION ===
+var odY = OY - 48;
+s += '<line x1="' + bx(0) + '" y1="' + odY + '" x2="' + bx(BL) + '" y2="' + odY + '" stroke="#333" stroke-width="0.7"/>';
+s += '<line x1="' + bx(0) + '" y1="' + (odY - 6) + '" x2="' + bx(0) + '" y2="' + (odY + 6) + '" stroke="#333" stroke-width="0.7"/>';
+s += '<line x1="' + bx(BL) + '" y1="' + (odY - 6) + '" x2="' + bx(BL) + '" y2="' + (odY + 6) + '" stroke="#333" stroke-width="0.7"/>';
+s += '<text x="' + bx(BL / 2) + '" y="' + (odY - 8) + '" text-anchor="middle" font-size="9" font-weight="bold" fill="#222" font-family="Arial,sans-serif">408\'-0" OVERALL</text>';
+
+// === BAY DIMENSIONS ===
+var dimY = OY - 22;
+// Left overhang
+s += '<line x1="' + bx(0) + '" y1="' + (dimY - 5) + '" x2="' + bx(0) + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+s += '<line x1="' + bx(R[0]) + '" y1="' + (dimY - 5) + '" x2="' + bx(R[0]) + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+s += '<line x1="' + bx(0) + '" y1="' + dimY + '" x2="' + bx(R[0]) + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+s += '<text x="' + ((bx(0) + bx(R[0])) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7" fill="#999" font-family="Arial,sans-serif">12\' OH</text>';
+// Bays
+for (var i = 0; i < R.length - 1; i++) {
+  var x1 = bx(R[i]), x2 = bx(R[i + 1]), bl = R[i + 1] - R[i];
+  s += '<line x1="' + x1 + '" y1="' + (dimY - 5) + '" x2="' + x1 + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+  s += '<line x1="' + x2 + '" y1="' + (dimY - 5) + '" x2="' + x2 + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+  s += '<line x1="' + x1 + '" y1="' + dimY + '" x2="' + x2 + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+  s += '<text x="' + ((x1 + x2) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7.5" fill="#333" font-family="Arial,sans-serif">' + bl + '\'</text>';
+}
+// Right overhang
+var rlx = bx(R[R.length - 1]), rrx = bx(BL);
+s += '<line x1="' + rrx + '" y1="' + (dimY - 5) + '" x2="' + rrx + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+s += '<line x1="' + rlx + '" y1="' + dimY + '" x2="' + rrx + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+s += '<text x="' + ((rlx + rrx) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7" fill="#999" font-family="Arial,sans-serif">12\' OH</text>';
+
+// === SAG RODS (dashed gray) ===
+SR.forEach(function(ft) {
+  s += '<line x1="' + bx(ft) + '" y1="' + by(0) + '" x2="' + bx(ft) + '" y2="' + by(BW) + '" stroke="#AAAAAA" stroke-width="0.4" stroke-dasharray="1.5,3"/>';
+});
+
+// === PURLIN PIECES (colored bars with stroke) ===
+var pH = 2.4;
+for (var row = 0; row < NP; row++) {
+  var y = by(purlinY[row]);
+  pieces.forEach(function(p, idx) {
+    var col = pieceColor(idx);
+    // Draw from physical start to physical end (pieces overlap at splices)
+    s += '<rect x="' + bx(p.start) + '" y="' + (y - pH / 2) + '" width="' + px(p.len) + '" height="' + pH + '" fill="' + col + '" stroke="rgba(0,0,0,.2)" stroke-width="0.3" rx="0.3"/>';
+  });
+}
+
+// === PIECE LENGTH LABELS (above first purlin row) ===
+var labelY = by(0) - 5;
+pieces.forEach(function(p, idx) {
+  var mx = (p.start + p.end) / 2;
+  var col = pieceColor(idx);
+  s += '<text x="' + bx(mx) + '" y="' + labelY + '" text-anchor="middle" font-size="6" fill="' + col + '" font-family="Arial,sans-serif">' + fmtLen(p.len) + '</text>';
+});
+
+// === PURLIN LINE LABELS (left side) ===
+for (var row = 0; row < NP; row++) {
+  var y = by(purlinY[row]);
+  s += '<text x="' + (OX - 5) + '" y="' + (y + 3) + '" text-anchor="end" font-size="7.5" fill="#555" font-family="Arial,sans-serif">P' + (row + 1) + '</text>';
+}
+
+// === RAFTERS (thick red bars) ===
+var rW = 3;
+R.forEach(function(r, ri) {
+  var rpx = bx(r);
+  s += '<rect x="' + (rpx - rW / 2) + '" y="' + by(0) + '" width="' + rW + '" height="' + px(BW) + '" fill="' + RED + '"/>';
+  s += '<text x="' + rpx + '" y="' + (by(BW) + 14) + '" text-anchor="middle" font-size="7" fill="' + RED + '" font-family="Arial,sans-serif">R' + (ri + 1) + '</text>';
+});
+
+// === BUILDING OUTLINE (purple) ===
+s += '<rect x="' + bx(0) + '" y="' + by(0) + '" width="' + px(BL) + '" height="' + px(BW) + '" fill="none" stroke="' + PURPLE + '" stroke-width="2.5"/>';
+
+// === COLUMNS (1 per rafter at center y=17.5') ===
+var colSz = 5;
+R.forEach(function(r) {
+  var cx = bx(r), cy = by(17.5);
+  s += '<rect x="' + (cx - colSz / 2) + '" y="' + (cy - colSz / 2) + '" width="' + colSz + '" height="' + colSz + '" fill="' + DARK + '" stroke="#000" stroke-width="0.5"/>';
+});
+
+// === P3 PLATES (maroon outline at column positions) ===
+var p3S = 8;
+R.forEach(function(r) {
+  var cx = bx(r), cy = by(17.5);
+  s += '<rect x="' + (cx - p3S / 2) + '" y="' + (cy - p3S / 2) + '" width="' + p3S + '" height="' + p3S + '" fill="none" stroke="' + MAROON + '" stroke-width="0.8"/>';
+});
+
+// === P1 CLIPS (tiny green at interior purlin-rafter intersections) ===
+R.forEach(function(r) {
+  for (var pi = 1; pi < NP - 1; pi++) {
+    var cx = bx(r), cy = by(purlinY[pi]);
+    s += '<rect x="' + (cx - 0.8) + '" y="' + (cy - px(0.25)) + '" width="1.6" height="' + px(0.5) + '" fill="' + GREEN + '" opacity="0.8"/>';
+  }
+});
+
+// === P2 EAVE PLATES (at eave lines 0 and 35') ===
+R.forEach(function(r) {
+  [0, BW].forEach(function(eft) {
+    var cx = bx(r), cy = by(eft);
+    s += '<rect x="' + (cx - 0.8) + '" y="' + (cy - px(0.375)) + '" width="1.6" height="' + px(0.75) + '" fill="' + GREEN + '" opacity="0.9"/>';
+  });
+});
+
+// === SPLICE MARKS (orange X at each splice center × purlin line) ===
+spliceCenters.forEach(function(sp) {
+  var sx = bx(sp);
+  for (var pi = 0; pi < NP; pi++) {
+    var sy = by(purlinY[pi]), m = 2.5;
+    s += '<line x1="' + (sx - m) + '" y1="' + (sy - m) + '" x2="' + (sx + m) + '" y2="' + (sy + m) + '" stroke="' + ORANGE + '" stroke-width="0.8"/>';
+    s += '<line x1="' + (sx - m) + '" y1="' + (sy + m) + '" x2="' + (sx + m) + '" y2="' + (sy - m) + '" stroke="' + ORANGE + '" stroke-width="0.8"/>';
+  }
+});
+
+// === ENDCAPS (purple marks at x=0 and x=408) ===
+[0, BL].forEach(function(xft) {
+  for (var pi = 0; pi < NP; pi++) {
+    var ex = bx(xft), ey = by(purlinY[pi]);
+    s += '<rect x="' + (ex - 1) + '" y="' + (ey - 4) + '" width="2" height="8" fill="' + PURPLE + '" stroke="' + PURPLE + '" stroke-width="0.4"/>';
+  }
+});
+
+// === WIDTH DIMENSION (right side) ===
+var rdX = bx(BL) + 20;
+s += '<line x1="' + rdX + '" y1="' + by(0) + '" x2="' + rdX + '" y2="' + by(BW) + '" stroke="#333" stroke-width="0.7"/>';
+s += '<line x1="' + (rdX - 5) + '" y1="' + by(0) + '" x2="' + (rdX + 5) + '" y2="' + by(0) + '" stroke="#333" stroke-width="0.7"/>';
+s += '<line x1="' + (rdX - 5) + '" y1="' + by(BW) + '" x2="' + (rdX + 5) + '" y2="' + by(BW) + '" stroke="#333" stroke-width="0.7"/>';
+s += '<text x="' + (rdX + 10) + '" y="' + by(BW / 2) + '" text-anchor="middle" font-size="8" fill="#222" font-family="Arial,sans-serif" transform="rotate(-90,' + (rdX + 10) + ',' + by(BW / 2) + ')">35\'-0"</text>';
+
+// === LEGEND ===
+var ly = by(BW) + 30;
+var items = [
+  [YELLOW, "End Pieces (" + fmtLen(pieces[0].len) + ")"],
+  [BLUE, "Long Pieces (" + fmtLen(pieces[1].len) + ")"],
+  [CYAN, "Short Pieces (" + fmtLen(pieces[2].len) + ")"],
+  [TEAL, "Bridge Piece (" + fmtLen(pieces[5].len) + ")"],
+  [RED, "Rafters"],
+  [PURPLE, "Outline / Endcaps"],
+  [GREEN, "P1/P2 Clips"],
+  [MAROON, "P3 Plates"],
+  [DARK, "Columns"],
+  [ORANGE, "Splices (6\' from rafter)"]
+];
+items.forEach(function(it, idx) {
+  var ix = OX + idx * 115;
+  s += '<rect x="' + ix + '" y="' + (ly - 4) + '" width="10" height="8" fill="' + it[0] + '"/>';
+  s += '<text x="' + (ix + 14) + '" y="' + (ly + 3) + '" font-size="6.5" fill="#444" font-family="Arial,sans-serif">' + it[1] + '</text>';
+});
+
+// === BOM (dynamic per length group) ===
+var ly2 = ly + 20;
+s += '<text x="' + OX + '" y="' + ly2 + '" font-size="9" font-weight="500" fill="#333" font-family="Arial,sans-serif">BOM (per line × ' + NP + ' lines):</text>';
+var bomX = OX + 130;
+// Collect unique lengths and sort
+var lenGroups = {};
+pieces.forEach(function(p) {
+  var key = fmtLen(p.len);
+  if (!lenGroups[key]) lenGroups[key] = 0;
+  lenGroups[key]++;
+});
+Object.keys(lenGroups).forEach(function(key) {
+  var cnt = lenGroups[key];
+  s += '<text x="' + bomX + '" y="' + ly2 + '" font-size="8" fill="#333" font-family="Arial,sans-serif">' + key + ' × ' + cnt + '/line = ' + (cnt * NP) + '</text>';
+  bomX += 120;
+});
+
+var ly3 = ly2 + 14;
+var tP = pieces.length * NP;
+var tS = spliceCenters.length * NP;
+s += '<text x="' + OX + '" y="' + ly3 + '" font-size="8" fill="#333" font-family="Arial,sans-serif">Purlins: ' + tP + ' pcs | Splices: ' + tS + ' (' + (tS * 8) + ' TEK) | P1: ' + ((NP - 2) * R.length) + ' | P2: ' + (2 * R.length) + ' | P3: ' + (2 * R.length) + ' | Columns: ' + R.length + ' | Sag rods: ' + SR.length + ' lines | H-straps: ' + (4 * R.length) + ' | Endcaps: 4 pcs</text>';
+
+// Verification line
+var ly4 = ly3 + 14;
+var totalMat = 0; pieces.forEach(function(p) { totalMat += p.len; });
+var coverage = totalMat - spliceCenters.length * LAP;
+s += '<text x="' + OX + '" y="' + ly4 + '" font-size="7" fill="#888" font-family="Arial,sans-serif">Verify: Total material = ' + totalMat.toFixed(2) + '\' − ' + spliceCenters.length + ' splices × 6" = ' + coverage.toFixed(1) + '\' coverage (' + BL + '\' building) ✓</text>';
+
+s += '</svg>';
+document.getElementById('wrap').innerHTML = s;
+})();
+</script>
+</body>
+</html>

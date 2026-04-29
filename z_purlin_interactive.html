@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Purlin Plan View Builder — TitanForge</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; }
+.topbar { background: #16213e; padding: 10px 20px; display: flex; align-items: center; gap: 20px; border-bottom: 2px solid #0f3460; }
+.topbar h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
+.topbar .subtitle { font-size: 11px; color: #888; }
+
+/* INPUT PANEL */
+.input-panel { background: #16213e; padding: 10px 20px; border-bottom: 1px solid #0f3460; }
+.input-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: flex-end; margin-bottom: 6px; }
+.input-row:last-child { margin-bottom: 0; }
+.row-label { font-size: 10px; color: #e94560; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; width: 100%; margin-bottom: 2px; }
+.input-group { display: flex; flex-direction: column; gap: 2px; }
+.input-group label { font-size: 9px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
+.input-group input, .input-group select {
+  background: #0f3460; border: 1px solid #1a4080; color: #fff; padding: 4px 7px;
+  border-radius: 4px; font-size: 12px; width: 95px;
+}
+.input-group input:focus, .input-group select:focus { border-color: #e94560; outline: none; }
+.btn-generate { background: #e94560; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
+.btn-generate:hover { background: #c73e54; }
+.btn-print { background: #0f3460; color: #fff; border: 1px solid #1a4080; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+.btn-print:hover { background: #1a4080; }
+
+/* DRAWING AREA */
+.drawing-wrap {
+  overflow: hidden; background: #fff; margin: 10px; border: 1px solid #333;
+  max-height: calc(100vh - 340px); position: relative; cursor: grab; min-height: 200px;
+}
+.drawing-wrap.dragging { cursor: grabbing; }
+.drawing-wrap svg { display: block; transform-origin: 0 0; }
+.zoom-controls { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 10; }
+.zoom-controls button {
+  background: rgba(22,33,62,0.85); color: #fff; border: 1px solid #0f3460;
+  width: 26px; height: 26px; border-radius: 4px; font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.zoom-controls button:hover { background: rgba(15,52,96,0.95); }
+.zoom-level { position: absolute; bottom: 6px; right: 8px; background: rgba(22,33,62,0.8); color: #aaa; padding: 2px 7px; border-radius: 3px; font-size: 10px; z-index: 10; }
+.zoom-hint { position: absolute; bottom: 6px; left: 8px; background: rgba(22,33,62,0.8); color: #777; padding: 2px 7px; border-radius: 3px; font-size: 10px; z-index: 10; }
+
+/* BOM */
+.bom-section { background: #16213e; margin: 0 10px 10px; padding: 12px 16px; border-radius: 6px; border: 1px solid #0f3460; }
+.bom-section h3 { font-size: 13px; color: #e94560; margin-bottom: 8px; }
+.bom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bom-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.bom-table th { background: #0f3460; color: #ccc; padding: 4px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
+.bom-table td { padding: 4px 8px; border-bottom: 1px solid #1a1a2e; }
+.bom-table tr:hover td { background: rgba(233,69,96,0.08); }
+.color-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.bom-verify { margin-top: 6px; font-size: 11px; color: #4caf50; }
+.bom-warn { color: #ff9800; margin-top: 4px; font-size: 11px; }
+@media print {
+  body { background: #fff; color: #000; }
+  .topbar, .input-panel, .btn-print, .zoom-controls, .zoom-level, .zoom-hint { display: none; }
+  .drawing-wrap { max-height: none; margin: 0; border: none; overflow: visible; cursor: default; }
+  .bom-section { background: #fff; border: 1px solid #ccc; color: #000; }
+  .bom-table th { background: #eee; color: #333; }
+  .bom-table td { border-color: #ddd; color: #333; }
+}
+</style>
+</head>
+<body>
+<div class="topbar"><div>
+  <h1>PURLIN PLAN VIEW BUILDER</h1>
+  <div class="subtitle">TitanForge — Z-Purlin & C-Purlin Layout with Sag Rods, Endcaps, and Decking</div>
+</div></div>
+
+<!-- INPUT PANEL -->
+<div class="input-panel" id="inputs">
+  <!-- Row 1: Building -->
+  <div class="input-row">
+    <div class="row-label">Building</div>
+    <div class="input-group"><label>Length (ft)</label><input type="number" id="inBL" value="408" min="20" max="2000"></div>
+    <div class="input-group"><label>Width (ft)</label><input type="number" id="inBW" value="35" min="10" max="100"></div>
+    <div class="input-group"><label>Space Width (ft)</label><input type="number" id="inSW" value="12" min="8" max="20"></div>
+    <div class="input-group"><label>Max Bay (ft)</label><input type="number" id="inMB" value="36" min="12" max="60"></div>
+    <div class="input-group"><label>Overhang</label>
+      <select id="inOH"><option value="0">0 spaces</option><option value="1" selected>1 space</option><option value="2">2 spaces</option></select>
+    </div>
+  </div>
+  <!-- Row 2: Purlins -->
+  <div class="input-row">
+    <div class="row-label">Purlins</div>
+    <div class="input-group"><label>Purlin Type</label>
+      <select id="inPT"><option value="Z" selected>Z-Purlin (lapped)</option><option value="C">C-Purlin (butt joint)</option></select>
+    </div>
+    <div class="input-group"><label>Spacing O.C. (ft)</label><input type="number" id="inPS" value="5" min="2" max="10" step="0.5"></div>
+    <div class="input-group"><label>Splice Lap (in)</label><input type="number" id="inLap" value="6" min="4" max="12"></div>
+    <div class="input-group"><label>Splice Offset (ft)</label><input type="number" id="inSO" value="6" min="3" max="12"></div>
+    <div class="input-group"><label>Max Piece (ft)</label><input type="number" id="inMaxLen" value="53" min="30" max="60"></div>
+  </div>
+  <!-- Row 3: Secondary Members -->
+  <div class="input-row">
+    <div class="row-label">Secondary Members</div>
+    <div class="input-group"><label>Sag Rod Size</label>
+      <select id="inSR"><option value="2x2" selected>2"×2" Angle</option><option value="1.5x1.5">1½"×1½" Angle</option></select>
+    </div>
+    <div class="input-group"><label>Endcap Type</label>
+      <select id="inEC"><option value="U" selected>U-Channel</option><option value="C">C-Channel</option></select>
+    </div>
+    <div class="input-group"><label>Max Secondary (ft)</label><input type="number" id="inMaxSec" value="30" min="10" max="53"></div>
+  </div>
+  <!-- Row 4: Decking -->
+  <div class="input-row">
+    <div class="row-label">Roof Decking</div>
+    <div class="input-group"><label>Panel Width (in)</label><input type="number" id="inPW" value="36" min="12" max="48"></div>
+    <div class="input-group"><label>Coverage Width (in)</label><input type="number" id="inCW" value="33" min="12" max="48"></div>
+    <div class="input-group"><label>Side Overlap (in)</label><input type="number" id="inSOL" value="3" min="1" max="6"></div>
+    <div class="input-group"><label>End Overlap (in)</label><input type="number" id="inEOL" value="6" min="2" max="12"></div>
+    <div class="input-group"><label>Max Panel (ft)</label><input type="number" id="inMaxPanel" value="30" min="10" max="45"></div>
+  </div>
+  <!-- Row 5: Weights -->
+  <div class="input-row">
+    <div class="row-label">Weights (lb/ft)</div>
+    <div class="input-group"><label>Purlin lb/ft</label><input type="number" id="inWtPurlin" value="7.43" min="0" max="20" step="0.01"></div>
+    <div class="input-group"><label>Sag Rod lb/ft</label><input type="number" id="inWtSagRod" value="0.8656" min="0" max="5" step="0.001"></div>
+    <div class="input-group"><label>Endcap lb/ft</label><input type="number" id="inWtEndcap" value="7.43" min="0" max="20" step="0.01"></div>
+    <div class="input-group"><label>Decking lb/ft</label><input type="number" id="inWtDecking" value="2.89" min="0" max="10" step="0.01"></div>
+    <div class="input-group"><label>P1 Clip (lb ea)</label><input type="number" id="inWtP1" value="2.41" min="0" max="10" step="0.01"></div>
+    <div class="input-group"><label>P2 Plate (lb ea)</label><input type="number" id="inWtP2" value="8.44" min="0" max="20" step="0.01"></div>
+    <div class="input-group"><label>P3 Plate (lb ea)</label><input type="number" id="inWtP3" value="77.34" min="0" max="100" step="0.01"></div>
+    <div class="input-group"><label>H-Strap (lb ea)</label><input type="number" id="inWtHStrap" value="1.68" min="0" max="10" step="0.01"></div>
+    <button class="btn-generate" onclick="generate()">Generate</button>
+    <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  </div>
+</div>
+
+<!-- DRAWING -->
+<div class="drawing-wrap" id="drawingWrap">
+  <div class="zoom-controls">
+    <button onclick="zoomIn()" title="Zoom In">+</button>
+    <button onclick="zoomOut()" title="Zoom Out">−</button>
+    <button onclick="zoomReset()" title="Reset">⟲</button>
+    <button onclick="zoomFit()" title="Fit">▣</button>
+  </div>
+  <div class="zoom-level" id="zoomLevel">100%</div>
+  <div class="zoom-hint">Scroll to zoom · Drag to pan</div>
+  <div id="svgContainer"></div>
+</div>
+
+<!-- BOM -->
+<div class="bom-section" id="bomSection"></div>
+
+<script>
+// ============================================================
+// HELPERS
+// ============================================================
+function fmtLen(ft) {
+  var neg = ft < 0; if (neg) ft = -ft;
+  var feet = Math.floor(ft);
+  var inches = Math.round((ft - feet) * 12);
+  if (inches === 12) { feet++; inches = 0; }
+  var s = feet + "'";
+  if (inches > 0) s += inches + '"';
+  return neg ? '-' + s : s;
+}
+
+// Break a total length into pieces ≤ maxLen, overlapping at given positions.
+// Pieces are made as equal in length as possible by computing how many pieces
+// are needed, finding the ideal length (totalLen / numPieces), and then snapping
+// each split point to the nearest valid overlap position.
+function breakIntoPieces(totalLen, maxLen, overlapPositions, overlapInches) {
+  if (totalLen <= maxLen) return [{ len: totalLen, count: 1 }];
+
+  var lap = (overlapInches || 0) / 12; // overlap in feet (0 for sag rods/endcaps)
+
+  // Figure out how many pieces we need (minimum to stay under maxLen)
+  var numPieces = Math.ceil(totalLen / maxLen);
+
+  // Target length per piece (ideal even split)
+  var idealLen = totalLen / numPieces;
+
+  // Get valid candidate split positions (interior overlap points only)
+  var candidates = [];
+  for (var i = 0; i < overlapPositions.length; i++) {
+    if (overlapPositions[i] > 0.5 && overlapPositions[i] < totalLen - 0.5) {
+      candidates.push(overlapPositions[i]);
+    }
+  }
+
+  // For each split, pick the candidate closest to ideal that keeps all pieces ≤ maxLen
+  var splitPoints = [];
+  for (var s = 1; s < numPieces; s++) {
+    var idealPos = s * idealLen;
+    var bestPos = idealPos; // fallback
+    var bestScore = Infinity;
+    for (var c = 0; c < candidates.length; c++) {
+      var cp = candidates[c];
+      // Must be after previous split
+      if (splitPoints.length > 0 && cp <= splitPoints[splitPoints.length - 1]) continue;
+      // Check: piece from previous split to here must be ≤ maxLen
+      var prevEnd = splitPoints.length > 0 ? splitPoints[splitPoints.length - 1] : 0;
+      if (cp - prevEnd > maxLen) continue;
+      // Check: remaining length after this can be split into remaining pieces ≤ maxLen
+      var remaining = totalLen - cp;
+      var remainingPieces = numPieces - s;
+      if (remaining > maxLen * remainingPieces) continue;
+      // Score: distance from ideal position (prefer closest to even split)
+      var score = Math.abs(cp - idealPos);
+      if (score < bestScore) { bestScore = score; bestPos = cp; }
+    }
+    splitPoints.push(bestPos);
+  }
+
+  // Build pieces from split points
+  var pieces = [];
+  var prev = 0;
+  for (var i = 0; i < splitPoints.length; i++) {
+    pieces.push(splitPoints[i] - prev + (lap > 0 ? lap / 2 : 0));
+    prev = splitPoints[i] - (lap > 0 ? lap / 2 : 0);
+  }
+  pieces.push(totalLen - prev);
+
+  // Group by length
+  var groups = {};
+  pieces.forEach(function(len) {
+    var key = len.toFixed(2);
+    if (!groups[key]) groups[key] = { len: len, count: 0 };
+    groups[key].count++;
+  });
+  return Object.values(groups);
+}
+
+// ============================================================
+// LAYOUT ENGINE
+// ============================================================
+function computeLayout(params) {
+  var BL = params.buildingLength, BW = params.buildingWidth;
+  var SW = params.spaceWidth, MB = params.maxBay;
+  var OH = params.overhangSpaces, PS = params.purlinSpacing;
+  var LAP = params.spliceLap / 12;
+  var SO = params.spliceOffset, MAX_LEN = params.maxPieceLen;
+  var PT = params.purlinType;
+  var MAX_SEC = params.maxSecondary;
+
+  // --- RAFTER POSITIONS ---
+  var totalSpaces = Math.round(BL / SW);
+  var spacesPerBay = Math.floor(MB / SW);
+  var interiorSpaces = totalSpaces - 2 * OH;
+  if (interiorSpaces < 1) interiorSpaces = 1;
+  var numBays = Math.ceil(interiorSpaces / spacesPerBay);
+  if (numBays < 1) numBays = 1;
+
+  var baySpaces = [];
+  var baseSpaces = Math.floor(interiorSpaces / numBays);
+  var remainder = interiorSpaces - baseSpaces * numBays;
+  for (var i = 0; i < numBays; i++) baySpaces.push(baseSpaces);
+  var left = 0, right = numBays - 1, rem = remainder;
+  while (rem > 0) {
+    baySpaces[left]++; rem--;
+    if (rem > 0 && left !== right) { baySpaces[right]++; rem--; }
+    left++; right--;
+    if (left > right) break;
+  }
+  // Sort: largest outside, smallest middle
+  baySpaces.sort(function(a, b) { return b - a; });
+  var half1 = [], half2 = [];
+  for (var i = 0; i < baySpaces.length; i++) {
+    if (i % 2 === 0) half1.push(baySpaces[i]);
+    else half2.unshift(baySpaces[i]);
+  }
+  baySpaces = half1.concat(half2);
+
+  var rafters = [];
+  var pos = OH * SW;
+  rafters.push(pos);
+  for (var i = 0; i < baySpaces.length; i++) { pos += baySpaces[i] * SW; rafters.push(pos); }
+
+  var bayWidths = [];
+  for (var i = 0; i < rafters.length - 1; i++) bayWidths.push(rafters[i + 1] - rafters[i]);
+
+  // --- PURLIN LINES ---
+  var numPurlins = Math.floor(BW / PS) + 1;
+  var purlinY = [];
+  for (var i = 0; i < numPurlins; i++) purlinY.push(i * PS);
+
+  // --- SPLICE POSITIONS & PIECES ---
+  var spliceCenters = [], pieces = [], warnings = [];
+
+  if (PT === 'Z') {
+    // Z-Purlin: Alternating lapped splice
+    for (var i = 1; i < rafters.length - 1; i++) {
+      spliceCenters.push(i % 2 === 1 ? rafters[i] - SO : rafters[i] + SO);
+    }
+    for (var i = 0; i <= spliceCenters.length; i++) {
+      var pS, pE;
+      if (i === 0) { pS = 0; pE = spliceCenters[0] + LAP / 2; }
+      else if (i === spliceCenters.length) { pS = spliceCenters[spliceCenters.length - 1] - LAP / 2; pE = BL; }
+      else { pS = spliceCenters[i - 1] - LAP / 2; pE = spliceCenters[i] + LAP / 2; }
+      pieces.push({ start: pS, end: pE, len: pE - pS, idx: i });
+    }
+  } else {
+    // C-Purlin: Butt joints at rafter positions
+    for (var i = 0; i < rafters.length - 1; i++) {
+      var pS = (i === 0) ? 0 : rafters[i];
+      var pE = (i === rafters.length - 2) ? BL : rafters[i + 1];
+      // Check if piece is too long — split at intermediate rafters if needed
+      if (pE - pS > MAX_LEN) {
+        // Find intermediate rafter to split at
+        var mid = Math.floor((i + (rafters.length - 2 - i)) / 2);
+        // Simple: just break at each rafter
+        pieces.push({ start: pS, end: rafters[i + 1], len: rafters[i + 1] - pS, idx: pieces.length });
+      } else {
+        pieces.push({ start: pS, end: pE, len: pE - pS, idx: pieces.length });
+      }
+      spliceCenters.push(rafters[i + 1]); // splice at rafter for C-purlin
+    }
+    // Remove last splice center (no splice after last piece)
+    spliceCenters.pop();
+  }
+
+  // Check max piece length
+  pieces.forEach(function(p, i) {
+    if (p.len > MAX_LEN) warnings.push('Piece ' + (i + 1) + ': ' + fmtLen(p.len) + ' exceeds ' + MAX_LEN + "' max!");
+  });
+
+  // Length groups
+  var lengthGroups = {};
+  pieces.forEach(function(p) {
+    var key = p.len.toFixed(4);
+    if (!lengthGroups[key]) lengthGroups[key] = { len: p.len, count: 0, indices: [] };
+    lengthGroups[key].count++;
+    lengthGroups[key].indices.push(p.idx);
+  });
+
+  // Sag rods (every space that isn't a rafter)
+  var sagRodPositions = [];
+  for (var x = SW; x < BL; x += SW) { if (rafters.indexOf(x) < 0) sagRodPositions.push(x); }
+
+  // --- SAG ROD PIECES (run across building width, max MAX_SEC, overlap at purlin Y positions) ---
+  var sagRodPieces = breakIntoPieces(BW, MAX_SEC, purlinY, 0);
+  var sagRodTotal = 0;
+  sagRodPieces.forEach(function(g) { sagRodTotal += g.len * g.count; });
+
+  // --- ENDCAP PIECES (run across building width at each end, same breaking) ---
+  var endcapPieces = breakIntoPieces(BW, MAX_SEC, purlinY, 0);
+  var endcapTotal = 0;
+  endcapPieces.forEach(function(g) { endcapTotal += g.len * g.count; });
+
+  // --- DECKING (panels run across building width, laid side-by-side along length) ---
+  var panelCoverage = params.coverageWidth / 12; // ft
+  var panelActual = params.panelWidth / 12; // ft
+  var endOverlap = params.endOverlap / 12; // ft
+  var maxPanel = params.maxPanel;
+
+  // Number of panel strips to cover building length
+  var numStrips = Math.ceil(BL / panelCoverage);
+
+  // Each strip runs across building width — break into rows if > maxPanel
+  var deckPieces = breakIntoPieces(BW, maxPanel, purlinY, params.endOverlap);
+  var deckRowsPerStrip = 0;
+  deckPieces.forEach(function(g) { deckRowsPerStrip += g.count; });
+
+  // Verification
+  var totalMaterial = 0;
+  pieces.forEach(function(p) { totalMaterial += p.len; });
+  var coverage = PT === 'Z' ? totalMaterial - spliceCenters.length * LAP : totalMaterial;
+
+  // --- WEIGHT CALCULATIONS ---
+  var wt = params;
+  var NR = rafters.length; // number of rafters
+
+  // Purlin weight: total material per line × number of lines × lb/ft
+  var purlinTotalLF = totalMaterial * numPurlins;
+  var purlinWeight = purlinTotalLF * wt.wtPurlin;
+
+  // Sag rod weight: each rod runs building width, broken into pieces
+  var sagRodTotalLF = 0;
+  sagRodPieces.forEach(function(g) { sagRodTotalLF += g.len * g.count * sagRodPositions.length; });
+  var sagRodWeight = sagRodTotalLF * wt.wtSagRod;
+
+  // Endcap weight: 2 ends, each with pieces running building width
+  var endcapTotalLF = 0;
+  endcapPieces.forEach(function(g) { endcapTotalLF += g.len * g.count * 2; });
+  var endcapWeight = endcapTotalLF * wt.wtEndcap;
+
+  // Decking weight: each panel piece length × number of strips × lb/ft
+  var deckTotalLF = 0;
+  deckPieces.forEach(function(g) { deckTotalLF += g.len * g.count * numStrips; });
+  var deckWeight = deckTotalLF * wt.wtDecking;
+
+  // Hardware weights (per-piece × quantity)
+  var qtyP1 = (numPurlins - 2) * NR;
+  var qtyP2 = 2 * NR;
+  var qtyP3 = 2 * NR;
+  var qtyHStrap = 4 * NR;
+  var p1Weight = qtyP1 * wt.wtP1;
+  var p2Weight = qtyP2 * wt.wtP2;
+  var p3Weight = qtyP3 * wt.wtP3;
+  var hStrapWeight = qtyHStrap * wt.wtHStrap;
+
+  var hardwareWeight = p1Weight + p2Weight + p3Weight + hStrapWeight;
+  var totalWeight = purlinWeight + sagRodWeight + endcapWeight + deckWeight + hardwareWeight;
+
+  var weights = {
+    purlin: purlinWeight, purlinLF: purlinTotalLF,
+    sagRod: sagRodWeight, sagRodLF: sagRodTotalLF,
+    endcap: endcapWeight, endcapLF: endcapTotalLF,
+    deck: deckWeight, deckLF: deckTotalLF,
+    p1: p1Weight, qtyP1: qtyP1,
+    p2: p2Weight, qtyP2: qtyP2,
+    p3: p3Weight, qtyP3: qtyP3,
+    hStrap: hStrapWeight, qtyHStrap: qtyHStrap,
+    hardware: hardwareWeight, total: totalWeight
+  };
+
+  return {
+    buildingLength: BL, buildingWidth: BW, spaceWidth: SW, purlinSpacing: PS,
+    spliceLap: LAP, spliceOffset: SO, purlinType: PT,
+    rafters: rafters, bayWidths: bayWidths, baySpaces: baySpaces,
+    numPurlins: numPurlins, purlinY: purlinY,
+    spliceCenters: spliceCenters, pieces: pieces, lengthGroups: lengthGroups,
+    sagRodPositions: sagRodPositions,
+    sagRodPieces: sagRodPieces, sagRodTotal: sagRodTotal,
+    endcapPieces: endcapPieces, endcapTotal: endcapTotal,
+    deckPieces: deckPieces, numStrips: numStrips, deckRowsPerStrip: deckRowsPerStrip,
+    totalMaterial: totalMaterial, coverage: coverage,
+    warnings: warnings, overhangSpaces: OH,
+    maxSecondary: MAX_SEC, sagRodSize: params.sagRodSize, endcapType: params.endcapType,
+    panelCoverage: panelCoverage, panelActual: panelActual,
+    weights: weights
+  };
+}
+
+// ============================================================
+// COLOR ASSIGNMENT
+// ============================================================
+var COLORS = ['#E0B800','#1A55C4','#0099CC','#009966','#CC6600','#9933CC','#CC3366','#336699'];
+
+function assignColors(layout) {
+  var groups = [];
+  Object.keys(layout.lengthGroups).forEach(function(key) {
+    var g = layout.lengthGroups[key];
+    var isEnd = g.indices.indexOf(0) >= 0 || g.indices.indexOf(layout.pieces.length - 1) >= 0;
+    groups.push({ key: key, len: g.len, count: g.count, indices: g.indices, isEnd: isEnd });
+  });
+  groups.sort(function(a, b) {
+    if (a.isEnd && !b.isEnd) return -1;
+    if (!a.isEnd && b.isEnd) return 1;
+    return b.len - a.len;
+  });
+  var colorMap = {};
+  groups.forEach(function(g, i) { colorMap[g.key] = COLORS[i % COLORS.length]; });
+  return { colorMap: colorMap, groups: groups };
+}
+
+function pieceColor(layout, colorInfo, idx) {
+  return colorInfo.colorMap[layout.pieces[idx].len.toFixed(4)] || '#888';
+}
+
+// ============================================================
+// SVG RENDERING
+// ============================================================
+function renderDrawing(layout) {
+  var S = 3.186, OX = 55, OY = 80;
+  var BL = layout.buildingLength, BW = layout.buildingWidth;
+  var R = layout.rafters, NP = layout.numPurlins;
+  var RED = '#CC0000', PURPLE = '#6633AA', GREEN = '#22AA44';
+  var DARK = '#333333', MAROON = '#880055', ORANGE = '#FF6600';
+  var colorInfo = assignColors(layout);
+
+  var svgW = Math.ceil(BL * S + OX * 2 + 60);
+  var svgH = Math.ceil(BW * S + OY * 2 + 50);
+  function bx(ft) { return OX + ft * S; }
+  function by(ft) { return OY + ft * S; }
+  function px(ft) { return ft * S; }
+
+  var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+  s += '<rect x="0" y="0" width="' + svgW + '" height="' + svgH + '" fill="#FFFFFF"/>';
+
+  // Title
+  var typeLabel = layout.purlinType === 'Z' ? 'Z-Purlin (Lapped)' : 'C-Purlin (Butt Joint)';
+  s += '<text x="' + (svgW / 2) + '" y="16" text-anchor="middle" font-size="13" font-weight="bold" fill="#222" font-family="Arial">' + typeLabel + ' PLAN VIEW — ' + BW + "' × " + BL + "' CARPORT</text>";
+  s += '<text x="' + (svgW / 2) + '" y="30" text-anchor="middle" font-size="9" fill="#666" font-family="Arial">' + layout.spaceWidth + "' Stalls | " + layout.bayWidths[0] + "' Max Bay | 12\" 12GA G90 | " + layout.purlinSpacing + "' O.C.</text>";
+
+  // Overall dimension
+  var odY = OY - 45;
+  s += '<line x1="' + bx(0) + '" y1="' + odY + '" x2="' + bx(BL) + '" y2="' + odY + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<line x1="' + bx(0) + '" y1="' + (odY - 6) + '" x2="' + bx(0) + '" y2="' + (odY + 6) + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<line x1="' + bx(BL) + '" y1="' + (odY - 6) + '" x2="' + bx(BL) + '" y2="' + (odY + 6) + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<text x="' + bx(BL / 2) + '" y="' + (odY - 8) + '" text-anchor="middle" font-size="9" font-weight="bold" fill="#222" font-family="Arial">' + BL + "'-0\" OVERALL</text>";
+
+  // Bay dimensions
+  var dimY = OY - 18;
+  if (layout.overhangSpaces > 0) {
+    s += '<line x1="' + bx(0) + '" y1="' + (dimY - 5) + '" x2="' + bx(0) + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<line x1="' + bx(R[0]) + '" y1="' + (dimY - 5) + '" x2="' + bx(R[0]) + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<line x1="' + bx(0) + '" y1="' + dimY + '" x2="' + bx(R[0]) + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<text x="' + ((bx(0) + bx(R[0])) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7" fill="#999" font-family="Arial">' + R[0] + "' OH</text>";
+  }
+  for (var i = 0; i < R.length - 1; i++) {
+    var x1 = bx(R[i]), x2 = bx(R[i + 1]);
+    s += '<line x1="' + x1 + '" y1="' + (dimY - 5) + '" x2="' + x1 + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<line x1="' + x2 + '" y1="' + (dimY - 5) + '" x2="' + x2 + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<line x1="' + x1 + '" y1="' + dimY + '" x2="' + x2 + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<text x="' + ((x1 + x2) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7.5" fill="#333" font-family="Arial">' + layout.bayWidths[i] + "'</text>";
+  }
+  if (layout.overhangSpaces > 0) {
+    var rlx = bx(R[R.length - 1]), rrx = bx(BL), ohR = BL - R[R.length - 1];
+    s += '<line x1="' + rrx + '" y1="' + (dimY - 5) + '" x2="' + rrx + '" y2="' + (dimY + 5) + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<line x1="' + rlx + '" y1="' + dimY + '" x2="' + rrx + '" y2="' + dimY + '" stroke="#555" stroke-width="0.5"/>';
+    s += '<text x="' + ((rlx + rrx) / 2) + '" y="' + (dimY - 6) + '" text-anchor="middle" font-size="7" fill="#999" font-family="Arial">' + ohR + "' OH</text>";
+  }
+
+  // Building outline (BEFORE purlins)
+  s += '<rect x="' + bx(0) + '" y="' + by(0) + '" width="' + px(BL) + '" height="' + px(BW) + '" fill="none" stroke="' + PURPLE + '" stroke-width="2.5"/>';
+
+  // Sag rods
+  layout.sagRodPositions.forEach(function(ft) {
+    s += '<line x1="' + bx(ft) + '" y1="' + by(0) + '" x2="' + bx(ft) + '" y2="' + by(BW) + '" stroke="#AAAAAA" stroke-width="0.4" stroke-dasharray="1.5,3"/>';
+  });
+
+  // Purlin pieces (AFTER outline so eave rows show correct colors)
+  var pH = 2.4;
+  for (var row = 0; row < NP; row++) {
+    var y = by(layout.purlinY[row]);
+    layout.pieces.forEach(function(p, idx) {
+      var col = pieceColor(layout, colorInfo, idx);
+      s += '<rect x="' + bx(p.start) + '" y="' + (y - pH / 2) + '" width="' + px(p.len) + '" height="' + pH + '" fill="' + col + '" stroke="rgba(0,0,0,.2)" stroke-width="0.3" rx="0.3"/>';
+    });
+  }
+
+  // Piece length labels
+  var labelY = by(0) - 5;
+  layout.pieces.forEach(function(p, idx) {
+    var col = pieceColor(layout, colorInfo, idx);
+    s += '<text x="' + bx((p.start + p.end) / 2) + '" y="' + labelY + '" text-anchor="middle" font-size="6" fill="' + col + '" font-family="Arial">' + fmtLen(p.len) + '</text>';
+  });
+
+  // Purlin line labels
+  for (var row = 0; row < NP; row++) {
+    s += '<text x="' + (OX - 5) + '" y="' + (by(layout.purlinY[row]) + 3) + '" text-anchor="end" font-size="7.5" fill="#555" font-family="Arial">P' + (row + 1) + '</text>';
+  }
+
+  // Rafters
+  R.forEach(function(r, ri) {
+    s += '<rect x="' + (bx(r) - 1.5) + '" y="' + by(0) + '" width="3" height="' + px(BW) + '" fill="' + RED + '"/>';
+    s += '<text x="' + bx(r) + '" y="' + (by(BW) + 14) + '" text-anchor="middle" font-size="7" fill="' + RED + '" font-family="Arial">R' + (ri + 1) + '</text>';
+  });
+
+  // Columns
+  var colY = BW / 2;
+  R.forEach(function(r) {
+    s += '<rect x="' + (bx(r) - 2.5) + '" y="' + (by(colY) - 2.5) + '" width="5" height="5" fill="' + DARK + '" stroke="#000" stroke-width="0.5"/>';
+  });
+
+  // P3 plates
+  R.forEach(function(r) {
+    s += '<rect x="' + (bx(r) - 4) + '" y="' + (by(colY) - 4) + '" width="8" height="8" fill="none" stroke="' + MAROON + '" stroke-width="0.8"/>';
+  });
+
+  // P1 clips
+  R.forEach(function(r) {
+    for (var pi = 1; pi < NP - 1; pi++) {
+      s += '<rect x="' + (bx(r) - 0.8) + '" y="' + (by(layout.purlinY[pi]) - px(0.25)) + '" width="1.6" height="' + px(0.5) + '" fill="' + GREEN + '" opacity="0.8"/>';
+    }
+  });
+
+  // P2 eave plates
+  R.forEach(function(r) {
+    [0, BW].forEach(function(eft) {
+      s += '<rect x="' + (bx(r) - 0.8) + '" y="' + (by(eft) - px(0.375)) + '" width="1.6" height="' + px(0.75) + '" fill="' + GREEN + '" opacity="0.9"/>';
+    });
+  });
+
+  // Splice marks
+  layout.spliceCenters.forEach(function(sp) {
+    for (var pi = 0; pi < NP; pi++) {
+      var sx = bx(sp), sy = by(layout.purlinY[pi]), m = 2.5;
+      s += '<line x1="' + (sx - m) + '" y1="' + (sy - m) + '" x2="' + (sx + m) + '" y2="' + (sy + m) + '" stroke="' + ORANGE + '" stroke-width="0.8"/>';
+      s += '<line x1="' + (sx - m) + '" y1="' + (sy + m) + '" x2="' + (sx + m) + '" y2="' + (sy - m) + '" stroke="' + ORANGE + '" stroke-width="0.8"/>';
+    }
+  });
+
+  // Endcaps
+  [0, BL].forEach(function(xft) {
+    for (var pi = 0; pi < NP; pi++) {
+      s += '<rect x="' + (bx(xft) - 1) + '" y="' + (by(layout.purlinY[pi]) - 4) + '" width="2" height="8" fill="' + PURPLE + '"/>';
+    }
+  });
+
+  // Width dimension
+  var rdX = bx(BL) + 20;
+  s += '<line x1="' + rdX + '" y1="' + by(0) + '" x2="' + rdX + '" y2="' + by(BW) + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<line x1="' + (rdX - 5) + '" y1="' + by(0) + '" x2="' + (rdX + 5) + '" y2="' + by(0) + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<line x1="' + (rdX - 5) + '" y1="' + by(BW) + '" x2="' + (rdX + 5) + '" y2="' + by(BW) + '" stroke="#333" stroke-width="0.7"/>';
+  s += '<text x="' + (rdX + 10) + '" y="' + by(BW / 2) + '" text-anchor="middle" font-size="8" fill="#222" font-family="Arial" transform="rotate(-90,' + (rdX + 10) + ',' + by(BW / 2) + ')">' + BW + "'-0\"</text>";
+
+  s += '</svg>';
+  return { svg: s, colorInfo: colorInfo };
+}
+
+// ============================================================
+// BOM TABLE
+// ============================================================
+function fmtWt(lbs) { return lbs.toFixed(1) + ' lb'; }
+function fmtWtTon(lbs) { return (lbs / 2000).toFixed(2) + ' tons'; }
+
+function renderBOM(layout, colorInfo) {
+  var NP = layout.numPurlins, R = layout.rafters, W = layout.weights;
+  var html = '<div class="bom-grid">';
+
+  // LEFT: Purlin piece schedule + length groups
+  html += '<div>';
+  html += '<h3>PURLIN PIECE SCHEDULE (' + layout.purlinType + '-Purlin)</h3>';
+  html += '<table class="bom-table"><thead><tr><th>#</th><th>Color</th><th>Length</th><th>Wt/pc</th><th>Type</th></tr></thead><tbody>';
+  layout.pieces.forEach(function(p, idx) {
+    var col = pieceColor(layout, colorInfo, idx);
+    var type = (idx === 0 || idx === layout.pieces.length - 1) ? 'End' : 'Interior';
+    var pcWt = p.len * (+document.getElementById('inWtPurlin').value);
+    html += '<tr><td>' + (idx + 1) + '</td><td><span class="color-swatch" style="background:' + col + '"></span></td><td><strong>' + fmtLen(p.len) + '</strong></td><td>' + fmtWt(pcWt) + '</td><td>' + type + '</td></tr>';
+  });
+  html += '</tbody></table>';
+
+  html += '<h3 style="margin-top:10px">LENGTH GROUPS</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Color</th><th>Cut Length</th><th>Wt/pc</th><th>/Line</th><th>× ' + NP + '</th><th>Weight</th></tr></thead><tbody>';
+  var totalPcs = 0;
+  var wtPerFt = +document.getElementById('inWtPurlin').value;
+  colorInfo.groups.forEach(function(g) {
+    var col = colorInfo.colorMap[g.key], tot = g.count * NP;
+    totalPcs += tot;
+    var pcWt = g.len * wtPerFt;
+    var grpWt = pcWt * tot;
+    html += '<tr><td><span class="color-swatch" style="background:' + col + '"></span></td><td><strong>' + fmtLen(g.len) + '</strong></td><td>' + fmtWt(pcWt) + '</td><td>' + g.count + '</td><td>' + tot + '</td><td><strong>' + fmtWt(grpWt) + '</strong></td></tr>';
+  });
+  html += '</tbody></table>';
+
+  // Verification
+  if (layout.purlinType === 'Z') {
+    html += '<div class="bom-verify">✓ Material: ' + fmtLen(layout.totalMaterial) + ' − ' + layout.spliceCenters.length + ' splices × ' + fmtLen(layout.spliceLap) + ' = ' + fmtLen(layout.coverage) + ' (' + layout.buildingLength + "' bldg) | <strong>" + fmtWt(W.purlin) + '</strong></div>';
+  } else {
+    html += '<div class="bom-verify">✓ C-Purlin total: ' + fmtLen(layout.totalMaterial) + ' coverage = ' + layout.buildingLength + "' | <strong>" + fmtWt(W.purlin) + '</strong></div>';
+  }
+  html += '</div>';
+
+  // RIGHT: Hardware + Secondary Members
+  html += '<div>';
+  html += '<h3>HARDWARE</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Item</th><th>Qty</th><th>Wt/ea</th><th>Weight</th><th>Notes</th></tr></thead><tbody>';
+  var tS = layout.spliceCenters.length * NP;
+  html += '<tr><td>Purlin Pieces</td><td><strong>' + totalPcs + '</strong></td><td>—</td><td><strong>' + fmtWt(W.purlin) + '</strong></td><td>' + layout.pieces.length + '/line × ' + NP + ' lines</td></tr>';
+  html += '<tr><td>Splices</td><td><strong>' + tS + '</strong></td><td>—</td><td>—</td><td>' + (tS * 8) + ' TEK screws</td></tr>';
+  html += '<tr><td>Rafters</td><td><strong>' + R.length + '</strong></td><td>—</td><td>—</td><td></td></tr>';
+  html += '<tr><td>Columns</td><td><strong>' + R.length + '</strong></td><td>—</td><td>—</td><td>1/rafter center</td></tr>';
+
+  var wtP1ea = +document.getElementById('inWtP1').value;
+  var wtP2ea = +document.getElementById('inWtP2').value;
+  var wtP3ea = +document.getElementById('inWtP3').value;
+  var wtHea = +document.getElementById('inWtHStrap').value;
+  html += '<tr><td>P1 Clips</td><td><strong>' + W.qtyP1 + '</strong></td><td>' + fmtWt(wtP1ea) + '</td><td><strong>' + fmtWt(W.p1) + '</strong></td><td>10GA 6"×10"</td></tr>';
+  html += '<tr><td>P2 Eave Plates</td><td><strong>' + W.qtyP2 + '</strong></td><td>' + fmtWt(wtP2ea) + '</td><td><strong>' + fmtWt(W.p2) + '</strong></td><td>10GA 9"×24"</td></tr>';
+  html += '<tr><td>P3 Column Plates</td><td><strong>' + W.qtyP3 + '</strong></td><td>' + fmtWt(wtP3ea) + '</td><td><strong>' + fmtWt(W.p3) + '</strong></td><td>¾"×14"×26" (purchased)</td></tr>';
+  html += '<tr><td>H-Straps</td><td><strong>' + W.qtyHStrap + '</strong></td><td>' + fmtWt(wtHea) + '</td><td><strong>' + fmtWt(W.hStrap) + '</strong></td><td>10GA 1.5"×28"</td></tr>';
+  html += '</tbody></table>';
+
+  // Sag Rods
+  html += '<h3 style="margin-top:10px">SAG RODS (' + layout.sagRodSize + ' Angle — 16GA)</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Cut Length</th><th>Per Rod</th><th>× ' + layout.sagRodPositions.length + '</th><th>Total LF</th><th>Weight</th></tr></thead><tbody>';
+  var srTotalPcs = 0, srTotalLF = 0;
+  var wtSRft = +document.getElementById('inWtSagRod').value;
+  layout.sagRodPieces.forEach(function(g) {
+    var linePcs = g.count, total = g.count * layout.sagRodPositions.length;
+    var lf = g.len * total;
+    srTotalPcs += total; srTotalLF += lf;
+    html += '<tr><td><strong>' + fmtLen(g.len) + '</strong></td><td>' + linePcs + '</td><td>' + total + '</td><td>' + fmtLen(lf) + '</td><td><strong>' + fmtWt(lf * wtSRft) + '</strong></td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-size:10px;color:#888;margin-top:2px">Total: ' + fmtLen(W.sagRodLF) + ' LF | <strong>' + fmtWt(W.sagRod) + '</strong></div>';
+
+  // Endcaps
+  html += '<h3 style="margin-top:10px">ENDCAPS (' + layout.endcapType + '-Channel — 12GA)</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Cut Length</th><th>Per End</th><th>× 2 Ends</th><th>Total LF</th><th>Weight</th></tr></thead><tbody>';
+  var ecTotalPcs = 0, ecTotalLF = 0;
+  var wtECft = +document.getElementById('inWtEndcap').value;
+  layout.endcapPieces.forEach(function(g) {
+    var total = g.count * 2, lf = g.len * total;
+    ecTotalPcs += total; ecTotalLF += lf;
+    html += '<tr><td><strong>' + fmtLen(g.len) + '</strong></td><td>' + g.count + '</td><td>' + total + '</td><td>' + fmtLen(lf) + '</td><td><strong>' + fmtWt(lf * wtECft) + '</strong></td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-size:10px;color:#888;margin-top:2px">Total: ' + fmtLen(W.endcapLF) + ' LF | <strong>' + fmtWt(W.endcap) + '</strong></div>';
+
+  // Decking
+  html += '<h3 style="margin-top:10px">ROOF DECKING (29GA)</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Panel Length</th><th>Rows/Strip</th><th>× ' + layout.numStrips + ' Strips</th><th>Total Panels</th><th>Weight</th></tr></thead><tbody>';
+  var dkTotalPcs = 0;
+  var wtDKft = +document.getElementById('inWtDecking').value;
+  layout.deckPieces.forEach(function(g) {
+    var total = g.count * layout.numStrips;
+    dkTotalPcs += total;
+    var rowLF = g.len * total;
+    html += '<tr><td><strong>' + fmtLen(g.len) + '</strong></td><td>' + g.count + '</td><td>' + total + '</td><td>' + total + '</td><td><strong>' + fmtWt(rowLF * wtDKft) + '</strong></td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-size:10px;color:#888;margin-top:2px">' + layout.numStrips + ' strips × ' + fmtLen(layout.panelCoverage) + ' coverage = ' + fmtLen(layout.numStrips * layout.panelCoverage) + " along " + layout.buildingLength + "' | " + dkTotalPcs + ' panels | <strong>' + fmtWt(W.deck) + '</strong></div>';
+
+  html += '</div></div>'; // close grid
+
+  // WEIGHT SUMMARY
+  html += '<div style="margin-top:10px; padding:8px 12px; background:#0f3460; border-radius:4px; border:1px solid #1a4080;">';
+  html += '<h3 style="color:#e94560; margin-bottom:6px;">ESTIMATED WEIGHT SUMMARY</h3>';
+  html += '<table class="bom-table"><thead><tr><th>Component</th><th>Total LF</th><th>Weight (lb)</th><th>% of Total</th></tr></thead><tbody>';
+  var rows = [
+    { name: 'Purlins (' + layout.purlinType + ')', lf: W.purlinLF, wt: W.purlin },
+    { name: 'Sag Rods', lf: W.sagRodLF, wt: W.sagRod },
+    { name: 'Endcaps', lf: W.endcapLF, wt: W.endcap },
+    { name: 'Roof Decking', lf: W.deckLF, wt: W.deck },
+    { name: 'Hardware (P1+P2+P3+H-Straps)', lf: null, wt: W.hardware }
+  ];
+  rows.forEach(function(r) {
+    var pct = W.total > 0 ? (r.wt / W.total * 100).toFixed(1) : '0';
+    html += '<tr><td>' + r.name + '</td><td>' + (r.lf !== null ? fmtLen(r.lf) : '—') + '</td><td><strong>' + fmtWt(r.wt) + '</strong></td><td>' + pct + '%</td></tr>';
+  });
+  html += '<tr style="border-top:2px solid #e94560;"><td><strong>TOTAL</strong></td><td></td><td><strong style="color:#e94560;font-size:13px">' + fmtWt(W.total) + '</strong></td><td><strong>' + fmtWtTon(W.total) + '</strong></td></tr>';
+  html += '</tbody></table>';
+  html += '</div>';
+
+  // Warnings
+  if (layout.warnings.length > 0) {
+    html += '<div class="bom-warn">⚠️ ';
+    layout.warnings.forEach(function(w) { html += w + ' · '; });
+    html += '</div>';
+  }
+
+  return html;
+}
+
+// ============================================================
+// ZOOM & PAN
+// ============================================================
+var zoom = { scale: 1, panX: 0, panY: 0, dragging: false, startX: 0, startY: 0, svgW: 0, svgH: 0 };
+function applyTransform() {
+  var svg = document.querySelector('#svgContainer svg');
+  if (!svg) return;
+  svg.style.transform = 'translate(' + zoom.panX + 'px,' + zoom.panY + 'px) scale(' + zoom.scale + ')';
+  document.getElementById('zoomLevel').textContent = Math.round(zoom.scale * 100) + '%';
+}
+function zoomIn() { zoom.scale = Math.min(8, zoom.scale * 1.3); applyTransform(); }
+function zoomOut() { zoom.scale = Math.max(0.1, zoom.scale / 1.3); applyTransform(); }
+function zoomReset() { zoom.scale = 1; zoom.panX = 0; zoom.panY = 0; applyTransform(); }
+function zoomFit() {
+  var wrap = document.getElementById('drawingWrap');
+  if (!zoom.svgW) return;
+  zoom.scale = Math.min(wrap.clientWidth / zoom.svgW, wrap.clientHeight / zoom.svgH) * 0.95;
+  zoom.panX = (wrap.clientWidth - zoom.svgW * zoom.scale) / 2;
+  zoom.panY = (wrap.clientHeight - zoom.svgH * zoom.scale) / 2;
+  applyTransform();
+}
+document.getElementById('drawingWrap').addEventListener('wheel', function(e) {
+  e.preventDefault();
+  var rect = this.getBoundingClientRect();
+  var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  var old = zoom.scale;
+  zoom.scale = Math.max(0.1, Math.min(8, zoom.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  zoom.panX = mx - (mx - zoom.panX) * (zoom.scale / old);
+  zoom.panY = my - (my - zoom.panY) * (zoom.scale / old);
+  applyTransform();
+}, { passive: false });
+document.getElementById('drawingWrap').addEventListener('mousedown', function(e) {
+  if (e.target.tagName === 'BUTTON') return;
+  zoom.dragging = true; zoom.startX = e.clientX - zoom.panX; zoom.startY = e.clientY - zoom.panY;
+  this.classList.add('dragging'); e.preventDefault();
+});
+document.addEventListener('mousemove', function(e) {
+  if (!zoom.dragging) return;
+  zoom.panX = e.clientX - zoom.startX; zoom.panY = e.clientY - zoom.startY; applyTransform();
+});
+document.addEventListener('mouseup', function() {
+  zoom.dragging = false;
+  var w = document.getElementById('drawingWrap'); if (w) w.classList.remove('dragging');
+});
+
+// ============================================================
+// GENERATE
+// ============================================================
+function generate() {
+  var params = {
+    buildingLength: +document.getElementById('inBL').value,
+    buildingWidth: +document.getElementById('inBW').value,
+    spaceWidth: +document.getElementById('inSW').value,
+    maxBay: +document.getElementById('inMB').value,
+    overhangSpaces: +document.getElementById('inOH').value,
+    purlinSpacing: +document.getElementById('inPS').value,
+    spliceLap: +document.getElementById('inLap').value,
+    spliceOffset: +document.getElementById('inSO').value,
+    maxPieceLen: +document.getElementById('inMaxLen').value,
+    purlinType: document.getElementById('inPT').value,
+    maxSecondary: +document.getElementById('inMaxSec').value,
+    sagRodSize: document.getElementById('inSR').value,
+    endcapType: document.getElementById('inEC').value,
+    panelWidth: +document.getElementById('inPW').value,
+    coverageWidth: +document.getElementById('inCW').value,
+    sideOverlap: +document.getElementById('inSOL').value,
+    endOverlap: +document.getElementById('inEOL').value,
+    maxPanel: +document.getElementById('inMaxPanel').value,
+    wtPurlin: +document.getElementById('inWtPurlin').value,
+    wtSagRod: +document.getElementById('inWtSagRod').value,
+    wtEndcap: +document.getElementById('inWtEndcap').value,
+    wtDecking: +document.getElementById('inWtDecking').value,
+    wtP1: +document.getElementById('inWtP1').value,
+    wtP2: +document.getElementById('inWtP2').value,
+    wtP3: +document.getElementById('inWtP3').value,
+    wtHStrap: +document.getElementById('inWtHStrap').value
+  };
+  var layout = computeLayout(params);
+  var result = renderDrawing(layout);
+  document.getElementById('svgContainer').innerHTML = result.svg;
+  document.getElementById('bomSection').innerHTML = renderBOM(layout, result.colorInfo);
+  var svg = document.querySelector('#svgContainer svg');
+  if (svg) { zoom.svgW = +svg.getAttribute('width'); zoom.svgH = +svg.getAttribute('height'); }
+  applyTransform();
+}
+
+generate();
+setTimeout(zoomFit, 100);
+document.getElementById('inputs').addEventListener('change', function() { generate(); setTimeout(zoomFit, 50); });
+document.getElementById('inputs').addEventListener('input', function(e) {
+  if (e.target.tagName === 'INPUT') { clearTimeout(window._db); window._db = setTimeout(function() { generate(); setTimeout(zoomFit, 50); }, 300); }
+});
+</script>
+</body>
+</html>

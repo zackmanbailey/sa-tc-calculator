@@ -521,8 +521,10 @@ function showTab(name, clickedEl) {
 // PROJECT
 // ─────────────────────────────────────────────
 function updateJobCode() {
-  const city = document.getElementById('proj_city').value.trim().toUpperCase().replace(/\s+/g,'').slice(0,3);
-  const state = document.getElementById('proj_state').value.slice(0,2);
+  const cityEl = document.getElementById('proj_city');
+  const stateEl = document.getElementById('proj_state');
+  const city = cityEl ? cityEl.value.trim().toUpperCase().replace(/\s+/g,'').slice(0,3) : '';
+  const state = stateEl ? stateEl.value.slice(0,2) : '';
   const yr = new Date().getFullYear() % 100;
   if (city && state) document.getElementById('proj_jobcode').value = `${city}${state}-${yr}`;
 }
@@ -3175,16 +3177,21 @@ async function addNewCoil() {
 }
 
 async function addMillCert() {
-  const coilId  = document.getElementById('cert_material').value;
-  const heat    = document.getElementById('cert_heat').value.trim();
-  const mill    = document.getElementById('cert_mill').value.trim();
-  const date    = document.getElementById('cert_date').value.trim();
-  const pdfFile = document.getElementById('cert_pdf').files[0];
+  var _certMat = document.getElementById('cert_material');
+  var _certHeat = document.getElementById('cert_heat');
+  var _certMill = document.getElementById('cert_mill');
+  var _certDate = document.getElementById('cert_date');
+  var _certPdf = document.getElementById('cert_pdf');
+  const coilId  = _certMat ? _certMat.value : '';
+  const heat    = _certHeat ? _certHeat.value.trim() : '';
+  const mill    = _certMill ? _certMill.value.trim() : '';
+  const date    = _certDate ? _certDate.value.trim() : '';
+  const pdfFile = _certPdf ? _certPdf.files[0] : null;
 
   if (!heat) { showToast('Please enter a Heat Number.', 'info'); return; }
 
   const statusEl = document.getElementById('cert-upload-status');
-  statusEl.textContent = '⏳ Uploading...';
+  if (statusEl) statusEl.textContent = '⏳ Uploading...';
 
   // Always use multipart upload so the PDF (if any) goes with the metadata
   const fd = new FormData();
